@@ -1,0 +1,20 @@
+@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap")
+layer(base);
+
+@import "tailwindcss";
+
+@theme {
+  --font-outfit: Outfit, sans-serif;
+
+  --color-pcmazing-50: #e8f0ff;
+  --color-pcmazing-100: #d0e0ff;
+  --color-pcmazing-500: #0047ff;
+  --color-pcmazing-600: #0033cc;
+  --color-pcmazing-700: #002299;
+}
+
+@layer base {
+  body {
+    @apply font-outfit bg-white text-slate-900;
+  }
+}

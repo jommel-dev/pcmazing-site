@@ -1,0 +1,88 @@
+<section id="home" class="overflow-hidden bg-white">
+  <div class="mx-auto grid max-w-7xl items-center gap-10 px-4 py-12 sm:px-6 lg:grid-cols-2 lg:gap-16 lg:px-8 lg:py-20">
+    <div class="order-1 lg:order-none">
+      <p class="mb-3 text-xs font-bold tracking-[0.2em] text-pcmazing-500 uppercase">
+        We Build Digital Solutions
+      </p>
+      <h1 class="text-3xl leading-tight font-extrabold text-slate-900 sm:text-4xl lg:text-5xl xl:text-[3.25rem]">
+        <span class="block">WEB DEVELOPMENT</span>
+        <span class="block text-pcmazing-500">THAT GROWS YOUR BUSINESS</span>
+      </h1>
+      <p class="mt-5 max-w-xl text-base leading-relaxed text-slate-500 sm:text-lg">
+        We create custom websites and web applications designed to attract customers,
+        streamline operations, and scale with your business.
+      </p>
+
+      <div class="mt-6 grid grid-cols-2 gap-x-4 gap-y-5 lg:grid-cols-4 lg:gap-x-3 lg:gap-y-4">
+        @for (feature of features; track feature.label) {
+          <div class="flex items-start gap-2">
+            <div class="flex size-9 shrink-0 items-center justify-center text-pcmazing-500">
+              @switch (feature.icon) {
+                @case ('responsive') {
+                  <svg class="size-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25m18 0A2.25 2.25 0 0018.75 3H5.25A2.25 2.25 0 003 5.25m18 0V12a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 12V5.25" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75h.008v.008H12v-.008z" />
+                  </svg>
+                }
+                @case ('seo') {
+                  <svg class="size-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6.75 6.75 0 100-13.5 6.75 6.75 0 000 13.5z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 12.75V9.75m0 0l2.25 2.25M12 9.75L9.75 12" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 18.75h15" />
+                  </svg>
+                }
+                @case ('secure') {
+                  <svg class="size-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                  </svg>
+                }
+                @case ('support') {
+                  <svg class="size-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
+                  </svg>
+                }
+              }
+            </div>
+            <div class="min-w-0 flex-1">
+              <h3 class="text-[10px] leading-[1.25] font-extrabold tracking-wide text-slate-900 uppercase">
+                {{ feature.label }}
+              </h3>
+              <p class="mt-1 text-[10px] leading-[1.35] text-slate-500">
+                {{ feature.description }}
+              </p>
+            </div>
+          </div>
+        }
+      </div>
+
+      <div class="mt-8 flex flex-col gap-3 sm:flex-row sm:gap-4">
+        <a
+          href="#services"
+          class="inline-flex items-center justify-center gap-2 rounded-md bg-pcmazing-500 px-6 py-3.5 text-sm font-bold tracking-wide text-white transition-colors hover:bg-pcmazing-600"
+        >
+          OUR WEB DEVELOPMENT SERVICES
+          <span aria-hidden="true">→</span>
+        </a>
+        <a
+          href="#products"
+          class="inline-flex items-center justify-center gap-2 rounded-md border-2 border-pcmazing-500 bg-white px-6 py-3.5 text-sm font-bold tracking-wide text-pcmazing-500 transition-colors hover:bg-pcmazing-50"
+        >
+          VIEW OUR WORK
+          <span aria-hidden="true">→</span>
+        </a>
+      </div>
+    </div>
+
+    <div class="order-2 flex justify-center lg:order-none lg:justify-end">
+      <div class="relative w-full max-w-2xl">
+        <img
+          src="/images/main-conetent-header.png"
+          alt="PCmazing website displayed across desktop, laptop, tablet, and mobile devices"
+          class="relative w-full object-contain"
+          width="800"
+          height="600"
+        />
+      </div>
+    </div>
+  </div>
+</section>

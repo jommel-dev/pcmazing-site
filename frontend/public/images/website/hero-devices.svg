@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" fill="none">
+  <defs>
+    <linearGradient id="screenGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0047FF;stop-opacity:0.1"/>
+      <stop offset="100%" style="stop-color:#0047FF;stop-opacity:0.05"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+
+  <!-- iMac -->
+  <g filter="url(#shadow)" transform="translate(280, 40)">
+    <rect x="0" y="0" width="280" height="180" rx="8" fill="#1e293b"/>
+    <rect x="8" y="8" width="264" height="148" rx="4" fill="url(#screenGrad)"/>
+    <rect x="8" y="8" width="264" height="148" rx="4" fill="#f8fafc"/>
+    <text x="140" y="75" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" font-weight="bold" font-style="italic" fill="#0047FF">PC</text>
+    <text x="168" y="75" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" font-style="italic" fill="#0033CC">mazing</text>
+    <text x="140" y="100" text-anchor="middle" font-family="Arial,sans-serif" font-size="10" fill="#64748b">WEB DEVELOPMENT</text>
+    <rect x="120" y="180" width="40" height="30" fill="#cbd5e1"/>
+    <rect x="90" y="210" width="100" height="8" rx="4" fill="#94a3b8"/>
+  </g>
+
+  <!-- MacBook -->
+  <g filter="url(#shadow)" transform="translate(60, 200)">
+    <rect x="0" y="0" width="220" height="140" rx="6" fill="#1e293b"/>
+    <rect x="6" y="6" width="208" height="118" rx="3" fill="#f8fafc"/>
+    <text x="110" y="60" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" font-weight="bold" font-style="italic" fill="#0047FF">PC</text>
+    <text x="132" y="60" text-anchor="middle" font-family="Arial,sans-serif" font-size="14" font-style="italic" fill="#0033CC">mazing</text>
+    <path d="M0 130 L220 130 L240 150 L-20 150 Z" fill="#cbd5e1"/>
+  </g>
+
+  <!-- iPad -->
+  <g filter="url(#shadow)" transform="translate(380, 260)">
+    <rect x="0" y="0" width="120" height="160" rx="10" fill="#1e293b"/>
+    <rect x="6" y="6" width="108" height="148" rx="6" fill="#f8fafc"/>
+    <text x="60" y="75" text-anchor="middle" font-family="Arial,sans-serif" font-size="11" font-weight="bold" font-style="italic" fill="#0047FF">PC</text>
+    <text x="78" y="75" text-anchor="middle" font-family="Arial,sans-serif" font-size="11" font-style="italic" fill="#0033CC">mazing</text>
+    <circle cx="60" cy="148" r="4" fill="#94a3b8"/>
+  </g>
+
+  <!-- iPhone -->
+  <g filter="url(#shadow)" transform="translate(520, 280)">
+    <rect x="0" y="0" width="70" height="140" rx="12" fill="#1e293b"/>
+    <rect x="4" y="12" width="62" height="116" rx="4" fill="#f8fafc"/>
+    <text x="35" y="65" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" font-weight="bold" font-style="italic" fill="#0047FF">PC</text>
+    <text x="48" y="65" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" font-style="italic" fill="#0033CC">mazing</text>
+    <rect x="25" y="4" width="20" height="4" rx="2" fill="#475569"/>
+  </g>
+</svg>

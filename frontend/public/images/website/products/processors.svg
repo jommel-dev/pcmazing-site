@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 128" fill="none">
+  <rect width="160" height="128" fill="#f8fafc" rx="8"/>
+  <rect x="40" y="24" width="80" height="80" rx="4" fill="#1e293b"/>
+  <rect x="48" y="32" width="64" height="48" rx="2" fill="#334155"/>
+  <circle cx="80" cy="90" r="6" fill="#0047FF"/>
+  <text x="80" y="118" text-anchor="middle" font-family="Arial,sans-serif" font-size="10" fill="#64748b">AMD Ryzen</text>
+</svg>
