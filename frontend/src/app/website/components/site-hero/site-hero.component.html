@@ -1,5 +1,5 @@
-<section id="home" class="overflow-hidden bg-white">
-  <div class="mx-auto grid max-w-7xl items-center gap-10 px-4 py-12 sm:px-6 lg:grid-cols-2 lg:gap-16 lg:px-8 lg:py-20">
+<section id="home" class="relative z-0 bg-white">
+  <div class="mx-auto grid max-w-7xl items-start gap-10 px-4 py-12 sm:px-6 lg:grid-cols-2 lg:gap-16 lg:px-8 lg:py-20">
     <div class="order-1 lg:order-none">
       <p class="mb-3 text-xs font-bold tracking-[0.2em] text-pcmazing-500 uppercase">
         We Build Digital Solutions
@@ -13,7 +13,7 @@
         streamline operations, and scale with your business.
       </p>
 
-      <div class="mt-6 grid grid-cols-2 gap-x-4 gap-y-5 lg:grid-cols-4 lg:gap-x-3 lg:gap-y-4">
+      <div class="mt-6 grid grid-cols-2 gap-x-4 gap-y-5 lg:grid-cols-2 xl:grid-cols-4 xl:gap-x-3 xl:gap-y-4">
         @for (feature of features; track feature.label) {
           <div class="flex items-start gap-2">
             <div class="flex size-9 shrink-0 items-center justify-center text-pcmazing-500">
@@ -57,14 +57,14 @@
 
       <div class="mt-8 flex flex-col gap-3 sm:flex-row sm:gap-4">
         <a
-          href="#services"
+          routerLink="/web-services"
           class="inline-flex items-center justify-center gap-2 rounded-md bg-pcmazing-500 px-6 py-3.5 text-sm font-bold tracking-wide text-white transition-colors hover:bg-pcmazing-600"
         >
           OUR WEB DEVELOPMENT SERVICES
           <span aria-hidden="true">→</span>
         </a>
         <a
-          href="#products"
+          routerLink="/our-work"
           class="inline-flex items-center justify-center gap-2 rounded-md border-2 border-pcmazing-500 bg-white px-6 py-3.5 text-sm font-bold tracking-wide text-pcmazing-500 transition-colors hover:bg-pcmazing-50"
         >
           VIEW OUR WORK
@@ -73,12 +73,12 @@
       </div>
     </div>
 
-    <div class="order-2 flex justify-center lg:order-none lg:justify-end">
-      <div class="relative w-full max-w-2xl">
+    <div class="order-2 flex justify-center lg:order-none lg:justify-end lg:self-start">
+      <div class="relative w-full max-w-xl lg:max-w-lg xl:max-w-xl">
         <img
           src="/images/main-conetent-header.png"
           alt="PCmazing website displayed across desktop, laptop, tablet, and mobile devices"
-          class="relative w-full object-contain"
+          class="relative mx-auto h-auto w-full max-h-[300px] object-contain sm:max-h-[360px] lg:max-h-[400px] xl:max-h-[460px]"
           width="800"
           height="600"
         />

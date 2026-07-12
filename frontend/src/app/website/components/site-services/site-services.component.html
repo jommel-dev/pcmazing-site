@@ -50,7 +50,7 @@
             {{ service.description }}
           </p>
           <a
-            href="#contact"
+            [routerLink]="getServiceRoute(service.slug)"
             class="inline-flex items-center gap-1.5 text-xs font-bold tracking-wider uppercase transition-all hover:gap-2.5"
             [class.text-white]="service.featured"
             [class.text-pcmazing-500]="!service.featured"
@@ -65,8 +65,9 @@
     <!-- Mobile list -->
     <div class="flex flex-col gap-3 md:hidden">
       @for (service of services; track service.title) {
-        <article
-          class="flex items-center gap-4 rounded-2xl border p-4 shadow-sm"
+        <a
+          [routerLink]="getServiceRoute(service.slug)"
+          class="flex items-center gap-4 rounded-2xl border p-4 shadow-sm transition-colors hover:border-pcmazing-200"
           [class.border-transparent]="service.featured"
           [class.bg-gradient-to-r]="service.featured"
           [class.from-pcmazing-500]="service.featured"
@@ -98,7 +99,7 @@
           <svg class="size-5 shrink-0 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
           </svg>
-        </article>
+        </a>
       }
       <a
         href="#contact"

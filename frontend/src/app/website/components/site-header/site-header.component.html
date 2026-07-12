@@ -1,6 +1,6 @@
 <header class="sticky top-0 z-50 border-b border-gray-100 bg-white/95 backdrop-blur-md">
   <div class="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
-    <a href="#home" class="flex shrink-0 items-center" (click)="setActiveLink('#home')">
+    <a routerLink="/" class="flex shrink-0 items-center" (click)="setActiveLink('#home')">
       <img
         src="/images/logo.png"
         alt="PCmazing"
@@ -13,7 +13,8 @@
     <nav class="hidden items-center gap-8 lg:flex">
       @for (link of navLinks; track link.label) {
         <a
-          [href]="link.href"
+          routerLink="/"
+          [fragment]="navFragment(link.href)"
           class="relative pb-2 text-xs font-semibold tracking-wider transition-colors hover:text-pcmazing-500"
           [class.text-pcmazing-500]="isActive(link.href)"
           [class.text-gray-600]="!isActive(link.href)"
@@ -29,7 +30,8 @@
 
     <div class="hidden lg:block">
       <a
-        href="#contact"
+        routerLink="/"
+        fragment="contact"
         class="inline-flex items-center rounded-md bg-pcmazing-500 px-5 py-2.5 text-xs font-bold tracking-wide text-white transition-colors hover:bg-pcmazing-600"
         (click)="setActiveLink('#contact')"
       >
@@ -61,20 +63,22 @@
       <nav class="flex flex-col gap-1">
         @for (link of navLinks; track link.label) {
           <a
-            [href]="link.href"
+            routerLink="/"
+            [fragment]="navFragment(link.href)"
             class="rounded-md border-l-4 px-3 py-2.5 text-sm font-semibold tracking-wide transition-colors hover:bg-gray-50"
             [class.border-pcmazing-500]="isActive(link.href)"
             [class.bg-pcmazing-50]="isActive(link.href)"
             [class.text-pcmazing-500]="isActive(link.href)"
             [class.border-transparent]="!isActive(link.href)"
-            [class.text-gray-700]="!isActive(link.href)"
+            [class.text-gray-600]="!isActive(link.href)"
             (click)="setActiveLink(link.href)"
           >
             {{ link.label }}
           </a>
         }
         <a
-          href="#contact"
+          routerLink="/"
+          fragment="contact"
           class="mt-3 inline-flex items-center justify-center rounded-md bg-pcmazing-500 px-5 py-3 text-sm font-bold tracking-wide text-white hover:bg-pcmazing-600"
           (click)="setActiveLink('#contact')"
         >

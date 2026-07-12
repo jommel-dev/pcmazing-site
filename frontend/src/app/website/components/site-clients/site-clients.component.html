@@ -1,0 +1,28 @@
+<section id="clients" class="relative z-10 border-t border-gray-100 bg-gray-50 py-16 sm:py-20">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="mb-10 text-center sm:mb-12">
+      <p class="text-xs font-bold tracking-[0.2em] text-pcmazing-500 uppercase">Trusted By</p>
+      <h2 class="mt-2 text-3xl font-extrabold text-slate-900 sm:text-4xl">OUR CLIENTS</h2>
+      <p class="mx-auto mt-4 max-w-2xl text-base leading-relaxed text-slate-500">
+        Businesses and organizations we've proudly partnered with across web development and tech solutions.
+      </p>
+    </div>
+
+    <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-6 lg:grid-cols-6">
+      @for (client of clients; track client.name) {
+        <article
+          class="group flex min-h-[120px] items-center justify-center rounded-xl border border-gray-100 bg-white p-5 transition-all duration-300 hover:border-pcmazing-100 hover:shadow-md sm:min-h-[132px] sm:p-6"
+        >
+          <img
+            [src]="client.image"
+            [alt]="client.name + ' logo'"
+            class="h-14 w-full max-w-[140px] object-contain transition-transform duration-300 group-hover:scale-105 sm:h-16"
+            width="140"
+            height="64"
+            loading="lazy"
+          />
+        </article>
+      }
+    </div>
+  </div>
+</section>
