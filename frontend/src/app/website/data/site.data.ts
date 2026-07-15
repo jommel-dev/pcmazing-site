@@ -37,9 +37,8 @@ export const navLinks: NavLink[] = [
   { label: 'HOME', href: '#home' },
   { label: 'SERVICES', href: '#services' },
   { label: 'PRODUCTS', href: '#products' },
-  { label: 'STUDY HUB', href: '#study-hub' },
-  { label: 'ABOUT US', href: '#about' },
-  { label: 'CONTACT US', href: '#contact' },
+  { label: 'ABOUT US', href: '/about' },
+  { label: 'CONTACT US', href: '/contact' },
 ];
 
 export const heroFeatures: HeroFeature[] = [
@@ -112,6 +111,8 @@ export const clients: ClientLogo[] = [
   { name: '3BMA', image: '/images/our%20clients/3bmaLogo.png' },
   { name: 'Air Summit', image: '/images/our%20clients/air-summit-logo.jpg' },
   { name: 'Bagama', image: '/images/our%20clients/bagamalogo.jpg' },
+  { name: 'Car Expert', image: '/images/our%20clients/car-expertlogo.jpeg' },
+  { name: 'Northprime', image: '/images/our%20clients/northprime-ventures-corp-logo.png' },
   { name: 'PJG', image: '/images/our%20clients/pjg%20logo.jpg' },
   { name: 'STS Catering', image: '/images/our%20clients/sts-catering.jpg' },
   { name: 'Vikings Pawnshop', image: '/images/our%20clients/vikings%20pawnshop.jpg' },

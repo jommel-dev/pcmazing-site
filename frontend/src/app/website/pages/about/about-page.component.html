@@ -1,0 +1,126 @@
+<app-page-hero
+  eyebrow="About PCmazing"
+  title="Your Local Tech Partner in Cabanatuan"
+  description="From computer repairs and custom builds to web development and business systems — PCmazing helps individuals and organizations get the most out of technology."
+/>
+
+<section class="bg-white py-16 sm:py-20">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="grid gap-12 lg:grid-cols-2 lg:items-center">
+      <div>
+        <h2 class="text-2xl font-extrabold text-slate-900 sm:text-3xl">{{ about.story.title }}</h2>
+        <div class="mt-6 space-y-4">
+          @for (paragraph of about.story.paragraphs; track paragraph) {
+            <p class="text-base leading-relaxed text-slate-600">{{ paragraph }}</p>
+          }
+        </div>
+      </div>
+      <div class="rounded-2xl bg-gradient-to-br from-pcmazing-500 to-pcmazing-700 p-8 text-white sm:p-10">
+        <p class="text-xs font-bold tracking-[0.2em] text-white/70 uppercase">Our Mission</p>
+        <p class="mt-4 text-lg leading-relaxed font-medium">{{ about.mission }}</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="border-y border-gray-100 bg-gray-50 py-16 sm:py-20">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="mb-10 text-center sm:mb-14">
+      <p class="text-xs font-bold tracking-[0.2em] text-pcmazing-500 uppercase">What We Stand For</p>
+      <h2 class="mt-2 text-3xl font-extrabold text-slate-900 sm:text-4xl">Our Values</h2>
+    </div>
+    <div class="grid gap-6 md:grid-cols-3">
+      @for (value of about.values; track value.title) {
+        <article class="rounded-2xl border border-gray-100 bg-white p-8 shadow-sm">
+          <div class="mb-4 flex size-12 items-center justify-center rounded-xl bg-pcmazing-50 text-pcmazing-500">
+            <svg class="size-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <h3 class="text-lg font-bold text-slate-900">{{ value.title }}</h3>
+          <p class="mt-3 text-sm leading-relaxed text-slate-500">{{ value.description }}</p>
+        </article>
+      }
+    </div>
+  </div>
+</section>
+
+<section class="bg-white py-16 sm:py-20">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="mb-10 text-center sm:mb-14">
+      <p class="text-xs font-bold tracking-[0.2em] text-pcmazing-500 uppercase">{{ about.team.eyebrow }}</p>
+      <h2 class="mt-2 text-3xl font-extrabold text-slate-900 sm:text-4xl">{{ about.team.title }}</h2>
+      <p class="mx-auto mt-4 max-w-2xl text-base leading-relaxed text-slate-500">
+        {{ about.team.description }}
+      </p>
+    </div>
+
+    <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      @for (member of about.team.members; track member.role) {
+        <article
+          class="group flex flex-col items-center rounded-2xl border border-gray-100 bg-white p-8 text-center shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-pcmazing-200 hover:shadow-lg"
+        >
+          @if (member.image) {
+            <img
+              [src]="member.image"
+              [alt]="member.name + ' photo'"
+              class="mb-5 size-28 rounded-full object-cover ring-4 ring-pcmazing-50 transition-transform duration-300 group-hover:scale-105"
+              width="112"
+              height="112"
+              loading="lazy"
+            />
+          } @else {
+            <div
+              class="mb-5 flex size-28 items-center justify-center rounded-full bg-gradient-to-br from-pcmazing-500 to-pcmazing-700 text-2xl font-bold text-white ring-4 ring-pcmazing-50 transition-transform duration-300 group-hover:scale-105"
+            >
+              {{ memberInitials(member) }}
+            </div>
+          }
+
+          <h3 class="text-lg font-bold text-slate-900">{{ member.name }}</h3>
+          <p class="mt-1 text-sm font-semibold tracking-wide text-pcmazing-500 uppercase">{{ member.role }}</p>
+          @if (member.bio) {
+            <p class="mt-4 text-sm leading-relaxed text-slate-500">{{ member.bio }}</p>
+          }
+        </article>
+      }
+    </div>
+  </div>
+</section>
+
+<section class="border-y border-gray-100 bg-gray-50 py-16 sm:py-20">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="grid grid-cols-2 gap-6 lg:grid-cols-4">
+      @for (item of about.highlights; track item.label) {
+        <div class="rounded-2xl border border-gray-100 bg-gray-50 px-6 py-8 text-center">
+          <p class="text-3xl font-extrabold text-pcmazing-500 sm:text-4xl">{{ item.value }}</p>
+          <p class="mt-2 text-sm font-medium text-slate-600">{{ item.label }}</p>
+        </div>
+      }
+    </div>
+
+    <div class="mt-14 rounded-2xl border border-gray-100 bg-gray-50 p-8 sm:p-10">
+      <h3 class="text-xl font-extrabold text-slate-900">Why Businesses Choose PCmazing</h3>
+      <ul class="mt-6 grid gap-4 sm:grid-cols-2">
+        @for (item of about.whyChoose; track item) {
+          <li class="flex items-start gap-3 text-sm text-slate-600">
+            <svg class="mt-0.5 size-4 shrink-0 text-pcmazing-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+            {{ item }}
+          </li>
+        }
+      </ul>
+    </div>
+
+    <div class="mt-14 text-center">
+      <p class="text-sm text-slate-500">Ready to work with a team that understands your technology needs?</p>
+      <a
+        routerLink="/contact"
+        class="mt-4 inline-flex items-center gap-2 rounded-md bg-pcmazing-500 px-6 py-3 text-sm font-bold tracking-wide text-white transition-colors hover:bg-pcmazing-600"
+      >
+        GET IN TOUCH <span aria-hidden="true">→</span>
+      </a>
+    </div>
+  </div>
+</section>

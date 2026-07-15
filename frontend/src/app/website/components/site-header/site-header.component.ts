@@ -14,16 +14,17 @@ export class SiteHeaderComponent implements OnInit, OnDestroy {
   readonly mobileMenuOpen = signal(false);
   readonly activeHref = signal('#home');
   readonly isHomePage = signal(true);
+  readonly currentPath = signal('/');
 
   private observer?: IntersectionObserver;
   private readonly platformId = inject(PLATFORM_ID);
   private readonly router = inject(Router);
 
   ngOnInit(): void {
-    this.updateHomeState(this.router.url);
+    this.updateRouteState(this.router.url);
     this.router.events
       .pipe(filter((event) => event instanceof NavigationEnd))
-      .subscribe((event) => this.updateHomeState((event as NavigationEnd).urlAfterRedirects));
+      .subscribe((event) => this.updateRouteState((event as NavigationEnd).urlAfterRedirects));
 
     if (!isPlatformBrowser(this.platformId)) {
       return;
@@ -36,12 +37,23 @@ export class SiteHeaderComponent implements OnInit, OnDestroy {
     this.observer?.disconnect();
   }
 
+  isRouteLink(href: string): boolean {
+    return href.startsWith('/');
+  }
+
   isActive(href: string): boolean {
+    if (this.isRouteLink(href)) {
+      return this.currentPath() === href || this.currentPath().startsWith(`${href}/`);
+    }
+
     return this.isHomePage() && this.activeHref() === href;
   }
 
   setActiveLink(href: string): void {
-    this.activeHref.set(href);
+    if (!this.isRouteLink(href)) {
+      this.activeHref.set(href);
+    }
+
     this.closeMobileMenu();
   }
 
@@ -57,8 +69,11 @@ export class SiteHeaderComponent implements OnInit, OnDestroy {
     this.mobileMenuOpen.set(false);
   }
 
-  private updateHomeState(url: string): void {
-    const onHome = url === '/' || url.startsWith('/#') || url.startsWith('/?');
+  private updateRouteState(url: string): void {
+    const path = url.split(/[?#]/)[0] || '/';
+    this.currentPath.set(path);
+
+    const onHome = path === '/';
     this.isHomePage.set(onHome);
 
     if (onHome && isPlatformBrowser(this.platformId)) {
@@ -72,6 +87,7 @@ export class SiteHeaderComponent implements OnInit, OnDestroy {
     this.observer?.disconnect();
 
     const sections = this.navLinks
+      .filter((link) => link.href.startsWith('#'))
       .map((link) => document.getElementById(link.href.slice(1)))
       .filter((section): section is HTMLElement => section !== null);
 
