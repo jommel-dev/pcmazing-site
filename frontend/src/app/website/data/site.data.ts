@@ -109,7 +109,6 @@ export const products: ProductItem[] = [
 
 export const clients: ClientLogo[] = [
   { name: '3BMA', image: '/images/our%20clients/3bmaLogo.png' },
-  { name: 'Air Summit', image: '/images/our%20clients/air-summit-logo.jpg' },
   { name: 'Bagama', image: '/images/our%20clients/bagamalogo.jpg' },
   { name: 'Car Expert', image: '/images/our%20clients/car-expertlogo.jpeg' },
   { name: 'Northprime', image: '/images/our%20clients/northprime-ventures-corp-logo.png' },
