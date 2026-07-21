@@ -124,7 +124,7 @@ export const footerInfo = {
     weekdays: 'Monday - Saturday',
     weekdayTime: '7:30 AM - 7:00 PM',
   },
-  phoneStatus: 'Coming Soon',
+  phoneStatus: '09394133225',
   social: [
     {
       name: 'Facebook',

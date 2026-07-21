@@ -1,0 +1,82 @@
+<section>
+  <a routerLink="/admin/customer-reviews" class="text-sm font-bold text-pcmazing-500 hover:text-pcmazing-600">← Back to Customer Reviews</a>
+
+  @if (loading()) {
+    <div class="mt-6 rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900">Loading review...</div>
+  } @else if (error()) {
+    <div class="mt-6 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{{ error() }}</div>
+  } @else if (review(); as item) {
+    @if (actionMessage()) {
+      <div class="mt-6 rounded-2xl border border-green-200 bg-green-50 px-5 py-4 text-sm text-green-700">{{ actionMessage() }}</div>
+    }
+
+    <div class="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div class="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p class="text-xs font-bold tracking-[0.15em] text-pcmazing-500 uppercase">Review #{{ item.id }}</p>
+          <h2 class="mt-2 text-2xl font-bold text-slate-900 dark:text-white">{{ item.fullName }}</h2>
+          <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Submitted {{ formatDate(item.createdAt) }}</p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          @if (item.isPublished) {
+            <span class="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">Active on website</span>
+          } @else {
+            <span class="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700 dark:bg-amber-950 dark:text-amber-300">Not published</span>
+          }
+          <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase dark:bg-slate-800">{{ item.status }}</span>
+        </div>
+      </div>
+
+      <div class="mt-6 grid gap-4 sm:grid-cols-3">
+        <div class="rounded-xl bg-slate-50 p-4 dark:bg-slate-950">
+          <p class="text-xs font-bold uppercase text-slate-400">Rating</p>
+          <p class="mt-1 text-sm font-semibold text-slate-800 dark:text-slate-200">{{ formatRating(item.rating) }}/5</p>
+        </div>
+        <div class="rounded-xl bg-slate-50 p-4 dark:bg-slate-950">
+          <p class="text-xs font-bold uppercase text-slate-400">Email</p>
+          <p class="mt-1 text-sm text-slate-800 dark:text-slate-200">{{ item.email || '—' }}</p>
+        </div>
+        <div class="rounded-xl bg-slate-50 p-4 dark:bg-slate-950">
+          <p class="text-xs font-bold uppercase text-slate-400">Company</p>
+          <p class="mt-1 text-sm text-slate-800 dark:text-slate-200">{{ item.company || '—' }}</p>
+        </div>
+      </div>
+
+      @if (item.title) {
+        <div class="mt-6">
+          <p class="text-xs font-bold uppercase text-slate-400">Title</p>
+          <p class="mt-1 text-lg font-semibold text-slate-900 dark:text-white">{{ item.title }}</p>
+        </div>
+      }
+
+      <div class="mt-6 rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+        <p class="text-xs font-bold uppercase text-slate-400">Feedback</p>
+        <p class="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-300">{{ item.message }}</p>
+      </div>
+
+      <div class="mt-6">
+        <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300" for="review-notes">Admin notes</label>
+        <textarea
+          id="review-notes"
+          rows="3"
+          class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+          [ngModel]="adminNotes()"
+          (ngModelChange)="adminNotes.set($event)"
+          name="adminNotes"
+        ></textarea>
+      </div>
+
+      <div class="mt-6 flex flex-wrap gap-3 border-t border-slate-200 pt-6 dark:border-slate-800">
+        <button type="button" class="rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-60" [disabled]="saving()" (click)="approveAndPublish()">
+          Approve & publish to website
+        </button>
+        <button type="button" class="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800" [disabled]="saving()" (click)="unpublishReview()">
+          Unpublish
+        </button>
+        <button type="button" class="rounded-xl border border-red-200 px-5 py-2.5 text-sm font-bold text-red-600 hover:bg-red-50 disabled:opacity-60 dark:border-red-900 dark:text-red-400" [disabled]="saving()" (click)="rejectReview()">
+          Reject
+        </button>
+      </div>
+    </div>
+  }
+</section>

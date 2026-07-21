@@ -6,8 +6,17 @@ import { OurWorkPageComponent } from './website/pages/our-work/our-work-page.com
 import { ServiceDetailPageComponent } from './website/pages/service-detail/service-detail-page.component';
 import { AboutPageComponent } from './website/pages/about/about-page.component';
 import { ContactPageComponent } from './website/pages/contact/contact-page.component';
+import { ScheduleDemoPageComponent } from './website/pages/schedule-demo/schedule-demo-page.component';
+import { LeaveReviewPageComponent } from './website/pages/leave-review/leave-review-page.component';
+import { SetupPageComponent } from './website/pages/setup/setup-page.component';
+import { setupAvailableGuard } from './core/guards/setup-available.guard';
+import { adminRoutes } from './admin/admin.routes';
 
 export const routes: Routes = [
+  {
+    path: 'admin',
+    children: adminRoutes,
+  },
   {
     path: '',
     component: WebsiteLayoutComponent,
@@ -36,6 +45,22 @@ export const routes: Routes = [
         path: 'contact',
         component: ContactPageComponent,
         title: 'Contact Us | PCmazing',
+      },
+      {
+        path: 'schedule-demo',
+        component: ScheduleDemoPageComponent,
+        title: 'Schedule A Demo | PCmazing',
+      },
+      {
+        path: 'leave-a-review',
+        component: LeaveReviewPageComponent,
+        title: 'Leave a Review | PCmazing',
+      },
+      {
+        path: 'setup',
+        component: SetupPageComponent,
+        title: 'Database Setup | PCmazing',
+        canActivate: [setupAvailableGuard],
       },
       {
         path: 'services/:slug',

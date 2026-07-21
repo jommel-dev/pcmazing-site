@@ -22,7 +22,7 @@
             <button
               type="button"
               class="mt-6 inline-flex items-center gap-2 rounded-md bg-pcmazing-500 px-6 py-3 text-sm font-bold tracking-wide text-white hover:bg-pcmazing-600"
-              (click)="submitted.set(false)"
+              (click)="resetForm()"
             >
               SEND ANOTHER MESSAGE
             </button>
@@ -109,11 +109,22 @@
               }
             </div>
 
+            @if (submitError()) {
+              <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {{ submitError() }}
+              </div>
+            }
+
             <button
               type="submit"
-              class="inline-flex items-center gap-2 rounded-md bg-pcmazing-500 px-8 py-3.5 text-sm font-bold tracking-wide text-white transition-colors hover:bg-pcmazing-600"
+              class="inline-flex items-center gap-2 rounded-md bg-pcmazing-500 px-8 py-3.5 text-sm font-bold tracking-wide text-white transition-colors hover:bg-pcmazing-600 disabled:cursor-not-allowed disabled:opacity-60"
+              [disabled]="submitting()"
             >
-              SEND MESSAGE <span aria-hidden="true">→</span>
+              @if (submitting()) {
+                SENDING...
+              } @else {
+                SEND MESSAGE <span aria-hidden="true">→</span>
+              }
             </button>
           </form>
         }

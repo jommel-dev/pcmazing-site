@@ -1,0 +1,271 @@
+<app-page-hero
+  eyebrow="Database Setup"
+  title="Migration Setup"
+  description="Manage database migrations for the PCmazing website. Run bundled migrations or upload a SQL file to initialize your server database."
+/>
+
+<section class="bg-white py-16 sm:py-20">
+  <div class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
+    @if (error()) {
+      <div class="mb-6 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
+        {{ error() }}
+      </div>
+    }
+
+    @if (actionMessage()) {
+      <div class="mb-6 rounded-2xl border border-green-200 bg-green-50 px-5 py-4 text-sm text-green-700">
+        {{ actionMessage() }}
+      </div>
+    }
+
+    <div class="mb-8 rounded-2xl border border-gray-100 bg-gray-50 p-6">
+      <h2 class="text-sm font-bold tracking-[0.15em] text-pcmazing-500 uppercase">Setup Key (optional)</h2>
+      <p class="mt-2 text-sm text-slate-500">
+        If your backend uses <code class="rounded bg-white px-1.5 py-0.5 text-slate-700">SETUP_API_KEY</code>, enter it here.
+      </p>
+      <div class="mt-4 flex flex-col gap-3 sm:flex-row">
+        <input
+          type="password"
+          class="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm text-slate-900 focus:border-pcmazing-500 focus:ring-2 focus:ring-pcmazing-100 focus:outline-none"
+          placeholder="x-setup-key value"
+          [value]="setupKey()"
+          (input)="setupKey.set($any($event.target).value)"
+        />
+        <button
+          type="button"
+          class="inline-flex items-center justify-center rounded-md bg-pcmazing-500 px-5 py-3 text-sm font-bold tracking-wide text-white hover:bg-pcmazing-600"
+          (click)="saveSetupKey()"
+        >
+          SAVE KEY
+        </button>
+      </div>
+    </div>
+
+    @if (loading()) {
+      <div class="rounded-2xl border border-gray-100 bg-gray-50 px-6 py-10 text-center text-sm text-slate-500">
+        Loading setup status...
+      </div>
+    } @else {
+      @if (status(); as setupStatus) {
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+            <p class="text-xs font-bold tracking-[0.15em] text-slate-400 uppercase">Database</p>
+            <p class="mt-2 text-lg font-bold" [class.text-green-600]="setupStatus.connected" [class.text-red-600]="!setupStatus.connected">
+              {{ setupStatus.connected ? 'Connected' : 'Not Connected' }}
+            </p>
+            <p class="mt-1 text-sm text-slate-500">Schema: {{ setupStatus.schema }} · Mode: {{ setupStatus.mode }}</p>
+            <p class="mt-1 text-sm text-slate-500">Host: {{ setupStatus.dbHost }} · Database: {{ setupStatus.dbName }}</p>
+            @if (setupStatus.connectionError) {
+              <p class="mt-2 text-xs text-red-600">{{ setupStatus.connectionError }}</p>
+            }
+          </div>
+          <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+            <p class="text-xs font-bold tracking-[0.15em] text-slate-400 uppercase">Tables</p>
+            <p class="mt-2 text-lg font-bold text-slate-900">{{ setupStatus.tableCount }}</p>
+            <p class="mt-1 text-sm text-slate-500">{{ setupStatus.isBlank ? 'Database is blank' : 'Database has existing tables' }}</p>
+          </div>
+          <div class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+            <p class="text-xs font-bold tracking-[0.15em] text-slate-400 uppercase">Migrations</p>
+            <p class="mt-2 text-lg font-bold text-slate-900">
+              {{ setupStatus.appliedMigrations }} applied / {{ setupStatus.pendingBundledMigrations }} pending
+            </p>
+            <p class="mt-1 text-sm text-slate-500">Bundled migration files</p>
+          </div>
+        </div>
+      }
+
+      @if (showMigrationProgress() && progress(); as migrationProgress) {
+        <div class="mt-8 rounded-2xl border border-gray-100 bg-gray-50 p-6">
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-bold text-slate-900">Migration Progress</p>
+              @if (migrationProgress.currentFile) {
+                <p class="mt-1 truncate text-sm font-medium text-slate-700">{{ migrationProgress.currentFile }}</p>
+              }
+              <p class="mt-1 text-sm text-slate-500">
+                {{ progressMessage(migrationProgress) }}
+              </p>
+              @if (migrationProgress.currentLabel && migrationProgress.status === 'running') {
+                <p class="mt-1 text-sm font-medium text-pcmazing-600">{{ migrationProgress.currentLabel }}</p>
+              }
+            </div>
+            <span
+              class="inline-flex shrink-0 rounded-full px-3 py-1 text-xs font-bold uppercase"
+              [class]="progressStatusClass(migrationProgress.status)"
+            >
+              {{ migrationProgress.status }}
+            </span>
+          </div>
+
+          <div class="mt-5 grid gap-3 sm:grid-cols-3">
+            <div class="rounded-xl bg-white px-4 py-3">
+              <p class="text-xs font-bold tracking-[0.15em] text-slate-400 uppercase">Statements</p>
+              <p class="mt-1 text-lg font-bold text-slate-900">{{ formatStatementCount(migrationProgress) }}</p>
+            </div>
+            <div class="rounded-xl bg-white px-4 py-3">
+              <p class="text-xs font-bold tracking-[0.15em] text-slate-400 uppercase">Complete</p>
+              <p class="mt-1 text-lg font-bold text-slate-900">{{ progressPercent(migrationProgress) | number: '1.0-1' }}%</p>
+            </div>
+            <div class="rounded-xl bg-white px-4 py-3">
+              <p class="text-xs font-bold tracking-[0.15em] text-slate-400 uppercase">Time</p>
+              <p class="mt-1 text-lg font-bold text-slate-900">
+                {{ formatElapsedTime(migrationProgress.startedAt) || (actionLoading() ? 'Starting...' : '—') }}
+              </p>
+            </div>
+          </div>
+
+          @if (migrationProgress.total > 0 || migrationProgress.status === 'running' || actionLoading()) {
+            <div class="mt-4 h-3 overflow-hidden rounded-full bg-white">
+              <div
+                class="h-full rounded-full bg-pcmazing-500 transition-all duration-300"
+                [class.animate-pulse]="migrationProgress.status === 'running' || actionLoading()"
+                [style.width.%]="progressPercent(migrationProgress)"
+              ></div>
+            </div>
+          }
+
+          @if (migrationProgress.statementPreview) {
+            <div class="mt-4 rounded-xl border border-gray-200 bg-white p-4">
+              <p class="text-xs font-bold tracking-[0.15em] text-slate-400 uppercase">Current Statement</p>
+              <pre class="mt-2 overflow-x-auto whitespace-pre-wrap break-all text-xs leading-relaxed text-slate-700">{{ migrationProgress.statementPreview }}</pre>
+            </div>
+          }
+
+          @if (migrationProgress.error) {
+            <div class="mt-4 rounded-xl border border-red-200 bg-red-50 p-4">
+              <p class="text-xs font-bold tracking-[0.15em] text-red-500 uppercase">Error Details</p>
+              <pre class="mt-2 overflow-x-auto whitespace-pre-wrap break-all text-sm leading-relaxed text-red-700">{{ migrationProgress.error }}</pre>
+            </div>
+          }
+        </div>
+      }
+
+      <div class="mt-8 grid gap-8 lg:grid-cols-2">
+        <div class="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+          <h3 class="text-lg font-bold text-slate-900">Run Bundled Migrations</h3>
+          <p class="mt-2 text-sm leading-relaxed text-slate-500">
+            Applies SQL files from the backend <code class="rounded bg-gray-50 px-1.5 py-0.5">src/sql/migrations</code> folder.
+          </p>
+
+          <label class="mt-5 flex items-center gap-2 text-sm text-slate-600">
+            <input
+              type="checkbox"
+              class="size-4 rounded border-gray-300 text-pcmazing-500 focus:ring-pcmazing-500"
+              [checked]="forceMigration()"
+              (change)="forceMigration.set($any($event.target).checked)"
+            />
+            Force on existing database
+          </label>
+
+          <button
+            type="button"
+            class="mt-5 inline-flex items-center gap-2 rounded-md bg-pcmazing-500 px-6 py-3 text-sm font-bold tracking-wide text-white hover:bg-pcmazing-600 disabled:cursor-not-allowed disabled:opacity-60"
+            [disabled]="actionLoading()"
+            (click)="runBundledMigrations()"
+          >
+            {{ actionLoading() ? 'RUNNING...' : 'RUN BUNDLED MIGRATIONS' }}
+          </button>
+        </div>
+
+        <div class="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+          <h3 class="text-lg font-bold text-slate-900">Upload SQL Migration</h3>
+          <p class="mt-2 text-sm leading-relaxed text-slate-500">
+            Upload a pgAdmin <code class="rounded bg-gray-50 px-1.5 py-0.5">.sql</code> dump to import schema and data into your server database.
+            For very large dumps, pgAdmin Query Tool or <code class="rounded bg-gray-50 px-1.5 py-0.5">psql -f</code> is the most reliable option.
+          </p>
+
+          <div class="mt-5 space-y-3">
+            <label class="flex items-start gap-2 text-sm text-slate-600">
+              <input
+                type="checkbox"
+                class="mt-0.5 size-4 rounded border-gray-300 text-pcmazing-500 focus:ring-pcmazing-500"
+                [checked]="disableForeignKeyChecks()"
+                (change)="disableForeignKeyChecks.set($any($event.target).checked)"
+              />
+              <span>
+                Disable foreign key checks during import
+                <span class="block text-xs text-slate-400">Recommended for full pgAdmin dumps (auth tables, role permissions, etc.)</span>
+              </span>
+            </label>
+            <label class="flex items-start gap-2 text-sm text-slate-600">
+              <input
+                type="checkbox"
+                class="mt-0.5 size-4 rounded border-gray-300 text-pcmazing-500 focus:ring-pcmazing-500"
+                [checked]="uploadForceMigration()"
+                (change)="uploadForceMigration.set($any($event.target).checked)"
+              />
+              <span>
+                Force on existing database
+                <span class="block text-xs text-slate-400">Allow import even when tables already exist</span>
+              </span>
+            </label>
+          </div>
+
+          <div class="mt-5 space-y-4">
+            <input
+              type="file"
+              accept=".sql"
+              class="block w-full text-sm text-slate-600 file:mr-4 file:rounded-md file:border-0 file:bg-pcmazing-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-pcmazing-600 hover:file:bg-pcmazing-100"
+              (change)="onFileSelected($event)"
+              [disabled]="actionLoading()"
+            />
+            @if (selectedFileName()) {
+              <p class="text-xs text-slate-500">Selected: {{ selectedFileName() }}</p>
+            }
+            <button
+              type="button"
+              class="inline-flex items-center gap-2 rounded-md border-2 border-pcmazing-500 px-6 py-3 text-sm font-bold tracking-wide text-pcmazing-500 hover:bg-pcmazing-50 disabled:cursor-not-allowed disabled:opacity-60"
+              [disabled]="actionLoading() || !selectedFileName()"
+              (click)="uploadSelectedFile()"
+            >
+              {{ actionLoading() ? 'UPLOADING...' : 'UPLOAD & RUN SQL' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      @if (migrations(); as migrationData) {
+        <div class="mt-8 grid gap-6 lg:grid-cols-2">
+          <div class="rounded-2xl border border-gray-100 bg-gray-50 p-6">
+            <h3 class="text-sm font-bold tracking-[0.15em] text-pcmazing-500 uppercase">Pending Bundled</h3>
+            @if (migrationData.pending.length === 0) {
+              <p class="mt-3 text-sm text-slate-500">No pending bundled migrations.</p>
+            } @else {
+              <ul class="mt-3 space-y-2">
+                @for (file of migrationData.pending; track file) {
+                  <li class="rounded-lg bg-white px-3 py-2 text-sm text-slate-700">{{ file }}</li>
+                }
+              </ul>
+            }
+          </div>
+
+          <div class="rounded-2xl border border-gray-100 bg-gray-50 p-6">
+            <h3 class="text-sm font-bold tracking-[0.15em] text-pcmazing-500 uppercase">Applied Migrations</h3>
+            @if (migrationData.applied.length === 0) {
+              <p class="mt-3 text-sm text-slate-500">No migrations applied yet.</p>
+            } @else {
+              <ul class="mt-3 space-y-2">
+                @for (item of migrationData.applied; track item.id) {
+                  <li class="rounded-lg bg-white px-3 py-2">
+                    <p class="text-sm font-medium text-slate-800">{{ item.filename }}</p>
+                    <p class="text-xs text-slate-500">{{ formatDate(item.applied_at) }} · {{ item.source }}</p>
+                  </li>
+                }
+              </ul>
+            }
+          </div>
+        </div>
+      }
+
+      <div class="mt-8 text-center">
+        <button
+          type="button"
+          class="inline-flex items-center gap-2 rounded-md border border-pcmazing-200 px-5 py-3 text-sm font-bold tracking-wide text-pcmazing-500 hover:bg-pcmazing-50"
+          (click)="refresh()"
+        >
+          REFRESH STATUS
+        </button>
+      </div>
+    }
+  </div>
+</section>

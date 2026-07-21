@@ -1,0 +1,63 @@
+<section id="reviews" class="border-t border-gray-100 bg-white py-16 sm:py-20">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="mb-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div class="text-center sm:text-left">
+        <p class="text-xs font-bold tracking-[0.2em] text-pcmazing-500 uppercase">Customer Reviews</p>
+        <h2 class="mt-2 text-3xl font-extrabold text-slate-900 sm:text-4xl">What Our Clients Say</h2>
+        <p class="mx-auto mt-4 max-w-2xl text-base leading-relaxed text-slate-500 sm:mx-0">
+          Real feedback from businesses and customers who worked with PCmazing.
+        </p>
+      </div>
+      <a
+        routerLink="/leave-a-review"
+        class="inline-flex shrink-0 items-center justify-center rounded-md bg-pcmazing-500 px-6 py-3 text-sm font-bold tracking-wide text-white hover:bg-pcmazing-600"
+      >
+        LEAVE A REVIEW
+      </a>
+    </div>
+
+    @if (loading()) {
+      <div class="rounded-2xl border border-gray-100 bg-gray-50 px-6 py-10 text-center text-sm text-slate-500">Loading reviews...</div>
+    } @else if (reviews().length > 0) {
+      <div class="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+        @for (review of reviews(); track review.id) {
+          <article class="rounded-2xl border border-gray-100 bg-gray-50 p-6 shadow-sm">
+            <div class="mb-3 flex items-center gap-2">
+              <div class="flex items-center gap-0.5">
+                @for (star of stars; track star) {
+                  <div class="relative size-5">
+                    <svg class="absolute inset-0 size-5 text-gray-300" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                      <path d="M12 2l2.9 6.26 6.9.6-5.2 4.52 1.6 6.74L12 17.77l-6.2 3.35 1.6-6.74-5.2-4.52 6.9-.6L12 2z" />
+                    </svg>
+                    @if (fillWidth(review.rating, star) > 0) {
+                      <span class="absolute inset-0 overflow-hidden" [style.width.%]="fillWidth(review.rating, star)">
+                        <svg class="size-5 text-amber-400" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                          <path d="M12 2l2.9 6.26 6.9.6-5.2 4.52 1.6 6.74L12 17.77l-6.2 3.35 1.6-6.74-5.2-4.52 6.9-.6L12 2z" />
+                        </svg>
+                      </span>
+                    }
+                  </div>
+                }
+              </div>
+              <span class="text-xs font-semibold text-slate-500">{{ formatRating(review.rating) }}/5</span>
+            </div>
+            @if (review.title) {
+              <h3 class="text-lg font-bold text-slate-900">{{ review.title }}</h3>
+            }
+            <p class="mt-3 text-sm leading-relaxed text-slate-600">“{{ review.message }}”</p>
+            <div class="mt-5 border-t border-gray-200 pt-4">
+              <p class="font-semibold text-slate-900">{{ maskName(review.fullName) }}</p>
+              @if (review.company) {
+                <p class="text-sm text-slate-500">{{ review.company }}</p>
+              }
+            </div>
+          </article>
+        }
+      </div>
+    } @else {
+      <div class="rounded-2xl border border-gray-100 bg-gray-50 px-6 py-10 text-center text-sm text-slate-500">
+        Approved reviews will appear here once published by our team.
+      </div>
+    }
+  </div>
+</section>

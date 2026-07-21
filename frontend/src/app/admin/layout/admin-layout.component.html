@@ -1,0 +1,187 @@
+<div
+  class="min-h-screen font-outfit text-slate-900 transition-colors"
+  [class.dark]="themeService.isDark()"
+  [class.bg-slate-100]="!themeService.isDark()"
+  [class.bg-slate-950]="themeService.isDark()"
+  [class.text-slate-100]="themeService.isDark()"
+>
+  <div class="flex min-h-screen">
+    <aside
+      class="fixed inset-y-0 left-0 z-40 flex w-72 transform flex-col border-r border-slate-200 bg-white text-slate-900 transition-all duration-200 lg:static lg:translate-x-0 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+      [class.-translate-x-full]="!sidebarOpen()"
+    >
+      <div class="border-b border-slate-200 px-6 py-5 dark:border-white/10">
+        <img
+          [src]="logoSrc"
+          alt="PCMazing logo"
+          class="h-10 w-auto dark:brightness-0 dark:invert"
+        />
+        <p class="mt-4 text-xs font-bold tracking-[0.2em] text-pcmazing-500 uppercase dark:text-pcmazing-400">
+          PCMazing Admin
+        </p>
+        <h1 class="mt-1 text-lg font-bold text-slate-900 dark:text-white">Internal System</h1>
+      </div>
+
+      <nav class="flex-1 space-y-1 overflow-y-auto px-4 py-4">
+        <a
+          routerLink="/admin/dashboard"
+          routerLinkActive="bg-pcmazing-500 text-white"
+          [routerLinkActiveOptions]="{ exact: true }"
+          class="block rounded-xl px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+        >
+          Dashboard
+        </a>
+
+        @for (module of navModules; track module.key) {
+          @if (module.status === 'active') {
+            <a
+              [routerLink]="module.route"
+              routerLinkActive="bg-pcmazing-500 text-white"
+              class="block rounded-xl px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+            >
+              {{ module.label }}
+            </a>
+          } @else {
+            <div class="rounded-xl px-4 py-3 text-sm text-slate-400 dark:text-slate-500">
+              {{ module.label }}
+              <span class="mt-1 block text-xs text-slate-500 dark:text-slate-600">Coming soon</span>
+            </div>
+          }
+        }
+      </nav>
+    </aside>
+
+    <div class="flex min-h-screen flex-1 flex-col lg:ml-0">
+      <header
+        class="sticky top-0 z-30 border-b px-4 py-3 backdrop-blur sm:px-6"
+        [class.border-slate-200]="!themeService.isDark()"
+        [class.bg-white/95]="!themeService.isDark()"
+        [class.border-slate-800]="themeService.isDark()"
+        [class.bg-slate-900/95]="themeService.isDark()"
+      >
+        <div class="flex items-center justify-between gap-4">
+          <div class="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
+              class="rounded-lg border px-3 py-2 text-xs font-bold tracking-wide lg:hidden"
+              [class.border-slate-200]="!themeService.isDark()"
+              [class.text-slate-600]="!themeService.isDark()"
+              [class.border-slate-700]="themeService.isDark()"
+              [class.text-slate-300]="themeService.isDark()"
+              (click)="sidebarOpen.set(!sidebarOpen())"
+            >
+              MENU
+            </button>
+            <div class="min-w-0">
+              <p class="text-xs font-bold tracking-[0.15em] text-pcmazing-500 uppercase">Administrative Controls</p>
+              <p
+                class="truncate text-sm"
+                [class.text-slate-500]="!themeService.isDark()"
+                [class.text-slate-400]="themeService.isDark()"
+              >
+                PCMazing internal operations dashboard
+              </p>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <button
+              type="button"
+              class="inline-flex size-11 items-center justify-center rounded-full border transition hover:bg-slate-50"
+              [class.border-slate-200]="!themeService.isDark()"
+              [class.text-slate-700]="!themeService.isDark()"
+              [class.border-slate-700]="themeService.isDark()"
+              [class.text-slate-200]="themeService.isDark()"
+              [class.hover:bg-slate-800]="themeService.isDark()"
+              [attr.aria-label]="themeService.isDark() ? 'Switch to light mode' : 'Switch to dark mode'"
+              (click)="toggleTheme()"
+            >
+              @if (themeService.isDark()) {
+                <svg viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <circle cx="12" cy="12" r="4" />
+                  <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+                </svg>
+              } @else {
+                <svg viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                </svg>
+              }
+            </button>
+
+            <div class="relative" (click)="$event.stopPropagation()">
+              <button
+                type="button"
+                class="inline-flex items-center gap-3 rounded-full py-1 pl-1 pr-3 transition hover:bg-slate-50"
+                [class.hover:bg-slate-800]="themeService.isDark()"
+                (click)="toggleProfileMenu($event)"
+              >
+                <span
+                  class="inline-flex size-10 items-center justify-center rounded-full bg-slate-200 text-sm font-bold text-slate-700"
+                  [class.bg-slate-700]="themeService.isDark()"
+                  [class.text-slate-100]="themeService.isDark()"
+                >
+                  {{ userInitials() }}
+                </span>
+                <span class="hidden max-w-[10rem] truncate text-left sm:block">
+                  <span class="block text-sm font-semibold">{{ user()?.fullName ?? 'Admin User' }}</span>
+                  <span
+                    class="block text-xs capitalize"
+                    [class.text-slate-500]="!themeService.isDark()"
+                    [class.text-slate-400]="themeService.isDark()"
+                  >
+                    {{ user()?.role ?? 'staff' }}
+                  </span>
+                </span>
+                <svg viewBox="0 0 20 20" class="size-4 shrink-0 text-slate-400" fill="currentColor">
+                  <path
+                    fill-rule="evenodd"
+                    d="M5.23 7.21a.75.75 0 011.06.02L10 10.94l3.71-3.71a.75.75 0 111.06 1.06l-4.24 4.24a.75.75 0 01-1.06 0L5.21 8.29a.75.75 0 01.02-1.08z"
+                    clip-rule="evenodd"
+                  />
+                </svg>
+              </button>
+
+              @if (profileMenuOpen()) {
+                <div
+                  class="absolute right-0 z-50 mt-2 w-56 overflow-hidden rounded-2xl border shadow-xl"
+                  [class.border-slate-200]="!themeService.isDark()"
+                  [class.bg-white]="!themeService.isDark()"
+                  [class.border-slate-700]="themeService.isDark()"
+                  [class.bg-slate-900]="themeService.isDark()"
+                >
+                  <div
+                    class="border-b px-4 py-3"
+                    [class.border-slate-100]="!themeService.isDark()"
+                    [class.border-slate-800]="themeService.isDark()"
+                  >
+                    <p class="truncate text-sm font-semibold">{{ user()?.fullName ?? 'Admin User' }}</p>
+                    <p
+                      class="truncate text-xs capitalize"
+                      [class.text-slate-500]="!themeService.isDark()"
+                      [class.text-slate-400]="themeService.isDark()"
+                    >
+                      {{ user()?.role ?? 'staff' }}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    class="block w-full px-4 py-3 text-left text-sm font-semibold text-red-600 transition hover:bg-red-50"
+                    [class.hover:bg-red-950/40]="themeService.isDark()"
+                    [class.text-red-400]="themeService.isDark()"
+                    (click)="logout()"
+                  >
+                    Sign out
+                  </button>
+                </div>
+              }
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main class="flex-1 px-4 py-6 sm:px-6 lg:px-8">
+        <router-outlet />
+      </main>
+    </div>
+  </div>
+</div>

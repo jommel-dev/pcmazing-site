@@ -1,0 +1,89 @@
+<section>
+  <div class="mb-6">
+    <h2 class="text-2xl font-bold text-slate-900">Inventory</h2>
+    <p class="mt-1 text-sm text-slate-500">Material inventory from your imported 3BMA database tables.</p>
+  </div>
+
+  <div class="grid gap-6 xl:grid-cols-[280px_1fr]">
+    <aside class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <p class="text-xs font-bold tracking-[0.15em] text-slate-400 uppercase">Categories</p>
+      <button type="button" class="mt-3 block w-full rounded-lg px-3 py-2 text-left text-sm font-semibold hover:bg-slate-50" (click)="filterByBrand(null, null)">
+        All materials
+      </button>
+      @for (node of tree(); track node.id) {
+        @if (node.type === 'brand') {
+          <button type="button" class="mt-1 block w-full rounded-lg px-3 py-2 text-left text-sm text-slate-600 hover:bg-slate-50" (click)="filterByBrand(node.id)">
+            {{ node.name }} ({{ node.materialCount }})
+          </button>
+        } @else {
+          <div class="mt-3">
+            <p class="px-3 text-xs font-bold uppercase text-slate-400">{{ node.name }}</p>
+            @for (child of node.children ?? []; track child.id) {
+              <button type="button" class="mt-1 block w-full rounded-lg px-3 py-2 text-left text-sm text-slate-600 hover:bg-slate-50" (click)="filterByBrand(child.id, node.id)">
+                {{ child.name }} ({{ child.materialCount }})
+              </button>
+            }
+          </div>
+        }
+      }
+    </aside>
+
+    <div>
+      <form class="mb-4 flex gap-2" (ngSubmit)="searchMaterials()">
+        <input type="search" class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-pcmazing-500 focus:outline-none" placeholder="Search material name or code..." [ngModel]="search()" (ngModelChange)="search.set($event)" name="search" />
+        <button type="submit" class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600">Search</button>
+      </form>
+
+      @if (loading()) {
+        <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500">Loading materials...</div>
+      } @else if (error()) {
+        <div class="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{{ error() }}</div>
+      } @else if (items().length === 0) {
+        <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500">No materials found.</div>
+      } @else {
+        <div class="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <table class="min-w-full divide-y divide-slate-200 text-sm">
+            <thead class="bg-slate-50">
+              <tr>
+                <th class="px-4 py-3 text-left font-bold text-slate-600">Code</th>
+                <th class="px-4 py-3 text-left font-bold text-slate-600">Material</th>
+                <th class="px-4 py-3 text-left font-bold text-slate-600">Brand</th>
+                <th class="px-4 py-3 text-left font-bold text-slate-600">Stock</th>
+                <th class="px-4 py-3 text-left font-bold text-slate-600">Cost</th>
+                <th class="px-4 py-3 text-left font-bold text-slate-600">Price</th>
+                <th class="px-4 py-3 text-left font-bold text-slate-600">Status</th>
+                <th class="px-4 py-3 text-left font-bold text-slate-600">Action</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              @for (item of items(); track item.id) {
+                <tr class="hover:bg-slate-50">
+                  <td class="px-4 py-3 text-slate-600">{{ item.materialCode || '—' }}</td>
+                  <td class="px-4 py-3 font-medium text-slate-900">{{ item.materialName }}</td>
+                  <td class="px-4 py-3 text-slate-600">{{ item.brandName || '—' }}</td>
+                  <td class="px-4 py-3 text-slate-600">{{ item.onHandStock ?? 0 }} {{ item.unit || '' }}</td>
+                  <td class="px-4 py-3 text-slate-600">{{ item.unitPrice ?? '—' }}</td>
+                  <td class="px-4 py-3 text-slate-600">{{ item.sellPrice ?? '—' }}</td>
+                  <td class="px-4 py-3">
+                    <span class="rounded-full px-2 py-1 text-xs font-bold uppercase" [class.bg-green-50]="stockStatus(item) === 'OK'" [class.text-green-700]="stockStatus(item) === 'OK'" [class.bg-amber-50]="stockStatus(item) === 'Low'" [class.text-amber-700]="stockStatus(item) === 'Low'" [class.bg-red-50]="stockStatus(item) === 'Out'" [class.text-red-700]="stockStatus(item) === 'Out'">{{ stockStatus(item) }}</span>
+                  </td>
+                  <td class="px-4 py-3"><a [routerLink]="['/admin/inventory/materials', item.id]" class="font-bold text-pcmazing-500 hover:text-pcmazing-600">View</a></td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+        @if (meta(); as pagination) {
+          <div class="mt-4 flex items-center justify-between text-sm text-slate-500">
+            <span>Page {{ pagination.page }} of {{ pagination.totalPages }} · {{ pagination.total }} total</span>
+            <div class="flex gap-2">
+              <button type="button" class="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page <= 1" (click)="goToPage(pagination.page - 1)">Previous</button>
+              <button type="button" class="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page >= pagination.totalPages" (click)="goToPage(pagination.page + 1)">Next</button>
+            </div>
+          </div>
+        }
+      }
+    </div>
+  </div>
+</section>

@@ -1,0 +1,110 @@
+@if (submitted()) {
+  <div class="rounded-2xl border border-green-200 bg-green-50 px-6 py-5 text-sm text-green-700">
+    <p class="font-semibold text-green-800">Thank you for your feedback.</p>
+    <p class="mt-2 leading-relaxed">Our team will review it and publish it on the PCmazing website if approved.</p>
+    <button type="button" class="mt-4 font-bold text-green-800 hover:text-green-900" (click)="resetForm()">
+      Submit another review
+    </button>
+  </div>
+} @else {
+  <form class="space-y-6" [formGroup]="form" (ngSubmit)="onSubmit()">
+    <div class="grid gap-5 sm:grid-cols-2">
+      <div>
+        <label class="mb-2 block text-sm font-semibold text-slate-700" for="review-name">Full Name *</label>
+        <input
+          id="review-name"
+          type="text"
+          formControlName="name"
+          class="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm text-slate-900 transition-colors focus:border-pcmazing-500 focus:outline-none focus:ring-2 focus:ring-pcmazing-100"
+          placeholder="Your name"
+        />
+      </div>
+      <div>
+        <label class="mb-2 block text-sm font-semibold text-slate-700" for="review-email">Email</label>
+        <input
+          id="review-email"
+          type="email"
+          formControlName="email"
+          class="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm text-slate-900 transition-colors focus:border-pcmazing-500 focus:outline-none focus:ring-2 focus:ring-pcmazing-100"
+          placeholder="you@example.com"
+        />
+      </div>
+    </div>
+
+    <div>
+      <label class="mb-2 block text-sm font-semibold text-slate-700">Rating *</label>
+      <p class="mb-3 text-xs text-slate-500">Tap the left side of a star for half ratings (e.g. 4.5).</p>
+      <div class="flex flex-wrap items-center gap-3">
+        <div class="flex items-center gap-1" role="group" aria-label="Rating">
+          @for (star of stars; track star) {
+            <div class="relative size-9">
+              <button
+                type="button"
+                class="absolute inset-y-0 left-0 z-20 w-1/2 rounded-l-md focus:outline-none focus:ring-2 focus:ring-pcmazing-200"
+                [attr.aria-label]="'Rate ' + (star - 0.5) + ' out of 5 stars'"
+                (click)="setRating(star - 0.5)"
+                (mouseenter)="hoverRating.set(star - 0.5)"
+                (mouseleave)="hoverRating.set(0)"
+              ></button>
+              <button
+                type="button"
+                class="absolute inset-y-0 right-0 z-20 w-1/2 rounded-r-md focus:outline-none focus:ring-2 focus:ring-pcmazing-200"
+                [attr.aria-label]="'Rate ' + star + ' out of 5 stars'"
+                (click)="setRating(star)"
+                (mouseenter)="hoverRating.set(star)"
+                (mouseleave)="hoverRating.set(0)"
+              ></button>
+
+              <svg class="absolute inset-0 size-9 text-gray-300" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M12 2l2.9 6.26 6.9.6-5.2 4.52 1.6 6.74L12 17.77l-6.2 3.35 1.6-6.74-5.2-4.52 6.9-.6L12 2z" />
+              </svg>
+
+              @if (fillWidth(star) > 0) {
+                <span class="absolute inset-0 overflow-hidden" [style.width.%]="fillWidth(star)">
+                  <svg class="size-9 text-amber-400" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M12 2l2.9 6.26 6.9.6-5.2 4.52 1.6 6.74L12 17.77l-6.2 3.35 1.6-6.74-5.2-4.52 6.9-.6L12 2z" />
+                  </svg>
+                </span>
+              }
+            </div>
+          }
+        </div>
+        <span class="text-sm font-semibold text-slate-600">{{ ratingLabel() }}</span>
+      </div>
+    </div>
+
+    <div>
+      <label class="mb-2 block text-sm font-semibold text-slate-700" for="review-title">Review title</label>
+      <input
+        id="review-title"
+        type="text"
+        formControlName="title"
+        class="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm text-slate-900 transition-colors focus:border-pcmazing-500 focus:outline-none focus:ring-2 focus:ring-pcmazing-100"
+        placeholder="Summarize your experience"
+      />
+    </div>
+
+    <div>
+      <label class="mb-2 block text-sm font-semibold text-slate-700" for="review-message">Your feedback *</label>
+      <textarea
+        id="review-message"
+        rows="5"
+        formControlName="message"
+        class="w-full resize-y rounded-xl border border-gray-200 px-4 py-3 text-sm text-slate-900 transition-colors focus:border-pcmazing-500 focus:outline-none focus:ring-2 focus:ring-pcmazing-100"
+        placeholder="Tell us about your experience with PCmazing..."
+      ></textarea>
+    </div>
+
+    @if (submitError()) {
+      <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{{ submitError() }}</div>
+    }
+
+    <button
+      type="submit"
+      class="inline-flex items-center justify-center rounded-xl bg-pcmazing-500 px-8 py-3.5 text-sm font-bold tracking-wide text-white transition-colors hover:bg-pcmazing-600 disabled:cursor-not-allowed disabled:opacity-60"
+      [disabled]="submitting()"
+    >
+      {{ submitting() ? 'SUBMITTING...' : 'SUBMIT REVIEW' }}
+    </button>
+  </form>
+}

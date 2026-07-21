@@ -1,0 +1,81 @@
+<section>
+  <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div>
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Customer Contact Us</h2>
+      <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Website contact form submissions from PCmazing visitors.</p>
+    </div>
+    <form class="flex w-full max-w-2xl flex-col gap-2 sm:flex-row" (ngSubmit)="searchInquiries()">
+      <select
+        class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+        [ngModel]="statusFilter()"
+        (ngModelChange)="statusFilter.set($event)"
+        name="status"
+        (change)="searchInquiries()"
+      >
+        @for (option of statusOptions; track option.value) {
+          <option [value]="option.value">{{ option.label }}</option>
+        }
+      </select>
+      <input
+        type="search"
+        class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-pcmazing-500 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+        placeholder="Search name, email, service..."
+        [ngModel]="search()"
+        (ngModelChange)="search.set($event)"
+        name="search"
+      />
+      <button type="submit" class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600">Search</button>
+    </form>
+  </div>
+
+  @if (loading()) {
+    <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">Loading inquiries...</div>
+  } @else if (error()) {
+    <div class="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{{ error() }}</div>
+  } @else if (items().length === 0) {
+    <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">No contact inquiries found.</div>
+  } @else {
+    <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <table class="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
+        <thead class="bg-slate-50 dark:bg-slate-950">
+          <tr>
+            <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Date</th>
+            <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Name</th>
+            <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Email</th>
+            <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Service</th>
+            <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Status</th>
+            <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Action</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+          @for (item of items(); track item.id) {
+            <tr class="hover:bg-slate-50 dark:hover:bg-slate-950/50">
+              <td class="px-4 py-3 text-slate-600 dark:text-slate-400">{{ formatDate(item.createdAt) }}</td>
+              <td class="px-4 py-3 font-medium text-slate-900 dark:text-white">{{ item.fullName }}</td>
+              <td class="px-4 py-3 text-slate-600 dark:text-slate-400">{{ item.email }}</td>
+              <td class="px-4 py-3 text-slate-600 dark:text-slate-400">{{ item.serviceInterest }}</td>
+              <td class="px-4 py-3">
+                <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold uppercase text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                  {{ statusLabel(item.status) }}
+                </span>
+              </td>
+              <td class="px-4 py-3">
+                <a [routerLink]="['/admin/contact-inquiries', item.id]" class="font-bold text-pcmazing-500 hover:text-pcmazing-600">View</a>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    @if (meta(); as pagination) {
+      <div class="mt-4 flex items-center justify-between text-sm text-slate-500 dark:text-slate-400">
+        <span>Page {{ pagination.page }} of {{ pagination.totalPages }} · {{ pagination.total }} total</span>
+        <div class="flex gap-2">
+          <button type="button" class="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40 dark:border-slate-700" [disabled]="pagination.page <= 1" (click)="goToPage(pagination.page - 1)">Previous</button>
+          <button type="button" class="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40 dark:border-slate-700" [disabled]="pagination.page >= pagination.totalPages" (click)="goToPage(pagination.page + 1)">Next</button>
+        </div>
+      </div>
+    }
+  }
+</section>

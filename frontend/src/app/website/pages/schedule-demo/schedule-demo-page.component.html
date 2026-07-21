@@ -1,0 +1,79 @@
+<app-page-hero
+  eyebrow="Schedule A Demo"
+  title="See PCmazing Solutions in Action"
+  description="Book a demo session with our team. We will follow up to confirm your preferred schedule."
+/>
+
+<section class="bg-white py-16 sm:py-20">
+  <div class="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
+    @if (submitted()) {
+      <div class="rounded-2xl border border-green-200 bg-green-50 p-8 text-center">
+        <h2 class="text-xl font-bold text-slate-900">Demo request received</h2>
+        <p class="mt-3 text-sm leading-relaxed text-slate-600">
+          Thank you. Our team will follow up to confirm your demo schedule.
+        </p>
+        <button type="button" class="mt-6 rounded-md bg-pcmazing-500 px-6 py-3 text-sm font-bold text-white hover:bg-pcmazing-600" (click)="resetForm()">
+          REQUEST ANOTHER DEMO
+        </button>
+      </div>
+    } @else {
+      <form class="space-y-6" [formGroup]="form" (ngSubmit)="onSubmit()">
+        <div class="grid gap-6 sm:grid-cols-2">
+          <div>
+            <label class="mb-2 block text-sm font-semibold text-slate-700" for="demo-name">Full Name *</label>
+            <input id="demo-name" type="text" formControlName="name" class="w-full rounded-lg border px-4 py-3 text-sm" [class.border-red-300]="hasError('name')" />
+          </div>
+          <div>
+            <label class="mb-2 block text-sm font-semibold text-slate-700" for="demo-email">Email *</label>
+            <input id="demo-email" type="email" formControlName="email" class="w-full rounded-lg border px-4 py-3 text-sm" [class.border-red-300]="hasError('email')" />
+          </div>
+        </div>
+
+        <div class="grid gap-6 sm:grid-cols-2">
+          <div>
+            <label class="mb-2 block text-sm font-semibold text-slate-700" for="demo-phone">Phone</label>
+            <input id="demo-phone" type="tel" formControlName="phone" class="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm" />
+          </div>
+          <div>
+            <label class="mb-2 block text-sm font-semibold text-slate-700" for="demo-company">Company</label>
+            <input id="demo-company" type="text" formControlName="company" class="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm" />
+          </div>
+        </div>
+
+        <div>
+          <label class="mb-2 block text-sm font-semibold text-slate-700" for="demo-service">Service interest *</label>
+          <select id="demo-service" formControlName="serviceInterest" class="w-full rounded-lg border px-4 py-3 text-sm" [class.border-red-300]="hasError('serviceInterest')">
+            <option value="" disabled>Select a service</option>
+            @for (option of inquiryOptions; track option) {
+              <option [value]="option">{{ option }}</option>
+            }
+          </select>
+        </div>
+
+        <div class="grid gap-6 sm:grid-cols-2">
+          <div>
+            <label class="mb-2 block text-sm font-semibold text-slate-700" for="demo-date">Preferred date</label>
+            <input id="demo-date" type="date" formControlName="preferredDate" class="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm" />
+          </div>
+          <div>
+            <label class="mb-2 block text-sm font-semibold text-slate-700" for="demo-time">Preferred time</label>
+            <input id="demo-time" type="text" formControlName="preferredTime" class="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm" placeholder="e.g. 2:00 PM" />
+          </div>
+        </div>
+
+        <div>
+          <label class="mb-2 block text-sm font-semibold text-slate-700" for="demo-message">Additional details</label>
+          <textarea id="demo-message" rows="5" formControlName="message" class="w-full rounded-lg border border-gray-200 px-4 py-3 text-sm" placeholder="Tell us what you want to see in the demo..."></textarea>
+        </div>
+
+        @if (submitError()) {
+          <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{{ submitError() }}</div>
+        }
+
+        <button type="submit" class="rounded-md bg-pcmazing-500 px-8 py-3.5 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:opacity-60" [disabled]="submitting()">
+          {{ submitting() ? 'SUBMITTING...' : 'SCHEDULE DEMO' }}
+        </button>
+      </form>
+    }
+  </div>
+</section>
