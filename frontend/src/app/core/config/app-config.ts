@@ -1,4 +1,6 @@
+import { ENV } from './env.generated';
+
 export const APP_CONFIG = {
-  apiUrl: 'http://localhost:3000',
-  publicSiteUrl: 'http://localhost:4200',
+  apiUrl: ENV.API_URL,
+  publicSiteUrl: ENV.PUBLIC_SITE_URL,
 } as const;
