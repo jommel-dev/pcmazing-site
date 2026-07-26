@@ -8,6 +8,7 @@ export interface AdminAuthUser {
   fullName: string;
   email: string | null;
   role: string;
+  profileImageUrl?: string | null;
   source: 'tblusers' | 'pcmazing_admin_users';
 }
 
@@ -103,6 +104,41 @@ export class AdminAuthService {
     });
   }
 
+  updateProfile(payload: { fullName?: string; email?: string }) {
+    return this.http.patch<ApiResponse<AdminAuthUser>>(`${APP_CONFIG.apiUrl}/auth/me`, payload, {
+      headers: this.buildAuthHeaders(),
+    });
+  }
+
+  changeMyPassword(password: string) {
+    return this.http.patch<ApiResponse<AdminAuthUser>>(
+      `${APP_CONFIG.apiUrl}/auth/me/password`,
+      { password },
+      { headers: this.buildAuthHeaders() },
+    );
+  }
+
+  uploadMyProfileImage(file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    return this.http.post<ApiResponse<AdminAuthUser>>(
+      `${APP_CONFIG.apiUrl}/auth/me/profile-image`,
+      formData,
+      { headers: this.buildAuthHeaders() },
+    );
+  }
+
+  removeMyProfileImage() {
+    return this.http.delete<ApiResponse<AdminAuthUser>>(`${APP_CONFIG.apiUrl}/auth/me/profile-image`, {
+      headers: this.buildAuthHeaders(),
+    });
+  }
+
+  usesRememberMe(): boolean {
+    return Boolean(localStorage.getItem(ACCESS_TOKEN_KEY));
+  }
+
   saveSession(accessToken: string, user: AdminAuthUser, rememberMe: boolean): void {
     const storage = rememberMe ? localStorage : sessionStorage;
     const other = rememberMe ? sessionStorage : localStorage;
@@ -111,6 +147,11 @@ export class AdminAuthService {
     other.removeItem(ADMIN_USER_KEY);
 
     storage.setItem(ACCESS_TOKEN_KEY, accessToken);
+    storage.setItem(ADMIN_USER_KEY, JSON.stringify(user));
+  }
+
+  updateStoredUser(user: AdminAuthUser, rememberMe: boolean): void {
+    const storage = rememberMe ? localStorage : sessionStorage;
     storage.setItem(ADMIN_USER_KEY, JSON.stringify(user));
   }
 

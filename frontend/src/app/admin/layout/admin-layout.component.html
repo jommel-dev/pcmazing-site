@@ -22,7 +22,7 @@
         <h1 class="mt-1 text-lg font-bold text-slate-900 dark:text-white">Internal System</h1>
       </div>
 
-      <nav class="flex-1 space-y-1 overflow-y-auto px-4 py-4">
+      <nav class="flex-1 overflow-y-auto px-4 py-4">
         <a
           routerLink="/admin/dashboard"
           routerLinkActive="bg-pcmazing-500 text-white"
@@ -32,26 +32,64 @@
           Dashboard
         </a>
 
-        @for (module of navModules; track module.key) {
-          @if (module.status === 'active') {
-            <a
-              [routerLink]="module.route"
-              routerLinkActive="bg-pcmazing-500 text-white"
-              class="block rounded-xl px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+        @for (section of navSections; track section.key) {
+          <div class="mt-6">
+            <p
+              class="mb-2 px-4 text-[11px] font-bold tracking-[0.18em] text-slate-400 uppercase dark:text-slate-500"
             >
-              {{ module.label }}
-            </a>
-          } @else {
-            <div class="rounded-xl px-4 py-3 text-sm text-slate-400 dark:text-slate-500">
-              {{ module.label }}
-              <span class="mt-1 block text-xs text-slate-500 dark:text-slate-600">Coming soon</span>
+              {{ section.title }}
+            </p>
+            <div class="space-y-1">
+              @for (module of section.items; track module.key) {
+                @if (module.status === 'active') {
+                  <a
+                    [routerLink]="module.route"
+                    routerLinkActive="bg-pcmazing-500 text-white"
+                    class="block rounded-xl px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+                  >
+                    {{ module.label }}
+                  </a>
+                } @else {
+                  <div class="rounded-xl px-4 py-3 text-sm text-slate-400 dark:text-slate-500">
+                    {{ module.label }}
+                    <span class="mt-1 block text-xs text-slate-500 dark:text-slate-600">Coming soon</span>
+                  </div>
+                }
+              }
+
+              @for (group of section.groups ?? []; track group.key) {
+                <div class="mt-3">
+                  <p class="px-4 py-1 text-[11px] font-bold tracking-[0.12em] text-slate-400 uppercase dark:text-slate-500">
+                    {{ group.label }}
+                  </p>
+                  <div class="mt-1 space-y-1 pl-2">
+                    @for (module of group.items; track module.key) {
+                      @if (module.status === 'active') {
+                        <a
+                          [routerLink]="module.route"
+                          routerLinkActive="bg-pcmazing-500 text-white"
+                          [routerLinkActiveOptions]="{ exact: module.route === '/admin/inventory' }"
+                          class="block rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+                        >
+                          {{ module.label }}
+                        </a>
+                      } @else {
+                        <div class="rounded-xl px-4 py-2.5 text-sm text-slate-400 dark:text-slate-500">
+                          {{ module.label }}
+                          <span class="mt-1 block text-xs text-slate-500 dark:text-slate-600">Coming soon</span>
+                        </div>
+                      }
+                    }
+                  </div>
+                </div>
+              }
             </div>
-          }
+          </div>
         }
       </nav>
     </aside>
 
-    <div class="flex min-h-screen flex-1 flex-col lg:ml-0">
+    <div class="flex min-h-screen min-w-0 flex-1 flex-col lg:ml-0">
       <header
         class="sticky top-0 z-30 border-b px-4 py-3 backdrop-blur sm:px-6"
         [class.border-slate-200]="!themeService.isDark()"
@@ -116,11 +154,15 @@
                 (click)="toggleProfileMenu($event)"
               >
                 <span
-                  class="inline-flex size-10 items-center justify-center rounded-full bg-slate-200 text-sm font-bold text-slate-700"
+                  class="inline-flex size-10 items-center justify-center overflow-hidden rounded-full bg-slate-200 text-sm font-bold text-slate-700"
                   [class.bg-slate-700]="themeService.isDark()"
                   [class.text-slate-100]="themeService.isDark()"
                 >
-                  {{ userInitials() }}
+                  @if (profileImageUrl(); as imageUrl) {
+                    <img [src]="imageUrl" [alt]="user()?.fullName ?? 'Admin User'" class="size-full object-cover" />
+                  } @else {
+                    {{ userInitials() }}
+                  }
                 </span>
                 <span class="hidden max-w-[10rem] truncate text-left sm:block">
                   <span class="block text-sm font-semibold">{{ user()?.fullName ?? 'Admin User' }}</span>
@@ -165,6 +207,15 @@
                   </div>
                   <button
                     type="button"
+                    class="block w-full px-4 py-3 text-left text-sm font-semibold transition hover:bg-slate-50 dark:hover:bg-slate-800"
+                    [class.text-slate-700]="!themeService.isDark()"
+                    [class.text-slate-200]="themeService.isDark()"
+                    (click)="openEditProfile()"
+                  >
+                    Edit profile
+                  </button>
+                  <button
+                    type="button"
                     class="block w-full px-4 py-3 text-left text-sm font-semibold text-red-600 transition hover:bg-red-50"
                     [class.hover:bg-red-950/40]="themeService.isDark()"
                     [class.text-red-400]="themeService.isDark()"
@@ -179,7 +230,7 @@
         </div>
       </header>
 
-      <main class="flex-1 px-4 py-6 sm:px-6 lg:px-8">
+      <main class="min-w-0 flex-1 overflow-x-hidden px-4 py-6 sm:px-6 lg:px-8">
         <router-outlet />
       </main>
     </div>

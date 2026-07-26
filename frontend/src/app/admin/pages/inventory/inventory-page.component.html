@@ -1,25 +1,74 @@
-<section>
-  <div class="mb-6">
-    <h2 class="text-2xl font-bold text-slate-900">Inventory</h2>
-    <p class="mt-1 text-sm text-slate-500">Material inventory from your imported 3BMA database tables.</p>
+<section class="min-w-0 max-w-full">
+  <app-inventory-subnav />
+
+  <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div class="min-w-0">
+      <h2 class="text-2xl font-bold text-slate-900">Stock</h2>
+      <p class="mt-1 text-sm text-slate-500">Browse products, stock levels, and expected margins.</p>
+    </div>
+    <a
+      routerLink="/admin/inventory/products/new"
+      class="shrink-0 rounded-xl bg-pcmazing-500 px-4 py-2.5 text-center text-sm font-bold text-white hover:bg-pcmazing-600 sm:w-auto"
+    >
+      Add Product
+    </a>
   </div>
 
-  <div class="grid gap-6 xl:grid-cols-[280px_1fr]">
-    <aside class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+  @if (summary(); as totals) {
+    <div class="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div class="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+        <p class="truncate text-[10px] font-bold tracking-[0.12em] text-slate-400 uppercase sm:text-[11px]">Total Cost</p>
+        <p class="mt-1 truncate text-lg font-bold text-slate-900 sm:mt-2 sm:text-xl">{{ formatMoney(totals.totalCost) }}</p>
+      </div>
+      <div class="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+        <p class="truncate text-[10px] font-bold tracking-[0.12em] text-slate-400 uppercase sm:text-[11px]">Total Price</p>
+        <p class="mt-1 truncate text-lg font-bold text-slate-900 sm:mt-2 sm:text-xl">{{ formatMoney(totals.totalPrice) }}</p>
+      </div>
+      <div class="min-w-0 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 shadow-sm sm:p-4">
+        <p class="truncate text-[10px] font-bold tracking-[0.12em] text-emerald-700 uppercase sm:text-[11px]">Total Margin</p>
+        <p class="mt-1 truncate text-lg font-bold text-emerald-700 sm:mt-2 sm:text-xl">{{ formatMoney(totals.totalMargin) }}</p>
+      </div>
+      <div class="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+        <p class="truncate text-[10px] font-bold tracking-[0.12em] text-slate-400 uppercase sm:text-[11px]">Total Stock Value</p>
+        <p class="mt-1 truncate text-lg font-bold text-slate-900 sm:mt-2 sm:text-xl">{{ formatMoney(totals.totalStockValue) }}</p>
+      </div>
+    </div>
+  }
+
+  <div class="grid min-w-0 gap-6 xl:grid-cols-[240px_minmax(0,1fr)]">
+    <aside class="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm xl:max-h-[calc(100vh-18rem)] xl:overflow-y-auto">
       <p class="text-xs font-bold tracking-[0.15em] text-slate-400 uppercase">Categories</p>
-      <button type="button" class="mt-3 block w-full rounded-lg px-3 py-2 text-left text-sm font-semibold hover:bg-slate-50" (click)="filterByBrand(null, null)">
-        All materials
+      <button
+        type="button"
+        class="mt-3 block w-full rounded-lg px-3 py-2 text-left text-sm font-semibold hover:bg-slate-50"
+        [class.bg-pcmazing-50]="selectedCategoryLabel() === 'All Products'"
+        [class.text-pcmazing-600]="selectedCategoryLabel() === 'All Products'"
+        (click)="filterByCategory(null, null, 'All Products')"
+      >
+        All Products
       </button>
       @for (node of tree(); track node.id) {
         @if (node.type === 'brand') {
-          <button type="button" class="mt-1 block w-full rounded-lg px-3 py-2 text-left text-sm text-slate-600 hover:bg-slate-50" (click)="filterByBrand(node.id)">
+          <button
+            type="button"
+            class="mt-1 block w-full rounded-lg px-3 py-2 text-left text-sm text-slate-600 hover:bg-slate-50"
+            [class.bg-pcmazing-50]="selectedCategoryLabel() === node.name"
+            [class.text-pcmazing-600]="selectedCategoryLabel() === node.name"
+            (click)="filterByCategory(node.id, null, node.name)"
+          >
             {{ node.name }} ({{ node.materialCount }})
           </button>
         } @else {
           <div class="mt-3">
-            <p class="px-3 text-xs font-bold uppercase text-slate-400">{{ node.name }}</p>
+            <p class="truncate px-3 text-xs font-bold uppercase text-slate-400">{{ node.name }}</p>
             @for (child of node.children ?? []; track child.id) {
-              <button type="button" class="mt-1 block w-full rounded-lg px-3 py-2 text-left text-sm text-slate-600 hover:bg-slate-50" (click)="filterByBrand(child.id, node.id)">
+              <button
+                type="button"
+                class="mt-1 block w-full truncate rounded-lg px-3 py-2 text-left text-sm text-slate-600 hover:bg-slate-50"
+                [class.bg-pcmazing-50]="selectedCategoryLabel() === child.name"
+                [class.text-pcmazing-600]="selectedCategoryLabel() === child.name"
+                (click)="filterByCategory(child.id, node.id, child.name)"
+              >
                 {{ child.name }} ({{ child.materialCount }})
               </button>
             }
@@ -28,46 +77,92 @@
       }
     </aside>
 
-    <div>
-      <form class="mb-4 flex gap-2" (ngSubmit)="searchMaterials()">
-        <input type="search" class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-pcmazing-500 focus:outline-none" placeholder="Search material name or code..." [ngModel]="search()" (ngModelChange)="search.set($event)" name="search" />
-        <button type="submit" class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600">Search</button>
-      </form>
+    <div class="min-w-0">
+      <div class="mb-4 flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <h3 class="min-w-0 truncate text-base font-bold text-slate-900 lg:text-lg">{{ sectionTitle() }}</h3>
+        <form class="w-full shrink-0 lg:max-w-xs" (ngSubmit)="searchMaterials()">
+          <div class="relative">
+            <input
+              type="search"
+              class="w-full rounded-xl border border-slate-200 py-2.5 pr-4 pl-10 text-sm focus:border-pcmazing-500 focus:outline-none"
+              placeholder="Filter products..."
+              [ngModel]="search()"
+              (ngModelChange)="search.set($event)"
+              name="search"
+            />
+            <svg viewBox="0 0 20 20" class="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" stroke-width="1.8">
+              <circle cx="9" cy="9" r="5.5" />
+              <path d="M14 14l3 3" />
+            </svg>
+          </div>
+        </form>
+      </div>
 
       @if (loading()) {
-        <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500">Loading materials...</div>
+        <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500">Loading products...</div>
       } @else if (error()) {
         <div class="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{{ error() }}</div>
       } @else if (items().length === 0) {
-        <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500">No materials found.</div>
+        <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500">No products found.</div>
       } @else {
-        <div class="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <table class="min-w-full divide-y divide-slate-200 text-sm">
+        <div class="max-w-full overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <table class="w-full min-w-[800px] text-xs sm:text-sm">
             <thead class="bg-slate-50">
               <tr>
-                <th class="px-4 py-3 text-left font-bold text-slate-600">Code</th>
-                <th class="px-4 py-3 text-left font-bold text-slate-600">Material</th>
-                <th class="px-4 py-3 text-left font-bold text-slate-600">Brand</th>
-                <th class="px-4 py-3 text-left font-bold text-slate-600">Stock</th>
-                <th class="px-4 py-3 text-left font-bold text-slate-600">Cost</th>
-                <th class="px-4 py-3 text-left font-bold text-slate-600">Price</th>
-                <th class="px-4 py-3 text-left font-bold text-slate-600">Status</th>
-                <th class="px-4 py-3 text-left font-bold text-slate-600">Action</th>
+                <th class="px-2 py-2.5 text-left font-bold whitespace-nowrap text-slate-600 sm:px-3">Image</th>
+                <th class="px-2 py-2.5 text-left font-bold whitespace-nowrap text-slate-600 sm:px-3">Code</th>
+                <th class="max-w-[160px] px-2 py-2.5 text-left font-bold text-slate-600 sm:max-w-[200px] sm:px-3">Name</th>
+                <th class="px-2 py-2.5 text-left font-bold whitespace-nowrap text-slate-600 sm:px-3">Brand</th>
+                <th class="px-2 py-2.5 text-left font-bold whitespace-nowrap text-slate-600 sm:px-3">Stock</th>
+                <th class="px-2 py-2.5 text-right font-bold whitespace-nowrap text-slate-600 sm:px-3">Cost</th>
+                <th class="px-2 py-2.5 text-right font-bold whitespace-nowrap text-slate-600 sm:px-3">Price</th>
+                <th class="px-2 py-2.5 text-right font-bold whitespace-nowrap text-slate-600 sm:px-3">Margin</th>
+                <th class="px-2 py-2.5 text-right font-bold whitespace-nowrap text-slate-600 sm:px-3">Qty</th>
+                <th class="px-2 py-2.5 text-right font-bold whitespace-nowrap text-emerald-700 sm:px-3">O.Margin</th>
+                <th class="px-2 py-2.5 text-right font-bold whitespace-nowrap text-slate-600 sm:px-3">Actions</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
               @for (item of items(); track item.id) {
                 <tr class="hover:bg-slate-50">
-                  <td class="px-4 py-3 text-slate-600">{{ item.materialCode || '—' }}</td>
-                  <td class="px-4 py-3 font-medium text-slate-900">{{ item.materialName }}</td>
-                  <td class="px-4 py-3 text-slate-600">{{ item.brandName || '—' }}</td>
-                  <td class="px-4 py-3 text-slate-600">{{ item.onHandStock ?? 0 }} {{ item.unit || '' }}</td>
-                  <td class="px-4 py-3 text-slate-600">{{ item.unitPrice ?? '—' }}</td>
-                  <td class="px-4 py-3 text-slate-600">{{ item.sellPrice ?? '—' }}</td>
-                  <td class="px-4 py-3">
-                    <span class="rounded-full px-2 py-1 text-xs font-bold uppercase" [class.bg-green-50]="stockStatus(item) === 'OK'" [class.text-green-700]="stockStatus(item) === 'OK'" [class.bg-amber-50]="stockStatus(item) === 'Low'" [class.text-amber-700]="stockStatus(item) === 'Low'" [class.bg-red-50]="stockStatus(item) === 'Out'" [class.text-red-700]="stockStatus(item) === 'Out'">{{ stockStatus(item) }}</span>
+                  <td class="px-2 py-2.5 sm:px-3">
+                    @if (materialImageUrl(item); as imageUrl) {
+                      <img [src]="imageUrl" [alt]="item.materialName" class="size-10 rounded-lg border border-slate-200 object-cover" />
+                    } @else {
+                      <span class="inline-flex size-10 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 text-[10px] font-bold text-slate-400">N/A</span>
+                    }
                   </td>
-                  <td class="px-4 py-3"><a [routerLink]="['/admin/inventory/materials', item.id]" class="font-bold text-pcmazing-500 hover:text-pcmazing-600">View</a></td>
+                  <td class="px-2 py-2.5 whitespace-nowrap text-slate-600 sm:px-3">{{ item.materialCode || '—' }}</td>
+                  <td class="max-w-[160px] truncate px-2 py-2.5 font-medium text-slate-900 sm:max-w-[200px] sm:px-3" [title]="item.materialName">{{ item.materialName }}</td>
+                  <td class="max-w-[100px] truncate px-2 py-2.5 text-slate-600 sm:px-3">{{ item.brandName || '—' }}</td>
+                  <td class="px-2 py-2.5 sm:px-3">
+                    @if (stockStatusLabel(item); as status) {
+                      <span class="inline-block rounded-full px-1.5 py-0.5 text-[10px] font-bold uppercase whitespace-nowrap" [class]="stockStatusClass(status)">
+                        {{ status }}
+                      </span>
+                    }
+                  </td>
+                  <td class="px-2 py-2.5 text-right whitespace-nowrap text-slate-600 sm:px-3">{{ formatMoney(unitCost(item)) }}</td>
+                  <td class="px-2 py-2.5 text-right whitespace-nowrap text-slate-600 sm:px-3">{{ formatMoney(unitPrice(item)) }}</td>
+                  <td class="px-2 py-2.5 text-right whitespace-nowrap font-medium sm:px-3" [class.text-emerald-700]="unitMargin(item) >= 0" [class.text-red-600]="unitMargin(item) < 0">
+                    {{ formatMoney(unitMargin(item)) }}
+                  </td>
+                  <td class="px-2 py-2.5 text-right whitespace-nowrap text-slate-600 sm:px-3">{{ stockQty(item) }}</td>
+                  <td class="px-2 py-2.5 text-right whitespace-nowrap font-medium sm:px-3" [class.text-emerald-700]="extendedMargin(item) >= 0" [class.text-red-600]="extendedMargin(item) < 0">
+                    {{ formatMoney(extendedMargin(item)) }}
+                  </td>
+                  <td class="px-2 py-2.5 text-right whitespace-nowrap sm:px-3">
+                    <button
+                      type="button"
+                      class="inline-flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                      aria-label="Product actions"
+                      (click)="toggleActionMenu(item.id, $event)"
+                    >
+                      <svg viewBox="0 0 20 20" class="size-5" fill="currentColor" aria-hidden="true">
+                        <path d="M10 3a1.5 1.5 0 110 3 1.5 1.5 0 010-3zm0 5.5a1.5 1.5 0 110 3 1.5 1.5 0 010-3zm0 5.5a1.5 1.5 0 110 3 1.5 1.5 0 010-3z" />
+                      </svg>
+                    </button>
+                  </td>
                 </tr>
               }
             </tbody>
@@ -75,9 +170,9 @@
         </div>
 
         @if (meta(); as pagination) {
-          <div class="mt-4 flex items-center justify-between text-sm text-slate-500">
-            <span>Page {{ pagination.page }} of {{ pagination.totalPages }} · {{ pagination.total }} total</span>
-            <div class="flex gap-2">
+          <div class="mt-4 flex flex-col gap-3 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+            <span class="min-w-0 truncate">Page {{ pagination.page }} of {{ pagination.totalPages }} · {{ pagination.total }} total</span>
+            <div class="flex shrink-0 gap-2">
               <button type="button" class="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page <= 1" (click)="goToPage(pagination.page - 1)">Previous</button>
               <button type="button" class="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page >= pagination.totalPages" (click)="goToPage(pagination.page + 1)">Next</button>
             </div>
@@ -86,4 +181,28 @@
       }
     </div>
   </div>
+
+  @if (openActionMenuId(); as menuId) {
+    <div
+      class="fixed z-50 w-36 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
+      [style.top.px]="actionMenuPosition()?.top"
+      [style.left.px]="actionMenuPosition()?.left"
+      (click)="$event.stopPropagation()"
+    >
+      <a
+        [routerLink]="['/admin/inventory/materials', menuId]"
+        class="block px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        (click)="closeActionMenu()"
+      >
+        View
+      </a>
+      <a
+        [routerLink]="['/admin/inventory/materials', menuId, 'edit']"
+        class="block px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        (click)="closeActionMenu()"
+      >
+        Edit
+      </a>
+    </div>
+  }
 </section>

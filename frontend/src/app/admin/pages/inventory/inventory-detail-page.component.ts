@@ -16,6 +16,10 @@ export class InventoryDetailPageComponent implements OnInit {
   readonly error = signal('');
   readonly material = signal<MaterialItem | null>(null);
 
+  materialImageUrl(): string | null {
+    return this.adminApi.resolveMaterialImageUrl(this.material()?.imageUrl);
+  }
+
   ngOnInit(): void {
     void this.load();
   }

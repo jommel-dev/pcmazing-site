@@ -2,7 +2,7 @@
   <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
     <div>
       <h2 class="text-2xl font-bold text-slate-900">Quotations</h2>
-      <p class="mt-1 text-sm text-slate-500">Customer quotations from your imported 3BMA database.</p>
+      <p class="mt-1 text-sm text-slate-500">Create, review, and track customer quotations.</p>
     </div>
     <form class="flex w-full max-w-md gap-2" (ngSubmit)="searchQuotations()">
       <input type="search" class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-pcmazing-500 focus:outline-none" placeholder="Search quote no, customer..." [ngModel]="search()" (ngModelChange)="search.set($event)" name="search" />

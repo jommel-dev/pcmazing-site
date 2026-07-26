@@ -11,8 +11,19 @@ import { DemoRequestsController } from './demo-requests/demo-requests.controller
 import { DemoRequestsService } from './demo-requests/demo-requests.service';
 import { InventoryController } from './inventory/inventory.controller';
 import { InventoryService } from './inventory/inventory.service';
+import { PurchaseController } from './inventory/purchase.controller';
+import { PurchaseService } from './inventory/purchase.service';
 import { QuotationController } from './quotation/quotation.controller';
 import { QuotationService } from './quotation/quotation.service';
+import { RbacService } from './rbac/rbac.service';
+import { RolesGuard } from './rbac/roles.guard';
+import { UsersController } from './users/users.controller';
+import { UsersService } from './users/users.service';
+import { MarketingTeamsController } from './marketing/marketing-teams.controller';
+import { MarketingTeamsService } from './marketing/marketing-teams.service';
+import { ClientProspectsController } from './marketing/client-prospects.controller';
+import { ClientProspectsService } from './marketing/client-prospects.service';
+import { CurrencyExchangeService } from './marketing/currency-exchange.service';
 
 @Module({
   imports: [DatabaseModule, AuthModule],
@@ -22,7 +33,11 @@ import { QuotationService } from './quotation/quotation.service';
     CustomerReviewsController,
     DemoRequestsController,
     InventoryController,
+    PurchaseController,
     QuotationController,
+    UsersController,
+    MarketingTeamsController,
+    ClientProspectsController,
   ],
   providers: [
     DashboardService,
@@ -30,7 +45,14 @@ import { QuotationService } from './quotation/quotation.service';
     CustomerReviewsService,
     DemoRequestsService,
     InventoryService,
+    PurchaseService,
     QuotationService,
+    RbacService,
+    RolesGuard,
+    UsersService,
+    MarketingTeamsService,
+    ClientProspectsService,
+    CurrencyExchangeService,
   ],
 })
 export class AdminModule {}

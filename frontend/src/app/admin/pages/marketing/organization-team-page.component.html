@@ -1,0 +1,117 @@
+<section>
+  <div class="mb-6">
+    <h2 class="text-2xl font-bold text-slate-900">Organization & Team</h2>
+    <p class="mt-1 text-sm text-slate-500">
+      Lead Marketing can add sub-teams and members. Assignments appear in Lead Generation pickup records.
+    </p>
+  </div>
+
+  @if (actionMessage()) {
+    <div class="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-700">
+      {{ actionMessage() }}
+    </div>
+  }
+
+  @if (loading()) {
+    <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500">Loading teams...</div>
+  } @else if (error()) {
+    <div class="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{{ error() }}</div>
+  } @else {
+    <div class="grid gap-6 xl:grid-cols-[360px_1fr]">
+      <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h3 class="text-sm font-bold uppercase tracking-wide text-slate-500">Create team</h3>
+        <form class="mt-4 space-y-4" [formGroup]="teamForm" (ngSubmit)="submitTeam()">
+          <div>
+            <label class="mb-1 block text-sm font-semibold text-slate-700">Team name</label>
+            <input type="text" formControlName="name" class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm" />
+          </div>
+          <div>
+            <label class="mb-1 block text-sm font-semibold text-slate-700">Parent team</label>
+            <select formControlName="parentTeamId" class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm">
+              <option value="">None (Lead Marketing team)</option>
+              @for (team of flatTeams(); track team.id) {
+                <option [value]="team.id">{{ team.name }}</option>
+              }
+            </select>
+          </div>
+          <div>
+            <label class="mb-1 block text-sm font-semibold text-slate-700">Team manager</label>
+            <select formControlName="managerUserId" class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm">
+              <option value="">Current user</option>
+              @for (user of users(); track user.id) {
+                <option [value]="user.id">{{ user.fullName }} ({{ user.role }})</option>
+              }
+            </select>
+          </div>
+          <button type="submit" class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:opacity-60" [disabled]="saving()">
+            Create team
+          </button>
+        </form>
+      </div>
+
+      <div class="space-y-4">
+        @if (teams().length === 0) {
+          <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-14 text-center text-sm text-slate-500">
+            No marketing teams yet. Create a Lead Marketing team to get started.
+          </div>
+        } @else {
+          @for (team of flatTeams(); track team.id) {
+            <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 class="text-lg font-bold text-slate-900">{{ team.name }}</h3>
+                  <p class="mt-1 text-xs text-slate-500">
+                    @if (team.parentTeamId) { Sub-team } @else { Lead Marketing team }
+                  </p>
+                </div>
+                <button type="button" class="rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50" (click)="openMemberForm(team.id)">
+                  + Add member
+                </button>
+              </div>
+              <div class="mt-4 flex flex-wrap gap-2">
+                @for (member of team.members; track member.id) {
+                  <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                    {{ member.userName || ('User #' + member.userId) }} · {{ roleLabel(member.memberRole) }}
+                  </span>
+                } @empty {
+                  <span class="text-sm text-slate-500">No members yet.</span>
+                }
+              </div>
+            </div>
+          }
+        }
+      </div>
+    </div>
+  }
+</section>
+
+@if (memberTeamId()) {
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+    <div class="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
+      <h3 class="text-lg font-bold text-slate-900">Add team member</h3>
+      <form class="mt-4 space-y-4" [formGroup]="memberForm" (ngSubmit)="submitMember()">
+        <div>
+          <label class="mb-1 block text-sm font-semibold text-slate-700">User</label>
+          <select formControlName="userId" class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm">
+            <option [value]="0">Select user</option>
+            @for (user of users(); track user.id) {
+              <option [value]="user.id">{{ user.fullName }}</option>
+            }
+          </select>
+        </div>
+        <div>
+          <label class="mb-1 block text-sm font-semibold text-slate-700">Role</label>
+          <select formControlName="memberRole" class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm">
+            <option value="sub_marketing">Sub marketing</option>
+            <option value="member">Member</option>
+            <option value="lead_marketing">Lead marketing</option>
+          </select>
+        </div>
+        <div class="flex justify-end gap-2">
+          <button type="button" class="rounded-xl border px-4 py-2.5 text-sm font-bold" (click)="closeMemberForm()">Cancel</button>
+          <button type="submit" class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white" [disabled]="saving()">Add member</button>
+        </div>
+      </form>
+    </div>
+  </div>
+}

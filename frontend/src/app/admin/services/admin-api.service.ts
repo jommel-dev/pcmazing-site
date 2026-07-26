@@ -73,14 +73,27 @@ export interface MaterialItem {
   materialCode: string | null;
   materialName: string;
   brandName: string | null;
+  brandId?: number | null;
+  productTypeId?: number | null;
+  productTypeName?: string | null;
   unit: string | null;
   unitPrice: number | null;
+  orderCost: number | null;
   sellPrice: number | null;
   onHandStock: number | null;
   reorderLevel: number | null;
+  imageUrl?: string | null;
   description?: string | null;
   createdAt?: string | null;
   updatedAt?: string | null;
+}
+
+export interface InventoryStockSummary {
+  totalCost: number;
+  totalPrice: number;
+  totalMargin: number;
+  totalStockValue: number;
+  itemCount: number;
 }
 
 export interface InventoryTreeNode {
@@ -89,6 +102,94 @@ export interface InventoryTreeNode {
   type: 'product-type' | 'brand';
   materialCount: number;
   children?: InventoryTreeNode[];
+}
+
+export interface InventoryOption {
+  id: number;
+  name: string;
+  productTypeId?: number | null;
+}
+
+export interface CreateMaterialPayload {
+  materialName: string;
+  materialCode?: string;
+  description?: string;
+  brandId?: number;
+  brandName?: string;
+  productTypeId?: number;
+  productTypeName?: string;
+  unit?: string;
+  unitPrice?: number;
+  orderCost?: number;
+  sellPrice?: number;
+  onHandStock?: number;
+  reorderLevel?: number;
+}
+
+export interface UpdateMaterialPayload {
+  materialName?: string;
+  materialCode?: string;
+  description?: string;
+  brandId?: number;
+  brandName?: string;
+  productTypeId?: number;
+  productTypeName?: string;
+  unit?: string;
+  unitPrice?: number;
+  orderCost?: number;
+  sellPrice?: number;
+  onHandStock?: number;
+  reorderLevel?: number;
+}
+
+export interface PurchaseListItem {
+  id: number;
+  poNumber: string | null;
+  vendorName: string | null;
+  totalAmount: number | null;
+  status: string | null;
+  poType: string | null;
+  createdAt: string | null;
+}
+
+export interface PurchaseLineItem {
+  id: number;
+  description: string;
+  quantity: number | null;
+  unitPrice: number | null;
+  lineTotal: number | null;
+}
+
+export interface PurchaseDetail extends PurchaseListItem {
+  vendorId: string | null;
+  branchId: number | null;
+  items: PurchaseLineItem[];
+}
+
+export interface PurchaseVendorOption {
+  id: string;
+  name: string;
+}
+
+export interface CreatePurchasePayload {
+  vendorId?: string;
+  vendorName?: string;
+  poType?: string;
+  status?: string;
+  branchId?: number;
+  remarks?: string;
+  items: Array<{
+    materialId: number;
+    quantity: number;
+    unitPrice: number;
+    discountPrice?: number;
+  }>;
+  payments?: Array<{
+    method: string;
+    amount?: number;
+    paymentDate?: string;
+    status?: string;
+  }>;
 }
 
 export interface QuotationListItem {
@@ -122,6 +223,152 @@ export interface QuotationDetail extends QuotationListItem {
     remarks: string | null;
     metadata: Record<string, unknown> | null;
   }>;
+}
+
+export interface AdminUser {
+  id: number;
+  username: string;
+  fullName: string;
+  email: string | null;
+  role: string;
+  profileImageUrl: string | null;
+  isActive: boolean;
+  source: 'pcmazing_admin_users' | 'tblusers';
+  readOnly: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RbacStatus {
+  enabled: boolean;
+  roles: string[];
+}
+
+export interface MarketingTeamMember {
+  id: number;
+  userId: number;
+  memberRole: string;
+  userName: string | null;
+}
+
+export interface MarketingTeamNode {
+  id: number;
+  name: string;
+  parentTeamId: number | null;
+  createdByUserId: number;
+  members: MarketingTeamMember[];
+  children: MarketingTeamNode[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AssignableMarketingUser {
+  id: number;
+  fullName: string;
+  role: string;
+}
+
+export interface ClientProspectListItem {
+  id: number;
+  clientName: string;
+  company: string | null;
+  email: string | null;
+  phone: string | null;
+  status: string;
+  source: string;
+  assignedUserId: number | null;
+  assignedUserName: string | null;
+  pickedUpBy: number | null;
+  pickedUpByName: string | null;
+  pickedUpAt: string | null;
+  responseCount: number;
+  latestResponseAt: string | null;
+  hasAppointment: boolean;
+  followUpCount: number;
+  maxFollowUps: number;
+  clientType: string;
+  currency: string;
+  proposedPriceDeal: number | null;
+  estimatedPriceDealPhp: number | null;
+  exchangeRateUsed: number | null;
+  exchangeRateDate: string | null;
+  commissionPercent: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProspectDealSummary {
+  estimatedProjectDeal: number;
+  projectDeal: number;
+  commissioned: number;
+  totalProjectDeal: number;
+}
+
+export interface ProspectImportPreviewRow {
+  rowNumber: number;
+  clientName: string;
+  company: string | null;
+  email: string | null;
+  phone: string | null;
+  clientType: string;
+  currency: string;
+  proposedPriceDeal: number | null;
+}
+
+export interface ProspectImportPreview {
+  fileName: string;
+  totalDataRows: number;
+  validRows: number;
+  skippedRows: number;
+  previewRows: ProspectImportPreviewRow[];
+  skippedDetails: Array<{ rowNumber: number; reason: string }>;
+}
+
+export interface ClientProspectDetail extends ClientProspectListItem {
+  address: string | null;
+  notes: string | null;
+  assignedTeamId: number | null;
+  responses: Array<{
+    id: number;
+    userId: number;
+    userName: string | null;
+    responseType: string;
+    notes: string | null;
+    outcome: string | null;
+    followUpDate: string | null;
+    followUpMethod: string | null;
+    remarks: string | null;
+    createdAt: string;
+  }>;
+  appointments: Array<{
+    id: number;
+    title: string;
+    startsAt: string;
+    endsAt: string;
+    meetingType: string;
+    locationOrLink: string | null;
+    notes: string | null;
+    userId: number;
+    userName: string | null;
+  }>;
+}
+
+export interface ClientAppointmentItem {
+  id: number;
+  prospectId: number;
+  userId: number;
+  clientName: string;
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  meetingType: string;
+  locationOrLink: string | null;
+}
+
+interface MessageResponse<T> {
+  success: boolean;
+  message?: string;
+  data: T;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -222,7 +469,7 @@ export class AdminApiService {
       params = params.set('productTypeId', String(productTypeId));
     }
 
-    return this.http.get<ListResponse<MaterialItem>>(
+    return this.http.get<ListResponse<MaterialItem> & { summary: InventoryStockSummary }>(
       `${APP_CONFIG.apiUrl}/admin/inventory/materials`,
       { headers: this.headers(), params },
     );
@@ -238,6 +485,101 @@ export class AdminApiService {
   getInventoryTree() {
     return this.http.get<{ success: boolean; data: InventoryTreeNode[] }>(
       `${APP_CONFIG.apiUrl}/admin/inventory/materials/tree`,
+      { headers: this.headers() },
+    );
+  }
+
+  listInventoryBrands(productTypeId?: number, search = '') {
+    let params = new HttpParams();
+    if (productTypeId) {
+      params = params.set('productTypeId', String(productTypeId));
+    }
+    if (search.trim()) {
+      params = params.set('search', search.trim());
+    }
+
+    return this.http.get<ItemResponse<InventoryOption[]>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/materials/brands`,
+      { headers: this.headers(), params },
+    );
+  }
+
+  listInventoryProductTypes(search = '') {
+    let params = new HttpParams();
+    if (search.trim()) {
+      params = params.set('search', search.trim());
+    }
+
+    return this.http.get<ItemResponse<InventoryOption[]>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/materials/product-types`,
+      { headers: this.headers(), params },
+    );
+  }
+
+  createMaterial(payload: CreateMaterialPayload) {
+    return this.http.post<ItemResponse<MaterialItem>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/materials`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  updateMaterial(id: number, payload: UpdateMaterialPayload) {
+    return this.http.patch<ItemResponse<MaterialItem>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/materials/${id}`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  uploadMaterialImage(id: number, file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    return this.http.post<ItemResponse<MaterialItem>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/materials/${id}/image`,
+      formData,
+      { headers: this.headers() },
+    );
+  }
+
+  removeMaterialImage(id: number) {
+    return this.http.delete<ItemResponse<MaterialItem>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/materials/${id}/image`,
+      { headers: this.headers() },
+    );
+  }
+
+  listPurchaseOrders(page = 1, limit = 20, search = '', status = '') {
+    let params = this.listParams(page, limit, search);
+    if (status) {
+      params = params.set('status', status);
+    }
+
+    return this.http.get<ListResponse<PurchaseListItem>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/purchase`,
+      { headers: this.headers(), params },
+    );
+  }
+
+  listPurchaseVendors() {
+    return this.http.get<ItemResponse<PurchaseVendorOption[]>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/purchase/vendors`,
+      { headers: this.headers() },
+    );
+  }
+
+  createPurchaseOrder(payload: CreatePurchasePayload) {
+    return this.http.post<MessageResponse<PurchaseDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/purchase`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  getPurchaseOrder(id: number) {
+    return this.http.get<ItemResponse<PurchaseDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/purchase/${id}`,
       { headers: this.headers() },
     );
   }
@@ -282,6 +624,321 @@ export class AdminApiService {
       `${APP_CONFIG.apiUrl}/admin/dashboard/overview`,
       { headers: this.headers(), params },
     );
+  }
+
+  getRbacStatus() {
+    return this.http.get<ItemResponse<RbacStatus>>(
+      `${APP_CONFIG.apiUrl}/admin/users/rbac-status`,
+      { headers: this.headers() },
+    );
+  }
+
+  listUserRoles() {
+    return this.http.get<ItemResponse<string[]>>(
+      `${APP_CONFIG.apiUrl}/admin/users/roles`,
+      { headers: this.headers() },
+    );
+  }
+
+  listUsers(page = 1, limit = 20, search = '') {
+    const params = this.listParams(page, limit, search);
+
+    return this.http.get<ListResponse<AdminUser>>(
+      `${APP_CONFIG.apiUrl}/admin/users`,
+      { headers: this.headers(), params },
+    );
+  }
+
+  createUser(payload: {
+    username: string;
+    fullName: string;
+    email?: string;
+    password: string;
+    role?: string;
+    isActive?: boolean;
+  }) {
+    return this.http.post<MessageResponse<AdminUser>>(
+      `${APP_CONFIG.apiUrl}/admin/users`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  updateUser(
+    id: number,
+    payload: {
+      fullName?: string;
+      email?: string;
+      role?: string;
+      isActive?: boolean;
+    },
+  ) {
+    return this.http.patch<MessageResponse<AdminUser>>(
+      `${APP_CONFIG.apiUrl}/admin/users/${id}`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  changeUserPassword(id: number, password: string) {
+    return this.http.patch<MessageResponse<{ id: number; passwordChanged: boolean }>>(
+      `${APP_CONFIG.apiUrl}/admin/users/${id}/password`,
+      { password },
+      { headers: this.headers() },
+    );
+  }
+
+  deactivateUser(id: number) {
+    return this.http.delete<MessageResponse<AdminUser>>(
+      `${APP_CONFIG.apiUrl}/admin/users/${id}`,
+      { headers: this.headers() },
+    );
+  }
+
+  uploadUserProfileImage(id: number, file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    return this.http.post<MessageResponse<AdminUser>>(
+      `${APP_CONFIG.apiUrl}/admin/users/${id}/profile-image`,
+      formData,
+      { headers: this.headers() },
+    );
+  }
+
+  removeUserProfileImage(id: number) {
+    return this.http.delete<MessageResponse<AdminUser>>(
+      `${APP_CONFIG.apiUrl}/admin/users/${id}/profile-image`,
+      { headers: this.headers() },
+    );
+  }
+
+  listMarketingTeams() {
+    return this.http.get<ItemResponse<MarketingTeamNode[]>>(
+      `${APP_CONFIG.apiUrl}/admin/marketing/teams`,
+      { headers: this.headers() },
+    );
+  }
+
+  listAssignableMarketingUsers() {
+    return this.http.get<ItemResponse<AssignableMarketingUser[]>>(
+      `${APP_CONFIG.apiUrl}/admin/marketing/teams/assignable-users`,
+      { headers: this.headers() },
+    );
+  }
+
+  createMarketingTeam(payload: { name: string; parentTeamId?: number; managerUserId?: number }) {
+    return this.http.post<MessageResponse<MarketingTeamNode>>(
+      `${APP_CONFIG.apiUrl}/admin/marketing/teams`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  addMarketingTeamMember(teamId: number, payload: { userId: number; memberRole?: string }) {
+    return this.http.post<MessageResponse<MarketingTeamMember>>(
+      `${APP_CONFIG.apiUrl}/admin/marketing/teams/${teamId}/members`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  listClientProspects(page = 1, limit = 20, search = '', status = '') {
+    let params = this.listParams(page, limit, search);
+    if (status) {
+      params = params.set('status', status);
+    }
+    return this.http.get<ListResponse<ClientProspectListItem> & { fullAccess?: boolean }>(
+      `${APP_CONFIG.apiUrl}/admin/marketing/prospects`,
+      { headers: this.headers(), params },
+    );
+  }
+
+  createClientProspect(payload: {
+    clientName: string;
+    company?: string;
+    email?: string;
+    phone?: string;
+    address?: string;
+    notes?: string;
+    status?: string;
+    clientType?: string;
+    currency?: string;
+    proposedPriceDeal?: number | null;
+  }) {
+    return this.http.post<MessageResponse<ClientProspectDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/marketing/prospects`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  previewImportClientProspects(file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.http.post<ItemResponse<ProspectImportPreview>>(
+      `${APP_CONFIG.apiUrl}/admin/marketing/prospects/import/preview`,
+      formData,
+      { headers: this.headers() },
+    );
+  }
+
+  importClientProspects(file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.http.post<MessageResponse<{ imported: number; total: number }>>(
+      `${APP_CONFIG.apiUrl}/admin/marketing/prospects/import`,
+      formData,
+      { headers: this.headers() },
+    );
+  }
+
+  getClientProspect(id: number) {
+    return this.http.get<ItemResponse<ClientProspectDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/marketing/prospects/${id}`,
+      { headers: this.headers() },
+    );
+  }
+
+  pickupClientProspect(id: number) {
+    return this.http.post<MessageResponse<ClientProspectDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/marketing/prospects/${id}/pickup`,
+      {},
+      { headers: this.headers() },
+    );
+  }
+
+  updateClientProspect(
+    id: number,
+    payload: {
+      clientName?: string;
+      company?: string;
+      email?: string;
+      phone?: string;
+      address?: string;
+      notes?: string;
+      clientType?: string;
+      currency?: string;
+      proposedPriceDeal?: number | null;
+      commissionPercent?: number | null;
+    },
+  ) {
+    return this.http.patch<MessageResponse<ClientProspectDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/marketing/prospects/${id}`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  convertDealEstimate(from: string, amount: number) {
+    const params = new HttpParams().set('from', from).set('amount', String(amount));
+    return this.http.get<
+      ItemResponse<{
+        fromCurrency: string;
+        toCurrency: string;
+        amount: number;
+        convertedAmount: number;
+        rate: number;
+        rateDate: string;
+      }>
+    >(`${APP_CONFIG.apiUrl}/admin/marketing/exchange-rate`, {
+      headers: this.headers(),
+      params,
+    });
+  }
+
+  getProspectDealSummary() {
+    return this.http.get<ItemResponse<ProspectDealSummary>>(
+      `${APP_CONFIG.apiUrl}/admin/marketing/deal-summary`,
+      { headers: this.headers() },
+    );
+  }
+
+  updateClientProspectStatus(
+    id: number,
+    payload: {
+      status: string;
+      notes?: string;
+      followUpDate?: string;
+      followUpMethod?: string;
+      remarks?: string;
+      title?: string;
+      startsAt?: string;
+      endsAt?: string;
+      meetingType?: string;
+      locationOrLink?: string;
+    },
+  ) {
+    return this.http.patch<MessageResponse<ClientProspectDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/marketing/prospects/${id}/status`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  addClientProspectResponse(
+    id: number,
+    payload: { responseType?: string; notes?: string; outcome?: string },
+  ) {
+    return this.http.post<MessageResponse<ClientProspectDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/marketing/prospects/${id}/responses`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  listClientAppointments(start?: string, end?: string) {
+    let params = new HttpParams();
+    if (start) params = params.set('start', start);
+    if (end) params = params.set('end', end);
+    return this.http.get<ItemResponse<ClientAppointmentItem[]>>(
+      `${APP_CONFIG.apiUrl}/admin/marketing/appointments`,
+      { headers: this.headers(), params },
+    );
+  }
+
+  checkAppointmentConflicts(startsAt: string, endsAt: string) {
+    const params = new HttpParams().set('startsAt', startsAt).set('endsAt', endsAt);
+    return this.http.get<ItemResponse<Array<{ id: number; title: string; startsAt: string; endsAt: string }>>>(
+      `${APP_CONFIG.apiUrl}/admin/marketing/appointments/conflicts`,
+      { headers: this.headers(), params },
+    );
+  }
+
+  createClientAppointment(payload: {
+    prospectId: number;
+    title: string;
+    startsAt: string;
+    endsAt: string;
+    meetingType: string;
+    locationOrLink?: string;
+    notes?: string;
+  }) {
+    return this.http.post<MessageResponse<ClientProspectDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/marketing/appointments`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  resolveProfileImageUrl(profileImageUrl: string | null | undefined): string | null {
+    return this.resolveUploadUrl(profileImageUrl);
+  }
+
+  resolveMaterialImageUrl(imageUrl: string | null | undefined): string | null {
+    return this.resolveUploadUrl(imageUrl);
+  }
+
+  private resolveUploadUrl(uploadUrl: string | null | undefined): string | null {
+    if (!uploadUrl) {
+      return null;
+    }
+
+    if (uploadUrl.startsWith('data:') || /^https?:\/\//i.test(uploadUrl)) {
+      return uploadUrl;
+    }
+
+    return `${APP_CONFIG.apiUrl.replace(/\/$/, '')}${uploadUrl}`;
   }
 
   private listParams(page: number, limit: number, search: string): HttpParams {

@@ -1,17 +1,29 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, HostListener, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import {
   AdminApiService,
+  InventoryStockSummary,
   InventoryTreeNode,
   MaterialItem,
   PaginationMeta,
 } from '../../services/admin-api.service';
+import { InventorySubnavComponent } from './inventory-subnav.component';
+import {
+  extendedMargin,
+  formatInventoryMoney,
+  stockQty,
+  stockStatusClass,
+  stockStatusLabel,
+  unitCost,
+  unitMargin,
+  unitPrice,
+} from './inventory-stock.util';
 
 @Component({
   selector: 'app-inventory-page',
-  imports: [FormsModule, RouterLink],
+  imports: [FormsModule, RouterLink, InventorySubnavComponent],
   templateUrl: './inventory-page.component.html',
 })
 export class InventoryPageComponent implements OnInit {
@@ -21,11 +33,25 @@ export class InventoryPageComponent implements OnInit {
   readonly error = signal('');
   readonly search = signal('');
   readonly page = signal(1);
+  readonly pageSize = 50;
   readonly items = signal<MaterialItem[]>([]);
   readonly meta = signal<PaginationMeta | null>(null);
+  readonly summary = signal<InventoryStockSummary | null>(null);
   readonly tree = signal<InventoryTreeNode[]>([]);
   readonly selectedBrandId = signal<number | null>(null);
   readonly selectedProductTypeId = signal<number | null>(null);
+  readonly selectedCategoryLabel = signal('All Products');
+  readonly openActionMenuId = signal<number | null>(null);
+  readonly actionMenuPosition = signal<{ top: number; left: number } | null>(null);
+
+  readonly formatMoney = formatInventoryMoney;
+  readonly unitCost = unitCost;
+  readonly unitPrice = unitPrice;
+  readonly unitMargin = unitMargin;
+  readonly stockQty = stockQty;
+  readonly extendedMargin = extendedMargin;
+  readonly stockStatusLabel = stockStatusLabel;
+  readonly stockStatusClass = stockStatusClass;
 
   ngOnInit(): void {
     void this.loadAll();
@@ -52,7 +78,7 @@ export class InventoryPageComponent implements OnInit {
       const response = await firstValueFrom(
         this.adminApi.listMaterials(
           this.page(),
-          20,
+          this.pageSize,
           this.search(),
           this.selectedBrandId() ?? undefined,
           this.selectedProductTypeId() ?? undefined,
@@ -60,8 +86,9 @@ export class InventoryPageComponent implements OnInit {
       );
       this.items.set(response.data);
       this.meta.set(response.meta);
+      this.summary.set(response.summary);
     } catch {
-      this.error.set('Unable to load inventory materials. Make sure tblmaterials exists in your database.');
+      this.error.set('Unable to load inventory products.');
     } finally {
       this.loading.set(false);
     }
@@ -72,9 +99,14 @@ export class InventoryPageComponent implements OnInit {
     await this.loadMaterials();
   }
 
-  async filterByBrand(brandId: number | null, productTypeId: number | null = null): Promise<void> {
+  async filterByCategory(
+    brandId: number | null,
+    productTypeId: number | null = null,
+    label = 'All Products',
+  ): Promise<void> {
     this.selectedBrandId.set(brandId);
     this.selectedProductTypeId.set(productTypeId);
+    this.selectedCategoryLabel.set(label);
     this.page.set(1);
     await this.loadMaterials();
   }
@@ -84,11 +116,46 @@ export class InventoryPageComponent implements OnInit {
     await this.loadMaterials();
   }
 
-  stockStatus(item: MaterialItem): string {
-    const stock = item.onHandStock ?? 0;
-    const reorder = item.reorderLevel ?? 0;
-    if (stock <= 0) return 'Out';
-    if (stock <= reorder) return 'Low';
-    return 'OK';
+  sectionTitle(): string {
+    const count = this.summary()?.itemCount ?? this.meta()?.total ?? 0;
+    return `Products for ${this.selectedCategoryLabel()} (${count} items)`;
+  }
+
+  materialImageUrl(item: MaterialItem): string | null {
+    return this.adminApi.resolveMaterialImageUrl(item.imageUrl);
+  }
+
+  toggleActionMenu(id: number, event: Event): void {
+    event.stopPropagation();
+
+    if (this.openActionMenuId() === id) {
+      this.closeActionMenu();
+      return;
+    }
+
+    const button = event.currentTarget as HTMLElement;
+    const rect = button.getBoundingClientRect();
+    const menuWidth = 144;
+
+    this.actionMenuPosition.set({
+      top: rect.bottom + 4,
+      left: Math.max(8, rect.right - menuWidth),
+    });
+    this.openActionMenuId.set(id);
+  }
+
+  closeActionMenu(): void {
+    this.openActionMenuId.set(null);
+    this.actionMenuPosition.set(null);
+  }
+
+  @HostListener('document:click')
+  onDocumentClick(): void {
+    this.closeActionMenu();
+  }
+
+  @HostListener('document:keydown.escape')
+  onEscapeKey(): void {
+    this.closeActionMenu();
   }
 }

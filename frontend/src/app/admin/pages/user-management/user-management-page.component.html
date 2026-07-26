@@ -1,0 +1,277 @@
+<section>
+  @if (rbacStatus(); as rbac) {
+    <div
+      class="mb-6 rounded-2xl border px-5 py-4"
+      [class.border-amber-200]="!rbac.enabled"
+      [class.bg-amber-50]="!rbac.enabled"
+      [class.border-emerald-200]="rbac.enabled"
+      [class.bg-emerald-50]="rbac.enabled"
+      [class.dark:border-amber-900]="!rbac.enabled"
+      [class.dark:bg-amber-950/30]="!rbac.enabled"
+      [class.dark:border-emerald-900]="rbac.enabled"
+      [class.dark:bg-emerald-950/30]="rbac.enabled"
+    >
+      <p
+        class="text-sm font-bold"
+        [class.text-amber-800]="!rbac.enabled"
+        [class.text-emerald-800]="rbac.enabled"
+        [class.dark:text-amber-300]="!rbac.enabled"
+        [class.dark:text-emerald-300]="rbac.enabled"
+      >
+        @if (rbac.enabled) {
+          RBAC is enabled. Access is restricted by role and permissions.
+        } @else {
+          RBAC is currently disabled. All signed-in users can access admin modules while roles are being finalized.
+        }
+      </p>
+      <p class="mt-1 text-sm text-slate-600 dark:text-slate-400">
+        Role labels are stored for organization now and will control permissions once RBAC is activated.
+      </p>
+    </div>
+  }
+
+  <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <div>
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white">User Management</h2>
+      <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
+        Manage internal user accounts, roles, and profile images.
+      </p>
+    </div>
+    <div class="flex flex-col gap-2 sm:flex-row">
+      <button
+        type="button"
+        class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600"
+        (click)="openCreateForm()"
+      >
+        Add user
+      </button>
+    </div>
+  </div>
+
+  @if (actionMessage()) {
+    <div class="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">
+      {{ actionMessage() }}
+    </div>
+  }
+
+  <form class="mb-6 flex flex-col gap-3 lg:flex-row lg:items-center" (ngSubmit)="searchUsers()">
+    <input
+      type="search"
+      class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+      placeholder="Search username, name, email, role..."
+      [ngModel]="search()"
+      (ngModelChange)="search.set($event)"
+      name="search"
+    />
+    <button type="submit" class="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900">
+      Search
+    </button>
+  </form>
+
+  @if (loading()) {
+    <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900">
+      Loading users...
+    </div>
+  } @else if (error()) {
+    <div class="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{{ error() }}</div>
+  } @else if (items().length === 0) {
+    <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900">
+      No users found.
+    </div>
+  } @else {
+    <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <table class="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
+        <thead class="bg-slate-50 dark:bg-slate-950">
+          <tr>
+            <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">User</th>
+            <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Role</th>
+            <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Status</th>
+            <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Updated</th>
+            <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+          @for (item of items(); track item.source + '-' + item.id) {
+            <tr class="hover:bg-slate-50 dark:hover:bg-slate-950/50">
+              <td class="px-4 py-3">
+                <div class="flex items-center gap-3">
+                  @if (profileImageFor(item); as imageUrl) {
+                    <img
+                      [src]="imageUrl"
+                      [alt]="item.fullName"
+                      class="size-11 rounded-full border border-slate-200 object-cover dark:border-slate-700"
+                    />
+                  } @else {
+                    <span class="inline-flex size-11 items-center justify-center rounded-full bg-slate-200 text-sm font-bold text-slate-700 dark:bg-slate-700 dark:text-slate-100">
+                      {{ userInitials(item.fullName) }}
+                    </span>
+                  }
+                  <div>
+                    <p class="font-medium text-slate-900 dark:text-white">
+                      {{ item.fullName }}
+                      @if (isCurrentUser(item)) {
+                        <span class="ml-2 rounded-full bg-pcmazing-50 px-2 py-0.5 text-[10px] font-bold uppercase text-pcmazing-600 dark:bg-pcmazing-950 dark:text-pcmazing-300">You</span>
+                      }
+                    </p>
+                    <p class="text-xs text-slate-500">{{ item.username }}</p>
+                    @if (item.email) {
+                      <p class="text-xs text-slate-500">{{ item.email }}</p>
+                    }
+                  </div>
+                </div>
+              </td>
+              <td class="px-4 py-3">
+                <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold uppercase dark:bg-slate-800">{{ item.role }}</span>
+              </td>
+              <td class="px-4 py-3">
+                @if (item.isActive) {
+                  <span class="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">Active</span>
+                } @else {
+                  <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">Inactive</span>
+                }
+              </td>
+              <td class="px-4 py-3 text-slate-600 dark:text-slate-400">{{ formatDate(item.updatedAt) }}</td>
+              <td class="px-4 py-3">
+                <div class="flex flex-wrap gap-2">
+                  <button type="button" class="font-bold text-pcmazing-500 hover:text-pcmazing-600" (click)="openEditForm(item)">Edit</button>
+                  <button type="button" class="font-bold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300" (click)="openPasswordForm(item)">Password</button>
+                  @if (item.isActive && !isCurrentUser(item)) {
+                    <button type="button" class="font-bold text-red-500 hover:text-red-600" (click)="deactivateUser(item)">Deactivate</button>
+                  }
+                </div>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    @if (meta(); as pagination) {
+      <div class="mt-4 flex items-center justify-between text-sm text-slate-500 dark:text-slate-400">
+        <span>Page {{ pagination.page }} of {{ pagination.totalPages }} · {{ pagination.total }} total</span>
+        <div class="flex gap-2">
+          <button type="button" class="rounded-lg border px-3 py-1.5 disabled:opacity-40 dark:border-slate-700" [disabled]="pagination.page <= 1" (click)="goToPage(pagination.page - 1)">Previous</button>
+          <button type="button" class="rounded-lg border px-3 py-1.5 disabled:opacity-40 dark:border-slate-700" [disabled]="pagination.page >= pagination.totalPages" (click)="goToPage(pagination.page + 1)">Next</button>
+        </div>
+      </div>
+    }
+  }
+</section>
+
+@if (formOpen()) {
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+    <div class="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+      <div class="mb-5 flex items-start justify-between gap-4">
+        <div>
+          <h3 class="text-lg font-bold text-slate-900 dark:text-white">
+            @if (formMode() === 'create') { Add user } @else { Edit user }
+          </h3>
+          <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Manage account details and role label.</p>
+        </div>
+        <button type="button" class="text-slate-400 hover:text-slate-600" (click)="closeForm()">Close</button>
+      </div>
+
+      @if (formError()) {
+        <div class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{{ formError() }}</div>
+      }
+
+      <form class="space-y-4" [formGroup]="userForm" (ngSubmit)="submitForm()">
+        <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950">
+          <p class="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-300">Profile image</p>
+          <div class="flex items-center gap-4">
+            @if (profilePreview(); as previewUrl) {
+              <img [src]="previewUrl" alt="Profile preview" class="size-16 rounded-full border border-slate-200 object-cover dark:border-slate-700" />
+            } @else {
+              <span class="inline-flex size-16 items-center justify-center rounded-full bg-slate-200 text-base font-bold text-slate-700 dark:bg-slate-700 dark:text-slate-100">
+                {{ userInitials(userForm.controls.fullName.value || 'User') }}
+              </span>
+            }
+            <div class="flex flex-col gap-2">
+              <label class="inline-flex cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                Choose image
+                <input type="file" accept="image/*" class="hidden" (change)="onProfileImageSelected($event)" />
+              </label>
+              @if (profilePreview() || selectedUser()?.profileImageUrl) {
+                <button type="button" class="text-sm font-semibold text-red-500 hover:text-red-600" (click)="removeProfileImage()">
+                  Remove image
+                </button>
+              }
+            </div>
+          </div>
+          <p class="mt-3 text-xs text-slate-500 dark:text-slate-400">JPEG, PNG, WEBP, or GIF up to 2MB.</p>
+        </div>
+        <div>
+          <label class="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">Username</label>
+          <input type="text" formControlName="username" class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />
+        </div>
+        <div>
+          <label class="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">Full name</label>
+          <input type="text" formControlName="fullName" class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />
+        </div>
+        <div>
+          <label class="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">Email</label>
+          <input type="email" formControlName="email" class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />
+        </div>
+        <div>
+          <label class="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">Role label</label>
+          <select formControlName="role" class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
+            @for (role of roles(); track role) {
+              <option [value]="role">{{ role }}</option>
+            }
+          </select>
+        </div>
+        @if (formMode() === 'create') {
+          <div>
+            <label class="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">Password</label>
+            <input type="password" formControlName="password" class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />
+          </div>
+        }
+        <label class="inline-flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+          <input type="checkbox" formControlName="isActive" class="size-4 rounded border-slate-300" />
+          Active account
+        </label>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" class="rounded-xl border px-4 py-2.5 text-sm font-bold dark:border-slate-700" (click)="closeForm()">Cancel</button>
+          <button type="submit" class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:opacity-60" [disabled]="saving()">
+            @if (saving()) { Saving... } @else { Save user }
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+}
+
+@if (passwordOpen()) {
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+    <div class="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+      <div class="mb-5 flex items-start justify-between gap-4">
+        <div>
+          <h3 class="text-lg font-bold text-slate-900 dark:text-white">Change password</h3>
+          <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ selectedUser()?.fullName }}</p>
+        </div>
+        <button type="button" class="text-slate-400 hover:text-slate-600" (click)="closePasswordForm()">Close</button>
+      </div>
+
+      @if (passwordError()) {
+        <div class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{{ passwordError() }}</div>
+      }
+
+      <form class="space-y-4" [formGroup]="passwordForm" (ngSubmit)="submitPasswordForm()">
+        <div>
+          <label class="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">New password</label>
+          <input type="password" formControlName="password" class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />
+        </div>
+        <div>
+          <label class="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">Confirm password</label>
+          <input type="password" formControlName="confirmPassword" class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" class="rounded-xl border px-4 py-2.5 text-sm font-bold dark:border-slate-700" (click)="closePasswordForm()">Cancel</button>
+          <button type="submit" class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:opacity-60" [disabled]="passwordSaving()">
+            @if (passwordSaving()) { Saving... } @else { Update password }
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+}

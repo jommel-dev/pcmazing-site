@@ -1,0 +1,340 @@
+<section>
+  <div class="mb-6">
+    <h2 class="text-2xl font-bold text-slate-900">Lead Generation</h2>
+    <p class="mt-1 text-sm text-slate-500">
+      Manage client prospects, import lists, track responses, and schedule meetings.
+    </p>
+    @if (!fullAccess()) {
+      <p class="mt-2 text-xs font-semibold text-amber-600">Showing only prospects you picked up or are assigned to.</p>
+    }
+  </div>
+
+  <div class="mb-4 flex flex-wrap gap-2">
+    <button type="button" class="rounded-full px-4 py-2 text-sm font-bold" [class.bg-pcmazing-500]="view() === 'list'" [class.text-white]="view() === 'list'" [class.border]="view() !== 'list'" [class.border-slate-200]="view() !== 'list'" (click)="setView('list')">Prospect List</button>
+    <button type="button" class="rounded-full px-4 py-2 text-sm font-bold" [class.bg-pcmazing-500]="view() === 'calendar'" [class.text-white]="view() === 'calendar'" [class.border]="view() !== 'calendar'" [class.border-slate-200]="view() !== 'calendar'" (click)="setView('calendar')">Calendar</button>
+  </div>
+
+  @if (isSuperAdminUser() && dealSummary(); as summary) {
+    <div class="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <p class="text-xs font-bold uppercase tracking-wide text-slate-400">Estimated Project Deal</p>
+        <p class="mt-2 text-2xl font-bold text-slate-900">{{ formatDealAmount(summary.estimatedProjectDeal, 'PHP') }}</p>
+        <p class="mt-1 text-xs text-slate-500">Active pipeline (in progress prospects)</p>
+      </div>
+      <div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
+        <p class="text-xs font-bold uppercase tracking-wide text-emerald-700">Project Deal</p>
+        <p class="mt-2 text-2xl font-bold text-emerald-900">{{ formatDealAmount(summary.projectDeal, 'PHP') }}</p>
+        <p class="mt-1 text-xs text-emerald-700">Closed won total</p>
+      </div>
+      <div class="rounded-2xl border border-violet-200 bg-violet-50 p-5 shadow-sm">
+        <p class="text-xs font-bold uppercase tracking-wide text-violet-700">Commissioned</p>
+        <p class="mt-2 text-2xl font-bold text-violet-900">{{ formatDealAmount(summary.commissioned, 'PHP') }}</p>
+        <p class="mt-1 text-xs text-violet-700">Calculated from commission % on won deals</p>
+      </div>
+      <div class="rounded-2xl border border-pcmazing-200 bg-pcmazing-50 p-5 shadow-sm">
+        <p class="text-xs font-bold uppercase tracking-wide text-pcmazing-700">Total Project Deal</p>
+        <p class="mt-2 text-2xl font-bold text-pcmazing-900">{{ formatDealAmount(summary.totalProjectDeal, 'PHP') }}</p>
+        <p class="mt-1 text-xs text-pcmazing-700">Project Deal − Commissioned</p>
+      </div>
+    </div>
+  }
+
+  @if (view() === 'list') {
+    <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <form class="flex w-full max-w-md gap-2" (ngSubmit)="searchProspects()">
+        <input type="search" class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm" placeholder="Search client, company, email..." [ngModel]="search()" (ngModelChange)="search.set($event)" name="search" />
+        <button type="submit" class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white">Search</button>
+      </form>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600" (click)="openCreate()">Add Client</button>
+        <button type="button" class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50" (click)="downloadImportTemplate()">Download template</button>
+        <button type="button" class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50" [disabled]="importLoading()" (click)="importFileInput.click()">
+          @if (importLoading()) { Reading file... } @else { Import CSV }
+        </button>
+        <input #importFileInput type="file" accept=".csv,.txt,.tsv" class="hidden" (change)="onImportSelected($event)" />
+      </div>
+    </div>
+  }
+
+  @if (actionMessage()) {
+    <div class="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-700">{{ actionMessage() }}</div>
+  }
+  @if (importMessage()) {
+    <div class="mb-4 rounded-2xl border border-blue-200 bg-blue-50 px-5 py-4 text-sm text-blue-700">{{ importMessage() }}</div>
+  }
+  @if (error()) {
+    <div class="mb-4 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{{ error() }}</div>
+  }
+
+  @if (loading() && view() !== 'list') {
+    <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500">Loading...</div>
+  } @else if (loading() && view() === 'list') {
+    <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div class="border-b border-slate-200 bg-slate-50/60 px-4 py-3">
+        <div class="flex flex-wrap gap-2">
+          @for (tab of statusTabs; track tab) {
+            <button
+              type="button"
+              class="rounded-full px-4 py-2 text-sm font-bold"
+              [class.bg-pcmazing-500]="status() === tab"
+              [class.text-white]="status() === tab"
+              [class.border]="status() !== tab"
+              [class.border-slate-200]="status() !== tab"
+              [class.bg-white]="status() !== tab"
+              [class.text-slate-700]="status() !== tab"
+              (click)="setStatus(tab)"
+            >
+              {{ tabLabel(tab) }}
+            </button>
+          }
+        </div>
+      </div>
+      <div class="px-6 py-10 text-center text-sm text-slate-500">Loading...</div>
+    </div>
+  } @else if (view() === 'calendar') {
+    <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <h3 class="text-sm font-bold uppercase tracking-wide text-slate-500">This month&apos;s meetings</h3>
+      @if (appointments().length === 0) {
+        <p class="mt-4 text-sm text-slate-500">No scheduled meetings for this month.</p>
+      } @else {
+        <div class="mt-4 space-y-3">
+          @for (item of appointments(); track item.id) {
+            <div class="rounded-xl border border-slate-200 p-4">
+              <div class="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <p class="font-bold text-slate-900">{{ item.title }}</p>
+                  <p class="mt-1 text-sm text-slate-600">{{ item.clientName }}</p>
+                  <p class="mt-1 text-xs text-slate-500">{{ formatDateTime(item.startsAt) }} – {{ formatDateTime(item.endsAt) }}</p>
+                </div>
+                <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">{{ meetingTypeLabel(item.meetingType) }}</span>
+              </div>
+              <a [routerLink]="['/admin/lead-generation', item.prospectId, 'view']" class="mt-3 inline-block text-sm font-bold text-pcmazing-500">View prospect</a>
+            </div>
+          }
+        </div>
+      }
+    </div>
+  } @else if (view() === 'list') {
+    <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div class="border-b border-slate-200 bg-slate-50/60 px-4 py-3">
+        <div class="flex flex-wrap gap-2">
+          @for (tab of statusTabs; track tab) {
+            <button
+              type="button"
+              class="rounded-full px-4 py-2 text-sm font-bold"
+              [class.bg-pcmazing-500]="status() === tab"
+              [class.text-white]="status() === tab"
+              [class.border]="status() !== tab"
+              [class.border-slate-200]="status() !== tab"
+              [class.bg-white]="status() !== tab"
+              [class.text-slate-700]="status() !== tab"
+              (click)="setStatus(tab)"
+            >
+              {{ tabLabel(tab) }}
+            </button>
+          }
+        </div>
+      </div>
+
+      @if (items().length === 0) {
+        <div class="px-6 py-10 text-center text-sm text-slate-500">No client prospects found.</div>
+      } @else {
+        <table class="min-w-full divide-y divide-slate-200 text-sm">
+          <thead class="bg-slate-50">
+            <tr>
+              <th class="px-4 py-3 text-left font-bold text-slate-600">Client</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600">Client type</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600">Contact</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600">Status</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600">Assigned / Picked up</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600">Responses</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600">Follow-ups</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            @for (item of items(); track item.id) {
+              <tr class="hover:bg-slate-50">
+                <td class="px-4 py-3">
+                  <p class="font-medium text-slate-900">{{ item.clientName }}</p>
+                  <p class="text-xs text-slate-500">{{ item.company || '—' }}</p>
+                </td>
+                <td class="px-4 py-3 text-slate-600">
+                  <span class="rounded-full bg-slate-100 px-2 py-1 text-xs font-bold text-slate-700">{{ clientTypeLabel(item.clientType) }}</span>
+                </td>
+                <td class="px-4 py-3 text-slate-600">
+                  <p>{{ item.email || '—' }}</p>
+                  <p class="text-xs">{{ item.phone || '' }}</p>
+                </td>
+                <td class="px-4 py-3">
+                  <span [class]="statusClass(item.status)">{{ statusLabel(item.status) }}</span>
+                </td>
+                <td class="px-4 py-3 text-slate-600">
+                  <p>{{ item.pickedUpByName || item.assignedUserName || '—' }}</p>
+                </td>
+                <td class="px-4 py-3 text-slate-600">{{ item.responseCount }}</td>
+                <td class="px-4 py-3 text-slate-600">
+                  @if (isAvailable(item.status)) {
+                    <span class="text-xs text-slate-400">—</span>
+                  } @else if (isClosed(item.status)) {
+                    <span class="text-xs text-slate-400">—</span>
+                  } @else {
+                    <span class="text-xs font-bold" [class.text-amber-600]="item.followUpCount < item.maxFollowUps" [class.text-red-600]="item.followUpCount >= item.maxFollowUps">
+                      {{ item.followUpCount }} / {{ item.maxFollowUps }}
+                    </span>
+                  }
+                </td>
+                <td class="px-4 py-3">
+                  <div class="flex flex-wrap gap-2">
+                    @if (isAvailable(item.status)) {
+                      <a [routerLink]="['/admin/lead-generation', item.id, 'edit']" class="font-bold text-slate-700">Edit</a>
+                      <a [routerLink]="['/admin/lead-generation', item.id, 'view']" class="font-bold text-pcmazing-500">View</a>
+                      <button type="button" class="font-bold text-amber-600" (click)="pickup(item)">Pickup</button>
+                    } @else {
+                      @if (canEditItem(item)) {
+                        <a [routerLink]="['/admin/lead-generation', item.id, 'edit']" class="font-bold text-slate-700">Edit</a>
+                      }
+                      <a [routerLink]="['/admin/lead-generation', item.id, 'view']" class="font-bold text-pcmazing-500">View</a>
+                      @if (canUpdateItem(item)) {
+                        <a [routerLink]="['/admin/lead-generation', item.id, 'update']" class="font-bold text-emerald-600">Update</a>
+                      }
+                    }
+                  </div>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      }
+    </div>
+
+    @if (meta(); as pagination) {
+      <div class="mt-4 flex items-center justify-between text-sm text-slate-500">
+        <span>Page {{ pagination.page }} of {{ pagination.totalPages }} · {{ pagination.total }} total</span>
+        <div class="flex gap-2">
+          <button type="button" class="rounded-lg border px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page <= 1" (click)="goToPage(pagination.page - 1)">Previous</button>
+          <button type="button" class="rounded-lg border px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page >= pagination.totalPages" (click)="goToPage(pagination.page + 1)">Next</button>
+        </div>
+      </div>
+    }
+  }
+</section>
+
+@if (createOpen()) {
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+    <div class="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
+      <h3 class="text-lg font-bold text-slate-900">Add client prospect</h3>
+      <p class="mt-1 text-sm text-slate-500">New clients are marked as Available for pickup.</p>
+      <form class="mt-4 space-y-4" [formGroup]="createForm" (ngSubmit)="submitCreate()">
+        <div><label class="mb-1 block text-sm font-semibold">Client name</label><input type="text" formControlName="clientName" class="w-full rounded-xl border px-4 py-2.5 text-sm" /></div>
+        <div><label class="mb-1 block text-sm font-semibold">Company</label><input type="text" formControlName="company" class="w-full rounded-xl border px-4 py-2.5 text-sm" /></div>
+        <div><label class="mb-1 block text-sm font-semibold">Email</label><input type="email" formControlName="email" class="w-full rounded-xl border px-4 py-2.5 text-sm" /></div>
+        <div><label class="mb-1 block text-sm font-semibold">Phone</label><input type="text" formControlName="phone" class="w-full rounded-xl border px-4 py-2.5 text-sm" /></div>
+        <div><label class="mb-1 block text-sm font-semibold">Address</label><input type="text" formControlName="address" class="w-full rounded-xl border px-4 py-2.5 text-sm" /></div>
+        <app-prospect-deal-fields [group]="createForm" />
+        <div><label class="mb-1 block text-sm font-semibold">Notes</label><textarea formControlName="notes" rows="3" class="w-full rounded-xl border px-4 py-2.5 text-sm"></textarea></div>
+        <div class="flex justify-end gap-2">
+          <button type="button" class="rounded-xl border px-4 py-2.5 text-sm font-bold" (click)="closeCreate()">Cancel</button>
+          <button type="submit" class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white" [disabled]="saving()">Save client</button>
+        </div>
+      </form>
+    </div>
+  </div>
+}
+
+@if (importOpen() && importPreview(); as preview) {
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+    <div class="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
+      <h3 class="text-lg font-bold text-slate-900">Import preview</h3>
+      <p class="mt-1 text-sm text-slate-500">{{ preview.fileName }} — review before importing.</p>
+
+      <div class="mt-4 grid gap-3 sm:grid-cols-3">
+        <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <p class="text-xs font-bold uppercase text-slate-400">Total rows</p>
+          <p class="mt-1 text-2xl font-bold text-slate-900">{{ preview.totalDataRows }}</p>
+        </div>
+        <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+          <p class="text-xs font-bold uppercase text-emerald-700">Ready to import</p>
+          <p class="mt-1 text-2xl font-bold text-emerald-900">{{ preview.validRows }}</p>
+        </div>
+        <div class="rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <p class="text-xs font-bold uppercase text-amber-700">Skipped</p>
+          <p class="mt-1 text-2xl font-bold text-amber-900">{{ preview.skippedRows }}</p>
+        </div>
+      </div>
+
+      @if (preview.validRows === 0) {
+        <div class="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          No valid rows to import. Download the template, fix the file, and try again.
+        </div>
+      } @else {
+        <p class="mt-4 text-sm text-slate-600">
+          All imported clients will be marked as <strong>Available</strong> for pickup.
+        </p>
+      }
+
+      @if (preview.previewRows.length > 0) {
+        <div class="mt-4 overflow-x-auto rounded-xl border border-slate-200">
+          <table class="min-w-full text-sm">
+            <thead class="bg-slate-50">
+              <tr>
+                <th class="px-3 py-2 text-left font-bold text-slate-600">Client</th>
+                <th class="px-3 py-2 text-left font-bold text-slate-600">Type</th>
+                <th class="px-3 py-2 text-left font-bold text-slate-600">Contact</th>
+                <th class="px-3 py-2 text-left font-bold text-slate-600">Deal</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              @for (row of preview.previewRows; track row.rowNumber) {
+                <tr>
+                  <td class="px-3 py-2">
+                    <p class="font-medium text-slate-900">{{ row.clientName }}</p>
+                    <p class="text-xs text-slate-500">{{ row.company || '—' }}</p>
+                  </td>
+                  <td class="px-3 py-2 text-slate-600">{{ clientTypeLabel(row.clientType) }}</td>
+                  <td class="px-3 py-2 text-slate-600">
+                    <p>{{ row.email || '—' }}</p>
+                    <p class="text-xs">{{ row.phone || '' }}</p>
+                  </td>
+                  <td class="px-3 py-2 text-slate-600">
+                    @if (row.proposedPriceDeal != null) {
+                      {{ formatDealAmount(row.proposedPriceDeal, row.currency) }}
+                    } @else {
+                      —
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        @if (preview.validRows > preview.previewRows.length) {
+          <p class="mt-2 text-xs text-slate-500">Showing first {{ preview.previewRows.length }} of {{ preview.validRows }} valid rows.</p>
+        }
+      }
+
+      @if (preview.skippedDetails.length > 0) {
+        <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <p class="text-sm font-bold text-amber-900">Skipped rows</p>
+          <ul class="mt-2 space-y-1 text-sm text-amber-800">
+            @for (skip of preview.skippedDetails; track skip.rowNumber) {
+              <li>Row {{ skip.rowNumber }}: {{ skip.reason }}</li>
+            }
+          </ul>
+        </div>
+      }
+
+      <div class="mt-6 flex flex-wrap justify-end gap-2">
+        <button type="button" class="rounded-xl border px-4 py-2.5 text-sm font-bold" (click)="closeImport()" [disabled]="importLoading()">Cancel</button>
+        <button
+          type="button"
+          class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50"
+          [disabled]="importLoading() || preview.validRows === 0"
+          (click)="confirmImport()"
+        >
+          @if (importLoading()) { Importing... } @else { Import {{ preview.validRows }} client(s) }
+        </button>
+      </div>
+    </div>
+  </div>
+}

@@ -38,7 +38,7 @@ export class QuotationsPageComponent implements OnInit {
       this.items.set(response.data);
       this.meta.set(response.meta);
     } catch {
-      this.error.set('Unable to load quotations. Make sure tblquotation exists in your database.');
+      this.error.set('Unable to load quotations.');
     } finally {
       this.loading.set(false);
     }

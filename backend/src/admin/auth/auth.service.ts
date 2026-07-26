@@ -2,6 +2,8 @@ import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { DatabaseService } from '../../database/database.service';
+import { ensureUserManagementTable } from '../users/user-management.schema';
+import { AVATAR_SQL } from '../users/tblusers.util';
 import { AdminLoginDto } from './dto/admin-login.dto';
 import { AdminJwtPayload } from './guards/jwt-auth.guard';
 import { hashPasswordSha1, sha1PasswordVariants } from './password.util';
@@ -12,6 +14,7 @@ export interface AdminAuthUser {
   fullName: string;
   email: string | null;
   role: string;
+  profileImageUrl?: string | null;
   source: 'tblusers' | 'pcmazing_admin_users';
 }
 
@@ -80,6 +83,7 @@ export class AuthService {
         fullname: string | null;
         email: string | null;
         rolename: string | null;
+        avatar: string | null;
       }>(
         `SELECT
           u.id,
@@ -95,7 +99,8 @@ export class AuthService {
             to_jsonb(u)->>'emailAddress',
             to_jsonb(u)->>'email_address'
           ) AS email,
-          COALESCE(to_jsonb(r)->>'roleName', to_jsonb(r)->>'rolename', 'staff') AS rolename
+          COALESCE(to_jsonb(r)->>'roleName', to_jsonb(r)->>'rolename', 'staff') AS rolename,
+          ${AVATAR_SQL} AS avatar
         FROM tblusers u
         LEFT JOIN tblrbac r ON r.id = u."roleId"
         WHERE u.id = $1
@@ -114,9 +119,12 @@ export class AuthService {
         fullName: row.fullname ?? row.username,
         email: row.email,
         role: row.rolename ?? 'staff',
+        profileImageUrl: row.avatar,
         source: 'tblusers',
       };
     }
+
+    await ensureUserManagementTable(this.databaseService);
 
     const result = await this.databaseService.query<{
       id: number;
@@ -124,8 +132,9 @@ export class AuthService {
       full_name: string;
       email: string | null;
       role: string;
+      profile_image_url: string | null;
     }>(
-      `SELECT id, username, full_name, email, role
+      `SELECT id, username, full_name, email, role, profile_image_url
        FROM pcmazing_admin_users
        WHERE id = $1 AND is_active = TRUE
        LIMIT 1`,
@@ -143,6 +152,7 @@ export class AuthService {
       fullName: row.full_name,
       email: row.email,
       role: row.role,
+      profileImageUrl: row.profile_image_url,
       source: 'pcmazing_admin_users',
     };
   }
@@ -174,6 +184,7 @@ export class AuthService {
         fullname: string | null;
         email: string | null;
         rolename: string | null;
+        avatar: string | null;
       }>(
         `SELECT
           u.id,
@@ -189,7 +200,8 @@ export class AuthService {
             to_jsonb(u)->>'emailAddress',
             to_jsonb(u)->>'email_address'
           ) AS email,
-          COALESCE(to_jsonb(r)->>'roleName', to_jsonb(r)->>'rolename', 'staff') AS rolename
+          COALESCE(to_jsonb(r)->>'roleName', to_jsonb(r)->>'rolename', 'staff') AS rolename,
+          ${AVATAR_SQL} AS avatar
         FROM tblusers u
         LEFT JOIN tblrbac r ON r.id = u."roleId"
         WHERE LOWER(TRIM(u.username)) = LOWER(TRIM($1))
@@ -209,6 +221,7 @@ export class AuthService {
         fullName: row.fullname ?? row.username,
         email: row.email,
         role: row.rolename ?? 'staff',
+        profileImageUrl: row.avatar,
         source: 'tblusers',
       };
     } catch (error) {
@@ -228,6 +241,8 @@ export class AuthService {
       return null;
     }
 
+    await ensureUserManagementTable(this.databaseService);
+
     const passwordSha1 = hashPasswordSha1(password);
 
     const result = await this.databaseService.query<{
@@ -236,8 +251,9 @@ export class AuthService {
       full_name: string;
       email: string | null;
       role: string;
+      profile_image_url: string | null;
     }>(
-      `SELECT id, username, full_name, email, role
+      `SELECT id, username, full_name, email, role, profile_image_url
        FROM pcmazing_admin_users
        WHERE LOWER(TRIM(username)) = LOWER(TRIM($1))
          AND LOWER(TRIM(password_hash)) = LOWER(TRIM($2))
@@ -257,6 +273,7 @@ export class AuthService {
       fullName: row.full_name,
       email: row.email,
       role: row.role,
+      profileImageUrl: row.profile_image_url,
       source: 'pcmazing_admin_users',
     };
   }
