@@ -1,0 +1,36 @@
+# SPA routing + cache policy for Angular production builds.
+# Copied into dist/ via angular.json public assets.
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # Keep real files and directories as-is (hashed JS/CSS, images, version file).
+  RewriteRule ^index\.html$ - [L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule . /index.html [L]
+</IfModule>
+
+<IfModule mod_headers.c>
+  # Always revalidate the SPA shell so deploys are picked up without a hard refresh.
+  Header set Cache-Control "no-cache, no-store, must-revalidate" "expr=%{CONTENT_TYPE} =~ m#text/html#i"
+  Header set Pragma "no-cache" "expr=%{CONTENT_TYPE} =~ m#text/html#i"
+  Header set Expires "0" "expr=%{CONTENT_TYPE} =~ m#text/html#i"
+
+  # Deploy version marker must never be cached by browsers or CDN.
+  <Files "app-version.json">
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+    Header set Pragma "no-cache"
+    Header set Expires "0"
+  </Files>
+
+  # Fingerprinted bundles (outputHashing: all) can be cached long-term.
+  <FilesMatch "\.(?:js|css)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+
+  <FilesMatch "\.(?:woff2?|ttf|eot|otf|png|jpe?g|gif|webp|svg|ico)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+</IfModule>
