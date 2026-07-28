@@ -311,12 +311,12 @@ export const aboutContent = {
         bio: 'Founded PCmazing in 2026 and has been leading the company ever since.',
       },
       {
-        name: 'Jommel Cabiles',
+        name: 'JDev',
         role: 'CEO (Chief Executive Officer)',
         bio: 'Provides overall leadership and direction for PCmazing’s growth and client partnerships.',
       },
       {
-        name: 'Ronald Fernando',
+        name: 'RDev',
         role: 'COO (Chief Operating Officer)',
         bio: 'Oversees daily operations, service delivery, and business development initiatives.',
       },

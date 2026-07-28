@@ -8,6 +8,7 @@ import {
   SetupProgress,
   SetupStatus,
 } from '../../../core/services/setup-api.service';
+import { APP_CONFIG } from '../../../core/config/app-config';
 
 @Component({
   selector: 'app-setup-page',
@@ -288,6 +289,6 @@ export class SetupPageComponent implements OnInit, OnDestroy {
       }
     }
 
-    return 'Unable to reach the setup API. Make sure the backend is running on port 3000.';
+    return `Unable to reach the setup API at ${APP_CONFIG.apiUrl}. Make sure the backend is running.`;
   }
 }
