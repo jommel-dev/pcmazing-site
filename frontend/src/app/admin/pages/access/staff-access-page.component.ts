@@ -3,6 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { AdminAuthService } from '../../services/admin-auth.service';
+import { APP_CONFIG } from '../../../core/config/app-config';
 
 @Component({
   selector: 'app-staff-access-page',
@@ -60,6 +61,6 @@ export class StaffAccessPageComponent implements OnInit {
       }
     }
 
-    return 'Unable to reach the admin API. Make sure the backend is running on port 3000.';
+    return `Unable to reach the admin API at ${APP_CONFIG.apiUrl}. Make sure the backend is running.`;
   }
 }
