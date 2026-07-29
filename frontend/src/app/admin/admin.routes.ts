@@ -29,6 +29,9 @@ import { LeadProspectUpdatePageComponent } from './pages/marketing/lead-prospect
 import { OrganizationTeamPageComponent } from './pages/marketing/organization-team-page.component';
 import { EditProfilePageComponent } from './pages/profile/edit-profile-page.component';
 import { PayrollPageComponent } from './pages/payroll/payroll-page.component';
+import { ProjectsPageComponent } from './pages/projects/projects-page.component';
+import { ProjectViewPageComponent } from './pages/projects/project-view-page.component';
+import { ProjectTasksPageComponent } from './pages/projects/project-tasks-page.component';
 import { AdminModulePlaceholderPageComponent } from './pages/modules/admin-module-placeholder-page.component';
 
 export const adminRoutes: Routes = [
@@ -163,6 +166,21 @@ export const adminRoutes: Routes = [
         path: 'payroll',
         component: PayrollPageComponent,
         title: 'Payroll | PCMazing Admin',
+      },
+      {
+        path: 'projects',
+        component: ProjectsPageComponent,
+        title: 'Projects | PCMazing Admin',
+      },
+      {
+        path: 'projects/:id/tasks',
+        component: ProjectTasksPageComponent,
+        title: 'Project Tasks | PCMazing Admin',
+      },
+      {
+        path: 'projects/:id',
+        component: ProjectViewPageComponent,
+        title: 'Project Details | PCMazing Admin',
       },
       {
         path: 'lead-generation',

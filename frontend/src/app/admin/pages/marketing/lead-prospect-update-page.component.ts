@@ -1,5 +1,5 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormArray, FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { AdminApiService, ClientProspectDetail } from '../../services/admin-api.service';
@@ -12,10 +12,11 @@ import {
   hasReachedFollowUpLimit,
   isAvailableProspect,
   isAwaitingMeetingOutcome,
-  isClosedProspect,
   PROSPECT_MEETING_OUTCOME_STATUSES,
+  PROSPECT_POST_WIN_STATUSES,
   prospectStatusLabel,
 } from './prospect-status.util';
+import { formatDealAmount } from './prospect-deal.util';
 
 const MEETING_TYPES = [
   { value: 'face_to_face', label: 'Face to Face' },
@@ -48,9 +49,18 @@ export class LeadProspectUpdatePageComponent implements OnInit {
   readonly recordingOutcome = signal(false);
   readonly statusOptions = signal<Array<{ value: string; label: string }>>([]);
 
+  readonly activeModuleTab = signal(0);
+  readonly moduleDetailTab = signal<'features' | 'processFlow'>('features');
+  readonly milestoneModalOpen = signal(false);
+  readonly editingMilestoneIndex = signal<number | null>(null);
+  readonly paymentModalOpen = signal(false);
+  readonly editingPaymentIndex = signal<number | null>(null);
+  readonly paymentExceedsDeal = signal(false);
+
   readonly statusLabel = prospectStatusLabel;
   readonly followUpsRemaining = followUpsRemaining;
   readonly hasReachedFollowUpLimit = hasReachedFollowUpLimit;
+  readonly formatDealAmount = formatDealAmount;
 
   readonly updateForm = this.formBuilder.nonNullable.group({
     status: ['follow_up', [Validators.required]],
@@ -65,11 +75,41 @@ export class LeadProspectUpdatePageComponent implements OnInit {
     meetingType: ['face_to_face'],
     locationOrLink: [''],
     returnRemarks: [''],
+    projectName: [''],
+    projectType: [''],
+    signedAt: [''],
+    contractRemarks: [''],
+    contractNotes: [''],
+    contractReviewRemarks: [''],
+    responseDate: [''],
+    modules: this.formBuilder.array([this.createModuleGroup()]),
+    milestones: this.formBuilder.array([]),
+    paymentSchedule: this.formBuilder.array([]),
+  });
+
+  readonly milestoneDraft = this.formBuilder.nonNullable.group({
+    title: ['', [Validators.required]],
+    dueDate: [''],
+    description: [''],
+    connectedModuleIds: this.formBuilder.nonNullable.control<number[]>([]),
+  });
+
+  readonly paymentDraft = this.formBuilder.nonNullable.group({
+    label: ['', [Validators.required]],
+    description: [''],
+    amount: ['', [Validators.required]],
+    dueDate: [''],
+    notes: [''],
+    connectedMilestoneId: [''],
   });
 
   ngOnInit(): void {
     this.userRole.set(this.adminAuth.getStoredUser()?.role ?? '');
     void this.load();
+
+    this.updateForm.controls.status.valueChanges.subscribe((status) => {
+      this.updateContractValidators(status === 'contract_signed');
+    });
   }
 
   isFollowUpStatus(): boolean {
@@ -92,6 +132,282 @@ export class LeadProspectUpdatePageComponent implements OnInit {
     return this.recordingOutcome() && this.updateForm.controls.status.value === 'pending_decision';
   }
 
+  isContractSignedStatus(): boolean {
+    return this.updateForm.controls.status.value === 'contract_signed';
+  }
+
+  isContractUnderReviewStatus(): boolean {
+    return this.updateForm.controls.status.value === 'contract_under_review';
+  }
+
+  updateContractValidators(isContractSigned: boolean): void {
+    const projectNameControl = this.updateForm.controls.projectName;
+    const projectTypeControl = this.updateForm.controls.projectType;
+    const signedAtControl = this.updateForm.controls.signedAt;
+
+    if (isContractSigned) {
+      projectNameControl.setValidators([Validators.required]);
+      projectTypeControl.setValidators([Validators.required]);
+      signedAtControl.setValidators([Validators.required]);
+    } else {
+      projectNameControl.clearValidators();
+      projectTypeControl.clearValidators();
+      signedAtControl.clearValidators();
+    }
+
+    projectNameControl.updateValueAndValidity();
+    projectTypeControl.updateValueAndValidity();
+    signedAtControl.updateValueAndValidity();
+  }
+
+  get modulesForm(): FormArray {
+    return this.updateForm.controls.modules;
+  }
+
+  get milestonesForm(): FormArray {
+    return this.updateForm.controls.milestones;
+  }
+
+  get paymentScheduleForm(): FormArray {
+    return this.updateForm.controls.paymentSchedule;
+  }
+
+  modulesControls() {
+    return this.modulesForm.controls as FormGroup[];
+  }
+
+  milestonesControls() {
+    return this.milestonesForm.controls as FormGroup[];
+  }
+
+  paymentScheduleControls() {
+    return this.paymentScheduleForm.controls as FormGroup[];
+  }
+
+  moduleTabLabel(index: number): string {
+    const name = String(this.modulesForm.at(index)?.get('name')?.value ?? '').trim();
+    return name || `Module ${index + 1}`;
+  }
+
+  selectModuleTab(index: number): void {
+    this.activeModuleTab.set(index);
+    this.moduleDetailTab.set('features');
+  }
+
+  setModuleDetailTab(tab: 'features' | 'processFlow'): void {
+    this.moduleDetailTab.set(tab);
+  }
+
+  proposedDealAmount(item: ClientProspectDetail): number {
+    return item.estimatedPriceDealPhp || item.proposedPriceDeal || 0;
+  }
+
+  paymentTotal(): number {
+    return this.paymentScheduleForm.controls.reduce(
+      (sum, control) => sum + (Number(control.get('amount')?.value) || 0),
+      0,
+    );
+  }
+
+  checkPaymentTotal(): void {
+    const prospect = this.prospect();
+    if (!prospect) {
+      this.paymentExceedsDeal.set(false);
+      return;
+    }
+
+    const proposedDeal = prospect.estimatedPriceDealPhp || prospect.proposedPriceDeal || 0;
+    const totalPayments = this.paymentTotal();
+    this.paymentExceedsDeal.set(totalPayments > proposedDeal);
+  }
+
+  addModule(): void {
+    this.modulesForm.push(this.createModuleGroup());
+    this.activeModuleTab.set(this.modulesForm.length - 1);
+    this.moduleDetailTab.set('features');
+  }
+
+  removeModule(index: number): void {
+    if (this.modulesForm.length <= 1) {
+      return;
+    }
+
+    this.modulesForm.removeAt(index);
+    this.reindexMilestoneModuleLinks(index);
+    const nextTab = Math.min(this.activeModuleTab(), this.modulesForm.length - 1);
+    this.activeModuleTab.set(Math.max(0, nextTab));
+  }
+
+  openAddMilestoneModal(): void {
+    this.editingMilestoneIndex.set(null);
+    this.milestoneDraft.reset({
+      title: '',
+      dueDate: '',
+      description: '',
+      connectedModuleIds: [],
+    });
+    this.milestoneModalOpen.set(true);
+  }
+
+  openEditMilestoneModal(index: number): void {
+    const control = this.milestonesForm.at(index);
+    if (!control) {
+      return;
+    }
+
+    this.editingMilestoneIndex.set(index);
+    this.milestoneDraft.reset({
+      title: String(control.get('title')?.value ?? ''),
+      dueDate: String(control.get('dueDate')?.value ?? ''),
+      description: String(control.get('description')?.value ?? ''),
+      connectedModuleIds: this.parseModuleIds(control.get('connectedModuleId')?.value),
+    });
+    this.milestoneModalOpen.set(true);
+  }
+
+  closeMilestoneModal(): void {
+    this.milestoneModalOpen.set(false);
+    this.editingMilestoneIndex.set(null);
+  }
+
+  saveMilestoneModal(): void {
+    if (this.milestoneDraft.invalid) {
+      this.milestoneDraft.markAllAsTouched();
+      return;
+    }
+
+    const value = this.milestoneDraft.getRawValue();
+    const group = this.createMilestoneGroup({
+      title: value.title.trim(),
+      description: value.description,
+      dueDate: value.dueDate,
+      connectedModuleId: value.connectedModuleIds.join(','),
+    });
+
+    const editIndex = this.editingMilestoneIndex();
+    if (editIndex === null) {
+      this.milestonesForm.push(group);
+    } else {
+      this.milestonesForm.setControl(editIndex, group);
+    }
+
+    this.closeMilestoneModal();
+  }
+
+  removeMilestone(index: number): void {
+    this.milestonesForm.removeAt(index);
+    this.reindexPaymentMilestoneLinks(index);
+  }
+
+  isModuleLinked(moduleIndex: number): boolean {
+    return this.milestoneDraft.controls.connectedModuleIds.value.includes(moduleIndex);
+  }
+
+  toggleModuleLink(moduleIndex: number): void {
+    const current = [...this.milestoneDraft.controls.connectedModuleIds.value];
+    const existing = current.indexOf(moduleIndex);
+    if (existing >= 0) {
+      current.splice(existing, 1);
+    } else {
+      current.push(moduleIndex);
+    }
+    this.milestoneDraft.controls.connectedModuleIds.setValue(current.sort((a, b) => a - b));
+  }
+
+  milestonePhaseLabel(index: number): string {
+    const title = String(this.milestonesForm.at(index)?.get('title')?.value ?? '').trim();
+    return title || `Milestone ${index + 1}`;
+  }
+
+  milestoneModuleNames(index: number): string[] {
+    const ids = this.parseModuleIds(this.milestonesForm.at(index)?.get('connectedModuleId')?.value);
+    return ids.map((moduleIndex) => this.moduleTabLabel(moduleIndex));
+  }
+
+  openAddPaymentModal(): void {
+    this.editingPaymentIndex.set(null);
+    this.paymentDraft.reset({
+      label: '',
+      description: '',
+      amount: '',
+      dueDate: '',
+      notes: '',
+      connectedMilestoneId: '',
+    });
+    this.paymentModalOpen.set(true);
+  }
+
+  openEditPaymentModal(index: number): void {
+    const control = this.paymentScheduleForm.at(index);
+    if (!control) {
+      return;
+    }
+
+    this.editingPaymentIndex.set(index);
+    this.paymentDraft.reset({
+      label: String(control.get('label')?.value ?? ''),
+      description: String(control.get('description')?.value ?? ''),
+      amount: String(control.get('amount')?.value ?? ''),
+      dueDate: String(control.get('dueDate')?.value ?? ''),
+      notes: String(control.get('notes')?.value ?? ''),
+      connectedMilestoneId: String(control.get('connectedMilestoneId')?.value ?? ''),
+    });
+    this.paymentModalOpen.set(true);
+  }
+
+  closePaymentModal(): void {
+    this.paymentModalOpen.set(false);
+    this.editingPaymentIndex.set(null);
+  }
+
+  savePaymentModal(): void {
+    if (this.paymentDraft.invalid) {
+      this.paymentDraft.markAllAsTouched();
+      return;
+    }
+
+    const value = this.paymentDraft.getRawValue();
+    const group = this.createPaymentScheduleGroup({
+      label: value.label.trim(),
+      description: value.description,
+      amount: Number(value.amount),
+      dueDate: value.dueDate,
+      notes: value.notes,
+      connectedMilestoneId: value.connectedMilestoneId,
+    });
+
+    const editIndex = this.editingPaymentIndex();
+    if (editIndex === null) {
+      this.paymentScheduleForm.push(group);
+    } else {
+      this.paymentScheduleForm.setControl(editIndex, group);
+    }
+
+    this.checkPaymentTotal();
+    this.closePaymentModal();
+  }
+
+  removePaymentSchedule(index: number): void {
+    this.paymentScheduleForm.removeAt(index);
+    this.checkPaymentTotal();
+  }
+
+  paymentMilestoneLabel(index: number): string {
+    const linked = String(this.paymentScheduleForm.at(index)?.get('connectedMilestoneId')?.value ?? '');
+    if (linked === '') {
+      return 'No milestone linked';
+    }
+    const milestoneIndex = Number(linked);
+    if (!Number.isInteger(milestoneIndex) || milestoneIndex < 0) {
+      return 'No milestone linked';
+    }
+    return `Phase ${milestoneIndex + 1}: ${this.milestonePhaseLabel(milestoneIndex)}`;
+  }
+
+  paymentAmount(index: number): number {
+    return Number(this.paymentScheduleForm.at(index)?.get('amount')?.value) || 0;
+  }
+
   private todayIsoDate(): string {
     return new Date().toISOString().slice(0, 10);
   }
@@ -99,6 +415,14 @@ export class LeadProspectUpdatePageComponent implements OnInit {
   private refreshStatusOptions(item: ClientProspectDetail): void {
     if (this.recordingOutcome()) {
       this.statusOptions.set([...PROSPECT_MEETING_OUTCOME_STATUSES]);
+      return;
+    }
+    if (item.status === 'closed_won') {
+      this.statusOptions.set([...PROSPECT_POST_WIN_STATUSES]);
+      return;
+    }
+    if (item.status === 'contract_under_review') {
+      this.statusOptions.set([{ value: 'contract_signed', label: 'Contract Signed' }]);
       return;
     }
     this.statusOptions.set(buildProgressStatusOptions(item.followUpCount, item.maxFollowUps));
@@ -117,16 +441,26 @@ export class LeadProspectUpdatePageComponent implements OnInit {
 
       if (isAvailableProspect(item.status)) {
         this.error.set('Pick up this prospect before updating progress.');
-      } else if (isClosedProspect(item.status)) {
-        this.error.set('This prospect is already closed.');
       } else if (!canUpdateProspect(item.status, this.userRole())) {
         if (isAwaitingMeetingOutcome(item.status)) {
           this.error.set('Meeting is scheduled. View this prospect and wait for an admin to record the meeting outcome.');
+        } else if (item.status === 'contract_signed') {
+          this.error.set('This contract is already signed.');
         } else {
           this.error.set('This prospect cannot be updated.');
         }
       } else if (this.recordingOutcome()) {
         this.updateForm.patchValue({ status: 'closed_won' });
+      } else if (item.status === 'closed_won' || item.status === 'contract_under_review') {
+        this.updateForm.patchValue({
+          status: 'contract_signed',
+          projectName: item.contract?.projectName ?? '',
+          projectType: item.contract?.projectType ?? '',
+          signedAt: item.contract?.signedAt ?? this.todayIsoDate(),
+          contractRemarks: item.contract?.remarks ?? '',
+        });
+        this.resetContractArrays(item);
+        this.checkPaymentTotal();
       } else if (!hasReachedFollowUpLimit(item.followUpCount, item.maxFollowUps)) {
         this.updateForm.patchValue({ status: 'follow_up' });
       }
@@ -189,6 +523,11 @@ export class LeadProspectUpdatePageComponent implements OnInit {
       return;
     }
 
+    if (value.status === 'contract_signed' && !this.isContractFormValid()) {
+      this.updateForm.markAllAsTouched();
+      return;
+    }
+
     this.saving.set(true);
     this.error.set('');
     try {
@@ -213,6 +552,39 @@ export class LeadProspectUpdatePageComponent implements OnInit {
         payload.endsAt = this.toIso(value.date, value.endTime);
         payload.meetingType = value.meetingType;
         payload.locationOrLink = value.locationOrLink || undefined;
+      } else if (value.status === 'contract_under_review') {
+        payload.contractReviewRemarks = value.contractReviewRemarks || undefined;
+        payload.responseDate = value.responseDate || undefined;
+      } else if (value.status === 'contract_signed') {
+        payload.contract = {
+          projectName: value.projectName.trim(),
+          projectType: value.projectType.trim(),
+          signedAt: value.signedAt || undefined,
+          remarks: value.contractRemarks || undefined,
+          modules: this.modulesForm.controls.map((control) => ({
+            name: String(control.get('name')?.value ?? '').trim(),
+            description: this.optionalText(control.get('description')?.value),
+            features: this.optionalText(control.get('features')?.value),
+            processFlow: this.optionalText(control.get('processFlow')?.value),
+          })),
+          milestones: this.milestonesForm.controls.map((control) => ({
+            title: String(control.get('title')?.value ?? '').trim(),
+            description: this.optionalText(control.get('description')?.value),
+            dueDate: this.optionalText(control.get('dueDate')?.value),
+            connectedModuleId: this.optionalText(control.get('connectedModuleId')?.value),
+          })),
+          paymentSchedule: this.paymentScheduleForm.controls.map((control) => ({
+            label: String(control.get('label')?.value ?? '').trim(),
+            amount: Number(control.get('amount')?.value),
+            description: this.optionalText(control.get('description')?.value),
+            dueDate: this.optionalText(control.get('dueDate')?.value),
+            notes: this.optionalText(control.get('notes')?.value),
+            connectedMilestoneId: this.optionalText(control.get('connectedMilestoneId')?.value),
+          })),
+        };
+        if (value.contractNotes?.trim()) {
+          payload.notes = value.contractNotes.trim();
+        }
       }
 
       await firstValueFrom(this.adminApi.updateClientProspectStatus(item.id, payload));
@@ -232,5 +604,179 @@ export class LeadProspectUpdatePageComponent implements OnInit {
 
   private toIso(date: string, time: string): string {
     return new Date(`${date}T${time}:00`).toISOString();
+  }
+
+  private createModuleGroup(value?: {
+    name?: string;
+    description?: string | null;
+    features?: string | null;
+    processFlow?: string | null;
+  }) {
+    return this.formBuilder.group({
+      name: [value?.name ?? '', [Validators.required]],
+      description: [value?.description ?? ''],
+      features: [value?.features ?? ''],
+      processFlow: [value?.processFlow ?? ''],
+    });
+  }
+
+  private createMilestoneGroup(value?: {
+    title?: string;
+    description?: string | null;
+    dueDate?: string | null;
+    connectedModuleId?: string | null;
+  }) {
+    return this.formBuilder.group({
+      title: [value?.title ?? '', [Validators.required]],
+      description: [value?.description ?? ''],
+      dueDate: [value?.dueDate ?? ''],
+      connectedModuleId: [value?.connectedModuleId ?? ''],
+    });
+  }
+
+  private createPaymentScheduleGroup(value?: {
+    label?: string;
+    description?: string | null;
+    amount?: number | null;
+    dueDate?: string | null;
+    notes?: string | null;
+    connectedMilestoneId?: string | null;
+  }) {
+    return this.formBuilder.group({
+      label: [value?.label ?? '', [Validators.required]],
+      description: [value?.description ?? ''],
+      amount: [value?.amount != null ? String(value.amount) : '', [Validators.required]],
+      dueDate: [value?.dueDate ?? ''],
+      notes: [value?.notes ?? ''],
+      connectedMilestoneId: [value?.connectedMilestoneId ?? ''],
+    });
+  }
+
+  private resetContractArrays(item: ClientProspectDetail): void {
+    this.modulesForm.clear();
+    this.milestonesForm.clear();
+    this.paymentScheduleForm.clear();
+
+    const contract = item.contract;
+    const modules = contract?.modules?.length ? contract.modules : [undefined];
+
+    for (const module of modules) {
+      this.modulesForm.push(this.createModuleGroup(module));
+    }
+    for (const milestone of contract?.milestones ?? []) {
+      this.milestonesForm.push(this.createMilestoneGroup(milestone));
+    }
+    for (const payment of contract?.paymentSchedule ?? []) {
+      this.paymentScheduleForm.push(this.createPaymentScheduleGroup(payment));
+    }
+
+    this.activeModuleTab.set(0);
+    this.moduleDetailTab.set('features');
+  }
+
+  private parseModuleIds(value: unknown): number[] {
+    if (value === null || value === undefined || value === '') {
+      return [];
+    }
+
+    return String(value)
+      .split(',')
+      .map((part) => Number(part.trim()))
+      .filter((part) => Number.isInteger(part) && part >= 0);
+  }
+
+  private reindexMilestoneModuleLinks(removedModuleIndex: number): void {
+    for (const control of this.milestonesForm.controls) {
+      const ids = this.parseModuleIds(control.get('connectedModuleId')?.value)
+        .filter((id) => id !== removedModuleIndex)
+        .map((id) => (id > removedModuleIndex ? id - 1 : id));
+      control.get('connectedModuleId')?.setValue(ids.join(','));
+    }
+  }
+
+  private reindexPaymentMilestoneLinks(removedMilestoneIndex: number): void {
+    for (const control of this.paymentScheduleForm.controls) {
+      const linked = control.get('connectedMilestoneId')?.value;
+      if (linked === '' || linked === null || linked === undefined) {
+        continue;
+      }
+      const index = Number(linked);
+      if (!Number.isInteger(index)) {
+        continue;
+      }
+      if (index === removedMilestoneIndex) {
+        control.get('connectedMilestoneId')?.setValue('');
+      } else if (index > removedMilestoneIndex) {
+        control.get('connectedMilestoneId')?.setValue(String(index - 1));
+      }
+    }
+  }
+
+  private isContractFormValid(): boolean {
+    const value = this.updateForm.getRawValue();
+
+    if (!value.projectName.trim() || !value.projectType.trim()) {
+      this.error.set('Project name and project type are required.');
+      return false;
+    }
+
+    if (!value.signedAt) {
+      this.error.set('Signed date is required.');
+      return false;
+    }
+
+    if (
+      this.modulesForm.length === 0
+      || this.milestonesForm.length === 0
+      || this.paymentScheduleForm.length === 0
+    ) {
+      this.error.set('Add at least one module, milestone, and payment schedule item.');
+      return false;
+    }
+
+    for (const control of this.modulesForm.controls) {
+      const name = String(control.get('name')?.value ?? '').trim();
+      if (!name) {
+        this.error.set('Each module needs a name.');
+        return false;
+      }
+    }
+
+    for (const control of this.milestonesForm.controls) {
+      const title = String(control.get('title')?.value ?? '').trim();
+      if (!title) {
+        this.error.set('Each milestone needs a title.');
+        return false;
+      }
+    }
+
+    for (const control of this.paymentScheduleForm.controls) {
+      const label = String(control.get('label')?.value ?? '').trim();
+      const amount = this.parseOptionalNumber(control.get('amount')?.value);
+      if (!label || amount === null) {
+        this.error.set('Each payment schedule row needs a label and amount.');
+        return false;
+      }
+    }
+
+    if (this.paymentExceedsDeal()) {
+      this.error.set('Total payments exceed proposed deal amount.');
+      return false;
+    }
+
+    return true;
+  }
+
+  private parseOptionalNumber(value: unknown): number | null {
+    if (value === '' || value === null || value === undefined) {
+      return null;
+    }
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  private optionalText(value: unknown): string | undefined {
+    const text = String(value ?? '').trim();
+    return text ? text : undefined;
   }
 }

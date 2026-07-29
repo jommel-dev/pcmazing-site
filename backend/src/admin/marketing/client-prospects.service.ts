@@ -74,6 +74,36 @@ export interface ClientProspectDetail extends ClientProspectListItem {
   address: string | null;
   notes: string | null;
   assignedTeamId: number | null;
+  contract: {
+    id: number;
+    projectName: string;
+    projectType: string;
+    signedAt: string | null;
+    remarks: string | null;
+    modules: Array<{
+      id: number;
+      name: string;
+      description: string | null;
+      features: string | null;
+      processFlow: string | null;
+    }>;
+    milestones: Array<{
+      id: number;
+      title: string;
+      description: string | null;
+      dueDate: string | null;
+      connectedModuleId: string | null;
+    }>;
+    paymentSchedule: Array<{
+      id: number;
+      label: string;
+      amount: number;
+      description: string | null;
+      dueDate: string | null;
+      notes: string | null;
+      connectedMilestoneId: string | null;
+    }>;
+  } | null;
   responses: Array<{
     id: number;
     userId: number;
@@ -300,6 +330,7 @@ export class ClientProspectsService {
        ORDER BY starts_at ASC`,
       [id],
     );
+    const contract = await this.loadProspectContract(id);
 
     const userNames = await this.loadUserNames([
       header.assigned_user_id,
@@ -313,6 +344,7 @@ export class ClientProspectsService {
       address: header.address,
       notes: header.notes,
       assignedTeamId: header.assigned_team_id,
+      contract,
       responses: responses.rows.map((row) => ({
         id: row.id,
         userId: row.user_id,
@@ -418,8 +450,8 @@ export class ClientProspectsService {
     const effectiveRole = await this.resolveUserRole(userId, userRole);
     const prospect = await this.getProspectHeader(id);
 
-    if (prospect.status === 'closed_lost') {
-      throw new BadRequestException('Closed lost prospects cannot be edited.');
+    if (['closed_lost', 'contract_signed'].includes(prospect.status)) {
+      throw new BadRequestException('This prospect can no longer be edited.');
     }
 
     if (prospect.status === 'closed_won') {
@@ -518,15 +550,15 @@ export class ClientProspectsService {
     }>(
       `SELECT
         COALESCE(SUM(CASE
-          WHEN p.status NOT IN ('closed_won', 'closed_lost', 'available') THEN ${dealPhpSql}
+          WHEN p.status NOT IN ('closed_won', 'contract_signed', 'closed_lost', 'available') THEN ${dealPhpSql}
           ELSE 0
         END), 0)::text AS estimated_project_deal,
         COALESCE(SUM(CASE
-          WHEN p.status = 'closed_won' THEN ${dealPhpSql}
+          WHEN p.status IN ('closed_won', 'contract_signed') THEN ${dealPhpSql}
           ELSE 0
         END), 0)::text AS project_deal,
         COALESCE(SUM(CASE
-          WHEN p.status = 'closed_won' THEN ${dealPhpSql} * COALESCE(p.commission_percent, 0) / 100.0
+          WHEN p.status IN ('closed_won', 'contract_signed') THEN ${dealPhpSql} * COALESCE(p.commission_percent, 0) / 100.0
           ELSE 0
         END), 0)::text AS commissioned_total
        FROM pcmazing_client_prospects p`,
@@ -711,8 +743,28 @@ export class ClientProspectsService {
       throw new BadRequestException('Pick up this prospect before updating progress.');
     }
 
-    if (['closed_won', 'closed_lost'].includes(prospect.status)) {
+    if (['closed_lost', 'contract_signed'].includes(prospect.status)) {
       throw new BadRequestException('This prospect is already closed.');
+    }
+
+    if (prospect.status === 'closed_won' || prospect.status === 'contract_under_review') {
+      if (!hasAdminMeetingOutcomeAccess(effectiveRole)) {
+        throw new ForbiddenException('Only Admin can update contract progress for a won prospect.');
+      }
+
+      if (prospect.status === 'closed_won' && dto.status === 'contract_under_review') {
+        return this.recordContractUnderReview(id, dto, userId, effectiveRole);
+      }
+
+      if (dto.status === 'contract_signed') {
+        return this.recordContractSigned(id, dto, userId, effectiveRole, prospect);
+      }
+
+      throw new BadRequestException(
+        prospect.status === 'closed_won'
+          ? 'Closed won prospects can move to Contract Under Review or Contract Signed.'
+          : 'Contract under review prospects can only move to Contract Signed.',
+      );
     }
 
     if (prospect.status === 'meeting_set') {
@@ -949,6 +1001,219 @@ export class ClientProspectsService {
     );
 
     return this.getById(id, userId, effectiveRole);
+  }
+
+  private async recordContractUnderReview(
+    id: number,
+    dto: UpdateClientProspectStatusDto,
+    userId: number,
+    effectiveRole: string | undefined,
+  ) {
+    const reviewNotes = [
+      dto.contractReviewRemarks?.trim() || null,
+      dto.responseDate ? `Expected response: ${dto.responseDate}` : null,
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    await this.databaseService.withTransaction(async (client) => {
+      await client.query(
+        `INSERT INTO pcmazing_client_responses (
+          prospect_id, user_id, response_type, notes, outcome, remarks, follow_up_date
+        ) VALUES ($1, $2, 'other', $3, $4, $5, $6::date)`,
+        [
+          id,
+          userId,
+          reviewNotes || dto.notes?.trim() || null,
+          'Contract Under Review',
+          dto.contractReviewRemarks?.trim() || null,
+          dto.responseDate ?? null,
+        ],
+      );
+
+      await client.query(
+        `UPDATE pcmazing_client_prospects
+         SET status = 'contract_under_review',
+             updated_at = NOW()
+         WHERE id = $1`,
+        [id],
+      );
+    });
+
+    return this.getById(id, userId, effectiveRole);
+  }
+
+  private async recordContractSigned(
+    id: number,
+    dto: UpdateClientProspectStatusDto,
+    userId: number,
+    effectiveRole: string | undefined,
+    prospect: { estimated_price_deal_php: string | null; proposed_price_deal: string | null },
+  ) {
+    if (!dto.contract) {
+      throw new BadRequestException('Contract details are required when marking a prospect as contract signed.');
+    }
+
+    const contract = dto.contract;
+
+    const proposedDeal =
+      this.toNullableNumber(prospect.estimated_price_deal_php)
+      ?? this.toNullableNumber(prospect.proposed_price_deal)
+      ?? 0;
+    const totalPayments = contract.paymentSchedule.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+    if (proposedDeal > 0 && totalPayments > proposedDeal) {
+      throw new BadRequestException('Total payments cannot exceed the proposed deal amount.');
+    }
+
+    await this.databaseService.withTransaction(async (client) => {
+      await client.query(
+        `INSERT INTO pcmazing_client_responses (prospect_id, user_id, response_type, notes, outcome, remarks)
+         VALUES ($1, $2, 'other', $3, $4, $5)`,
+        [
+          id,
+          userId,
+          contract.remarks?.trim() || dto.notes?.trim() || null,
+          'Contract Signed',
+          contract.remarks?.trim() || null,
+        ],
+      );
+
+      const contractResult = await client.query<{ id: number }>(
+        `INSERT INTO pcmazing_client_contracts (
+          prospect_id,
+          system_name,
+          system_type,
+          signed_at,
+          remarks,
+          created_by_user_id,
+          updated_by_user_id
+        ) VALUES ($1, $2, $3, $4::date, $5, $6, $6)
+        ON CONFLICT (prospect_id) DO UPDATE
+        SET system_name = EXCLUDED.system_name,
+            system_type = EXCLUDED.system_type,
+            signed_at = EXCLUDED.signed_at,
+            remarks = EXCLUDED.remarks,
+            updated_by_user_id = EXCLUDED.updated_by_user_id,
+            updated_at = NOW()
+        RETURNING id`,
+        [
+          id,
+          contract.projectName.trim(),
+          contract.projectType.trim(),
+          contract.signedAt ?? null,
+          contract.remarks?.trim() || null,
+          userId,
+        ],
+      );
+
+      const contractId = contractResult.rows[0]?.id;
+      if (!contractId) {
+        throw new BadRequestException('Unable to save contract details.');
+      }
+
+      await client.query(`DELETE FROM pcmazing_client_contract_modules WHERE contract_id = $1`, [contractId]);
+      await client.query(`DELETE FROM pcmazing_client_contract_milestones WHERE contract_id = $1`, [contractId]);
+      await client.query(`DELETE FROM pcmazing_client_contract_payment_schedules WHERE contract_id = $1`, [contractId]);
+
+      for (const [index, module] of contract.modules.entries()) {
+        await client.query(
+          `INSERT INTO pcmazing_client_contract_modules (
+            contract_id, prospect_id, sort_order, module_name, description, features, process_flow
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            contractId,
+            id,
+            index,
+            module.name.trim(),
+            module.description?.trim() || null,
+            module.features?.trim() || null,
+            module.processFlow?.trim() || null,
+          ],
+        );
+      }
+
+      const milestoneIds: number[] = [];
+      for (const [index, milestone] of contract.milestones.entries()) {
+        const connectedModuleSortOrders = this.normalizeLinkedSortOrders(milestone.connectedModuleId);
+        const milestoneResult = await client.query<{ id: number }>(
+          `INSERT INTO pcmazing_client_contract_milestones (
+            contract_id, prospect_id, sort_order, title, description, due_date, connected_module_sort_order
+          ) VALUES ($1, $2, $3, $4, $5, $6::date, $7)
+          RETURNING id`,
+          [
+            contractId,
+            id,
+            index,
+            milestone.title.trim(),
+            milestone.description?.trim() || null,
+            milestone.dueDate ?? null,
+            connectedModuleSortOrders,
+          ],
+        );
+        milestoneIds.push(milestoneResult.rows[0]?.id ?? 0);
+      }
+
+      for (const [index, payment] of contract.paymentSchedule.entries()) {
+        const connectedMilestoneSortOrder = this.parseLinkedSortOrder(payment.connectedMilestoneId);
+        const milestoneId =
+          connectedMilestoneSortOrder !== null ? milestoneIds[connectedMilestoneSortOrder] ?? null : null;
+
+        await client.query(
+          `INSERT INTO pcmazing_client_contract_payment_schedules (
+            contract_id, prospect_id, sort_order, label, amount, description, due_date, notes, milestone_id
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7::date, $8, $9)`,
+          [
+            contractId,
+            id,
+            index,
+            payment.label.trim(),
+            payment.amount,
+            payment.description?.trim() || null,
+            payment.dueDate ?? null,
+            payment.notes?.trim() || null,
+            milestoneId,
+          ],
+        );
+      }
+
+      await client.query(
+        `UPDATE pcmazing_client_prospects
+         SET status = 'contract_signed',
+             updated_at = NOW()
+         WHERE id = $1`,
+        [id],
+      );
+    });
+
+    return this.getById(id, userId, effectiveRole);
+  }
+
+  private parseLinkedSortOrder(value?: string | null): number | null {
+    if (value === undefined || value === null || value === '') {
+      return null;
+    }
+    const first = String(value).split(',')[0]?.trim();
+    const parsed = Number(first);
+    return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
+  }
+
+  private normalizeLinkedSortOrders(value?: string | null): string | null {
+    if (value === undefined || value === null || value === '') {
+      return null;
+    }
+
+    const orders = String(value)
+      .split(',')
+      .map((part) => part.trim())
+      .filter((part) => part !== '')
+      .map((part) => Number(part))
+      .filter((part) => Number.isInteger(part) && part >= 0);
+
+    if (!orders.length) {
+      return null;
+    }
+
+    return [...new Set(orders)].join(',');
   }
 
   async addResponse(
@@ -1283,13 +1548,121 @@ export class ClientProspectsService {
     return row;
   }
 
+  private async loadProspectContract(prospectId: number): Promise<ClientProspectDetail['contract']> {
+    const contractResult = await this.databaseService.query<{
+      id: number;
+      system_name: string;
+      system_type: string;
+      signed_at: string | null;
+      remarks: string | null;
+    }>(
+      `SELECT id, system_name, system_type, signed_at::text, remarks
+       FROM pcmazing_client_contracts
+       WHERE prospect_id = $1
+       LIMIT 1`,
+      [prospectId],
+    );
+
+    const contractRow = contractResult.rows[0];
+    if (!contractRow) {
+      return null;
+    }
+
+    const [modulesResult, milestonesResult, paymentScheduleResult] = await Promise.all([
+      this.databaseService.query<{
+        id: number;
+        module_name: string;
+        description: string | null;
+        features: string | null;
+        process_flow: string | null;
+      }>(
+        `SELECT id, module_name, description, features, process_flow
+         FROM pcmazing_client_contract_modules
+         WHERE contract_id = $1
+         ORDER BY sort_order ASC, id ASC`,
+        [contractRow.id],
+      ),
+      this.databaseService.query<{
+        id: number;
+        title: string;
+        description: string | null;
+        due_date: string | null;
+        connected_module_sort_order: string | number | null;
+        sort_order: number;
+      }>(
+        `SELECT id, title, description, due_date::text, connected_module_sort_order, sort_order
+         FROM pcmazing_client_contract_milestones
+         WHERE contract_id = $1
+         ORDER BY sort_order ASC, id ASC`,
+        [contractRow.id],
+      ),
+      this.databaseService.query<{
+        id: number;
+        label: string;
+        amount: string;
+        description: string | null;
+        due_date: string | null;
+        notes: string | null;
+        milestone_id: number | null;
+      }>(
+        `SELECT id, label, amount::text, description, due_date::text, notes, milestone_id
+         FROM pcmazing_client_contract_payment_schedules
+         WHERE contract_id = $1
+         ORDER BY sort_order ASC, id ASC`,
+        [contractRow.id],
+      ),
+    ]);
+
+    const milestoneSortOrderById = new Map<number, number>();
+    milestonesResult.rows.forEach((row) => {
+      milestoneSortOrderById.set(row.id, row.sort_order);
+    });
+
+    return {
+      id: contractRow.id,
+      projectName: contractRow.system_name,
+      projectType: contractRow.system_type,
+      signedAt: contractRow.signed_at,
+      remarks: contractRow.remarks,
+      modules: modulesResult.rows.map((row) => ({
+        id: row.id,
+        name: row.module_name,
+        description: row.description,
+        features: row.features,
+        processFlow: row.process_flow,
+      })),
+      milestones: milestonesResult.rows.map((row) => ({
+        id: row.id,
+        title: row.title,
+        description: row.description,
+        dueDate: row.due_date,
+        connectedModuleId:
+          row.connected_module_sort_order !== null && row.connected_module_sort_order !== undefined
+            ? String(row.connected_module_sort_order)
+            : null,
+      })),
+      paymentSchedule: paymentScheduleResult.rows.map((row) => ({
+        id: row.id,
+        label: row.label,
+        amount: Number(row.amount),
+        description: row.description,
+        dueDate: row.due_date,
+        notes: row.notes,
+        connectedMilestoneId:
+          row.milestone_id != null && milestoneSortOrderById.has(row.milestone_id)
+            ? String(milestoneSortOrderById.get(row.milestone_id))
+            : null,
+      })),
+    };
+  }
+
   private mapStatusToResponseType(status: string): string {
     if (status === 'follow_up') return 'follow_up';
     if (status === 'emailed') return 'email';
     if (status === 'texted') return 'sms';
     if (status === 'meeting_set' || status === 'met') return 'meeting';
     if (status === 'called' || status === 'no_response') return 'call';
-    if (status === 'closed_won' || status === 'closed_lost') return 'other';
+    if (status === 'closed_won' || status === 'contract_signed' || status === 'closed_lost') return 'other';
     return 'other';
   }
 
@@ -1303,6 +1676,7 @@ export class ClientProspectsService {
       follow_up: 'Follow-up',
       meeting_set: 'Meeting Scheduled',
       closed_won: 'Win',
+      contract_signed: 'Contract Signed',
       closed_lost: 'Loss',
       return_to_available: 'Returned to Available',
     };

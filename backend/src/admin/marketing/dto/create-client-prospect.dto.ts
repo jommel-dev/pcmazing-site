@@ -31,6 +31,6 @@ export class CreateClientProspectDto extends ProspectDealFieldsDto {
   notes?: string;
 
   @IsOptional()
-  @IsIn(['available', 'picked_up', 'called', 'texted', 'emailed', 'met', 'no_response', 'meeting_set', 'closed_won', 'closed_lost'])
+  @IsIn(['available', 'picked_up', 'called', 'texted', 'emailed', 'met', 'no_response', 'meeting_set', 'closed_won', 'contract_signed', 'closed_lost'])
   status?: string;
 }

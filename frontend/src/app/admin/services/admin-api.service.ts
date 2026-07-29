@@ -462,10 +462,163 @@ export interface ProspectImportPreview {
   skippedDetails: Array<{ rowNumber: number; reason: string }>;
 }
 
+export interface ProspectContractModule {
+  id: number;
+  name: string;
+  description: string | null;
+  features: string | null;
+  processFlow: string | null;
+}
+
+export interface ProspectContractMilestone {
+  id: number;
+  title: string;
+  description: string | null;
+  dueDate: string | null;
+  connectedModuleId: string | null;
+}
+
+export interface ProspectContractPaymentSchedule {
+  id: number;
+  label: string;
+  amount: number;
+  description: string | null;
+  dueDate: string | null;
+  notes: string | null;
+  connectedMilestoneId: string | null;
+}
+
+export interface ProjectUserRef {
+  id: number;
+  source: 'pcmazing_admin_users' | 'tblusers';
+}
+
+export interface ProjectUserSummary extends ProjectUserRef {
+  username: string;
+  fullName: string;
+  role: string;
+  email: string | null;
+  isActive: boolean;
+}
+
+export interface ProjectListItem {
+  id: number;
+  prospectId: number;
+  name: string;
+  projectType: string | null;
+  status: string;
+  clientName: string;
+  company: string | null;
+  projectManager: ProjectUserSummary | null;
+  teamMemberCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectDetail extends ProjectListItem {
+  teamMembers: ProjectUserSummary[];
+}
+
+export type ProjectTaskStatus = 'backlog' | 'todo' | 'in_progress' | 'in_review' | 'done';
+export type ProjectTaskPriority = 'low' | 'medium' | 'high' | 'urgent';
+
+export interface ProjectTaskItem {
+  id: number;
+  projectId: number;
+  epicId: number | null;
+  epicTitle: string | null;
+  title: string;
+  description: string | null;
+  status: ProjectTaskStatus;
+  priority: ProjectTaskPriority;
+  sortOrder: number;
+  assignee: ProjectUserSummary | null;
+  dueDate: string | null;
+  commentCount: number;
+  attachmentCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectTaskCommentItem {
+  id: number;
+  taskId: number;
+  body: string;
+  createdByUserId: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectTaskAttachmentItem {
+  id: number;
+  taskId: number;
+  fileName: string;
+  fileUrl: string;
+  mimeType: string;
+  fileSize: number;
+  kind: 'screenshot' | 'file';
+  createdByUserId: number;
+  createdAt: string;
+}
+
+export interface ProjectTaskDetail extends ProjectTaskItem {
+  comments: ProjectTaskCommentItem[];
+  attachments: ProjectTaskAttachmentItem[];
+}
+
+export interface ProjectPhaseItem {
+  id: number;
+  projectId: number;
+  contractMilestoneId: number | null;
+  title: string;
+  description: string | null;
+  dueDate: string | null;
+  sortOrder: number;
+  status: 'planned' | 'active' | 'completed';
+  phaseLabel: string;
+  epicCount: number;
+}
+
+export interface ProjectEpicItem {
+  id: number;
+  projectId: number;
+  phaseId: number;
+  contractModuleId: number | null;
+  title: string;
+  description: string | null;
+  sortOrder: number;
+  status: 'planned' | 'active' | 'completed';
+  boardStatus: ProjectTaskStatus;
+  taskCount: number;
+  doneTaskCount: number;
+  tasks: ProjectTaskItem[];
+}
+
+export interface ProjectTaskBoard {
+  columns: Array<{ key: ProjectTaskStatus; label: string }>;
+  phases: ProjectPhaseItem[];
+  epics: ProjectEpicItem[];
+  tasks: ProjectTaskItem[];
+  currentPhaseId: number | null;
+  selectedPhaseId: number | null;
+}
+
+export interface ProspectContract {
+  id: number;
+  projectName: string;
+  projectType: string;
+  signedAt: string | null;
+  remarks: string | null;
+  modules: ProspectContractModule[];
+  milestones: ProspectContractMilestone[];
+  paymentSchedule: ProspectContractPaymentSchedule[];
+}
+
 export interface ClientProspectDetail extends ClientProspectListItem {
   address: string | null;
   notes: string | null;
   assignedTeamId: number | null;
+  contract: ProspectContract | null;
   responses: Array<{
     id: number;
     userId: number;
@@ -971,6 +1124,184 @@ export class AdminApiService {
     );
   }
 
+  listProjects() {
+    return this.http.get<ItemResponse<{ items: ProjectListItem[] }>>(
+      `${APP_CONFIG.apiUrl}/admin/projects`,
+      { headers: this.headers() },
+    );
+  }
+
+  getProject(id: number) {
+    return this.http.get<ItemResponse<ProjectDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/projects/${id}`,
+      { headers: this.headers() },
+    );
+  }
+
+  getProjectByProspect(prospectId: number) {
+    return this.http.get<ItemResponse<{ id: number } | null>>(
+      `${APP_CONFIG.apiUrl}/admin/projects/by-prospect/${prospectId}`,
+      { headers: this.headers() },
+    );
+  }
+
+  listProjectAssignees(role?: string) {
+    let params = new HttpParams();
+    if (role?.trim()) {
+      params = params.set('role', role.trim());
+    }
+
+    return this.http.get<ItemResponse<ProjectUserSummary[]>>(
+      `${APP_CONFIG.apiUrl}/admin/projects/assignees`,
+      { headers: this.headers(), params },
+    );
+  }
+
+  createProject(payload: {
+    prospectId: number;
+    name?: string;
+    projectManager: ProjectUserRef;
+    teamMembers: ProjectUserRef[];
+  }) {
+    return this.http.post<MessageResponse<ProjectDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/projects`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  listProjectTasks(projectId: number, options?: { phaseId?: number | null }) {
+    let params = new HttpParams();
+    if (options?.phaseId != null) {
+      params = params.set('phaseId', String(options.phaseId));
+    }
+
+    return this.http.get<ItemResponse<ProjectTaskBoard>>(
+      `${APP_CONFIG.apiUrl}/admin/projects/${projectId}/tasks`,
+      { headers: this.headers(), params },
+    );
+  }
+
+  setProjectCurrentPhase(projectId: number, phaseId: number) {
+    return this.http.patch<
+      MessageResponse<{
+        currentPhaseId: number;
+        phases: ProjectPhaseItem[];
+        epics: ProjectEpicItem[];
+      }>
+    >(
+      `${APP_CONFIG.apiUrl}/admin/projects/${projectId}/current-phase`,
+      { phaseId },
+      { headers: this.headers() },
+    );
+  }
+
+  moveProjectEpic(
+    projectId: number,
+    epicId: number,
+    payload: { status: ProjectTaskStatus; sortOrder: number },
+  ) {
+    return this.http.patch<MessageResponse<ProjectEpicItem>>(
+      `${APP_CONFIG.apiUrl}/admin/projects/${projectId}/epics/${epicId}/move`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  getProjectTaskDetail(projectId: number, taskId: number) {
+    return this.http.get<ItemResponse<ProjectTaskDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/projects/${projectId}/tasks/${taskId}`,
+      { headers: this.headers() },
+    );
+  }
+
+  addProjectTaskComment(projectId: number, taskId: number, body: string) {
+    return this.http.post<MessageResponse<ProjectTaskCommentItem>>(
+      `${APP_CONFIG.apiUrl}/admin/projects/${projectId}/tasks/${taskId}/comments`,
+      { body },
+      { headers: this.headers() },
+    );
+  }
+
+  uploadProjectTaskAttachment(projectId: number, taskId: number, file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.http.post<MessageResponse<ProjectTaskAttachmentItem>>(
+      `${APP_CONFIG.apiUrl}/admin/projects/${projectId}/tasks/${taskId}/attachments`,
+      formData,
+      { headers: this.headers() },
+    );
+  }
+
+  deleteProjectTaskAttachment(projectId: number, taskId: number, attachmentId: number) {
+    return this.http.delete<MessageResponse<null>>(
+      `${APP_CONFIG.apiUrl}/admin/projects/${projectId}/tasks/${taskId}/attachments/${attachmentId}`,
+      { headers: this.headers() },
+    );
+  }
+
+  resolveProjectUploadUrl(uploadUrl: string | null | undefined): string | null {
+    return this.resolveUploadUrl(uploadUrl);
+  }
+
+  createProjectTask(
+    projectId: number,
+    payload: {
+      title: string;
+      description?: string;
+      status?: ProjectTaskStatus;
+      priority?: ProjectTaskPriority;
+      epicId: number;
+      assignee?: ProjectUserRef | null;
+      dueDate?: string;
+    },
+  ) {
+    return this.http.post<MessageResponse<ProjectTaskItem>>(
+      `${APP_CONFIG.apiUrl}/admin/projects/${projectId}/tasks`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  updateProjectTask(
+    projectId: number,
+    taskId: number,
+    payload: {
+      title?: string;
+      description?: string;
+      status?: ProjectTaskStatus;
+      priority?: ProjectTaskPriority;
+      assignee?: ProjectUserRef | null;
+      dueDate?: string | null;
+      sortOrder?: number;
+    },
+  ) {
+    return this.http.patch<MessageResponse<ProjectTaskItem>>(
+      `${APP_CONFIG.apiUrl}/admin/projects/${projectId}/tasks/${taskId}`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  moveProjectTask(
+    projectId: number,
+    taskId: number,
+    payload: { status: ProjectTaskStatus; sortOrder: number },
+  ) {
+    return this.http.patch<MessageResponse<ProjectTaskItem>>(
+      `${APP_CONFIG.apiUrl}/admin/projects/${projectId}/tasks/${taskId}/move`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  deleteProjectTask(projectId: number, taskId: number) {
+    return this.http.delete<MessageResponse<null>>(
+      `${APP_CONFIG.apiUrl}/admin/projects/${projectId}/tasks/${taskId}`,
+      { headers: this.headers() },
+    );
+  }
+
   listMarketingTeams() {
     return this.http.get<ItemResponse<MarketingTeamNode[]>>(
       `${APP_CONFIG.apiUrl}/admin/marketing/teams`,
@@ -1079,6 +1410,32 @@ export class AdminApiService {
       currency?: string;
       proposedPriceDeal?: number | null;
       commissionPercent?: number | null;
+      contract?: {
+        projectName: string;
+        projectType: string;
+        signedAt?: string;
+        remarks?: string;
+        modules: Array<{
+          name: string;
+          description?: string;
+          features?: string;
+          processFlow?: string;
+        }>;
+        milestones: Array<{
+          title: string;
+          description?: string;
+          dueDate?: string;
+          connectedModuleId?: string;
+        }>;
+        paymentSchedule: Array<{
+          label: string;
+          amount: number;
+          description?: string;
+          dueDate?: string;
+          notes?: string;
+          connectedMilestoneId?: string;
+        }>;
+      };
     },
   ) {
     return this.http.patch<MessageResponse<ClientProspectDetail>>(
@@ -1125,6 +1482,34 @@ export class AdminApiService {
       endsAt?: string;
       meetingType?: string;
       locationOrLink?: string;
+      contractReviewRemarks?: string;
+      responseDate?: string;
+      contract?: {
+        projectName: string;
+        projectType: string;
+        signedAt?: string;
+        remarks?: string;
+        modules: Array<{
+          name: string;
+          description?: string;
+          features?: string;
+          processFlow?: string;
+        }>;
+        milestones: Array<{
+          title: string;
+          description?: string;
+          dueDate?: string;
+          connectedModuleId?: string;
+        }>;
+        paymentSchedule: Array<{
+          label: string;
+          amount: number;
+          description?: string;
+          dueDate?: string;
+          notes?: string;
+          connectedMilestoneId?: string;
+        }>;
+      };
     },
   ) {
     return this.http.patch<MessageResponse<ClientProspectDetail>>(

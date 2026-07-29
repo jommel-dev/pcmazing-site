@@ -1,0 +1,68 @@
+<section>
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <p class="text-xs font-bold uppercase tracking-wide text-pcmazing-500">System Development</p>
+      <h2 class="mt-1 text-2xl font-bold text-slate-900">Projects</h2>
+      <p class="mt-1 text-sm text-slate-500">Projects created from signed contracts, with project managers and developer teams.</p>
+    </div>
+  </div>
+
+  <div class="mt-6">
+    <input
+      type="search"
+      class="w-full max-w-md rounded-xl border border-slate-200 px-4 py-2.5 text-sm"
+      placeholder="Search project, client, or manager..."
+      [ngModel]="search()"
+      (ngModelChange)="search.set($event)"
+    />
+  </div>
+
+  @if (loading()) {
+    <div class="mt-6 rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500">Loading projects...</div>
+  } @else if (error()) {
+    <div class="mt-6 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{{ error() }}</div>
+  } @else if (filteredProjects().length === 0) {
+    <div class="mt-6 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
+      No projects yet. Open a signed contract in Lead Generation and click <strong>Create Project</strong>.
+    </div>
+  } @else {
+    <div class="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <table class="min-w-full text-left text-sm">
+        <thead class="bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500">
+          <tr>
+            <th class="px-4 py-3">Project</th>
+            <th class="px-4 py-3">Client</th>
+            <th class="px-4 py-3">Project manager</th>
+            <th class="px-4 py-3">Team</th>
+            <th class="px-4 py-3">Status</th>
+            <th class="px-4 py-3"></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (project of filteredProjects(); track project.id) {
+            <tr class="border-t border-slate-100">
+              <td class="px-4 py-3">
+                <p class="font-semibold text-slate-900">{{ project.name }}</p>
+                <p class="text-xs text-slate-500">{{ project.projectType || '—' }}</p>
+              </td>
+              <td class="px-4 py-3">
+                <p class="font-medium text-slate-800">{{ project.clientName }}</p>
+                <p class="text-xs text-slate-500">{{ project.company || '—' }}</p>
+              </td>
+              <td class="px-4 py-3">{{ project.projectManager?.fullName || '—' }}</td>
+              <td class="px-4 py-3">{{ project.teamMemberCount }} developer{{ project.teamMemberCount === 1 ? '' : 's' }}</td>
+              <td class="px-4 py-3">
+                <span class="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold uppercase text-emerald-700">{{ project.status }}</span>
+              </td>
+              <td class="px-4 py-3 text-right whitespace-nowrap">
+                <a [routerLink]="['/admin/projects', project.id]" class="text-sm font-bold text-pcmazing-500">View</a>
+                <span class="mx-2 text-slate-300">|</span>
+                <a [routerLink]="['/admin/projects', project.id, 'tasks']" class="text-sm font-bold text-pcmazing-500">Tasks</a>
+              </td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</section>
