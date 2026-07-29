@@ -1,0 +1,266 @@
+<section class="min-w-0 max-w-full">
+  <app-inventory-subnav />
+
+  <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div class="min-w-0">
+      <h2 class="text-2xl font-bold text-slate-900">Services</h2>
+      <p class="mt-1 text-sm text-slate-500">Track service offerings, linked parts, assigned staff, and service profitability.</p>
+    </div>
+    <a
+      routerLink="/admin/inventory/services/new"
+      class="shrink-0 rounded-xl bg-pcmazing-500 px-4 py-2.5 text-center text-sm font-bold text-white hover:bg-pcmazing-600 sm:w-auto"
+    >
+      Add Service
+    </a>
+  </div>
+
+  @if (summary(); as totals) {
+    <div class="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div class="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+        <p class="truncate text-[10px] font-bold tracking-[0.12em] text-slate-400 uppercase sm:text-[11px]">Total Costing</p>
+        <p class="mt-1 truncate text-lg font-bold text-slate-900 sm:mt-2 sm:text-xl">{{ formatMoney(totals.totalCosting) }}</p>
+      </div>
+      <div class="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+        <p class="truncate text-[10px] font-bold tracking-[0.12em] text-slate-400 uppercase sm:text-[11px]">Total Sales</p>
+        <p class="mt-1 truncate text-lg font-bold text-slate-900 sm:mt-2 sm:text-xl">{{ formatMoney(totals.totalSales) }}</p>
+      </div>
+      <div class="min-w-0 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 shadow-sm sm:p-4">
+        <p class="truncate text-[10px] font-bold tracking-[0.12em] text-emerald-700 uppercase sm:text-[11px]">Labor Sales</p>
+        <p class="mt-1 truncate text-lg font-bold text-emerald-700 sm:mt-2 sm:text-xl">{{ formatMoney(totals.totalLaborSales) }}</p>
+      </div>
+      <div class="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+        <p class="truncate text-[10px] font-bold tracking-[0.12em] text-slate-400 uppercase sm:text-[11px]">Parts Cost</p>
+        <p class="mt-1 truncate text-lg font-bold text-slate-900 sm:mt-2 sm:text-xl">{{ formatMoney(totals.totalPartsCost) }}</p>
+      </div>
+    </div>
+  }
+
+  <div class="grid min-w-0 gap-6 xl:grid-cols-[240px_minmax(0,1fr)]">
+    <aside class="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm xl:max-h-[calc(100vh-18rem)] xl:overflow-y-auto">
+      <div>
+        <p class="text-xs font-bold tracking-[0.15em] text-slate-400 uppercase">Types</p>
+        <button
+          type="button"
+          class="mt-3 block w-full rounded-lg px-3 py-2 text-left text-sm font-semibold hover:bg-slate-50"
+          [class.bg-pcmazing-50]="selectedType() === ''"
+          [class.text-pcmazing-600]="selectedType() === ''"
+          (click)="filterByType('')"
+        >
+          All Types
+        </button>
+        @for (type of serviceTypes(); track type.label) {
+          <button
+            type="button"
+            class="mt-1 block w-full rounded-lg px-3 py-2 text-left text-sm text-slate-600 hover:bg-slate-50"
+            [class.bg-pcmazing-50]="selectedType() === type.label"
+            [class.text-pcmazing-600]="selectedType() === type.label"
+            (click)="filterByType(type.label)"
+          >
+            {{ type.label }} ({{ type.count }})
+          </button>
+        }
+      </div>
+
+      <div class="mt-6">
+        <p class="text-xs font-bold tracking-[0.15em] text-slate-400 uppercase">Status</p>
+        <button
+          type="button"
+          class="mt-3 block w-full rounded-lg px-3 py-2 text-left text-sm font-semibold hover:bg-slate-50"
+          [class.bg-pcmazing-50]="selectedStatus() === ''"
+          [class.text-pcmazing-600]="selectedStatus() === ''"
+          (click)="filterByStatus('')"
+        >
+          All Statuses
+        </button>
+        @for (status of statuses(); track status.label) {
+          <button
+            type="button"
+            class="mt-1 block w-full rounded-lg px-3 py-2 text-left text-sm text-slate-600 hover:bg-slate-50"
+            [class.bg-pcmazing-50]="selectedStatus() === status.label"
+            [class.text-pcmazing-600]="selectedStatus() === status.label"
+            (click)="filterByStatus(status.label)"
+          >
+            {{ status.label }} ({{ status.count }})
+          </button>
+        }
+      </div>
+    </aside>
+
+    <div class="min-w-0">
+      <div class="mb-4 flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <h3 class="min-w-0 truncate text-base font-bold text-slate-900 lg:text-lg">{{ sectionTitle() }}</h3>
+        <div class="flex w-full shrink-0 gap-2 lg:max-w-xl lg:justify-end">
+          <details class="shrink-0">
+            <summary class="cursor-pointer list-none rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">
+              Columns
+            </summary>
+            <div class="absolute z-10 mt-2 w-56 rounded-2xl border border-slate-200 bg-white p-3 shadow-lg">
+              <p class="mb-2 text-xs font-bold tracking-[0.12em] text-slate-400 uppercase">Show Columns</p>
+              <div class="space-y-2">
+                @for (column of columnOptions; track column.key) {
+                  <label class="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      class="rounded border-slate-300 text-pcmazing-500 focus:ring-pcmazing-500"
+                      [checked]="columnVisible(column.key)"
+                      (change)="toggleColumn(column.key)"
+                    />
+                    <span>{{ column.label }}</span>
+                  </label>
+                }
+              </div>
+            </div>
+          </details>
+
+          <form class="w-full lg:max-w-xs" (ngSubmit)="searchServices()">
+            <div class="relative">
+            <input
+              type="search"
+              class="w-full rounded-xl border border-slate-200 py-2.5 pr-4 pl-10 text-sm focus:border-pcmazing-500 focus:outline-none"
+              placeholder="Filter services..."
+              [ngModel]="search()"
+              (ngModelChange)="search.set($event)"
+              name="search"
+            />
+            <svg viewBox="0 0 20 20" class="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" stroke-width="1.8">
+              <circle cx="9" cy="9" r="5.5" />
+              <path d="M14 14l3 3" />
+            </svg>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      @if (loading()) {
+        <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500">Loading services...</div>
+      } @else if (error()) {
+        <div class="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{{ error() }}</div>
+      } @else if (items().length === 0) {
+        <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500">No services found.</div>
+      } @else {
+        <div class="max-w-full overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <table class="w-full min-w-[980px] text-xs sm:text-sm">
+            <thead class="bg-slate-50">
+              <tr>
+                @if (columnVisible('image')) {
+                  <th class="px-2 py-2.5 text-left font-bold whitespace-nowrap text-slate-600 sm:px-3">Image</th>
+                }
+                <th class="px-2 py-2.5 text-left font-bold whitespace-nowrap text-slate-600 sm:px-3">Ref No</th>
+                @if (columnVisible('customer')) {
+                  <th class="px-2 py-2.5 text-left font-bold whitespace-nowrap text-slate-600 sm:px-3">Customer</th>
+                }
+                @if (columnVisible('serviceName')) {
+                  <th class="max-w-[180px] px-2 py-2.5 text-left font-bold text-slate-600 sm:max-w-[220px] sm:px-3">Service Name</th>
+                }
+                @if (columnVisible('personInCharge')) {
+                  <th class="px-2 py-2.5 text-left font-bold whitespace-nowrap text-slate-600 sm:px-3">Person In Charge</th>
+                }
+                @if (columnVisible('type')) {
+                  <th class="px-2 py-2.5 text-left font-bold whitespace-nowrap text-slate-600 sm:px-3">Type</th>
+                }
+                @if (columnVisible('partsUsed')) {
+                  <th class="max-w-[220px] px-2 py-2.5 text-left font-bold text-slate-600 sm:max-w-[260px] sm:px-3">Parts Used</th>
+                }
+                @if (columnVisible('interval')) {
+                  <th class="px-2 py-2.5 text-left font-bold whitespace-nowrap text-slate-600 sm:px-3">Interval</th>
+                }
+                @if (columnVisible('cost')) {
+                  <th class="px-2 py-2.5 text-right font-bold whitespace-nowrap text-slate-600 sm:px-3">Cost</th>
+                }
+                @if (columnVisible('labor')) {
+                  <th class="px-2 py-2.5 text-right font-bold whitespace-nowrap text-slate-600 sm:px-3">Labor</th>
+                }
+                @if (columnVisible('totalCosting')) {
+                  <th class="px-2 py-2.5 text-right font-bold whitespace-nowrap text-emerald-700 sm:px-3">T.Costing</th>
+                }
+                @if (columnVisible('totalSales')) {
+                  <th class="px-2 py-2.5 text-right font-bold whitespace-nowrap text-pcmazing-600 sm:px-3">T.Sales</th>
+                }
+                <th class="px-2 py-2.5 text-left font-bold whitespace-nowrap text-slate-600 sm:px-3">Status</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              @for (item of items(); track item.id) {
+                <tr class="hover:bg-slate-50">
+                  @if (columnVisible('image')) {
+                    <td class="px-2 py-2.5 sm:px-3">
+                      @if (serviceImageUrl(item); as imageUrl) {
+                        <img [src]="imageUrl" [alt]="imageAlt(item)" class="size-10 rounded-lg border border-slate-200 object-cover" />
+                      } @else {
+                        <span class="inline-flex size-10 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 text-[10px] font-bold text-slate-400">N/A</span>
+                      }
+                    </td>
+                  }
+                  <td class="px-2 py-2.5 font-medium whitespace-nowrap text-slate-700 sm:px-3">
+                    <a [routerLink]="['/admin/inventory/services', item.id]" class="hover:text-pcmazing-600 hover:underline">
+                      {{ item.referenceNo || 'Pending' }}
+                    </a>
+                  </td>
+                  @if (columnVisible('customer')) {
+                    <td class="max-w-[180px] truncate px-2 py-2.5 text-slate-700 sm:max-w-[220px] sm:px-3" [title]="item.customerName">
+                      <a [routerLink]="['/admin/inventory/services', item.id]" class="hover:text-pcmazing-600 hover:underline">
+                        {{ item.customerName }}
+                      </a>
+                    </td>
+                  }
+                  @if (columnVisible('serviceName')) {
+                    <td class="max-w-[180px] truncate px-2 py-2.5 font-medium text-slate-900 sm:max-w-[220px] sm:px-3" [title]="item.serviceName">
+                      <a [routerLink]="['/admin/inventory/services', item.id]" class="hover:text-pcmazing-600 hover:underline">
+                        {{ item.serviceName }}
+                      </a>
+                    </td>
+                  }
+                  @if (columnVisible('personInCharge')) {
+                    <td class="max-w-[180px] truncate px-2 py-2.5 text-slate-600 sm:max-w-[220px] sm:px-3">{{ item.personInChargeName || 'Unassigned' }}</td>
+                  }
+                  @if (columnVisible('type')) {
+                    <td class="px-2 py-2.5 whitespace-nowrap text-slate-600 sm:px-3">{{ item.type }}</td>
+                  }
+                  @if (columnVisible('partsUsed')) {
+                    <td class="max-w-[220px] truncate px-2 py-2.5 text-slate-600 sm:max-w-[260px] sm:px-3" [title]="partsUsedLabel(item)">{{ partsUsedLabel(item) }}</td>
+                  }
+                  @if (columnVisible('interval')) {
+                    <td class="min-w-[190px] px-2 py-2.5 text-slate-600 sm:px-3">
+                      <div class="font-medium text-slate-700">{{ serviceIntervalLabel(item) }}</div>
+                      <div class="text-xs text-slate-500">{{ serviceDurationLabel(item) }}</div>
+                    </td>
+                  }
+                  @if (columnVisible('cost')) {
+                    <td class="px-2 py-2.5 text-right whitespace-nowrap text-slate-600 sm:px-3">{{ formatMoney(item.cost) }}</td>
+                  }
+                  @if (columnVisible('labor')) {
+                    <td class="px-2 py-2.5 text-right whitespace-nowrap text-slate-600 sm:px-3">{{ formatMoney(item.labor) }}</td>
+                  }
+                  @if (columnVisible('totalCosting')) {
+                    <td class="px-2 py-2.5 text-right whitespace-nowrap font-medium text-emerald-700 sm:px-3">{{ formatMoney(item.totalCosting) }}</td>
+                  }
+                  @if (columnVisible('totalSales')) {
+                    <td class="px-2 py-2.5 text-right whitespace-nowrap font-medium text-pcmazing-600 sm:px-3">{{ formatMoney(item.totalSales) }}</td>
+                  }
+                  <td class="px-2 py-2.5 sm:px-3">
+                    <span
+                      class="inline-block rounded-full px-2.5 py-1 text-[10px] font-bold uppercase whitespace-nowrap"
+                      [class]="statusPillClass(item.status)"
+                    >
+                      {{ item.status }}
+                    </span>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+        @if (meta(); as pagination) {
+          <div class="mt-4 flex flex-col gap-3 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+            <span class="min-w-0 truncate">Page {{ pagination.page }} of {{ pagination.totalPages }} · {{ pagination.total }} total</span>
+            <div class="flex shrink-0 gap-2">
+              <button type="button" class="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page <= 1" (click)="goToPage(pagination.page - 1)">Previous</button>
+              <button type="button" class="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page >= pagination.totalPages" (click)="goToPage(pagination.page + 1)">Next</button>
+            </div>
+          </div>
+        }
+      }
+    </div>
+  </div>
+</section>
