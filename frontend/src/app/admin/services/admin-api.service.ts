@@ -324,10 +324,47 @@ export interface ProspectImportPreview {
   skippedDetails: Array<{ rowNumber: number; reason: string }>;
 }
 
+export interface ProspectContractModule {
+  id: number;
+  name: string;
+  description: string | null;
+  features: string | null;
+  processFlow: string | null;
+}
+
+export interface ProspectContractMilestone {
+  id: number;
+  title: string;
+  description: string | null;
+  dueDate: string | null;
+  connectedModuleId: string | null;
+}
+
+export interface ProspectContractPaymentSchedule {
+  id: number;
+  label: string;
+  amount: number;
+  dueDate: string | null;
+  notes: string | null;
+  connectedMilestoneId: string | null;
+}
+
+export interface ProspectContract {
+  id: number;
+  projectName: string;
+  projectType: string;
+  signedAt: string | null;
+  remarks: string | null;
+  modules: ProspectContractModule[];
+  milestones: ProspectContractMilestone[];
+  paymentSchedule: ProspectContractPaymentSchedule[];
+}
+
 export interface ClientProspectDetail extends ClientProspectListItem {
   address: string | null;
   notes: string | null;
   assignedTeamId: number | null;
+  contract: ProspectContract | null;
   responses: Array<{
     id: number;
     userId: number;
@@ -821,6 +858,31 @@ export class AdminApiService {
       currency?: string;
       proposedPriceDeal?: number | null;
       commissionPercent?: number | null;
+      contract?: {
+        projectName: string;
+        projectType: string;
+        signedAt?: string;
+        remarks?: string;
+        modules: Array<{
+          name: string;
+          description?: string;
+          features?: string;
+          processFlow?: string;
+        }>;
+        milestones: Array<{
+          title: string;
+          description?: string;
+          dueDate?: string;
+          connectedModuleId?: string;
+        }>;
+        paymentSchedule: Array<{
+          label: string;
+          amount: number;
+          dueDate?: string;
+          notes?: string;
+          connectedMilestoneId?: string;
+        }>;
+      };
     },
   ) {
     return this.http.patch<MessageResponse<ClientProspectDetail>>(
@@ -867,6 +929,33 @@ export class AdminApiService {
       endsAt?: string;
       meetingType?: string;
       locationOrLink?: string;
+      contractReviewRemarks?: string;
+      responseDate?: string;
+      contract?: {
+        projectName: string;
+        projectType: string;
+        signedAt?: string;
+        remarks?: string;
+        modules: Array<{
+          name: string;
+          description?: string;
+          features?: string;
+          processFlow?: string;
+        }>;
+        milestones: Array<{
+          title: string;
+          description?: string;
+          dueDate?: string;
+          connectedModuleId?: string;
+        }>;
+        paymentSchedule: Array<{
+          label: string;
+          amount: number;
+          dueDate?: string;
+          notes?: string;
+          connectedMilestoneId?: string;
+        }>;
+      };
     },
   ) {
     return this.http.patch<MessageResponse<ClientProspectDetail>>(

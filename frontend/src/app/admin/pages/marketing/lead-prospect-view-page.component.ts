@@ -88,6 +88,14 @@ export class LeadProspectViewPageComponent implements OnInit {
     return new Date(value).toLocaleString();
   }
 
+  formatDate(value: string | null | undefined): string {
+    if (!value) {
+      return '—';
+    }
+    const parsed = new Date(`${value}T00:00:00`);
+    return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString();
+  }
+
   meetingTypeLabel(type: string): string {
     return type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
   }
