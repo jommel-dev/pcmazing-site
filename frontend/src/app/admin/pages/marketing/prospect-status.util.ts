@@ -17,6 +17,8 @@ export const PROSPECT_STATUS_LABELS: Record<string, string> = {
   no_response: 'No Response',
   meeting_set: 'Meeting Set',
   closed_won: 'Close Won',
+  contract_under_review: 'Contract Under Review',
+  contract_signed: 'Contract Signed',
   closed_lost: 'Close Lost',
 };
 
@@ -31,6 +33,8 @@ export const PROSPECT_STATUS_TABS = [
   'meeting_set',
   'no_response',
   'closed_won',
+  'contract_under_review',
+  'contract_signed',
   'closed_lost',
 ] as const;
 
@@ -49,6 +53,11 @@ export const PROSPECT_MEETING_OUTCOME_STATUSES = [
   { value: 'closed_lost', label: 'Loss' },
   { value: 'no_response', label: 'No Response (did not show / no reply)' },
   { value: 'pending_decision', label: 'Pending Decision (resume follow-ups)' },
+] as const;
+
+export const PROSPECT_POST_WIN_STATUSES = [
+  { value: 'contract_under_review', label: 'Contract Under Review' },
+  { value: 'contract_signed', label: 'Contract Signed' },
 ] as const;
 
 function normalizeRoleKey(role?: string | null): string {
@@ -119,6 +128,8 @@ export function prospectStatusClass(status: string): string {
   if (status === 'met') return `${base} bg-teal-50 text-teal-700`;
   if (status === 'meeting_set') return `${base} bg-emerald-50 text-emerald-700`;
   if (status === 'closed_won') return `${base} bg-green-50 text-green-700`;
+  if (status === 'contract_under_review') return `${base} bg-amber-50 text-amber-700`;
+  if (status === 'contract_signed') return `${base} bg-cyan-50 text-cyan-700`;
   if (status === 'closed_lost') return `${base} bg-red-50 text-red-700`;
   if (status === 'no_response') return `${base} bg-slate-100 text-slate-600`;
   return `${base} bg-slate-100 text-slate-600`;
@@ -129,7 +140,7 @@ export function isAvailableProspect(status: string): boolean {
 }
 
 export function isClosedProspect(status: string): boolean {
-  return status === 'closed_won' || status === 'closed_lost';
+  return status === 'closed_won' || status === 'contract_under_review' || status === 'contract_signed' || status === 'closed_lost';
 }
 
 export function isInProgressProspect(status: string): boolean {
@@ -151,8 +162,12 @@ export function isAwaitingMeetingOutcome(status: string): boolean {
 }
 
 export function canUpdateProspect(status: string, userRole?: string | null): boolean {
-  if (isAvailableProspect(status) || isClosedProspect(status)) {
+  if (isAvailableProspect(status) || status === 'contract_signed' || status === 'closed_lost') {
     return false;
+  }
+
+  if (status === 'closed_won' || status === 'contract_under_review') {
+    return hasAdminMeetingOutcomeAccess(userRole);
   }
 
   if (isAwaitingMeetingOutcome(status)) {
@@ -168,7 +183,13 @@ export function followUpProgressLabel(count: number, max: number): string {
 
 export function commissionOutcomeMessage(status: string): string | null {
   if (status === 'closed_won') {
-    return 'Close Won — this prospect may qualify for commission review.';
+    return 'Close Won — waiting for the signed contract and final contract breakdown.';
+  }
+  if (status === 'contract_under_review') {
+    return 'Contract Under Review — client is reviewing the contract terms.';
+  }
+  if (status === 'contract_signed') {
+    return 'Contract Signed — project details, modules, milestones, and payment schedule are recorded.';
   }
   if (status === 'closed_lost') {
     return 'Close Lost — no commission applies for this prospect.';

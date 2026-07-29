@@ -101,9 +101,9 @@ export const ADMIN_MODULES: AdminModuleItem[] = [
   {
     key: 'projects',
     label: 'Projects',
-    route: '/admin/modules/projects',
+    route: '/admin/projects',
     description: 'Software and system development project pipeline.',
-    status: 'coming_soon',
+    status: 'active',
   },
   {
     key: 'developers_team',

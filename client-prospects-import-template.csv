@@ -1,0 +1,21 @@
+client_name,company,email,phone,address,client_type,currency,proposed_price_deal,notes
+Juan Dela Cruz,ABC Trading,juan@example.com,09171234567,"123 Main St, Manila",local,PHP,150000,Interested in annual contract
+Maria Santos,Santos Enterprises,maria.santos@example.com,09181234568,"45 Rizal Ave, Quezon City",local,PHP,220000,Follow up next week
+John Smith,Global Tech Ltd,john.smith@example.com,+12025550101,"742 Evergreen Terrace, Springfield",international,USD,8500,Needs product demo
+Ana Reyes,Reyes Construction,ana.reyes@example.com,09191234569,"56 Mabini St, Cebu City",local,PHP,320000,Requested quotation
+Michael Johnson,Johnson Imports,michael.j@example.com,+442071234567,"12 Oxford Street, London",international,GBP,12000,Negotiation ongoing
+Carlo Mendoza,Mendoza Foods,carlo@example.com,09201234570,"89 McArthur Highway, Pampanga",local,PHP,180000,Interested in bulk purchase
+Emily Brown,Brown Solutions,emily.brown@example.com,+61412345678,"88 Collins St, Melbourne",international,AUD,14500,Waiting for approval
+Rafael Cruz,Cruz Logistics,rafael@example.com,09211234571,"101 Port Area, Manila",local,PHP,275000,Priority client
+Sophia Lee,Lee Innovations,sophia.lee@example.com,+6581234567,"15 Orchard Road, Singapore",international,SGD,18500,Requires custom package
+Mark Villanueva,Villanueva Retail,mark.v@example.com,09221234572,"22 Lopez Jaena St, Iloilo",local,PHP,95000,Requested discount
+Jessica Garcia,Garcia Manufacturing,jessica.g@example.com,+12125550123,"55 Industrial Ave, New York",international,USD,22000,Interested in long-term partnership
+David Wilson,Wilson Engineering,david.w@example.com,+61398765432,"210 King St, Sydney",international,AUD,19800,Technical meeting scheduled
+Patricia Lim,Lim Holdings,patricia.lim@example.com,09231234573,"78 Roxas Blvd, Pasay",local,PHP,410000,VIP client
+Kevin Tan,Tan Electronics,kevin.tan@example.com,+6569876543,"18 Jurong East, Singapore",international,SGD,25500,Requires onsite visit
+Rose Hernandez,Hernandez Realty,rose.h@example.com,09241234574,"35 Session Road, Baguio",local,PHP,305000,Requested revised proposal
+Daniel Carter,Carter Exports,daniel.c@example.com,+33123456789,"7 Rue de Rivoli, Paris",international,EUR,17200,Pending legal review
+Grace Aquino,Aquino Farms,grace.a@example.com,09251234575,"Sitio Greenfield, Batangas",local,PHP,140000,Seasonal client
+Christopher Young,Young Ventures,chris.young@example.com,+819012345678,"2 Chiyoda, Tokyo",international,JPY,2500000,Interested in exclusive distribution
+Liza Navarro,Navarro Medical,liza.n@example.com,09261234576,"99 Osmeña Blvd, Davao",local,PHP,360000,Requested implementation timeline
+Andrew Scott,Scott Consulting,andrew.scott@example.com,+49891234567,"14 Alexanderplatz, Berlin",international,EUR,28000,Ready for contract signing

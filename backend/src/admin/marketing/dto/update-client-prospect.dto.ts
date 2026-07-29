@@ -1,5 +1,8 @@
 import { IsEmail, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ProspectDealFieldsDto } from './prospect-deal-fields.dto';
+import { ProspectContractDto } from './prospect-contract.dto';
 
 export class UpdateClientProspectDto extends ProspectDealFieldsDto {
   @IsOptional()
@@ -30,4 +33,9 @@ export class UpdateClientProspectDto extends ProspectDealFieldsDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ProspectContractDto)
+  contract?: ProspectContractDto;
 }
