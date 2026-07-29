@@ -1,6 +1,7 @@
 import { IsBoolean, IsEmail, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { PayrollProfileFieldsDto } from '../../payroll/dto/payroll-profile-fields.dto';
 
-export class UpdateUserDto {
+export class UpdateUserDto extends PayrollProfileFieldsDto {
   @IsOptional()
   @IsString()
   @MinLength(2)

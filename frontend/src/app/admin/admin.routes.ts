@@ -28,6 +28,7 @@ import { LeadProspectEditPageComponent } from './pages/marketing/lead-prospect-e
 import { LeadProspectUpdatePageComponent } from './pages/marketing/lead-prospect-update-page.component';
 import { OrganizationTeamPageComponent } from './pages/marketing/organization-team-page.component';
 import { EditProfilePageComponent } from './pages/profile/edit-profile-page.component';
+import { PayrollPageComponent } from './pages/payroll/payroll-page.component';
 import { AdminModulePlaceholderPageComponent } from './pages/modules/admin-module-placeholder-page.component';
 
 export const adminRoutes: Routes = [
@@ -157,6 +158,11 @@ export const adminRoutes: Routes = [
         path: 'users',
         component: UserManagementPageComponent,
         title: 'User Management | PCMazing Admin',
+      },
+      {
+        path: 'payroll',
+        component: PayrollPageComponent,
+        title: 'Payroll | PCMazing Admin',
       },
       {
         path: 'lead-generation',

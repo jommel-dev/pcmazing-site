@@ -1,0 +1,139 @@
+<main class="min-h-screen bg-gradient-to-b from-slate-100 via-white to-slate-100 px-4 py-10 sm:px-6">
+  <div class="mx-auto w-full max-w-md">
+    <div class="mb-8 text-center">
+      <p class="text-xs font-bold uppercase tracking-[0.2em] text-pcmazing-500">PCmazing</p>
+      <h1 class="mt-2 text-3xl font-extrabold text-slate-900">Time Clock</h1>
+      <p class="mt-2 text-sm text-slate-500">Enter your username, take a selfie, then time in or out.</p>
+      <p class="mt-3 font-mono text-sm text-slate-600">{{ nowLabel() }}</p>
+      <p class="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Server time · Asia/Manila</p>
+    </div>
+
+    <section class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+      <label class="mb-1 block text-sm font-semibold text-slate-700">Username</label>
+      <div class="flex gap-2">
+        <input
+          type="text"
+          class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+          placeholder="e.g. jommel"
+          [ngModel]="username()"
+          (ngModelChange)="username.set($event)"
+          (keyup.enter)="lookup()"
+          autocomplete="username"
+        />
+        <button
+          type="button"
+          class="rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white disabled:opacity-50"
+          [disabled]="loading()"
+          (click)="lookup()"
+        >
+          @if (loading()) { ... } @else { Check }
+        </button>
+      </div>
+
+      @if (error()) {
+        <div class="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{{ error() }}</div>
+      }
+      @if (success()) {
+        <div class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{{ success() }}</div>
+      }
+
+      @if (status(); as current) {
+        <div class="mt-6 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+          <p class="text-lg font-bold text-slate-900">{{ current.fullName || current.username || '—' }}</p>
+          <p class="text-sm text-slate-500">@{{ current.username || username() }}</p>
+          @if (current.employeeCode) {
+            <p class="mt-1 text-xs text-slate-500">Employee code: {{ current.employeeCode }}</p>
+          }
+          <p class="mt-3 text-sm text-slate-600">{{ current.message }}</p>
+
+          <div class="mt-4 grid grid-cols-2 gap-3 text-sm">
+            <div class="rounded-xl border border-slate-200 bg-white px-3 py-3">
+              <p class="text-xs font-bold uppercase text-slate-400">Time in</p>
+              <p class="mt-1 font-semibold text-slate-900">{{ formatPunch(current.timeIn) }}</p>
+            </div>
+            <div class="rounded-xl border border-slate-200 bg-white px-3 py-3">
+              <p class="text-xs font-bold uppercase text-slate-400">Time out</p>
+              <p class="mt-1 font-semibold text-slate-900">{{ formatPunch(current.timeOut) }}</p>
+            </div>
+          </div>
+        </div>
+
+        @if (needsSelfie()) {
+          <div class="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <p class="text-sm font-semibold text-slate-800">Selfie proof required</p>
+            <p class="mt-1 text-xs text-slate-500">Capture a clear face photo before submitting your punch.</p>
+
+            @if (cameraError()) {
+              <div class="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                {{ cameraError() }}
+                <button type="button" class="ml-2 font-bold underline" (click)="startCamera()">Retry camera</button>
+              </div>
+            }
+
+            @if (selfiePreviewUrl(); as preview) {
+              <img [src]="preview" alt="Selfie preview" class="mt-3 aspect-square w-full rounded-2xl border border-slate-200 object-cover" />
+              <button
+                type="button"
+                class="mt-3 w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-700"
+                (click)="retakeSelfie()"
+                [disabled]="submitting()"
+              >
+                Retake selfie
+              </button>
+            } @else {
+              <div class="relative mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-black">
+                <video
+                  #cameraVideo
+                  class="aspect-square w-full scale-x-[-1] object-cover"
+                  autoplay
+                  playsinline
+                  muted
+                ></video>
+                @if (cameraStarting() || !cameraReady()) {
+                  <div class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-900/70 text-sm text-white">
+                    <span class="size-8 animate-spin rounded-full border-2 border-white/30 border-t-white"></span>
+                    <span>Opening camera...</span>
+                  </div>
+                }
+              </div>
+              <button
+                type="button"
+                class="mt-3 w-full rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-slate-900 ring-1 ring-slate-300 disabled:opacity-50"
+                [disabled]="!cameraReady() || cameraStarting() || submitting()"
+                (click)="captureSelfie()"
+              >
+                @if (cameraStarting()) { Waiting for camera... } @else { Capture selfie }
+              </button>
+            }
+          </div>
+        }
+
+        <div class="mt-5 grid gap-3">
+          @if (current.canTimeIn) {
+            <button
+              type="button"
+              class="w-full rounded-2xl bg-pcmazing-500 px-4 py-4 text-base font-bold text-white hover:bg-pcmazing-600 disabled:opacity-50"
+              [disabled]="submitting() || !selfieBlob()"
+              (click)="punchIn()"
+            >
+              @if (submitting()) { Recording... } @else { Time In }
+            </button>
+          } @else if (current.canTimeOut) {
+            <button
+              type="button"
+              class="w-full rounded-2xl bg-slate-900 px-4 py-4 text-base font-bold text-white hover:bg-slate-800 disabled:opacity-50"
+              [disabled]="submitting() || !selfieBlob()"
+              (click)="punchOut()"
+            >
+              @if (submitting()) { Recording... } @else { Time Out }
+            </button>
+          } @else if (current.status === 'completed') {
+            <div class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-center text-sm font-semibold text-emerald-800">
+              Done for today
+            </div>
+          }
+        </div>
+      }
+    </section>
+  </div>
+</main>
