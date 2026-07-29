@@ -1,0 +1,317 @@
+<section>
+  <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <div>
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Payroll</h2>
+      <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
+        Attendance, enrolled employees, and period pay estimates. Configure salary fields in
+        <a routerLink="/admin/users" class="font-semibold text-pcmazing-500 hover:underline">User Management</a>.
+      </p>
+    </div>
+    <button
+      type="button"
+      class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+      (click)="copyTimeClockLink()"
+    >
+      Copy public time clock link
+    </button>
+  </div>
+
+  <div class="mb-6 rounded-2xl border border-slate-200 bg-white px-5 py-4 text-sm dark:border-slate-800 dark:bg-slate-900">
+    <p class="font-semibold text-slate-800 dark:text-slate-100">Public time clock</p>
+    <p class="mt-1 break-all text-slate-500">{{ timeClockUrl }}</p>
+    @if (copyMessage()) {
+      <p class="mt-2 text-emerald-600 dark:text-emerald-400">{{ copyMessage() }}</p>
+    }
+  </div>
+
+  <div class="mb-6 flex flex-wrap gap-2">
+    @for (tab of tabs; track tab.key) {
+      <button
+        type="button"
+        class="rounded-xl px-4 py-2 text-sm font-bold transition"
+        [class.bg-pcmazing-500]="activeTab() === tab.key"
+        [class.text-white]="activeTab() === tab.key"
+        [class.border]="activeTab() !== tab.key"
+        [class.border-slate-200]="activeTab() !== tab.key"
+        [class.text-slate-700]="activeTab() !== tab.key"
+        [class.dark:border-slate-700]="activeTab() !== tab.key"
+        [class.dark:text-slate-200]="activeTab() !== tab.key"
+        (click)="setTab(tab.key)"
+      >
+        {{ tab.label }}
+      </button>
+    }
+  </div>
+
+  @if (error()) {
+    <div class="mb-4 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{{ error() }}</div>
+  }
+
+  @if (loading()) {
+    <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900">
+      Loading payroll...
+    </div>
+  } @else if (activeTab() === 'overview' && overview(); as stats) {
+    <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div class="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+        <p class="text-xs font-bold uppercase tracking-wide text-slate-400">Enrolled</p>
+        <p class="mt-2 text-3xl font-bold text-slate-900 dark:text-white">{{ stats.enrolledEmployees }}</p>
+      </div>
+      <div class="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+        <p class="text-xs font-bold uppercase tracking-wide text-slate-400">Timed in</p>
+        <p class="mt-2 text-3xl font-bold text-slate-900 dark:text-white">{{ stats.timedInToday }}</p>
+      </div>
+      <div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 dark:border-emerald-900 dark:bg-emerald-950/30">
+        <p class="text-xs font-bold uppercase tracking-wide text-emerald-700">Completed</p>
+        <p class="mt-2 text-3xl font-bold text-emerald-900 dark:text-emerald-200">{{ stats.completedToday }}</p>
+      </div>
+      <div class="rounded-2xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-900 dark:bg-amber-950/30">
+        <p class="text-xs font-bold uppercase tracking-wide text-amber-700">Still working</p>
+        <p class="mt-2 text-3xl font-bold text-amber-900 dark:text-amber-200">{{ stats.stillWorking }}</p>
+      </div>
+      <div class="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+        <p class="text-xs font-bold uppercase tracking-wide text-slate-400">Not yet in</p>
+        <p class="mt-2 text-3xl font-bold text-slate-900 dark:text-white">{{ stats.notYetIn }}</p>
+      </div>
+    </div>
+    <p class="mt-4 text-sm text-slate-500">Work date (Manila): {{ stats.workDate }}</p>
+  } @else if (activeTab() === 'attendance') {
+    <form class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end" (ngSubmit)="applyAttendanceFilter()">
+      <div class="w-full sm:max-w-xs">
+        <label class="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">Work date</label>
+        <input
+          type="date"
+          class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+          [ngModel]="workDate()"
+          (ngModelChange)="workDate.set($event)"
+          name="workDate"
+        />
+      </div>
+      <button type="submit" class="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white dark:bg-slate-100 dark:text-slate-900">
+        Filter
+      </button>
+    </form>
+
+    @if (attendance().length === 0) {
+      <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900">
+        No punches for {{ workDate() || 'today' }}.
+      </div>
+    } @else {
+      <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <table class="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
+          <thead class="bg-slate-50 dark:bg-slate-950">
+            <tr>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Employee</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Department</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Time in</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Time out</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Selfies</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Hours</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Status</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+            @for (item of attendance(); track item.id) {
+              <tr>
+                <td class="px-4 py-3">
+                  <p class="font-semibold text-slate-900 dark:text-white">{{ item.fullName }}</p>
+                  <p class="text-xs text-slate-500">@{{ item.username }} · {{ item.employeeCode || 'No code' }}</p>
+                </td>
+                <td class="px-4 py-3 text-slate-600 dark:text-slate-300">{{ item.department || '—' }}</td>
+                <td class="px-4 py-3 font-medium text-slate-900 dark:text-white">{{ formatPunch(item.timeIn) }}</td>
+                <td class="px-4 py-3 font-medium text-slate-900 dark:text-white">{{ formatPunch(item.timeOut) }}</td>
+                <td class="px-4 py-3">
+                  <div class="flex items-center gap-2">
+                    @if (selfieUrl(item.timeInSelfieUrl); as inSelfie) {
+                      <a [href]="inSelfie" target="_blank" rel="noopener" title="Time in selfie">
+                        <img [src]="inSelfie" alt="Time in selfie" class="size-10 rounded-lg border border-slate-200 object-cover" />
+                      </a>
+                    } @else {
+                      <span class="inline-flex size-10 items-center justify-center rounded-lg border border-dashed border-slate-300 text-[10px] text-slate-400">IN</span>
+                    }
+                    @if (selfieUrl(item.timeOutSelfieUrl); as outSelfie) {
+                      <a [href]="outSelfie" target="_blank" rel="noopener" title="Time out selfie">
+                        <img [src]="outSelfie" alt="Time out selfie" class="size-10 rounded-lg border border-slate-200 object-cover" />
+                      </a>
+                    } @else {
+                      <span class="inline-flex size-10 items-center justify-center rounded-lg border border-dashed border-slate-300 text-[10px] text-slate-400">OUT</span>
+                    }
+                  </div>
+                </td>
+                <td class="px-4 py-3 text-slate-700 dark:text-slate-200">{{ formatHours(item.hoursWorked) }}</td>
+                <td class="px-4 py-3">
+                  <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                    {{ attendanceStatusLabel(item.status) }}
+                  </span>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      @if (attendanceMeta(); as pagination) {
+        <div class="mt-4 flex items-center justify-between text-sm text-slate-500">
+          <span>Page {{ pagination.page }} of {{ pagination.totalPages }} · {{ pagination.total }} total</span>
+          <div class="flex gap-2">
+            <button type="button" class="rounded-lg border px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page <= 1" (click)="goToAttendancePage(pagination.page - 1)">Previous</button>
+            <button type="button" class="rounded-lg border px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page >= pagination.totalPages" (click)="goToAttendancePage(pagination.page + 1)">Next</button>
+          </div>
+        </div>
+      }
+    }
+  } @else if (activeTab() === 'employees') {
+    <form class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center" (ngSubmit)="searchEmployees()">
+      <input
+        type="search"
+        class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+        placeholder="Search name, username, code, department..."
+        [ngModel]="employeeSearch()"
+        (ngModelChange)="employeeSearch.set($event)"
+        name="employeeSearch"
+      />
+      <button type="submit" class="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white dark:bg-slate-100 dark:text-slate-900">
+        Search
+      </button>
+    </form>
+
+    @if (employees().length === 0) {
+      <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900">
+        No payroll-enabled employees yet. Enable payroll on a user first.
+      </div>
+    } @else {
+      <div class="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <table class="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
+          <thead class="bg-slate-50 dark:bg-slate-950">
+            <tr>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Employee</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Department</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Salary type</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Amount</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Today</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+            @for (item of employees(); track item.userSource + '-' + item.userId) {
+              <tr>
+                <td class="px-4 py-3">
+                  <p class="font-semibold text-slate-900 dark:text-white">{{ item.fullName }}</p>
+                  <p class="text-xs text-slate-500">@{{ item.username }} · {{ item.employeeCode || 'No code' }}</p>
+                  @if (item.positionTitle) {
+                    <p class="text-xs text-slate-500">{{ item.positionTitle }}</p>
+                  }
+                </td>
+                <td class="px-4 py-3 text-slate-600 dark:text-slate-300">{{ item.department || '—' }}</td>
+                <td class="px-4 py-3 text-slate-700 dark:text-slate-200">{{ salaryTypeLabel(item.salaryType) }}</td>
+                <td class="px-4 py-3 font-medium text-slate-900 dark:text-white">{{ formatMoney(item.monthlySalary) }}</td>
+                <td class="px-4 py-3">
+                  <span class="rounded-full px-2.5 py-1 text-xs font-bold" [class]="todayStatusClass(item.todayStatus)">
+                    {{ todayStatusLabel(item.todayStatus) }}
+                  </span>
+                  <p class="mt-1 text-xs text-slate-500">
+                    {{ formatPunch(item.todayTimeIn) }} → {{ formatPunch(item.todayTimeOut) }}
+                  </p>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  } @else if (activeTab() === 'period') {
+    <form class="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end" (ngSubmit)="applyPeriodFilter()">
+      <div class="w-full sm:max-w-xs">
+        <label class="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">From</label>
+        <input
+          type="date"
+          class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+          [ngModel]="dateFrom()"
+          (ngModelChange)="dateFrom.set($event)"
+          name="dateFrom"
+        />
+      </div>
+      <div class="w-full sm:max-w-xs">
+        <label class="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">To</label>
+        <input
+          type="date"
+          class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+          [ngModel]="dateTo()"
+          (ngModelChange)="dateTo.set($event)"
+          name="dateTo"
+        />
+      </div>
+      <button type="submit" class="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white dark:bg-slate-100 dark:text-slate-900">
+        Compute
+      </button>
+    </form>
+
+    <div class="mb-6 flex flex-wrap gap-2">
+      <button type="button" class="rounded-lg border px-3 py-1.5 text-xs font-bold dark:border-slate-700" (click)="setSemiMonthlyPeriod(1); applyPeriodFilter()">
+        1st–15th
+      </button>
+      <button type="button" class="rounded-lg border px-3 py-1.5 text-xs font-bold dark:border-slate-700" (click)="setSemiMonthlyPeriod(2); applyPeriodFilter()">
+        16th–month end
+      </button>
+    </div>
+
+    @if (periodMeta(); as meta) {
+      <div class="mb-4 grid gap-3 sm:grid-cols-3">
+        <div class="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+          <p class="text-xs font-bold uppercase text-slate-400">Employees</p>
+          <p class="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{{ meta.totals.employees }}</p>
+        </div>
+        <div class="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+          <p class="text-xs font-bold uppercase text-slate-400">Total hours</p>
+          <p class="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{{ formatHours(meta.totals.totalHours) }}</p>
+        </div>
+        <div class="rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+          <p class="text-xs font-bold uppercase text-slate-400">Estimated pay</p>
+          <p class="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{{ formatMoney(meta.totals.estimatedPay) }}</p>
+        </div>
+      </div>
+      <p class="mb-4 text-sm text-slate-500">
+        Period {{ meta.dateFrom }} → {{ meta.dateTo }} ({{ meta.periodDays }} day{{ meta.periodDays === 1 ? '' : 's' }}).
+        Estimates: weekly uses hours; monthly/semi-monthly use completed days; cutoff is amount × completed days.
+      </p>
+    }
+
+    @if (periodItems().length === 0) {
+      <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900">
+        No payroll employees in this period.
+      </div>
+    } @else {
+      <div class="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <table class="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
+          <thead class="bg-slate-50 dark:bg-slate-950">
+            <tr>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Employee</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Type</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Days</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Hours</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Est. pay</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+            @for (item of periodItems(); track item.userSource + '-' + item.userId) {
+              <tr>
+                <td class="px-4 py-3">
+                  <p class="font-semibold text-slate-900 dark:text-white">{{ item.fullName }}</p>
+                  <p class="text-xs text-slate-500">@{{ item.username }} · {{ item.employeeCode || 'No code' }}</p>
+                </td>
+                <td class="px-4 py-3 text-slate-600 dark:text-slate-300">
+                  {{ salaryTypeLabel(item.salaryType) }}
+                  <p class="text-xs text-slate-500">{{ formatMoney(item.salaryAmount) }}</p>
+                </td>
+                <td class="px-4 py-3 text-slate-700 dark:text-slate-200">
+                  {{ item.daysCompleted }}/{{ item.daysPresent }}
+                </td>
+                <td class="px-4 py-3 text-slate-700 dark:text-slate-200">{{ formatHours(item.totalHours) }}</td>
+                <td class="px-4 py-3 font-semibold text-slate-900 dark:text-white">{{ formatMoney(item.estimatedPay) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  }
+</section>

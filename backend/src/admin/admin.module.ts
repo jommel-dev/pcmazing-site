@@ -24,9 +24,12 @@ import { MarketingTeamsService } from './marketing/marketing-teams.service';
 import { ClientProspectsController } from './marketing/client-prospects.controller';
 import { ClientProspectsService } from './marketing/client-prospects.service';
 import { CurrencyExchangeService } from './marketing/currency-exchange.service';
+import { PayrollController } from './payroll/payroll.controller';
+import { PayrollModule } from './payroll/payroll.module';
+import { TimeClockController } from './payroll/time-clock.controller';
 
 @Module({
-  imports: [DatabaseModule, AuthModule],
+  imports: [DatabaseModule, AuthModule, PayrollModule],
   controllers: [
     DashboardController,
     ContactInquiriesController,
@@ -36,6 +39,8 @@ import { CurrencyExchangeService } from './marketing/currency-exchange.service';
     PurchaseController,
     QuotationController,
     UsersController,
+    PayrollController,
+    TimeClockController,
     MarketingTeamsController,
     ClientProspectsController,
   ],

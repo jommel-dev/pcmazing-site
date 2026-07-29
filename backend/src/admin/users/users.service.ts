@@ -28,6 +28,7 @@ import {
   tblusersIdAutoGenerates,
   usesTblusers,
 } from './tblusers.util';
+import { PayrollService } from '../payroll/payroll.service';
 import { ensureUserManagementTable } from './user-management.schema';
 import { deleteProfileImageFile, saveProfileImageFile } from './user-profile-image.util';
 import { AdminUserRecord } from './users.types';
@@ -39,6 +40,7 @@ export class UsersService {
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly rbacService: RbacService,
+    private readonly payrollService: PayrollService,
   ) {}
 
   getRbacStatus() {
@@ -58,31 +60,44 @@ export class UsersService {
   }
 
   async list(pageRaw?: string, limitRaw?: string, search?: string) {
-    if (await usesTblusers(this.databaseService)) {
-      return this.listTblusers(pageRaw, limitRaw, search);
-    }
+    const result = (await usesTblusers(this.databaseService))
+      ? await this.listTblusers(pageRaw, limitRaw, search)
+      : await this.listPcmazingUsers(pageRaw, limitRaw, search);
 
-    return this.listPcmazingUsers(pageRaw, limitRaw, search);
+    return {
+      ...result,
+      items: await this.attachPayrollProfiles(result.items),
+    };
   }
 
   async getById(id: number, source?: 'pcmazing_admin_users' | 'tblusers') {
+    let user: AdminUserRecord;
     if (source === 'pcmazing_admin_users') {
-      return this.getPcmazingUserById(id);
+      user = await this.getPcmazingUserById(id);
+    } else if ((await usesTblusers(this.databaseService)) || source === 'tblusers') {
+      user = await this.getTbluserById(id);
+    } else {
+      user = await this.getPcmazingUserById(id);
     }
 
-    if ((await usesTblusers(this.databaseService)) || source === 'tblusers') {
-      return this.getTbluserById(id);
-    }
-
-    return this.getPcmazingUserById(id);
+    return this.attachPayrollProfile(user);
   }
 
   async create(dto: CreateUserDto) {
-    if (await usesTblusers(this.databaseService)) {
-      return this.createTbluser(dto);
-    }
+    const user = (await usesTblusers(this.databaseService))
+      ? await this.createTbluser(dto)
+      : await this.createPcmazingUser(dto);
 
-    return this.createPcmazingUser(dto);
+    await this.payrollService.upsertProfile(user.id, user.source, {
+      employeeCode: dto.employeeCode,
+      department: dto.department,
+      positionTitle: dto.positionTitle,
+      salaryType: dto.salaryType,
+      monthlySalary: dto.monthlySalary,
+      payrollEnabled: dto.payrollEnabled ?? false,
+    });
+
+    return this.attachPayrollProfile(user);
   }
 
   async update(id: number, dto: UpdateUserDto, currentUserId: number) {
@@ -92,11 +107,30 @@ export class UsersService {
       throw new BadRequestException('You cannot deactivate your own account.');
     }
 
-    if (existing.source === 'tblusers') {
-      return this.updateTbluser(id, dto);
+    const user =
+      existing.source === 'tblusers'
+        ? await this.updateTbluser(id, dto)
+        : await this.updatePcmazingUser(id, dto);
+
+    if (
+      dto.employeeCode !== undefined ||
+      dto.department !== undefined ||
+      dto.positionTitle !== undefined ||
+      dto.salaryType !== undefined ||
+      dto.monthlySalary !== undefined ||
+      dto.payrollEnabled !== undefined
+    ) {
+      await this.payrollService.upsertProfile(user.id, user.source, {
+        employeeCode: dto.employeeCode,
+        department: dto.department,
+        positionTitle: dto.positionTitle,
+        salaryType: dto.salaryType,
+        monthlySalary: dto.monthlySalary,
+        payrollEnabled: dto.payrollEnabled,
+      });
     }
 
-    return this.updatePcmazingUser(id, dto);
+    return this.attachPayrollProfile(user);
   }
 
   async changePassword(id: number, dto: ChangeUserPasswordDto) {
@@ -164,7 +198,7 @@ export class UsersService {
         [profileImageUrl, id],
       );
 
-      return this.getTbluserById(id);
+      return this.attachPayrollProfile(await this.getTbluserById(id));
     }
 
     await deleteProfileImageFile(existing.profileImageUrl);
@@ -188,7 +222,7 @@ export class UsersService {
       [profileImageUrl, id],
     );
 
-    return this.mapPcmazingUser(result.rows[0]);
+    return this.attachPayrollProfile(this.mapPcmazingUser(result.rows[0]));
   }
 
   async removeProfileImage(id: number) {
@@ -207,7 +241,7 @@ export class UsersService {
         [id],
       );
 
-      return this.getTbluserById(id);
+      return this.attachPayrollProfile(await this.getTbluserById(id));
     }
 
     await deleteProfileImageFile(existing.profileImageUrl);
@@ -231,7 +265,7 @@ export class UsersService {
       [id],
     );
 
-    return this.mapPcmazingUser(result.rows[0]);
+    return this.attachPayrollProfile(this.mapPcmazingUser(result.rows[0]));
   }
 
   private async listTblusers(pageRaw?: string, limitRaw?: string, search?: string) {
@@ -608,6 +642,30 @@ export class UsersService {
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
+  }
+
+  private async attachPayrollProfiles(users: AdminUserRecord[]): Promise<AdminUserRecord[]> {
+    const profiles = await this.payrollService.getProfilesForUsers(
+      users.map((user) => ({ id: user.id, source: user.source })),
+    );
+
+    return users.map((user) => {
+      const profile = profiles.get(`${user.source}:${user.id}`);
+      return {
+        ...user,
+        employeeCode: profile?.employeeCode ?? null,
+        department: profile?.department ?? null,
+        positionTitle: profile?.positionTitle ?? null,
+        salaryType: profile?.salaryType ?? 'monthly',
+        monthlySalary: profile?.monthlySalary ?? null,
+        payrollEnabled: profile?.payrollEnabled ?? false,
+      };
+    });
+  }
+
+  private async attachPayrollProfile(user: AdminUserRecord): Promise<AdminUserRecord> {
+    const [withProfile] = await this.attachPayrollProfiles([user]);
+    return withProfile;
   }
 
   private normalizeRole(role?: string): string {
