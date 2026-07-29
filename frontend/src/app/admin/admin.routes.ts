@@ -12,6 +12,8 @@ import { DemoRequestsPageComponent } from './pages/demo-requests/demo-requests-p
 import { DemoRequestDetailPageComponent } from './pages/demo-requests/demo-request-detail-page.component';
 import { InventoryPageComponent } from './pages/inventory/inventory-page.component';
 import { InventoryDetailPageComponent } from './pages/inventory/inventory-detail-page.component';
+import { InventoryServiceCreatePageComponent } from './pages/inventory/inventory-service-create-page.component';
+import { InventoryServicesPageComponent } from './pages/inventory/inventory-services-page.component';
 import { PurchasePageComponent } from './pages/inventory/purchase-page.component';
 import { PurchaseDetailPageComponent } from './pages/inventory/purchase-detail-page.component';
 import { PurchaseCreatePageComponent } from './pages/inventory/purchase-create-page.component';
@@ -26,6 +28,7 @@ import { LeadProspectEditPageComponent } from './pages/marketing/lead-prospect-e
 import { LeadProspectUpdatePageComponent } from './pages/marketing/lead-prospect-update-page.component';
 import { OrganizationTeamPageComponent } from './pages/marketing/organization-team-page.component';
 import { EditProfilePageComponent } from './pages/profile/edit-profile-page.component';
+import { PayrollPageComponent } from './pages/payroll/payroll-page.component';
 import { AdminModulePlaceholderPageComponent } from './pages/modules/admin-module-placeholder-page.component';
 
 export const adminRoutes: Routes = [
@@ -97,6 +100,21 @@ export const adminRoutes: Routes = [
         title: 'Inventory | PCMazing Admin',
       },
       {
+        path: 'inventory/services',
+        component: InventoryServicesPageComponent,
+        title: 'Services | PCMazing Admin',
+      },
+      {
+        path: 'inventory/services/new',
+        component: InventoryServiceCreatePageComponent,
+        title: 'Add Service | PCMazing Admin',
+      },
+      {
+        path: 'inventory/services/:id',
+        component: InventoryServiceCreatePageComponent,
+        title: 'Edit Service | PCMazing Admin',
+      },
+      {
         path: 'inventory/products/new',
         component: ProductCreatePageComponent,
         title: 'Add Product | PCMazing Admin',
@@ -140,6 +158,11 @@ export const adminRoutes: Routes = [
         path: 'users',
         component: UserManagementPageComponent,
         title: 'User Management | PCMazing Admin',
+      },
+      {
+        path: 'payroll',
+        component: PayrollPageComponent,
+        title: 'Payroll | PCMazing Admin',
       },
       {
         path: 'lead-generation',

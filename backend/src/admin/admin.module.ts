@@ -10,6 +10,8 @@ import { DashboardService } from './dashboard/dashboard.service';
 import { DemoRequestsController } from './demo-requests/demo-requests.controller';
 import { DemoRequestsService } from './demo-requests/demo-requests.service';
 import { InventoryController } from './inventory/inventory.controller';
+import { InventoryServicesController } from './inventory/inventory-services.controller';
+import { InventoryServicesService } from './inventory/inventory-services.service';
 import { InventoryService } from './inventory/inventory.service';
 import { PurchaseController } from './inventory/purchase.controller';
 import { PurchaseService } from './inventory/purchase.service';
@@ -24,18 +26,24 @@ import { MarketingTeamsService } from './marketing/marketing-teams.service';
 import { ClientProspectsController } from './marketing/client-prospects.controller';
 import { ClientProspectsService } from './marketing/client-prospects.service';
 import { CurrencyExchangeService } from './marketing/currency-exchange.service';
+import { PayrollController } from './payroll/payroll.controller';
+import { PayrollModule } from './payroll/payroll.module';
+import { TimeClockController } from './payroll/time-clock.controller';
 
 @Module({
-  imports: [DatabaseModule, AuthModule],
+  imports: [DatabaseModule, AuthModule, PayrollModule],
   controllers: [
     DashboardController,
     ContactInquiriesController,
     CustomerReviewsController,
     DemoRequestsController,
     InventoryController,
+    InventoryServicesController,
     PurchaseController,
     QuotationController,
     UsersController,
+    PayrollController,
+    TimeClockController,
     MarketingTeamsController,
     ClientProspectsController,
   ],
@@ -45,6 +53,7 @@ import { CurrencyExchangeService } from './marketing/currency-exchange.service';
     CustomerReviewsService,
     DemoRequestsService,
     InventoryService,
+    InventoryServicesService,
     PurchaseService,
     QuotationService,
     RbacService,

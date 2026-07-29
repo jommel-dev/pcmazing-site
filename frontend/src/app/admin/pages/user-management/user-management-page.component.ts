@@ -40,6 +40,12 @@ export class UserManagementPageComponent implements OnInit {
   readonly actionMessage = signal('');
   readonly profilePreviewUrl = signal<string | null>(null);
   readonly pendingProfileFile = signal<File | null>(null);
+  readonly salaryTypeOptions = [
+    { value: 'weekly', label: 'Weekly' },
+    { value: 'semi_monthly', label: 'Semi-Monthly (15/30)' },
+    { value: 'monthly', label: 'Monthly' },
+    { value: 'cutoff', label: 'By Cutoff' },
+  ] as const;
 
   readonly userForm = this.formBuilder.nonNullable.group({
     username: ['', [Validators.required, Validators.minLength(3), Validators.maxLength(80)]],
@@ -48,6 +54,12 @@ export class UserManagementPageComponent implements OnInit {
     role: ['staff', [Validators.required]],
     isActive: [true],
     password: ['', [Validators.minLength(6)]],
+    employeeCode: [''],
+    department: [''],
+    positionTitle: [''],
+    salaryType: ['monthly' as 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff'],
+    monthlySalary: [''],
+    payrollEnabled: [false],
   });
 
   readonly passwordForm = this.formBuilder.nonNullable.group({
@@ -117,6 +129,12 @@ export class UserManagementPageComponent implements OnInit {
       role: 'staff',
       isActive: true,
       password: '',
+      employeeCode: '',
+      department: '',
+      positionTitle: '',
+      salaryType: 'monthly',
+      monthlySalary: '',
+      payrollEnabled: false,
     });
     this.userForm.controls.username.enable();
     this.userForm.controls.password.setValidators([Validators.required, Validators.minLength(6)]);
@@ -137,6 +155,12 @@ export class UserManagementPageComponent implements OnInit {
       role: user.role,
       isActive: user.isActive,
       password: '',
+      employeeCode: user.employeeCode ?? '',
+      department: user.department ?? '',
+      positionTitle: user.positionTitle ?? '',
+      salaryType: user.salaryType ?? 'monthly',
+      monthlySalary: user.monthlySalary != null ? String(user.monthlySalary) : '',
+      payrollEnabled: user.payrollEnabled ?? false,
     });
     this.userForm.controls.username.disable();
     this.userForm.controls.password.clearValidators();
@@ -220,13 +244,44 @@ export class UserManagementPageComponent implements OnInit {
   async submitForm(): Promise<void> {
     if (this.userForm.invalid) {
       this.userForm.markAllAsTouched();
+      this.formError.set('Please fill in the required fields correctly.');
       return;
     }
 
     this.saving.set(true);
     this.formError.set('');
 
-    const { username, fullName, email, role, isActive, password } = this.userForm.getRawValue();
+    const {
+      username,
+      fullName,
+      email,
+      role,
+      isActive,
+      password,
+      employeeCode,
+      department,
+      positionTitle,
+      salaryType,
+      monthlySalary,
+      payrollEnabled,
+    } = this.userForm.getRawValue();
+
+    const salaryText = monthlySalary == null ? '' : String(monthlySalary).trim();
+    const salaryValue = salaryText === '' ? null : Number(salaryText);
+    if (salaryText !== '' && (Number.isNaN(salaryValue) || (salaryValue ?? 0) < 0)) {
+      this.formError.set('Salary amount must be a valid number.');
+      this.saving.set(false);
+      return;
+    }
+
+    const payrollPayload = {
+      employeeCode: employeeCode.trim() || undefined,
+      department: department.trim() || undefined,
+      positionTitle: positionTitle.trim() || undefined,
+      salaryType,
+      ...(salaryValue == null ? {} : { monthlySalary: salaryValue }),
+      payrollEnabled,
+    };
 
     try {
       if (this.formMode() === 'create') {
@@ -238,6 +293,7 @@ export class UserManagementPageComponent implements OnInit {
             role,
             isActive,
             password,
+            ...payrollPayload,
           }),
         );
 
@@ -254,6 +310,7 @@ export class UserManagementPageComponent implements OnInit {
       } else {
         const user = this.selectedUser();
         if (!user) {
+          this.saving.set(false);
           return;
         }
 
@@ -263,6 +320,8 @@ export class UserManagementPageComponent implements OnInit {
             email: email.trim() || undefined,
             role,
             isActive,
+            ...payrollPayload,
+            monthlySalary: salaryValue,
           }),
         );
 
@@ -281,8 +340,8 @@ export class UserManagementPageComponent implements OnInit {
 
       this.closeForm();
       await this.load();
-    } catch {
-      this.formError.set('Unable to save user. Check the details and try again.');
+    } catch (error) {
+      this.formError.set(this.extractErrorMessage(error, 'Unable to save user. Check the details and try again.'));
     } finally {
       this.saving.set(false);
     }
@@ -393,5 +452,24 @@ export class UserManagementPageComponent implements OnInit {
 
     const rememberMe = Boolean(localStorage.getItem('pcmazing-admin-access-token'));
     this.adminAuth.updateStoredUser(updatedUser, rememberMe);
+  }
+
+  private extractErrorMessage(error: unknown, fallback: string): string {
+    if (error && typeof error === 'object' && 'error' in error) {
+      const payload = (error as { error?: { message?: string | string[] } }).error;
+
+      if (Array.isArray(payload?.message)) {
+        const joined = payload.message.join(', ').trim();
+        if (joined) {
+          return joined;
+        }
+      }
+
+      if (typeof payload?.message === 'string' && payload.message.trim()) {
+        return payload.message.trim();
+      }
+    }
+
+    return fallback;
   }
 }

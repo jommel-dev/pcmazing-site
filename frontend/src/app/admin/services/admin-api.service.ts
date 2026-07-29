@@ -96,6 +96,69 @@ export interface InventoryStockSummary {
   itemCount: number;
 }
 
+export interface InventoryServiceSummary {
+  totalCosting: number;
+  totalSales: number;
+  totalLaborSales: number;
+  totalPartsCost: number;
+  itemCount: number;
+}
+
+export interface InventoryServiceFilterOption {
+  label: string;
+  count: number;
+}
+
+export interface InventoryServiceItem {
+  id: number;
+  referenceNo: string | null;
+  customerName: string;
+  serviceName: string;
+  personInChargeUserId: number | null;
+  personInChargeSource: 'tblusers' | 'pcmazing_admin_users';
+  personInChargeName: string | null;
+  type: string;
+  partsUsed: string[];
+  cost: number;
+  labor: number;
+  status: string;
+  imageUrl: string | null;
+  totalCosting: number;
+  totalSales: number;
+  startedAt: string | null;
+  endedAt: string | null;
+  durationMinutes: number | null;
+  notes?: string | null;
+  parts?: Array<{
+    materialId?: number;
+    materialName?: string | null;
+    customItemName?: string;
+    quantity: number;
+    unitPrice?: number;
+  }>;
+  updatedAt: string | null;
+}
+
+export interface CreateInventoryServicePayload {
+  customerName: string;
+  serviceName: string;
+  personInChargeUserId?: number;
+  personInChargeSource?: 'tblusers' | 'pcmazing_admin_users';
+  type: string;
+  parts?: Array<{
+    materialId?: number;
+    customItemName?: string;
+    quantity: number;
+    unitPrice?: number;
+  }>;
+  cost?: number;
+  labor?: number;
+  status?: string;
+  notes?: string;
+  startedAt?: string;
+  endedAt?: string;
+}
+
 export interface InventoryTreeNode {
   id: number;
   name: string;
@@ -237,6 +300,81 @@ export interface AdminUser {
   readOnly: boolean;
   createdAt: string;
   updatedAt: string;
+  employeeCode?: string | null;
+  department?: string | null;
+  positionTitle?: string | null;
+  salaryType?: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
+  monthlySalary?: number | null;
+  payrollEnabled?: boolean;
+}
+
+export interface PayrollAttendanceItem {
+  id: number;
+  userId: number;
+  userSource: 'pcmazing_admin_users' | 'tblusers';
+  username: string;
+  fullName: string;
+  workDate: string;
+  timeIn: string | null;
+  timeOut: string | null;
+  hoursWorked?: number | null;
+  status?: 'timed_in' | 'completed' | 'incomplete';
+  employeeCode: string | null;
+  department: string | null;
+  timeInSelfieUrl?: string | null;
+  timeOutSelfieUrl?: string | null;
+}
+
+export interface PayrollOverview {
+  workDate: string;
+  enrolledEmployees: number;
+  timedInToday: number;
+  completedToday: number;
+  stillWorking: number;
+  notYetIn: number;
+}
+
+export interface PayrollEmployeeItem {
+  userId: number;
+  userSource: 'pcmazing_admin_users' | 'tblusers';
+  username: string;
+  fullName: string;
+  isActive: boolean;
+  employeeCode: string | null;
+  department: string | null;
+  positionTitle: string | null;
+  salaryType: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
+  monthlySalary: number | null;
+  payrollEnabled: boolean;
+  todayStatus: 'not_started' | 'timed_in' | 'completed' | 'absent';
+  todayTimeIn: string | null;
+  todayTimeOut: string | null;
+}
+
+export interface PayrollPeriodItem {
+  userId: number;
+  userSource: 'pcmazing_admin_users' | 'tblusers';
+  username: string;
+  fullName: string;
+  employeeCode: string | null;
+  department: string | null;
+  salaryType: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
+  salaryAmount: number | null;
+  daysPresent: number;
+  daysCompleted: number;
+  totalHours: number;
+  estimatedPay: number;
+}
+
+export interface PayrollPeriodMeta {
+  dateFrom: string;
+  dateTo: string;
+  periodDays: number;
+  totals: {
+    employees: number;
+    totalHours: number;
+    estimatedPay: number;
+  };
 }
 
 export interface RbacStatus {
@@ -512,6 +650,63 @@ export class AdminApiService {
     );
   }
 
+  listInventoryServices(page = 1, limit = 20, search = '', type = '', status = '') {
+    let params = this.listParams(page, limit, search);
+    if (type.trim()) {
+      params = params.set('type', type.trim());
+    }
+    if (status.trim()) {
+      params = params.set('status', status.trim());
+    }
+
+    return this.http.get<
+      ListResponse<InventoryServiceItem> & {
+        summary: InventoryServiceSummary;
+        filters: {
+          types: InventoryServiceFilterOption[];
+          statuses: InventoryServiceFilterOption[];
+        };
+      }
+    >(`${APP_CONFIG.apiUrl}/admin/inventory/services`, {
+      headers: this.headers(),
+      params,
+    });
+  }
+
+  createInventoryService(payload: CreateInventoryServicePayload) {
+    return this.http.post<ItemResponse<InventoryServiceItem>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/services`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  getInventoryService(id: number) {
+    return this.http.get<ItemResponse<InventoryServiceItem>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/services/${id}`,
+      { headers: this.headers() },
+    );
+  }
+
+  updateInventoryService(id: number, payload: CreateInventoryServicePayload) {
+    return this.http.patch<ItemResponse<InventoryServiceItem>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/services/${id}`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  uploadInventoryServiceImage(id: number, file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    return this.http.post<ItemResponse<InventoryServiceItem>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/services/${id}/image`,
+      formData,
+      { headers: this.headers() },
+    );
+  }
+
   getMaterial(id: number) {
     return this.http.get<ItemResponse<MaterialItem>>(
       `${APP_CONFIG.apiUrl}/admin/inventory/materials/${id}`,
@@ -693,6 +888,12 @@ export class AdminApiService {
     password: string;
     role?: string;
     isActive?: boolean;
+    employeeCode?: string;
+    department?: string;
+    positionTitle?: string;
+    salaryType?: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
+    monthlySalary?: number | null;
+    payrollEnabled?: boolean;
   }) {
     return this.http.post<MessageResponse<AdminUser>>(
       `${APP_CONFIG.apiUrl}/admin/users`,
@@ -708,6 +909,12 @@ export class AdminApiService {
       email?: string;
       role?: string;
       isActive?: boolean;
+      employeeCode?: string;
+      department?: string;
+      positionTitle?: string;
+      salaryType?: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
+      monthlySalary?: number | null;
+      payrollEnabled?: boolean;
     },
   ) {
     return this.http.patch<MessageResponse<AdminUser>>(
@@ -747,6 +954,57 @@ export class AdminApiService {
     return this.http.delete<MessageResponse<AdminUser>>(
       `${APP_CONFIG.apiUrl}/admin/users/${id}/profile-image`,
       { headers: this.headers() },
+    );
+  }
+
+  listPayrollAttendance(page = 1, limit = 50, workDate = '') {
+    let params = this.listParams(page, limit, '');
+    if (workDate.trim()) {
+      params = params.set('workDate', workDate.trim());
+    }
+
+    return this.http.get<ListResponse<PayrollAttendanceItem> & { workDate: string }>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/attendance`,
+      { headers: this.headers(), params },
+    );
+  }
+
+  getPayrollOverview(workDate = '') {
+    let params = new HttpParams();
+    if (workDate.trim()) {
+      params = params.set('workDate', workDate.trim());
+    }
+
+    return this.http.get<ItemResponse<PayrollOverview>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/overview`,
+      { headers: this.headers(), params },
+    );
+  }
+
+  listPayrollEmployees(search = '') {
+    let params = new HttpParams();
+    if (search.trim()) {
+      params = params.set('search', search.trim());
+    }
+
+    return this.http.get<ItemResponse<PayrollEmployeeItem[]>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/employees`,
+      { headers: this.headers(), params },
+    );
+  }
+
+  getPayrollPeriod(dateFrom = '', dateTo = '') {
+    let params = new HttpParams();
+    if (dateFrom.trim()) {
+      params = params.set('dateFrom', dateFrom.trim());
+    }
+    if (dateTo.trim()) {
+      params = params.set('dateTo', dateTo.trim());
+    }
+
+    return this.http.get<{ success: boolean; data: PayrollPeriodItem[]; meta: PayrollPeriodMeta }>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/period`,
+      { headers: this.headers(), params },
     );
   }
 
@@ -1015,6 +1273,10 @@ export class AdminApiService {
   }
 
   resolveMaterialImageUrl(imageUrl: string | null | undefined): string | null {
+    return this.resolveUploadUrl(imageUrl);
+  }
+
+  resolveServiceImageUrl(imageUrl: string | null | undefined): string | null {
     return this.resolveUploadUrl(imageUrl);
   }
 

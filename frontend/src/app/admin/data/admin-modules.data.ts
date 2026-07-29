@@ -115,9 +115,9 @@ export const ADMIN_MODULES: AdminModuleItem[] = [
   {
     key: 'payroll',
     label: 'Payroll',
-    route: '/admin/modules/payroll',
+    route: '/admin/payroll',
     description: 'Employee payroll processing and payslip management.',
-    status: 'coming_soon',
+    status: 'active',
   },
   {
     key: 'accounting',

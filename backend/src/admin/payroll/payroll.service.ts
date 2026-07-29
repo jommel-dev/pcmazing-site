@@ -1,0 +1,988 @@
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { DatabaseService } from '../../database/database.service';
+import {
+  ACTIVE_FILTER_SQL,
+  buildTblusersSelectSql,
+  mapTblusersRow,
+  usesTblusers,
+} from '../users/tblusers.util';
+import { ensureUserManagementTable } from '../users/user-management.schema';
+import { AdminUserRecord } from '../users/users.types';
+import { PayrollProfileFieldsDto, PayrollSalaryType } from './dto/payroll-profile-fields.dto';
+import { saveAttendanceSelfieFile } from './attendance-selfie.util';
+import { ensurePayrollTables, manilaWorkDate } from './payroll.schema';
+
+export interface PayrollProfile {
+  employeeCode: string | null;
+  department: string | null;
+  positionTitle: string | null;
+  salaryType: PayrollSalaryType;
+  monthlySalary: number | null;
+  payrollEnabled: boolean;
+}
+
+export interface AttendanceRecord {
+  id: number;
+  userId: number;
+  userSource: 'pcmazing_admin_users' | 'tblusers';
+  username: string;
+  fullName: string;
+  workDate: string;
+  timeIn: string | null;
+  timeOut: string | null;
+  hoursWorked: number | null;
+  status: 'timed_in' | 'completed' | 'incomplete';
+  employeeCode: string | null;
+  department: string | null;
+  timeInSelfieUrl: string | null;
+  timeOutSelfieUrl: string | null;
+}
+
+export interface PayrollEmployeeRecord {
+  userId: number;
+  userSource: 'pcmazing_admin_users' | 'tblusers';
+  username: string;
+  fullName: string;
+  isActive: boolean;
+  employeeCode: string | null;
+  department: string | null;
+  positionTitle: string | null;
+  salaryType: PayrollSalaryType;
+  monthlySalary: number | null;
+  payrollEnabled: boolean;
+  todayStatus: 'not_started' | 'timed_in' | 'completed' | 'absent';
+  todayTimeIn: string | null;
+  todayTimeOut: string | null;
+}
+
+export interface PayrollOverview {
+  workDate: string;
+  enrolledEmployees: number;
+  timedInToday: number;
+  completedToday: number;
+  stillWorking: number;
+  notYetIn: number;
+}
+
+export interface PayrollPeriodRow {
+  userId: number;
+  userSource: 'pcmazing_admin_users' | 'tblusers';
+  username: string;
+  fullName: string;
+  employeeCode: string | null;
+  department: string | null;
+  salaryType: PayrollSalaryType;
+  salaryAmount: number | null;
+  daysPresent: number;
+  daysCompleted: number;
+  totalHours: number;
+  estimatedPay: number;
+}
+
+export interface TimeClockStatus {
+  username: string;
+  fullName: string;
+  employeeCode: string | null;
+  workDate: string;
+  timeIn: string | null;
+  timeOut: string | null;
+  canTimeIn: boolean;
+  canTimeOut: boolean;
+  status: 'ready' | 'timed_in' | 'completed' | 'not_enrolled' | 'not_found' | 'inactive';
+  message: string;
+  /** Authoritative server timestamp (ISO). Never use device clock for punches. */
+  serverNow: string;
+}
+
+const EMPTY_PAYROLL: PayrollProfile = {
+  employeeCode: null,
+  department: null,
+  positionTitle: null,
+  salaryType: 'monthly',
+  monthlySalary: null,
+  payrollEnabled: false,
+};
+
+@Injectable()
+export class PayrollService {
+  constructor(private readonly databaseService: DatabaseService) {}
+
+  async ensureReady(): Promise<void> {
+    await ensurePayrollTables(this.databaseService);
+  }
+
+  async getProfilesForUsers(
+    users: Array<{ id: number; source: AdminUserRecord['source'] }>,
+  ): Promise<Map<string, PayrollProfile>> {
+    await this.ensureReady();
+    const map = new Map<string, PayrollProfile>();
+    if (!users.length) {
+      return map;
+    }
+
+    const params: unknown[] = [];
+    const tuples = users.map((user, index) => {
+      params.push(user.id, user.source);
+      const base = index * 2;
+      return `($${base + 1}::bigint, $${base + 2}::varchar)`;
+    });
+
+    const result = await this.databaseService.query<{
+      user_id: number;
+      user_source: string;
+      employee_code: string | null;
+      department: string | null;
+      position_title: string | null;
+      salary_type: string | null;
+      monthly_salary: string | null;
+      payroll_enabled: boolean;
+    }>(
+      `SELECT user_id, user_source, employee_code, department, position_title, salary_type,
+              monthly_salary, payroll_enabled
+       FROM pcmazing_user_payroll
+       WHERE (user_id, user_source) IN (${tuples.join(', ')})`,
+      params,
+    );
+
+    for (const row of result.rows) {
+      map.set(`${row.user_source}:${row.user_id}`, this.mapProfile(row));
+    }
+
+    return map;
+  }
+
+  async getProfile(userId: number, userSource: AdminUserRecord['source']): Promise<PayrollProfile> {
+    await this.ensureReady();
+    const result = await this.databaseService.query<{
+      employee_code: string | null;
+      department: string | null;
+      position_title: string | null;
+      salary_type: string | null;
+      monthly_salary: string | null;
+      payroll_enabled: boolean;
+    }>(
+      `SELECT employee_code, department, position_title, salary_type, monthly_salary, payroll_enabled
+       FROM pcmazing_user_payroll
+       WHERE user_id = $1 AND user_source = $2
+       LIMIT 1`,
+      [userId, userSource],
+    );
+
+    return result.rows[0] ? this.mapProfile(result.rows[0]) : { ...EMPTY_PAYROLL };
+  }
+
+  async upsertProfile(
+    userId: number,
+    userSource: AdminUserRecord['source'],
+    dto: PayrollProfileFieldsDto,
+  ): Promise<PayrollProfile> {
+    await this.ensureReady();
+
+    const existing = await this.getProfile(userId, userSource);
+    const employeeCode =
+      dto.employeeCode !== undefined ? dto.employeeCode.trim() || null : existing.employeeCode;
+    const department =
+      dto.department !== undefined ? dto.department.trim() || null : existing.department;
+    const positionTitle =
+      dto.positionTitle !== undefined ? dto.positionTitle.trim() || null : existing.positionTitle;
+    const salaryType =
+      dto.salaryType !== undefined ? this.normalizeSalaryType(dto.salaryType) : existing.salaryType;
+    const monthlySalary =
+      dto.monthlySalary !== undefined
+        ? dto.monthlySalary == null
+          ? null
+          : Number(dto.monthlySalary)
+        : existing.monthlySalary;
+    const payrollEnabled =
+      dto.payrollEnabled !== undefined ? Boolean(dto.payrollEnabled) : existing.payrollEnabled;
+
+    const result = await this.databaseService.query<{
+      employee_code: string | null;
+      department: string | null;
+      position_title: string | null;
+      salary_type: string | null;
+      monthly_salary: string | null;
+      payroll_enabled: boolean;
+    }>(
+      `INSERT INTO pcmazing_user_payroll (
+         user_id, user_source, employee_code, department, position_title, salary_type, monthly_salary, payroll_enabled
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       ON CONFLICT (user_id, user_source) DO UPDATE SET
+         employee_code = EXCLUDED.employee_code,
+         department = EXCLUDED.department,
+         position_title = EXCLUDED.position_title,
+         salary_type = EXCLUDED.salary_type,
+         monthly_salary = EXCLUDED.monthly_salary,
+         payroll_enabled = EXCLUDED.payroll_enabled,
+         updated_at = NOW()
+       RETURNING employee_code, department, position_title, salary_type, monthly_salary, payroll_enabled`,
+      [
+        userId,
+        userSource,
+        employeeCode,
+        department,
+        positionTitle,
+        salaryType,
+        monthlySalary,
+        payrollEnabled,
+      ],
+    );
+
+    return this.mapProfile(result.rows[0]);
+  }
+
+  async listAttendance(pageRaw?: string, limitRaw?: string, workDate?: string) {
+    await this.ensureReady();
+
+    const page = Math.max(1, Number(pageRaw) || 1);
+    const limit = Math.min(100, Math.max(1, Number(limitRaw) || 20));
+    const offset = (page - 1) * limit;
+    const date = workDate?.trim() || manilaWorkDate();
+    const params: unknown[] = [date];
+
+    const countResult = await this.databaseService.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM pcmazing_attendance WHERE work_date = $1::date`,
+      params,
+    );
+    const total = Number(countResult.rows[0]?.count ?? 0);
+
+    const result = await this.databaseService.query<{
+      id: number;
+      user_id: number;
+      user_source: 'pcmazing_admin_users' | 'tblusers';
+      username: string;
+      work_date: string;
+      time_in: string | null;
+      time_out: string | null;
+      time_in_selfie_url: string | null;
+      time_out_selfie_url: string | null;
+      employee_code: string | null;
+      department: string | null;
+    }>(
+      `SELECT a.id, a.user_id, a.user_source, a.username, a.work_date::text AS work_date,
+              a.time_in::text AS time_in, a.time_out::text AS time_out,
+              a.time_in_selfie_url, a.time_out_selfie_url,
+              p.employee_code, p.department
+       FROM pcmazing_attendance a
+       LEFT JOIN pcmazing_user_payroll p
+         ON p.user_id = a.user_id AND p.user_source = a.user_source
+       WHERE a.work_date = $1::date
+       ORDER BY a.time_in DESC NULLS LAST, a.id DESC
+       LIMIT $2 OFFSET $3`,
+      [date, limit, offset],
+    );
+
+    const items: AttendanceRecord[] = [];
+    for (const row of result.rows) {
+      const fullName = await this.resolveFullName(row.user_id, row.user_source, row.username);
+      items.push({
+        id: row.id,
+        userId: row.user_id,
+        userSource: row.user_source,
+        username: row.username,
+        fullName,
+        workDate: row.work_date,
+        timeIn: row.time_in,
+        timeOut: row.time_out,
+        hoursWorked: this.computeHours(row.time_in, row.time_out),
+        status: !row.time_in
+          ? 'incomplete'
+          : row.time_out
+            ? 'completed'
+            : 'timed_in',
+        employeeCode: row.employee_code,
+        department: row.department,
+        timeInSelfieUrl: row.time_in_selfie_url,
+        timeOutSelfieUrl: row.time_out_selfie_url,
+      });
+    }
+
+    return {
+      items,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
+      workDate: date,
+    };
+  }
+
+  async getOverview(workDate?: string): Promise<PayrollOverview> {
+    await this.ensureReady();
+    const date = workDate?.trim() || manilaWorkDate();
+
+    const enrolled = await this.databaseService.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM pcmazing_user_payroll WHERE payroll_enabled = TRUE`,
+    );
+
+    const attendance = await this.databaseService.query<{
+      timed_in: string;
+      completed: string;
+      still_working: string;
+    }>(
+      `SELECT
+         COUNT(*) FILTER (WHERE time_in IS NOT NULL)::text AS timed_in,
+         COUNT(*) FILTER (WHERE time_in IS NOT NULL AND time_out IS NOT NULL)::text AS completed,
+         COUNT(*) FILTER (WHERE time_in IS NOT NULL AND time_out IS NULL)::text AS still_working
+       FROM pcmazing_attendance
+       WHERE work_date = $1::date`,
+      [date],
+    );
+
+    const enrolledEmployees = Number(enrolled.rows[0]?.count ?? 0);
+    const timedInToday = Number(attendance.rows[0]?.timed_in ?? 0);
+    const completedToday = Number(attendance.rows[0]?.completed ?? 0);
+    const stillWorking = Number(attendance.rows[0]?.still_working ?? 0);
+
+    return {
+      workDate: date,
+      enrolledEmployees,
+      timedInToday,
+      completedToday,
+      stillWorking,
+      notYetIn: Math.max(0, enrolledEmployees - timedInToday),
+    };
+  }
+
+  async listEmployees(search = ''): Promise<PayrollEmployeeRecord[]> {
+    await this.ensureReady();
+    const workDate = manilaWorkDate();
+    const profiles = await this.databaseService.query<{
+      user_id: number;
+      user_source: 'pcmazing_admin_users' | 'tblusers';
+      employee_code: string | null;
+      department: string | null;
+      position_title: string | null;
+      salary_type: string | null;
+      monthly_salary: string | null;
+      payroll_enabled: boolean;
+    }>(
+      `SELECT user_id, user_source, employee_code, department, position_title, salary_type,
+              monthly_salary, payroll_enabled
+       FROM pcmazing_user_payroll
+       WHERE payroll_enabled = TRUE
+       ORDER BY employee_code NULLS LAST, user_id ASC`,
+    );
+
+    const items: PayrollEmployeeRecord[] = [];
+    const needle = search.trim().toLowerCase();
+
+    for (const row of profiles.rows) {
+      const identity = await this.resolveUserIdentity(row.user_id, row.user_source);
+      if (!identity) {
+        continue;
+      }
+
+      const attendance = await this.getTodayAttendance(row.user_id, row.user_source, workDate);
+      const todayStatus: PayrollEmployeeRecord['todayStatus'] = !attendance?.time_in
+        ? 'not_started'
+        : attendance.time_out
+          ? 'completed'
+          : 'timed_in';
+
+      const item: PayrollEmployeeRecord = {
+        userId: row.user_id,
+        userSource: row.user_source,
+        username: identity.username,
+        fullName: identity.fullName,
+        isActive: identity.isActive,
+        employeeCode: row.employee_code,
+        department: row.department,
+        positionTitle: row.position_title,
+        salaryType: this.normalizeSalaryType(row.salary_type),
+        monthlySalary: row.monthly_salary == null ? null : Number(row.monthly_salary),
+        payrollEnabled: Boolean(row.payroll_enabled),
+        todayStatus,
+        todayTimeIn: attendance?.time_in ?? null,
+        todayTimeOut: attendance?.time_out ?? null,
+      };
+
+      if (needle) {
+        const haystack = [
+          item.fullName,
+          item.username,
+          item.employeeCode ?? '',
+          item.department ?? '',
+          item.positionTitle ?? '',
+        ]
+          .join(' ')
+          .toLowerCase();
+        if (!haystack.includes(needle)) {
+          continue;
+        }
+      }
+
+      items.push(item);
+    }
+
+    return items;
+  }
+
+  async getPeriodSummary(dateFromRaw?: string, dateToRaw?: string) {
+    await this.ensureReady();
+
+    const today = manilaWorkDate();
+    const dateFrom = dateFromRaw?.trim() || today.slice(0, 8) + '01';
+    const dateTo = dateToRaw?.trim() || today;
+    if (dateFrom > dateTo) {
+      throw new BadRequestException('dateFrom must be on or before dateTo.');
+    }
+
+    const employees = await this.listEmployees('');
+    const attendance = await this.databaseService.query<{
+      user_id: number;
+      user_source: 'pcmazing_admin_users' | 'tblusers';
+      work_date: string;
+      time_in: string | null;
+      time_out: string | null;
+    }>(
+      `SELECT user_id, user_source, work_date::text AS work_date,
+              time_in::text AS time_in, time_out::text AS time_out
+       FROM pcmazing_attendance
+       WHERE work_date BETWEEN $1::date AND $2::date
+         AND time_in IS NOT NULL
+       ORDER BY work_date ASC`,
+      [dateFrom, dateTo],
+    );
+
+    const byUser = new Map<string, typeof attendance.rows>();
+    for (const row of attendance.rows) {
+      const key = `${row.user_source}:${row.user_id}`;
+      const list = byUser.get(key) ?? [];
+      list.push(row);
+      byUser.set(key, list);
+    }
+
+    const periodDays = this.countInclusiveDays(dateFrom, dateTo);
+    const rows: PayrollPeriodRow[] = employees.map((employee) => {
+      const punches = byUser.get(`${employee.userSource}:${employee.userId}`) ?? [];
+      let totalHours = 0;
+      let daysCompleted = 0;
+
+      for (const punch of punches) {
+        const hours = this.computeHours(punch.time_in, punch.time_out);
+        if (hours != null) {
+          totalHours += hours;
+          daysCompleted += 1;
+        } else if (punch.time_in) {
+          totalHours += 0;
+        }
+      }
+
+      const daysPresent = punches.length;
+      const estimatedPay = this.estimatePay({
+        salaryType: employee.salaryType,
+        salaryAmount: employee.monthlySalary,
+        totalHours,
+        daysCompleted,
+        periodDays,
+      });
+
+      return {
+        userId: employee.userId,
+        userSource: employee.userSource,
+        username: employee.username,
+        fullName: employee.fullName,
+        employeeCode: employee.employeeCode,
+        department: employee.department,
+        salaryType: employee.salaryType,
+        salaryAmount: employee.monthlySalary,
+        daysPresent,
+        daysCompleted,
+        totalHours: Math.round(totalHours * 100) / 100,
+        estimatedPay: Math.round(estimatedPay * 100) / 100,
+      };
+    });
+
+    rows.sort((a, b) => a.fullName.localeCompare(b.fullName));
+
+    return {
+      dateFrom,
+      dateTo,
+      periodDays,
+      items: rows,
+      totals: {
+        employees: rows.length,
+        totalHours: Math.round(rows.reduce((sum, row) => sum + row.totalHours, 0) * 100) / 100,
+        estimatedPay: Math.round(rows.reduce((sum, row) => sum + row.estimatedPay, 0) * 100) / 100,
+      },
+    };
+  }
+
+  async getServerClock(): Promise<{ serverNow: string; workDate: string }> {
+    const result = await this.databaseService.query<{
+      server_now: Date | string;
+      work_date: string;
+    }>(
+      `SELECT NOW() AS server_now,
+              (timezone('Asia/Manila', NOW()))::date::text AS work_date`,
+    );
+
+    const row = result.rows[0];
+    const serverNow =
+      row?.server_now instanceof Date
+        ? row.server_now.toISOString()
+        : new Date(row?.server_now ?? Date.now()).toISOString();
+
+    return {
+      serverNow,
+      workDate: row?.work_date || manilaWorkDate(),
+    };
+  }
+
+  async getTimeClockStatus(usernameRaw: string): Promise<TimeClockStatus> {
+    await this.ensureReady();
+    const clock = await this.getServerClock();
+    const workDate = clock.workDate;
+    const username = usernameRaw.trim();
+
+    const user = await this.findActiveUserByUsername(username);
+    if (!user) {
+      return {
+        username,
+        fullName: '',
+        employeeCode: null,
+        workDate,
+        timeIn: null,
+        timeOut: null,
+        canTimeIn: false,
+        canTimeOut: false,
+        status: 'not_found',
+        message: 'Username not found.',
+        serverNow: clock.serverNow,
+      };
+    }
+
+    if (!user.isActive) {
+      return {
+        username: user.username,
+        fullName: user.fullName,
+        employeeCode: null,
+        workDate,
+        timeIn: null,
+        timeOut: null,
+        canTimeIn: false,
+        canTimeOut: false,
+        status: 'inactive',
+        message: 'This account is inactive.',
+        serverNow: clock.serverNow,
+      };
+    }
+
+    const profile = await this.getProfile(user.id, user.source);
+    if (!profile.payrollEnabled) {
+      return {
+        username: user.username,
+        fullName: user.fullName,
+        employeeCode: profile.employeeCode,
+        workDate,
+        timeIn: null,
+        timeOut: null,
+        canTimeIn: false,
+        canTimeOut: false,
+        status: 'not_enrolled',
+        message: 'This user is not enabled for payroll time clock.',
+        serverNow: clock.serverNow,
+      };
+    }
+
+    const attendance = await this.getTodayAttendance(user.id, user.source, workDate);
+    if (!attendance?.time_in) {
+      return {
+        username: user.username,
+        fullName: user.fullName,
+        employeeCode: profile.employeeCode,
+        workDate,
+        timeIn: null,
+        timeOut: null,
+        canTimeIn: true,
+        canTimeOut: false,
+        status: 'ready',
+        message: 'Ready to time in.',
+        serverNow: clock.serverNow,
+      };
+    }
+
+    if (!attendance.time_out) {
+      return {
+        username: user.username,
+        fullName: user.fullName,
+        employeeCode: profile.employeeCode,
+        workDate,
+        timeIn: attendance.time_in,
+        timeOut: null,
+        canTimeIn: false,
+        canTimeOut: true,
+        status: 'timed_in',
+        message: 'Already timed in. Use time out when leaving.',
+        serverNow: clock.serverNow,
+      };
+    }
+
+    return {
+      username: user.username,
+      fullName: user.fullName,
+      employeeCode: profile.employeeCode,
+      workDate,
+      timeIn: attendance.time_in,
+      timeOut: attendance.time_out,
+      canTimeIn: false,
+      canTimeOut: false,
+      status: 'completed',
+      message: 'Time in and time out are already recorded for today.',
+      serverNow: clock.serverNow,
+    };
+  }
+
+  async timeIn(usernameRaw: string, selfie: Express.Multer.File): Promise<TimeClockStatus> {
+    const status = await this.getTimeClockStatus(usernameRaw);
+    if (status.status === 'not_found') {
+      throw new NotFoundException(status.message);
+    }
+    if (!status.canTimeIn) {
+      throw new BadRequestException(status.message);
+    }
+
+    const user = await this.findActiveUserByUsername(usernameRaw);
+    if (!user) {
+      throw new NotFoundException('Username not found.');
+    }
+
+    const selfieUrl = await saveAttendanceSelfieFile('in', user.username, selfie);
+    const workDate = status.workDate;
+    await this.databaseService.query(
+      `INSERT INTO pcmazing_attendance (user_id, user_source, username, work_date, time_in, time_in_selfie_url)
+       VALUES ($1, $2, $3, $4::date, NOW(), $5)
+       ON CONFLICT (user_id, user_source, work_date) DO UPDATE SET
+         time_in = COALESCE(pcmazing_attendance.time_in, EXCLUDED.time_in),
+         time_in_selfie_url = COALESCE(pcmazing_attendance.time_in_selfie_url, EXCLUDED.time_in_selfie_url),
+         username = EXCLUDED.username,
+         updated_at = NOW()
+       WHERE pcmazing_attendance.time_in IS NULL`,
+      [user.id, user.source, user.username, workDate, selfieUrl],
+    );
+
+    const refreshed = await this.getTimeClockStatus(user.username);
+    if (refreshed.status !== 'timed_in' && refreshed.status !== 'completed') {
+      throw new BadRequestException('Unable to record time in. You may already be timed in.');
+    }
+
+    return refreshed;
+  }
+
+  async timeOut(usernameRaw: string, selfie: Express.Multer.File): Promise<TimeClockStatus> {
+    const status = await this.getTimeClockStatus(usernameRaw);
+    if (status.status === 'not_found') {
+      throw new NotFoundException(status.message);
+    }
+    if (!status.canTimeOut) {
+      throw new BadRequestException(status.message);
+    }
+
+    const user = await this.findActiveUserByUsername(usernameRaw);
+    if (!user) {
+      throw new NotFoundException('Username not found.');
+    }
+
+    const selfieUrl = await saveAttendanceSelfieFile('out', user.username, selfie);
+    const workDate = status.workDate;
+    const result = await this.databaseService.query<{ id: number }>(
+      `UPDATE pcmazing_attendance
+       SET time_out = NOW(),
+           time_out_selfie_url = $4,
+           updated_at = NOW()
+       WHERE user_id = $1
+         AND user_source = $2
+         AND work_date = $3::date
+         AND time_in IS NOT NULL
+         AND time_out IS NULL
+       RETURNING id`,
+      [user.id, user.source, workDate, selfieUrl],
+    );
+
+    if (!result.rows[0]) {
+      throw new BadRequestException('Unable to record time out.');
+    }
+
+    return this.getTimeClockStatus(user.username);
+  }
+
+  private async getTodayAttendance(
+    userId: number,
+    userSource: AdminUserRecord['source'],
+    workDate: string,
+  ) {
+    const result = await this.databaseService.query<{
+      time_in: string | null;
+      time_out: string | null;
+    }>(
+      `SELECT time_in::text AS time_in, time_out::text AS time_out
+       FROM pcmazing_attendance
+       WHERE user_id = $1 AND user_source = $2 AND work_date = $3::date
+       LIMIT 1`,
+      [userId, userSource, workDate],
+    );
+
+    return result.rows[0] ?? null;
+  }
+
+  private async findActiveUserByUsername(username: string): Promise<AdminUserRecord | null> {
+    const trimmed = username.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    if (await usesTblusers(this.databaseService)) {
+      const result = await this.databaseService.query<{
+        id: number;
+        username: string;
+        fullname: string | null;
+        email: string | null;
+        rolename: string | null;
+        avatar: string | null;
+        status: number | null;
+        created_at: string | null;
+        updated_at: string | null;
+      }>(
+        `${buildTblusersSelectSql()}
+         WHERE LOWER(TRIM(u.username)) = LOWER(TRIM($1))
+           AND ${ACTIVE_FILTER_SQL}
+         LIMIT 1`,
+        [trimmed],
+      );
+
+      return result.rows[0] ? mapTblusersRow(result.rows[0]) : null;
+    }
+
+    await ensureUserManagementTable(this.databaseService);
+    const result = await this.databaseService.query<{
+      id: number;
+      username: string;
+      full_name: string;
+      email: string | null;
+      role: string;
+      profile_image_url: string | null;
+      is_active: boolean;
+      created_at: string;
+      updated_at: string;
+    }>(
+      `SELECT id, username, full_name, email, role, profile_image_url, is_active, created_at,
+              COALESCE(updated_at, created_at) AS updated_at
+       FROM pcmazing_admin_users
+       WHERE LOWER(TRIM(username)) = LOWER(TRIM($1))
+       LIMIT 1`,
+      [trimmed],
+    );
+
+    const row = result.rows[0];
+    if (!row) {
+      return null;
+    }
+
+    return {
+      id: row.id,
+      username: row.username,
+      fullName: row.full_name,
+      email: row.email,
+      role: row.role,
+      profileImageUrl: row.profile_image_url,
+      isActive: row.is_active,
+      source: 'pcmazing_admin_users',
+      readOnly: false,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  private async resolveFullName(
+    userId: number,
+    userSource: AdminUserRecord['source'],
+    fallbackUsername: string,
+  ): Promise<string> {
+    try {
+      if (userSource === 'tblusers') {
+        const result = await this.databaseService.query<{ fullname: string | null }>(
+          `SELECT COALESCE(
+             to_jsonb(u)->>'fullname',
+             to_jsonb(u)->>'fullName',
+             to_jsonb(u)->>'full_name',
+             u.username
+           ) AS fullname
+           FROM tblusers u
+           WHERE u.id = $1
+           LIMIT 1`,
+          [userId],
+        );
+        return result.rows[0]?.fullname?.trim() || fallbackUsername;
+      }
+
+      const result = await this.databaseService.query<{ full_name: string }>(
+        `SELECT full_name FROM pcmazing_admin_users WHERE id = $1 LIMIT 1`,
+        [userId],
+      );
+      return result.rows[0]?.full_name?.trim() || fallbackUsername;
+    } catch {
+      return fallbackUsername;
+    }
+  }
+
+  private mapProfile(row: {
+    employee_code: string | null;
+    department: string | null;
+    position_title: string | null;
+    salary_type?: string | null;
+    monthly_salary: string | null;
+    payroll_enabled: boolean;
+  }): PayrollProfile {
+    return {
+      employeeCode: row.employee_code,
+      department: row.department,
+      positionTitle: row.position_title,
+      salaryType: this.normalizeSalaryType(row.salary_type),
+      monthlySalary: row.monthly_salary == null ? null : Number(row.monthly_salary),
+      payrollEnabled: Boolean(row.payroll_enabled),
+    };
+  }
+
+  private normalizeSalaryType(value?: string | null): PayrollSalaryType {
+    switch ((value ?? '').trim().toLowerCase()) {
+      case 'weekly':
+        return 'weekly';
+      case 'semi_monthly':
+      case 'semi-monthly':
+      case 'semimonthly':
+        return 'semi_monthly';
+      case 'cutoff':
+        return 'cutoff';
+      default:
+        return 'monthly';
+    }
+  }
+
+  private computeHours(timeIn: string | null, timeOut: string | null): number | null {
+    if (!timeIn || !timeOut) {
+      return null;
+    }
+
+    const start = new Date(timeIn).getTime();
+    const end = new Date(timeOut).getTime();
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) {
+      return null;
+    }
+
+    return Math.round(((end - start) / 3_600_000) * 100) / 100;
+  }
+
+  private countInclusiveDays(dateFrom: string, dateTo: string): number {
+    const start = new Date(`${dateFrom}T00:00:00+08:00`).getTime();
+    const end = new Date(`${dateTo}T00:00:00+08:00`).getTime();
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) {
+      return 0;
+    }
+
+    return Math.floor((end - start) / 86_400_000) + 1;
+  }
+
+  private estimatePay(input: {
+    salaryType: PayrollSalaryType;
+    salaryAmount: number | null;
+    totalHours: number;
+    daysCompleted: number;
+    periodDays: number;
+  }): number {
+    const amount = input.salaryAmount;
+    if (amount == null || amount <= 0) {
+      return 0;
+    }
+
+    switch (input.salaryType) {
+      case 'weekly': {
+        const hourly = amount / 40;
+        return input.totalHours * hourly;
+      }
+      case 'semi_monthly': {
+        const daily = amount / 11;
+        return input.daysCompleted * daily;
+      }
+      case 'cutoff': {
+        return amount * input.daysCompleted;
+      }
+      case 'monthly':
+      default: {
+        const daily = amount / 22;
+        return input.daysCompleted * daily;
+      }
+    }
+  }
+
+  private async resolveUserIdentity(
+    userId: number,
+    userSource: AdminUserRecord['source'],
+  ): Promise<{ username: string; fullName: string; isActive: boolean } | null> {
+    try {
+      if (userSource === 'tblusers') {
+        const result = await this.databaseService.query<{
+          username: string;
+          fullname: string | null;
+          status: number | null;
+        }>(
+          `SELECT u.username,
+                  COALESCE(
+                    to_jsonb(u)->>'fullname',
+                    to_jsonb(u)->>'fullName',
+                    to_jsonb(u)->>'full_name',
+                    u.username
+                  ) AS fullname,
+                  CASE
+                    WHEN to_jsonb(u) ? 'status' THEN NULLIF(to_jsonb(u)->>'status', '')::int
+                    ELSE 1
+                  END AS status
+           FROM tblusers u
+           WHERE u.id = $1
+           LIMIT 1`,
+          [userId],
+        );
+        const row = result.rows[0];
+        if (!row) {
+          return null;
+        }
+
+        return {
+          username: row.username,
+          fullName: row.fullname?.trim() || row.username,
+          isActive: row.status == null ? true : Number(row.status) !== 0,
+        };
+      }
+
+      const result = await this.databaseService.query<{
+        username: string;
+        full_name: string;
+        is_active: boolean;
+      }>(
+        `SELECT username, full_name, is_active
+         FROM pcmazing_admin_users
+         WHERE id = $1
+         LIMIT 1`,
+        [userId],
+      );
+      const row = result.rows[0];
+      if (!row) {
+        return null;
+      }
+
+      return {
+        username: row.username,
+        fullName: row.full_name,
+        isActive: Boolean(row.is_active),
+      };
+    } catch {
+      return null;
+    }
+  }
+}

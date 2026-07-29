@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { DatabaseModule } from '../../database/database.module';
+import { PayrollModule } from '../payroll/payroll.module';
 import { RbacService } from '../rbac/rbac.service';
 import { UsersService } from '../users/users.service';
 import { AuthController } from './auth.controller';
@@ -12,6 +13,7 @@ import { StaffGateGuard } from './guards/staff-gate.guard';
 @Module({
   imports: [
     DatabaseModule,
+    PayrollModule,
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
