@@ -1191,6 +1191,10 @@ export class AdminApiService {
     return this.resolveUploadUrl(imageUrl);
   }
 
+  resolveAttendanceSelfieUrl(imageUrl: string | null | undefined): string | null {
+    return this.resolveUploadUrl(imageUrl);
+  }
+
   private resolveUploadUrl(uploadUrl: string | null | undefined): string | null {
     if (!uploadUrl) {
       return null;
