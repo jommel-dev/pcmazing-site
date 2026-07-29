@@ -12,6 +12,8 @@ import { DemoRequestsPageComponent } from './pages/demo-requests/demo-requests-p
 import { DemoRequestDetailPageComponent } from './pages/demo-requests/demo-request-detail-page.component';
 import { InventoryPageComponent } from './pages/inventory/inventory-page.component';
 import { InventoryDetailPageComponent } from './pages/inventory/inventory-detail-page.component';
+import { InventoryServiceCreatePageComponent } from './pages/inventory/inventory-service-create-page.component';
+import { InventoryServicesPageComponent } from './pages/inventory/inventory-services-page.component';
 import { PurchasePageComponent } from './pages/inventory/purchase-page.component';
 import { PurchaseDetailPageComponent } from './pages/inventory/purchase-detail-page.component';
 import { PurchaseCreatePageComponent } from './pages/inventory/purchase-create-page.component';
@@ -96,6 +98,21 @@ export const adminRoutes: Routes = [
         path: 'inventory',
         component: InventoryPageComponent,
         title: 'Inventory | PCMazing Admin',
+      },
+      {
+        path: 'inventory/services',
+        component: InventoryServicesPageComponent,
+        title: 'Services | PCMazing Admin',
+      },
+      {
+        path: 'inventory/services/new',
+        component: InventoryServiceCreatePageComponent,
+        title: 'Add Service | PCMazing Admin',
+      },
+      {
+        path: 'inventory/services/:id',
+        component: InventoryServiceCreatePageComponent,
+        title: 'Edit Service | PCMazing Admin',
       },
       {
         path: 'inventory/products/new',

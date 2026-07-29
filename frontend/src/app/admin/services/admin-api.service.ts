@@ -96,6 +96,69 @@ export interface InventoryStockSummary {
   itemCount: number;
 }
 
+export interface InventoryServiceSummary {
+  totalCosting: number;
+  totalSales: number;
+  totalLaborSales: number;
+  totalPartsCost: number;
+  itemCount: number;
+}
+
+export interface InventoryServiceFilterOption {
+  label: string;
+  count: number;
+}
+
+export interface InventoryServiceItem {
+  id: number;
+  referenceNo: string | null;
+  customerName: string;
+  serviceName: string;
+  personInChargeUserId: number | null;
+  personInChargeSource: 'tblusers' | 'pcmazing_admin_users';
+  personInChargeName: string | null;
+  type: string;
+  partsUsed: string[];
+  cost: number;
+  labor: number;
+  status: string;
+  imageUrl: string | null;
+  totalCosting: number;
+  totalSales: number;
+  startedAt: string | null;
+  endedAt: string | null;
+  durationMinutes: number | null;
+  notes?: string | null;
+  parts?: Array<{
+    materialId?: number;
+    materialName?: string | null;
+    customItemName?: string;
+    quantity: number;
+    unitPrice?: number;
+  }>;
+  updatedAt: string | null;
+}
+
+export interface CreateInventoryServicePayload {
+  customerName: string;
+  serviceName: string;
+  personInChargeUserId?: number;
+  personInChargeSource?: 'tblusers' | 'pcmazing_admin_users';
+  type: string;
+  parts?: Array<{
+    materialId?: number;
+    customItemName?: string;
+    quantity: number;
+    unitPrice?: number;
+  }>;
+  cost?: number;
+  labor?: number;
+  status?: string;
+  notes?: string;
+  startedAt?: string;
+  endedAt?: string;
+}
+
 export interface InventoryTreeNode {
   id: number;
   name: string;
@@ -547,6 +610,63 @@ export class AdminApiService {
     return this.http.get<ListResponse<MaterialItem> & { summary: InventoryStockSummary }>(
       `${APP_CONFIG.apiUrl}/admin/inventory/materials`,
       { headers: this.headers(), params },
+    );
+  }
+
+  listInventoryServices(page = 1, limit = 20, search = '', type = '', status = '') {
+    let params = this.listParams(page, limit, search);
+    if (type.trim()) {
+      params = params.set('type', type.trim());
+    }
+    if (status.trim()) {
+      params = params.set('status', status.trim());
+    }
+
+    return this.http.get<
+      ListResponse<InventoryServiceItem> & {
+        summary: InventoryServiceSummary;
+        filters: {
+          types: InventoryServiceFilterOption[];
+          statuses: InventoryServiceFilterOption[];
+        };
+      }
+    >(`${APP_CONFIG.apiUrl}/admin/inventory/services`, {
+      headers: this.headers(),
+      params,
+    });
+  }
+
+  createInventoryService(payload: CreateInventoryServicePayload) {
+    return this.http.post<ItemResponse<InventoryServiceItem>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/services`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  getInventoryService(id: number) {
+    return this.http.get<ItemResponse<InventoryServiceItem>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/services/${id}`,
+      { headers: this.headers() },
+    );
+  }
+
+  updateInventoryService(id: number, payload: CreateInventoryServicePayload) {
+    return this.http.patch<ItemResponse<InventoryServiceItem>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/services/${id}`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  uploadInventoryServiceImage(id: number, file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    return this.http.post<ItemResponse<InventoryServiceItem>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/services/${id}/image`,
+      formData,
+      { headers: this.headers() },
     );
   }
 
@@ -1067,7 +1187,7 @@ export class AdminApiService {
     return this.resolveUploadUrl(imageUrl);
   }
 
-  resolveAttendanceSelfieUrl(imageUrl: string | null | undefined): string | null {
+  resolveServiceImageUrl(imageUrl: string | null | undefined): string | null {
     return this.resolveUploadUrl(imageUrl);
   }
 
