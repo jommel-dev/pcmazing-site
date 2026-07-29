@@ -147,9 +147,27 @@
             <p class="mt-2 text-lg font-bold text-slate-900">{{ contract.projectName }}</p>
             <p class="mt-1 text-sm text-slate-600">{{ contract.projectType }}</p>
           </div>
-          <div class="rounded-xl bg-cyan-50 px-4 py-3 text-sm text-cyan-900">
-            <p class="text-xs font-bold uppercase tracking-wide text-cyan-700">Signed date</p>
-            <p class="mt-1 font-semibold">{{ formatDate(contract.signedAt) }}</p>
+          <div class="flex flex-wrap items-start gap-3">
+            <div class="rounded-xl bg-cyan-50 px-4 py-3 text-sm text-cyan-900">
+              <p class="text-xs font-bold uppercase tracking-wide text-cyan-700">Signed date</p>
+              <p class="mt-1 font-semibold">{{ formatDate(contract.signedAt) }}</p>
+            </div>
+            @if (canCreateProject(item)) {
+              <button
+                type="button"
+                class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600"
+                (click)="openCreateProjectModal()"
+              >
+                Create Project
+              </button>
+            } @else if (existingProjectId(); as projectId) {
+              <a
+                routerLink="/admin/projects"
+                class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-bold text-emerald-800"
+              >
+                View in Projects
+              </a>
+            }
           </div>
         </div>
 
@@ -190,6 +208,9 @@
                   @if (milestone.description) {
                     <p class="mt-1 text-sm text-slate-600">{{ milestone.description }}</p>
                   }
+                  @if (milestone.connectedModuleId) {
+                    <p class="mt-2 text-xs text-slate-500">Linked modules: {{ linkedModuleNames(contract.modules, milestone.connectedModuleId) }}</p>
+                  }
                   <p class="mt-2 text-xs text-slate-500">Due: {{ formatDate(milestone.dueDate) }}</p>
                 </div>
               }
@@ -207,6 +228,9 @@
                   <div class="flex items-start justify-between gap-3">
                     <div>
                       <p class="font-semibold text-slate-900">{{ payment.label }}</p>
+                      @if (payment.description) {
+                        <p class="mt-1 text-sm text-slate-600">{{ payment.description }}</p>
+                      }
                       <p class="mt-1 text-xs text-slate-500">Due: {{ formatDate(payment.dueDate) }}</p>
                     </div>
                     <p class="text-sm font-bold text-slate-900">{{ formatDealAmount(payment.amount, item.currency || 'PHP') }}</p>
@@ -279,5 +303,71 @@
         </div>
       </div>
     </div>
+
+    @if (createProjectOpen()) {
+      <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" (click)="closeCreateProjectModal()">
+        <div class="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-xl" (click)="$event.stopPropagation()">
+          <h3 class="text-lg font-bold text-slate-900">Create Project</h3>
+          <p class="mt-1 text-sm text-slate-500">
+            Assign a project manager and developer team for
+            <strong>{{ item.contract?.projectName || item.clientName }}</strong>.
+          </p>
+
+          @if (createProjectLoading()) {
+            <p class="mt-6 text-sm text-slate-500">Loading users...</p>
+          } @else {
+            <div class="mt-5 space-y-4">
+              <div>
+                <label class="mb-1 block text-sm font-semibold">Project manager</label>
+                <select
+                  class="w-full rounded-xl border px-4 py-2.5 text-sm"
+                  [ngModel]="selectedManagerKey()"
+                  (ngModelChange)="selectedManagerKey.set($event)"
+                >
+                  <option value="">Select project manager</option>
+                  @for (user of managers(); track userKey(user)) {
+                    <option [value]="userKey(user)">{{ user.fullName }} (@{{ user.username }}) · {{ user.role }}</option>
+                  }
+                </select>
+              </div>
+
+              <div>
+                <label class="mb-1 block text-sm font-semibold">Team members (Developer)</label>
+                @if (developers().length === 0) {
+                  <p class="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                    No active users with role Developer. Add Developer users in User Management first.
+                  </p>
+                } @else {
+                  <div class="max-h-56 space-y-2 overflow-y-auto rounded-xl border border-slate-200 p-3">
+                    @for (user of developers(); track userKey(user)) {
+                      <label class="flex items-center gap-2 text-sm text-slate-700">
+                        <input type="checkbox" [checked]="isDeveloperSelected(user)" (change)="toggleDeveloper(user)" />
+                        <span>{{ user.fullName }} <span class="text-slate-400">(@{{ user.username }})</span></span>
+                      </label>
+                    }
+                  </div>
+                }
+              </div>
+
+              @if (createProjectError()) {
+                <div class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{{ createProjectError() }}</div>
+              }
+            </div>
+          }
+
+          <div class="mt-6 flex justify-end gap-2">
+            <button type="button" class="rounded-xl border px-4 py-2.5 text-sm font-bold" (click)="closeCreateProjectModal()" [disabled]="createProjectSaving()">Cancel</button>
+            <button
+              type="button"
+              class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50"
+              (click)="submitCreateProject()"
+              [disabled]="createProjectLoading() || createProjectSaving() || developers().length === 0"
+            >
+              @if (createProjectSaving()) { Creating... } @else { Create project }
+            </button>
+          </div>
+        </div>
+      </div>
+    }
   }
 </section>

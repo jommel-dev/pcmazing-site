@@ -63,6 +63,11 @@ export class ProspectContractPaymentScheduleDto {
   amount!: number;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  description?: string;
+
+  @IsOptional()
   @IsDateString()
   dueDate?: string;
 

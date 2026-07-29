@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post, Req } from '@nestjs/common';
-import { Request } from 'express';
+import type { Request } from 'express';
 import { CompleteContractSigningDto } from '../../admin/marketing/dto/prospect-contract.dto';
 import { ContractSigningService } from './contract-signing.service';
 

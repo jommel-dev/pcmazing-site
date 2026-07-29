@@ -1,0 +1,85 @@
+<section>
+  <a routerLink="/admin/projects" class="text-sm font-bold text-pcmazing-500 hover:text-pcmazing-600">← Back to Projects</a>
+
+  @if (loading()) {
+    <div class="mt-6 rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500">Loading project...</div>
+  } @else if (error()) {
+    <div class="mt-6 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{{ error() }}</div>
+  } @else if (project(); as item) {
+    <div class="mt-6 flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <p class="text-xs font-bold uppercase tracking-wide text-pcmazing-500">Project · View</p>
+        <h2 class="mt-1 text-2xl font-bold text-slate-900">{{ item.name }}</h2>
+        <p class="mt-1 text-sm text-slate-500">{{ item.projectType || 'No project type' }} · {{ item.clientName }}</p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <a [routerLink]="['/admin/projects', item.id, 'tasks']" class="rounded-xl bg-pcmazing-500 px-4 py-2 text-sm font-bold text-white">Open Tasks</a>
+        <a [routerLink]="['/admin/lead-generation', item.prospectId, 'view']" class="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700">Signed contract</a>
+      </div>
+    </div>
+
+    <div class="mt-6 grid gap-4 lg:grid-cols-3">
+      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-2">
+        <h3 class="text-sm font-bold uppercase tracking-wide text-slate-500">Project details</h3>
+        <dl class="mt-4 grid gap-4 sm:grid-cols-2">
+          <div>
+            <dt class="text-xs font-bold uppercase text-slate-400">Status</dt>
+            <dd class="mt-1">
+              <span class="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold uppercase text-emerald-700">{{ item.status }}</span>
+            </dd>
+          </div>
+          <div>
+            <dt class="text-xs font-bold uppercase text-slate-400">Project type</dt>
+            <dd class="mt-1 text-sm font-semibold text-slate-800">{{ item.projectType || '—' }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs font-bold uppercase text-slate-400">Client</dt>
+            <dd class="mt-1 text-sm font-semibold text-slate-800">{{ item.clientName }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs font-bold uppercase text-slate-400">Company</dt>
+            <dd class="mt-1 text-sm font-semibold text-slate-800">{{ item.company || '—' }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs font-bold uppercase text-slate-400">Created</dt>
+            <dd class="mt-1 text-sm text-slate-700">{{ item.createdAt | date: 'medium' }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs font-bold uppercase text-slate-400">Updated</dt>
+            <dd class="mt-1 text-sm text-slate-700">{{ item.updatedAt | date: 'medium' }}</dd>
+          </div>
+        </dl>
+      </div>
+
+      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h3 class="text-sm font-bold uppercase tracking-wide text-slate-500">Project manager</h3>
+        @if (item.projectManager; as manager) {
+          <p class="mt-4 text-base font-bold text-slate-900">{{ manager.fullName }}</p>
+          <p class="mt-1 text-sm text-slate-500">@{{ manager.username }} · {{ manager.role }}</p>
+          @if (manager.email) {
+            <p class="mt-1 text-sm text-slate-500">{{ manager.email }}</p>
+          }
+        } @else {
+          <p class="mt-4 text-sm text-slate-500">No project manager assigned.</p>
+        }
+      </div>
+    </div>
+
+    <div class="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div class="flex items-center justify-between gap-3">
+        <h3 class="text-sm font-bold uppercase tracking-wide text-slate-500">Team members (Developers)</h3>
+        <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">{{ item.teamMembers.length }}</span>
+      </div>
+      <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        @for (member of item.teamMembers; track member.source + ':' + member.id) {
+          <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <p class="font-semibold text-slate-900">{{ member.fullName }}</p>
+            <p class="mt-1 text-xs text-slate-500">@{{ member.username }} · {{ member.role }}</p>
+          </div>
+        } @empty {
+          <p class="text-sm text-slate-500">No developers assigned.</p>
+        }
+      </div>
+    </div>
+  }
+</section>

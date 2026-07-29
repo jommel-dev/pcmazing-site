@@ -2,13 +2,13 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { randomBytes } from 'crypto';
 import { PoolClient } from 'pg';
 import { DatabaseService } from '../../database/database.service';
-import { CompleteContractSigningDto, ProspectContractDto } from '../admin/marketing/dto/prospect-contract.dto';
+import { CompleteContractSigningDto, ProspectContractDto } from '../../admin/marketing/dto/prospect-contract.dto';
 import {
   assertDealContractReadyForSigning,
   buildMilestoneCode,
   buildModuleCode,
   buildPaymentCode,
-} from '../admin/marketing/deal-contract-validation.util';
+} from '../../admin/marketing/deal-contract-validation.util';
 
 const SIGNING_TOKEN_BYTES = 32;
 const SIGNING_EXPIRY_DAYS = 14;
@@ -232,8 +232,8 @@ export class ContractSigningService {
       RETURNING id`,
       [
         prospectId,
-        contract.systemName.trim(),
-        contract.systemType.trim(),
+        contract.projectName.trim(),
+        contract.projectType.trim(),
         signingStatus,
         userId,
       ],
@@ -251,7 +251,7 @@ export class ContractSigningService {
        SET system_name = EXCLUDED.system_name,
            system_type = EXCLUDED.system_type,
            updated_at = NOW()`,
-      [prospectId, contract.systemName.trim(), contract.systemType.trim()],
+      [prospectId, contract.projectName.trim(), contract.projectType.trim()],
     );
 
     await client.query(`DELETE FROM pcmazing_client_contract_modules WHERE contract_id = $1`, [contractId]);
@@ -264,68 +264,63 @@ export class ContractSigningService {
       await client.query(
         `INSERT INTO pcmazing_client_contract_modules (
           contract_id, prospect_id, sort_order, module_code, module_name, description,
-          scope_of_work, delivery_timeline, responsible_team, quantity, amount
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+          features, process_flow
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
           contractId,
           prospectId,
           index,
-          buildModuleCode(index, module.moduleId),
+          buildModuleCode(index),
           module.name.trim(),
           module.description?.trim() || null,
-          module.scopeOfWork.trim(),
-          module.deliveryTimeline.trim(),
-          module.responsibleTeam.trim(),
-          module.quantity ?? null,
-          module.amount ?? null,
+          module.features?.trim() || null,
+          module.processFlow?.trim() || null,
         ],
       );
     }
 
     for (const [index, milestone] of contract.milestones.entries()) {
+      const connectedModuleSortOrder = this.parseLinkedSortOrder(milestone.connectedModuleId);
       const milestoneResult = await client.query<{ id: number }>(
         `INSERT INTO pcmazing_client_contract_milestones (
           contract_id, prospect_id, sort_order, milestone_code, title, description,
-          due_date, dependencies, success_criteria
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7::date, $8, $9)
+          due_date, connected_module_sort_order
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7::date, $8)
         RETURNING id`,
         [
           contractId,
           prospectId,
           index,
-          buildMilestoneCode(index, milestone.milestoneId),
+          buildMilestoneCode(index),
           milestone.title.trim(),
           milestone.description?.trim() || null,
-          milestone.dueDate,
-          milestone.dependencies?.trim() || null,
-          milestone.successCriteria.trim(),
+          milestone.dueDate ?? null,
+          connectedModuleSortOrder,
         ],
       );
       milestoneDbIds.push(milestoneResult.rows[0]?.id ?? 0);
     }
 
     for (const [index, payment] of contract.paymentSchedule.entries()) {
+      const connectedMilestoneSortOrder = this.parseLinkedSortOrder(payment.connectedMilestoneId);
       const milestoneId =
-        payment.associatedMilestoneIndex !== undefined
-          ? milestoneDbIds[payment.associatedMilestoneIndex] ?? null
-          : null;
+        connectedMilestoneSortOrder !== null ? milestoneDbIds[connectedMilestoneSortOrder] ?? null : null;
 
       await client.query(
         `INSERT INTO pcmazing_client_contract_payment_schedules (
           contract_id, prospect_id, sort_order, payment_code, milestone_id, label,
-          amount, due_date, payment_method, status, notes
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::date, $9, $10, $11)`,
+          amount, description, due_date, status, notes
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::date, 'pending', $10)`,
         [
           contractId,
           prospectId,
           index,
-          buildPaymentCode(index, payment.paymentId),
+          buildPaymentCode(index),
           milestoneId,
           payment.label.trim(),
           payment.amount,
-          payment.dueDate,
-          payment.paymentMethod.trim(),
-          payment.status,
+          payment.description?.trim() || null,
+          payment.dueDate ?? null,
           payment.notes?.trim() || null,
         ],
       );
@@ -467,5 +462,14 @@ export class ContractSigningService {
       milestones: milestones.rows,
       paymentSchedule: payments.rows,
     };
+  }
+
+  private parseLinkedSortOrder(value?: string | null): number | null {
+    if (value === undefined || value === null || value === '') {
+      return null;
+    }
+    const first = String(value).split(',')[0]?.trim();
+    const parsed = Number(first);
+    return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
   }
 }

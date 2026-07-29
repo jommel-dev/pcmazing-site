@@ -98,6 +98,7 @@ export interface ClientProspectDetail extends ClientProspectListItem {
       id: number;
       label: string;
       amount: number;
+      description: string | null;
       dueDate: string | null;
       notes: string | null;
       connectedMilestoneId: string | null;
@@ -1053,11 +1054,13 @@ export class ClientProspectsService {
       throw new BadRequestException('Contract details are required when marking a prospect as contract signed.');
     }
 
+    const contract = dto.contract;
+
     const proposedDeal =
       this.toNullableNumber(prospect.estimated_price_deal_php)
       ?? this.toNullableNumber(prospect.proposed_price_deal)
       ?? 0;
-    const totalPayments = dto.contract.paymentSchedule.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+    const totalPayments = contract.paymentSchedule.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
     if (proposedDeal > 0 && totalPayments > proposedDeal) {
       throw new BadRequestException('Total payments cannot exceed the proposed deal amount.');
     }
@@ -1069,9 +1072,9 @@ export class ClientProspectsService {
         [
           id,
           userId,
-          dto.contract?.remarks?.trim() || dto.notes?.trim() || null,
+          contract.remarks?.trim() || dto.notes?.trim() || null,
           'Contract Signed',
-          dto.contract?.remarks?.trim() || null,
+          contract.remarks?.trim() || null,
         ],
       );
 
@@ -1095,10 +1098,10 @@ export class ClientProspectsService {
         RETURNING id`,
         [
           id,
-          dto.contract.projectName.trim(),
-          dto.contract.projectType.trim(),
-          dto.contract.signedAt ?? null,
-          dto.contract.remarks?.trim() || null,
+          contract.projectName.trim(),
+          contract.projectType.trim(),
+          contract.signedAt ?? null,
+          contract.remarks?.trim() || null,
           userId,
         ],
       );
@@ -1112,7 +1115,7 @@ export class ClientProspectsService {
       await client.query(`DELETE FROM pcmazing_client_contract_milestones WHERE contract_id = $1`, [contractId]);
       await client.query(`DELETE FROM pcmazing_client_contract_payment_schedules WHERE contract_id = $1`, [contractId]);
 
-      for (const [index, module] of dto.contract.modules.entries()) {
+      for (const [index, module] of contract.modules.entries()) {
         await client.query(
           `INSERT INTO pcmazing_client_contract_modules (
             contract_id, prospect_id, sort_order, module_name, description, features, process_flow
@@ -1130,8 +1133,8 @@ export class ClientProspectsService {
       }
 
       const milestoneIds: number[] = [];
-      for (const [index, milestone] of dto.contract.milestones.entries()) {
-        const connectedModuleSortOrder = this.parseLinkedSortOrder(milestone.connectedModuleId);
+      for (const [index, milestone] of contract.milestones.entries()) {
+        const connectedModuleSortOrders = this.normalizeLinkedSortOrders(milestone.connectedModuleId);
         const milestoneResult = await client.query<{ id: number }>(
           `INSERT INTO pcmazing_client_contract_milestones (
             contract_id, prospect_id, sort_order, title, description, due_date, connected_module_sort_order
@@ -1144,27 +1147,28 @@ export class ClientProspectsService {
             milestone.title.trim(),
             milestone.description?.trim() || null,
             milestone.dueDate ?? null,
-            connectedModuleSortOrder,
+            connectedModuleSortOrders,
           ],
         );
         milestoneIds.push(milestoneResult.rows[0]?.id ?? 0);
       }
 
-      for (const [index, payment] of dto.contract.paymentSchedule.entries()) {
+      for (const [index, payment] of contract.paymentSchedule.entries()) {
         const connectedMilestoneSortOrder = this.parseLinkedSortOrder(payment.connectedMilestoneId);
         const milestoneId =
           connectedMilestoneSortOrder !== null ? milestoneIds[connectedMilestoneSortOrder] ?? null : null;
 
         await client.query(
           `INSERT INTO pcmazing_client_contract_payment_schedules (
-            contract_id, prospect_id, sort_order, label, amount, due_date, notes, milestone_id
-          ) VALUES ($1, $2, $3, $4, $5, $6::date, $7, $8)`,
+            contract_id, prospect_id, sort_order, label, amount, description, due_date, notes, milestone_id
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7::date, $8, $9)`,
           [
             contractId,
             id,
             index,
             payment.label.trim(),
             payment.amount,
+            payment.description?.trim() || null,
             payment.dueDate ?? null,
             payment.notes?.trim() || null,
             milestoneId,
@@ -1188,8 +1192,28 @@ export class ClientProspectsService {
     if (value === undefined || value === null || value === '') {
       return null;
     }
-    const parsed = Number(value);
+    const first = String(value).split(',')[0]?.trim();
+    const parsed = Number(first);
     return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
+  }
+
+  private normalizeLinkedSortOrders(value?: string | null): string | null {
+    if (value === undefined || value === null || value === '') {
+      return null;
+    }
+
+    const orders = String(value)
+      .split(',')
+      .map((part) => part.trim())
+      .filter((part) => part !== '')
+      .map((part) => Number(part))
+      .filter((part) => Number.isInteger(part) && part >= 0);
+
+    if (!orders.length) {
+      return null;
+    }
+
+    return [...new Set(orders)].join(',');
   }
 
   async addResponse(
@@ -1563,7 +1587,7 @@ export class ClientProspectsService {
         title: string;
         description: string | null;
         due_date: string | null;
-        connected_module_sort_order: number | null;
+        connected_module_sort_order: string | number | null;
         sort_order: number;
       }>(
         `SELECT id, title, description, due_date::text, connected_module_sort_order, sort_order
@@ -1576,11 +1600,12 @@ export class ClientProspectsService {
         id: number;
         label: string;
         amount: string;
+        description: string | null;
         due_date: string | null;
         notes: string | null;
         milestone_id: number | null;
       }>(
-        `SELECT id, label, amount::text, due_date::text, notes, milestone_id
+        `SELECT id, label, amount::text, description, due_date::text, notes, milestone_id
          FROM pcmazing_client_contract_payment_schedules
          WHERE contract_id = $1
          ORDER BY sort_order ASC, id ASC`,
@@ -1620,10 +1645,11 @@ export class ClientProspectsService {
         id: row.id,
         label: row.label,
         amount: Number(row.amount),
+        description: row.description,
         dueDate: row.due_date,
         notes: row.notes,
         connectedMilestoneId:
-          row.milestone_id !== null && milestoneSortOrderById.has(row.milestone_id)
+          row.milestone_id != null && milestoneSortOrderById.has(row.milestone_id)
             ? String(milestoneSortOrderById.get(row.milestone_id))
             : null,
       })),
