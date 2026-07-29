@@ -10,6 +10,8 @@ import { DashboardService } from './dashboard/dashboard.service';
 import { DemoRequestsController } from './demo-requests/demo-requests.controller';
 import { DemoRequestsService } from './demo-requests/demo-requests.service';
 import { InventoryController } from './inventory/inventory.controller';
+import { InventoryServicesController } from './inventory/inventory-services.controller';
+import { InventoryServicesService } from './inventory/inventory-services.service';
 import { InventoryService } from './inventory/inventory.service';
 import { PurchaseController } from './inventory/purchase.controller';
 import { PurchaseService } from './inventory/purchase.service';
@@ -33,6 +35,7 @@ import { CurrencyExchangeService } from './marketing/currency-exchange.service';
     CustomerReviewsController,
     DemoRequestsController,
     InventoryController,
+    InventoryServicesController,
     PurchaseController,
     QuotationController,
     UsersController,
@@ -45,6 +48,7 @@ import { CurrencyExchangeService } from './marketing/currency-exchange.service';
     CustomerReviewsService,
     DemoRequestsService,
     InventoryService,
+    InventoryServicesService,
     PurchaseService,
     QuotationService,
     RbacService,
