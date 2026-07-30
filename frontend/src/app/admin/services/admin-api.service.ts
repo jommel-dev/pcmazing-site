@@ -325,6 +325,70 @@ export interface PayrollAttendanceItem {
   timeOutSelfieUrl?: string | null;
 }
 
+export interface EmployeeDayOffItem {
+  id: number;
+  dayOffDate: string;
+  reason: string | null;
+}
+
+export interface EmployeeTodoItem {
+  id: number;
+  title: string;
+  notes: string | null;
+  dueDate: string;
+  isDone: boolean;
+}
+
+export interface EmployeeActivityItem {
+  id: number;
+  actionType: string;
+  title: string;
+  details: string | null;
+  createdAt: string;
+}
+
+export interface EmployeePayslipItem {
+  id: string;
+  label: string;
+  dateFrom: string;
+  dateTo: string;
+  periodDays: number;
+  daysPresent: number;
+  daysCompleted: number;
+  totalHours: number;
+  salaryType: string;
+  salaryAmount: number | null;
+  estimatedPay: number;
+  payrollEnabled: boolean;
+}
+
+export interface EmployeeWorkspaceDashboard {
+  workDate: string;
+  month: string;
+  today: {
+    timeIn: string | null;
+    timeOut: string | null;
+    hoursWorked: number | null;
+    status: string;
+  };
+  monthSummary: {
+    totalHours: number;
+    daysPresent: number;
+    daysCompleted: number;
+    dayOffCount: number;
+  };
+  attendanceDays: Array<{
+    workDate: string;
+    timeIn: string | null;
+    timeOut: string | null;
+    hoursWorked: number | null;
+  }>;
+  dayOffs: EmployeeDayOffItem[];
+  todos: EmployeeTodoItem[];
+  activities: EmployeeActivityItem[];
+  payslips: EmployeePayslipItem[];
+}
+
 export interface PayrollOverview {
   workDate: string;
   enrolledEmployees: number;
@@ -375,6 +439,21 @@ export interface PayrollPeriodMeta {
     totalHours: number;
     estimatedPay: number;
   };
+}
+
+export interface PayrollGenerateResult {
+  runId: number;
+  label: string;
+  dateFrom: string;
+  dateTo: string;
+  periodDays: number;
+  employeeCount: number;
+  totals: {
+    employees: number;
+    totalHours: number;
+    estimatedPay: number;
+  };
+  replaced: boolean;
 }
 
 export interface RbacStatus {
@@ -1124,6 +1203,17 @@ export class AdminApiService {
     );
   }
 
+  generatePayrollPeriod(dateFrom = '', dateTo = '') {
+    return this.http.post<ItemResponse<PayrollGenerateResult>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/period/generate`,
+      {
+        dateFrom: dateFrom.trim() || undefined,
+        dateTo: dateTo.trim() || undefined,
+      },
+      { headers: this.headers() },
+    );
+  }
+
   listProjects() {
     return this.http.get<ItemResponse<{ items: ProjectListItem[] }>>(
       `${APP_CONFIG.apiUrl}/admin/projects`,
@@ -1578,6 +1668,66 @@ export class AdminApiService {
 
   resolveAttendanceSelfieUrl(imageUrl: string | null | undefined): string | null {
     return this.resolveUploadUrl(imageUrl);
+  }
+
+  getEmployeeWorkspaceDashboard(month?: string) {
+    let params = new HttpParams();
+    if (month?.trim()) {
+      params = params.set('month', month.trim());
+    }
+    return this.http.get<ItemResponse<EmployeeWorkspaceDashboard>>(
+      `${APP_CONFIG.apiUrl}/admin/employee-workspace/dashboard`,
+      { headers: this.headers(), params },
+    );
+  }
+
+  upsertEmployeeDayOff(payload: { dayOffDate: string; reason?: string }) {
+    return this.http.put<MessageResponse<EmployeeDayOffItem>>(
+      `${APP_CONFIG.apiUrl}/admin/employee-workspace/day-offs`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  deleteEmployeeDayOff(id: number) {
+    return this.http.delete<MessageResponse<null>>(
+      `${APP_CONFIG.apiUrl}/admin/employee-workspace/day-offs/${id}`,
+      { headers: this.headers() },
+    );
+  }
+
+  createEmployeeTodo(payload: { title: string; notes?: string; dueDate: string }) {
+    return this.http.post<MessageResponse<EmployeeTodoItem>>(
+      `${APP_CONFIG.apiUrl}/admin/employee-workspace/todos`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  updateEmployeeTodo(
+    id: number,
+    payload: { title?: string; notes?: string; dueDate?: string; isDone?: boolean },
+  ) {
+    return this.http.patch<MessageResponse<EmployeeTodoItem>>(
+      `${APP_CONFIG.apiUrl}/admin/employee-workspace/todos/${id}`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  deleteEmployeeTodo(id: number) {
+    return this.http.delete<MessageResponse<null>>(
+      `${APP_CONFIG.apiUrl}/admin/employee-workspace/todos/${id}`,
+      { headers: this.headers() },
+    );
+  }
+
+  createEmployeeActivity(payload: { actionType: string; title: string; details?: string }) {
+    return this.http.post<MessageResponse<EmployeeActivityItem>>(
+      `${APP_CONFIG.apiUrl}/admin/employee-workspace/activities`,
+      payload,
+      { headers: this.headers() },
+    );
   }
 
   private resolveUploadUrl(uploadUrl: string | null | undefined): string | null {

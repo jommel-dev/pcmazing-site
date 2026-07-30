@@ -2,7 +2,9 @@
   <div>
     <p class="text-xs font-bold uppercase tracking-wide text-pcmazing-500">Home</p>
     <h2 class="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{{ title() }}</h2>
-    <p class="mt-1 text-sm text-slate-500">Shortcuts for your role.</p>
+    @if (kind() !== 'sales') {
+      <p class="mt-1 text-sm text-slate-500">Shortcuts for your role.</p>
+    }
   </div>
 
   @if (error()) {
@@ -27,27 +29,14 @@
   }
 
   @if (kind() === 'sales') {
-    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      <a routerLink="/admin/contact-inquiries" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-pcmazing-400 dark:border-slate-700 dark:bg-slate-900">
-        <p class="text-xs font-bold uppercase tracking-wide text-pcmazing-500">Website</p>
-        <h3 class="mt-2 text-lg font-bold text-slate-900 dark:text-white">Customer Inquiries</h3>
-        <p class="mt-1 text-sm text-slate-500">Website contact form submissions.</p>
-      </a>
-      <a routerLink="/admin/customer-reviews" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-pcmazing-400 dark:border-slate-700 dark:bg-slate-900">
-        <p class="text-xs font-bold uppercase tracking-wide text-pcmazing-500">Website</p>
-        <h3 class="mt-2 text-lg font-bold text-slate-900 dark:text-white">Customer Review</h3>
-        <p class="mt-1 text-sm text-slate-500">Moderate customer feedback.</p>
-      </a>
-      <a routerLink="/admin/quotations" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-pcmazing-400 dark:border-slate-700 dark:bg-slate-900">
-        <p class="text-xs font-bold uppercase tracking-wide text-pcmazing-500">Sales Ops</p>
-        <h3 class="mt-2 text-lg font-bold text-slate-900 dark:text-white">Quotation</h3>
-        <p class="mt-1 text-sm text-slate-500">Create and manage quotations.</p>
-      </a>
-      <a routerLink="/admin/inventory" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-pcmazing-400 dark:border-slate-700 dark:bg-slate-900">
-        <p class="text-xs font-bold uppercase tracking-wide text-pcmazing-500">Sales Ops</p>
-        <h3 class="mt-2 text-lg font-bold text-slate-900 dark:text-white">Inventory</h3>
-        <p class="mt-1 text-sm text-slate-500">Products and SRP (no cost/margins).</p>
-      </a>
+    <p class="mt-1 text-sm text-slate-500 dark:text-slate-400 md:hidden">Your hours, schedule, and day offs.</p>
+    <p class="mt-1 hidden text-sm text-slate-500 dark:text-slate-400 md:block">Daily sales performance and reporting.</p>
+
+    <div class="md:hidden">
+      <app-sales-employee-dashboard />
+    </div>
+    <div class="hidden md:block">
+      <app-sales-reporting-dashboard />
     </div>
   }
 

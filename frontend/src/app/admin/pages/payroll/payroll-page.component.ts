@@ -50,6 +50,8 @@ export class PayrollPageComponent implements OnInit {
   readonly periodMeta = signal<PayrollPeriodMeta | null>(null);
   readonly dateFrom = signal('');
   readonly dateTo = signal('');
+  readonly generating = signal(false);
+  readonly generateMessage = signal('');
 
   readonly timeClockUrl = `${APP_CONFIG.publicSiteUrl.replace(/\/$/, '')}/time-clock`;
 
@@ -164,12 +166,41 @@ export class PayrollPageComponent implements OnInit {
   async applyPeriodFilter(): Promise<void> {
     this.loading.set(true);
     this.error.set('');
+    this.generateMessage.set('');
     try {
       await this.loadPeriod();
     } catch {
       this.error.set('Unable to load period summary.');
     } finally {
       this.loading.set(false);
+    }
+  }
+
+  async generatePayslips(): Promise<void> {
+    if (this.generating()) {
+      return;
+    }
+
+    this.generating.set(true);
+    this.error.set('');
+    this.generateMessage.set('');
+    try {
+      const response = await firstValueFrom(
+        this.adminApi.generatePayrollPeriod(this.dateFrom(), this.dateTo()),
+      );
+      const data = response.data;
+      this.dateFrom.set(data.dateFrom);
+      this.dateTo.set(data.dateTo);
+      await this.loadPeriod();
+      this.generateMessage.set(
+        data.replaced
+          ? `Re-generated ${data.label} for ${data.employeeCount} employee(s). Payslips are now visible on their portal.`
+          : `Generated ${data.label} for ${data.employeeCount} employee(s). Payslips are now visible on their portal.`,
+      );
+    } catch {
+      this.error.set('Unable to generate payslips for this cutoff.');
+    } finally {
+      this.generating.set(false);
     }
   }
 

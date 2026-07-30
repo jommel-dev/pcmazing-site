@@ -6,9 +6,19 @@
   [class.text-slate-100]="themeService.isDark()"
 >
   <div class="flex min-h-screen">
+    @if (sidebarOpen()) {
+      <button
+        type="button"
+        class="fixed inset-0 z-30 bg-slate-900/40 lg:hidden"
+        aria-label="Close menu"
+        (click)="closeSidebar()"
+      ></button>
+    }
+
     <aside
       class="fixed inset-y-0 left-0 z-40 flex w-72 transform flex-col border-r border-slate-200 bg-white text-slate-900 transition-all duration-200 lg:static lg:translate-x-0 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
       [class.-translate-x-full]="!sidebarOpen()"
+      (click)="$event.stopPropagation()"
     >
       <div class="border-b border-slate-200 px-6 py-5 dark:border-white/10">
         <img
@@ -17,9 +27,9 @@
           class="h-10 w-auto dark:brightness-0 dark:invert"
         />
         <p class="mt-4 text-xs font-bold tracking-[0.2em] text-pcmazing-500 uppercase dark:text-pcmazing-400">
-          PCMazing Admin
+          MyPortal
         </p>
-        <h1 class="mt-1 text-lg font-bold text-slate-900 dark:text-white">Internal System</h1>
+        <h1 class="mt-1 text-lg font-bold text-slate-900 dark:text-white">PCmazing</h1>
       </div>
 
       <nav class="flex-1 overflow-y-auto px-4 py-4">
@@ -29,6 +39,7 @@
             routerLinkActive="bg-pcmazing-500 text-white"
             [routerLinkActiveOptions]="{ exact: true }"
             class="block rounded-xl px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+            (click)="closeSidebar()"
           >
             Dashboard
           </a>
@@ -48,6 +59,7 @@
                     [routerLink]="module.route"
                     routerLinkActive="bg-pcmazing-500 text-white"
                     class="block rounded-xl px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+                    (click)="closeSidebar()"
                   >
                     {{ module.label }}
                   </a>
@@ -72,6 +84,7 @@
                           routerLinkActive="bg-pcmazing-500 text-white"
                           [routerLinkActiveOptions]="{ exact: module.route === '/admin/inventory' }"
                           class="block rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+                          (click)="closeSidebar()"
                         >
                           {{ module.label }}
                         </a>
@@ -103,23 +116,26 @@
           <div class="flex min-w-0 items-center gap-3">
             <button
               type="button"
-              class="rounded-lg border px-3 py-2 text-xs font-bold tracking-wide lg:hidden"
+              class="inline-flex size-10 items-center justify-center rounded-lg border lg:hidden"
               [class.border-slate-200]="!themeService.isDark()"
-              [class.text-slate-600]="!themeService.isDark()"
+              [class.text-slate-700]="!themeService.isDark()"
               [class.border-slate-700]="themeService.isDark()"
-              [class.text-slate-300]="themeService.isDark()"
-              (click)="sidebarOpen.set(!sidebarOpen())"
+              [class.text-slate-200]="themeService.isDark()"
+              aria-label="Toggle menu"
+              (click)="toggleSidebar($event)"
             >
-              MENU
+              <svg viewBox="0 0 24 24" class="size-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M4 7h16M4 12h16M4 17h16" />
+              </svg>
             </button>
             <div class="min-w-0">
-              <p class="text-xs font-bold tracking-[0.15em] text-pcmazing-500 uppercase">Administrative Controls</p>
+              <p class="text-xs font-bold tracking-[0.15em] text-pcmazing-500 uppercase">MyPortal</p>
               <p
                 class="truncate text-sm"
                 [class.text-slate-500]="!themeService.isDark()"
                 [class.text-slate-400]="themeService.isDark()"
               >
-                PCMazing internal operations dashboard
+                PCmazing
               </p>
             </div>
           </div>

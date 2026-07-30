@@ -94,6 +94,9 @@ export function rolesMatch(userRole: string | null | undefined, required: string
   if (requiredKey === 'admin' && isSuperAdmin(userRole)) {
     return true;
   }
+  if (requiredKey === 'sales' && isSalesRestrictedInventory(userRole)) {
+    return true;
+  }
   return false;
 }
 

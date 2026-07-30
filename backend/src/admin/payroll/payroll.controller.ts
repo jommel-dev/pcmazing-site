@@ -1,5 +1,6 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { Body, Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
+import type { Request } from 'express';
+import { AdminJwtPayload, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../rbac/roles.decorator';
 import { RolesGuard } from '../rbac/roles.guard';
 import { PayrollService } from './payroll.service';
@@ -40,6 +41,25 @@ export class PayrollController {
         totals: result.totals,
       },
     }));
+  }
+
+  @Post('period/generate')
+  @Roles('admin')
+  generatePeriod(
+    @Body() body: { dateFrom?: string; dateTo?: string },
+    @Req() req: Request & { user?: AdminJwtPayload },
+  ) {
+    const generatedBy =
+      req.user?.sub != null
+        ? { userId: Number(req.user.sub), username: req.user.username }
+        : undefined;
+
+    return this.payrollService
+      .generatePayslips(body?.dateFrom, body?.dateTo, generatedBy)
+      .then((data) => ({
+        success: true,
+        data,
+      }));
   }
 
   @Get('attendance')
