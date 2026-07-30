@@ -4,17 +4,25 @@
   <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
     <div class="min-w-0">
       <h2 class="text-2xl font-bold text-slate-900">Stock</h2>
-      <p class="mt-1 text-sm text-slate-500">Browse products, stock levels, and expected margins.</p>
+      <p class="mt-1 text-sm text-slate-500">
+        @if (showCosts()) {
+          Browse products, stock levels, and expected margins.
+        } @else {
+          Browse products and SRP prices.
+        }
+      </p>
     </div>
-    <a
-      routerLink="/admin/inventory/products/new"
-      class="shrink-0 rounded-xl bg-pcmazing-500 px-4 py-2.5 text-center text-sm font-bold text-white hover:bg-pcmazing-600 sm:w-auto"
-    >
-      Add Product
-    </a>
+    @if (showCosts()) {
+      <a
+        routerLink="/admin/inventory/products/new"
+        class="shrink-0 rounded-xl bg-pcmazing-500 px-4 py-2.5 text-center text-sm font-bold text-white hover:bg-pcmazing-600 sm:w-auto"
+      >
+        Add Product
+      </a>
+    }
   </div>
 
-  @if (summary(); as totals) {
+  @if (showCosts() && summary(); as totals) {
     <div class="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
       <div class="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
         <p class="truncate text-[10px] font-bold tracking-[0.12em] text-slate-400 uppercase sm:text-[11px]">Total Cost</p>
@@ -114,11 +122,17 @@
                 <th class="max-w-[160px] px-2 py-2.5 text-left font-bold text-slate-600 sm:max-w-[200px] sm:px-3">Name</th>
                 <th class="px-2 py-2.5 text-left font-bold whitespace-nowrap text-slate-600 sm:px-3">Brand</th>
                 <th class="px-2 py-2.5 text-left font-bold whitespace-nowrap text-slate-600 sm:px-3">Stock</th>
-                <th class="px-2 py-2.5 text-right font-bold whitespace-nowrap text-slate-600 sm:px-3">Cost</th>
-                <th class="px-2 py-2.5 text-right font-bold whitespace-nowrap text-slate-600 sm:px-3">Price</th>
-                <th class="px-2 py-2.5 text-right font-bold whitespace-nowrap text-slate-600 sm:px-3">Margin</th>
+                @if (showCosts()) {
+                  <th class="px-2 py-2.5 text-right font-bold whitespace-nowrap text-slate-600 sm:px-3">Cost</th>
+                }
+                <th class="px-2 py-2.5 text-right font-bold whitespace-nowrap text-slate-600 sm:px-3">{{ showCosts() ? 'Price' : 'SRP' }}</th>
+                @if (showCosts()) {
+                  <th class="px-2 py-2.5 text-right font-bold whitespace-nowrap text-slate-600 sm:px-3">Margin</th>
+                }
                 <th class="px-2 py-2.5 text-right font-bold whitespace-nowrap text-slate-600 sm:px-3">Qty</th>
-                <th class="px-2 py-2.5 text-right font-bold whitespace-nowrap text-emerald-700 sm:px-3">O.Margin</th>
+                @if (showCosts()) {
+                  <th class="px-2 py-2.5 text-right font-bold whitespace-nowrap text-emerald-700 sm:px-3">O.Margin</th>
+                }
                 <th class="px-2 py-2.5 text-right font-bold whitespace-nowrap text-slate-600 sm:px-3">Actions</th>
               </tr>
             </thead>
@@ -142,15 +156,21 @@
                       </span>
                     }
                   </td>
-                  <td class="px-2 py-2.5 text-right whitespace-nowrap text-slate-600 sm:px-3">{{ formatMoney(unitCost(item)) }}</td>
+                  @if (showCosts()) {
+                    <td class="px-2 py-2.5 text-right whitespace-nowrap text-slate-600 sm:px-3">{{ formatMoney(unitCost(item)) }}</td>
+                  }
                   <td class="px-2 py-2.5 text-right whitespace-nowrap text-slate-600 sm:px-3">{{ formatMoney(unitPrice(item)) }}</td>
-                  <td class="px-2 py-2.5 text-right whitespace-nowrap font-medium sm:px-3" [class.text-emerald-700]="unitMargin(item) >= 0" [class.text-red-600]="unitMargin(item) < 0">
-                    {{ formatMoney(unitMargin(item)) }}
-                  </td>
+                  @if (showCosts()) {
+                    <td class="px-2 py-2.5 text-right whitespace-nowrap font-medium sm:px-3" [class.text-emerald-700]="unitMargin(item) >= 0" [class.text-red-600]="unitMargin(item) < 0">
+                      {{ formatMoney(unitMargin(item)) }}
+                    </td>
+                  }
                   <td class="px-2 py-2.5 text-right whitespace-nowrap text-slate-600 sm:px-3">{{ stockQty(item) }}</td>
-                  <td class="px-2 py-2.5 text-right whitespace-nowrap font-medium sm:px-3" [class.text-emerald-700]="extendedMargin(item) >= 0" [class.text-red-600]="extendedMargin(item) < 0">
-                    {{ formatMoney(extendedMargin(item)) }}
-                  </td>
+                  @if (showCosts()) {
+                    <td class="px-2 py-2.5 text-right whitespace-nowrap font-medium sm:px-3" [class.text-emerald-700]="extendedMargin(item) >= 0" [class.text-red-600]="extendedMargin(item) < 0">
+                      {{ formatMoney(extendedMargin(item)) }}
+                    </td>
+                  }
                   <td class="px-2 py-2.5 text-right whitespace-nowrap sm:px-3">
                     <button
                       type="button"
@@ -196,13 +216,15 @@
       >
         View
       </a>
-      <a
-        [routerLink]="['/admin/inventory/materials', menuId, 'edit']"
-        class="block px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-        (click)="closeActionMenu()"
-      >
-        Edit
-      </a>
+      @if (showCosts()) {
+        <a
+          [routerLink]="['/admin/inventory/materials', menuId, 'edit']"
+          class="block px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          (click)="closeActionMenu()"
+        >
+          Edit
+        </a>
+      }
     </div>
   }
 </section>

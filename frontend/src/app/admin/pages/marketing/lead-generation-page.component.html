@@ -158,6 +158,9 @@
                 <td class="px-4 py-3">
                   <p class="font-medium text-slate-900">{{ item.clientName }}</p>
                   <p class="text-xs text-slate-500">{{ item.company || '—' }}</p>
+                  @if (item.address) {
+                    <p class="mt-0.5 text-xs text-slate-400">{{ item.address }}</p>
+                  }
                 </td>
                 <td class="px-4 py-3 text-slate-600">
                   <span class="rounded-full bg-slate-100 px-2 py-1 text-xs font-bold text-slate-700">{{ clientTypeLabel(item.clientType) }}</span>

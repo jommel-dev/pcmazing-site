@@ -1,7 +1,9 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
+import { canSeeInventoryCosts } from '../../rbac/admin-roles';
 import { AdminApiService, MaterialItem } from '../../services/admin-api.service';
+import { AdminAuthService } from '../../services/admin-auth.service';
 
 @Component({
   selector: 'app-inventory-detail-page',
@@ -10,11 +12,15 @@ import { AdminApiService, MaterialItem } from '../../services/admin-api.service'
 })
 export class InventoryDetailPageComponent implements OnInit {
   private readonly adminApi = inject(AdminApiService);
+  private readonly adminAuth = inject(AdminAuthService);
   private readonly route = inject(ActivatedRoute);
 
   readonly loading = signal(true);
   readonly error = signal('');
   readonly material = signal<MaterialItem | null>(null);
+  readonly showCosts = computed(() =>
+    canSeeInventoryCosts(this.adminAuth.getStoredUser()?.role),
+  );
 
   materialImageUrl(): string | null {
     return this.adminApi.resolveMaterialImageUrl(this.material()?.imageUrl);

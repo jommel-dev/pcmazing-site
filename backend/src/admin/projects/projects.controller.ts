@@ -27,16 +27,28 @@ import {
   UpdateProjectTaskDto,
 } from './dto/project-task.dto';
 import { CreateProjectTaskCommentDto } from './dto/task-activity.dto';
-import { ProjectsService } from './projects.service';
+import { ProjectActor, ProjectsService } from './projects.service';
 
 @Controller('admin/projects')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class ProjectsController {
   constructor(private readonly projectsService: ProjectsService) {}
 
+  private actorFrom(req: Request & { user?: AdminJwtPayload }): ProjectActor | null {
+    const userId = Number(req.user?.sub);
+    if (!Number.isFinite(userId) || userId <= 0 || !req.user?.source) {
+      return null;
+    }
+    return {
+      userId,
+      source: req.user.source,
+      role: req.user.role,
+    };
+  }
+
   @Get()
-  list() {
-    return this.projectsService.list().then((data) => ({
+  list(@Req() req: Request & { user?: AdminJwtPayload }) {
+    return this.projectsService.list(this.actorFrom(req)).then((data) => ({
       success: true,
       data,
     }));
@@ -59,10 +71,12 @@ export class ProjectsController {
   }
 
   @Get(':id/tasks')
-  listTasks(
+  async listTasks(
     @Param('id', ParseIntPipe) id: number,
-    @Query('phaseId') phaseId?: string,
+    @Query('phaseId') phaseId: string | undefined,
+    @Req() req: Request & { user?: AdminJwtPayload },
   ) {
+    await this.projectsService.assertCanAccessProject(id, this.actorFrom(req));
     const parsedPhaseId = phaseId ? Number(phaseId) : undefined;
     return this.projectsService
       .listTasks(id, Number.isFinite(parsedPhaseId) ? parsedPhaseId : undefined)
@@ -73,10 +87,12 @@ export class ProjectsController {
   }
 
   @Patch(':id/current-phase')
-  setCurrentPhase(
+  async setCurrentPhase(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: SetCurrentPhaseDto,
+    @Req() req: Request & { user?: AdminJwtPayload },
   ) {
+    await this.projectsService.assertCanAccessProject(id, this.actorFrom(req));
     return this.projectsService.setCurrentPhase(id, dto).then((data) => ({
       success: true,
       message: 'Current phase updated.',
@@ -85,11 +101,13 @@ export class ProjectsController {
   }
 
   @Patch(':id/epics/:epicId/move')
-  moveEpic(
+  async moveEpic(
     @Param('id', ParseIntPipe) id: number,
     @Param('epicId', ParseIntPipe) epicId: number,
     @Body() dto: MoveProjectEpicDto,
+    @Req() req: Request & { user?: AdminJwtPayload },
   ) {
+    await this.projectsService.assertCanAccessProject(id, this.actorFrom(req));
     return this.projectsService.moveEpic(id, epicId, dto).then((data) => ({
       success: true,
       message: 'Epic moved.',
@@ -98,11 +116,12 @@ export class ProjectsController {
   }
 
   @Post(':id/tasks')
-  createTask(
+  async createTask(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CreateProjectTaskDto,
     @Req() req: Request & { user?: AdminJwtPayload },
   ) {
+    await this.projectsService.assertCanAccessProject(id, this.actorFrom(req));
     const userId = Number(req.user?.sub);
     return this.projectsService.createTask(id, dto, userId).then((data) => ({
       success: true,
@@ -112,10 +131,12 @@ export class ProjectsController {
   }
 
   @Get(':id/tasks/:taskId')
-  getTaskDetail(
+  async getTaskDetail(
     @Param('id', ParseIntPipe) id: number,
     @Param('taskId', ParseIntPipe) taskId: number,
+    @Req() req: Request & { user?: AdminJwtPayload },
   ) {
+    await this.projectsService.assertCanAccessProject(id, this.actorFrom(req));
     return this.projectsService.getTaskDetail(id, taskId).then((data) => ({
       success: true,
       data,
@@ -123,11 +144,13 @@ export class ProjectsController {
   }
 
   @Patch(':id/tasks/:taskId')
-  updateTask(
+  async updateTask(
     @Param('id', ParseIntPipe) id: number,
     @Param('taskId', ParseIntPipe) taskId: number,
     @Body() dto: UpdateProjectTaskDto,
+    @Req() req: Request & { user?: AdminJwtPayload },
   ) {
+    await this.projectsService.assertCanAccessProject(id, this.actorFrom(req));
     return this.projectsService.updateTask(id, taskId, dto).then((data) => ({
       success: true,
       message: 'Task updated.',
@@ -136,11 +159,13 @@ export class ProjectsController {
   }
 
   @Patch(':id/tasks/:taskId/move')
-  moveTask(
+  async moveTask(
     @Param('id', ParseIntPipe) id: number,
     @Param('taskId', ParseIntPipe) taskId: number,
     @Body() dto: MoveProjectTaskDto,
+    @Req() req: Request & { user?: AdminJwtPayload },
   ) {
+    await this.projectsService.assertCanAccessProject(id, this.actorFrom(req));
     return this.projectsService.moveTask(id, taskId, dto).then((data) => ({
       success: true,
       message: 'Task moved.',
@@ -149,12 +174,13 @@ export class ProjectsController {
   }
 
   @Post(':id/tasks/:taskId/comments')
-  addTaskComment(
+  async addTaskComment(
     @Param('id', ParseIntPipe) id: number,
     @Param('taskId', ParseIntPipe) taskId: number,
     @Body() dto: CreateProjectTaskCommentDto,
     @Req() req: Request & { user?: AdminJwtPayload },
   ) {
+    await this.projectsService.assertCanAccessProject(id, this.actorFrom(req));
     const userId = Number(req.user?.sub);
     return this.projectsService
       .addTaskComment(id, taskId, dto.body, userId)
@@ -172,12 +198,13 @@ export class ProjectsController {
       limits: { fileSize: 10 * 1024 * 1024 },
     }),
   )
-  uploadTaskAttachment(
+  async uploadTaskAttachment(
     @Param('id', ParseIntPipe) id: number,
     @Param('taskId', ParseIntPipe) taskId: number,
     @UploadedFile() file: Express.Multer.File,
     @Req() req: Request & { user?: AdminJwtPayload },
   ) {
+    await this.projectsService.assertCanAccessProject(id, this.actorFrom(req));
     const userId = Number(req.user?.sub);
     return this.projectsService
       .uploadTaskAttachment(id, taskId, file, userId)
@@ -189,11 +216,13 @@ export class ProjectsController {
   }
 
   @Delete(':id/tasks/:taskId/attachments/:attachmentId')
-  deleteTaskAttachment(
+  async deleteTaskAttachment(
     @Param('id', ParseIntPipe) id: number,
     @Param('taskId', ParseIntPipe) taskId: number,
     @Param('attachmentId', ParseIntPipe) attachmentId: number,
+    @Req() req: Request & { user?: AdminJwtPayload },
   ) {
+    await this.projectsService.assertCanAccessProject(id, this.actorFrom(req));
     return this.projectsService.deleteTaskAttachment(id, taskId, attachmentId).then(() => ({
       success: true,
       message: 'Attachment deleted.',
@@ -201,10 +230,12 @@ export class ProjectsController {
   }
 
   @Delete(':id/tasks/:taskId')
-  deleteTask(
+  async deleteTask(
     @Param('id', ParseIntPipe) id: number,
     @Param('taskId', ParseIntPipe) taskId: number,
+    @Req() req: Request & { user?: AdminJwtPayload },
   ) {
+    await this.projectsService.assertCanAccessProject(id, this.actorFrom(req));
     return this.projectsService.deleteTask(id, taskId).then(() => ({
       success: true,
       message: 'Task deleted.',
@@ -212,7 +243,11 @@ export class ProjectsController {
   }
 
   @Get(':id')
-  getById(@Param('id', ParseIntPipe) id: number) {
+  async getById(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: Request & { user?: AdminJwtPayload },
+  ) {
+    await this.projectsService.assertCanAccessProject(id, this.actorFrom(req));
     return this.projectsService.getById(id).then((data) => ({
       success: true,
       data,

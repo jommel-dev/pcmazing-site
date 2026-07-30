@@ -678,4 +678,14 @@ export class InventoryService {
       imageUrl: row.image_url ?? null,
     };
   }
+
+  redactCostFields<T extends { orderCost?: number | null; unitPrice?: number | null }>(
+    item: T,
+  ): T {
+    return {
+      ...item,
+      orderCost: null,
+      unitPrice: null,
+    };
+  }
 }

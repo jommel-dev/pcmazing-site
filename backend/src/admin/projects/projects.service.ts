@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   ServiceUnavailableException,
@@ -8,6 +9,7 @@ import {
 import { DatabaseService } from '../../database/database.service';
 import { tableExists } from '../common/admin-table.util';
 import { buildTblusersSelectSql } from '../users/tblusers.util';
+import { isDeveloperOrPm, isSuperAdmin } from '../rbac/admin-roles.util';
 import { CreateProjectDto, ProjectUserRefDto } from './dto/create-project.dto';
 import {
   CreateProjectTaskDto,
@@ -25,6 +27,12 @@ import {
 
 type UserSource = 'pcmazing_admin_users' | 'tblusers';
 type BoardStatus = (typeof PROJECT_TASK_STATUSES)[number];
+
+export interface ProjectActor {
+  userId: number;
+  source: UserSource;
+  role?: string | null;
+}
 
 export interface ProjectUserSummary {
   id: number;
@@ -196,8 +204,62 @@ export class ProjectsService {
     return users.filter((user) => user.role.toLowerCase() === normalized);
   }
 
-  async list(): Promise<{ items: ProjectListItem[] }> {
+  async assertCanAccessProject(projectId: number, actor?: ProjectActor | null): Promise<void> {
+    if (!actor || !Number.isFinite(actor.userId) || actor.userId <= 0) {
+      return;
+    }
+    if (isSuperAdmin(actor.role) || !isDeveloperOrPm(actor.role)) {
+      return;
+    }
+
+    const result = await this.databaseService.query<{ ok: number }>(
+      `SELECT 1 AS ok
+       FROM pcmazing_projects p
+       WHERE p.id = $1
+         AND (
+           (p.project_manager_user_id = $2 AND p.project_manager_user_source = $3)
+           OR EXISTS (
+             SELECT 1
+             FROM pcmazing_project_members m
+             WHERE m.project_id = p.id
+               AND m.user_id = $2
+               AND m.user_source = $3
+           )
+         )
+       LIMIT 1`,
+      [projectId, actor.userId, actor.source],
+    );
+
+    if (!result.rows[0]) {
+      throw new ForbiddenException('You do not have access to this project.');
+    }
+  }
+
+  async list(actor?: ProjectActor | null): Promise<{ items: ProjectListItem[] }> {
     await this.ensureReady();
+
+    const scoped = Boolean(
+      actor &&
+        Number.isFinite(actor.userId) &&
+        actor.userId > 0 &&
+        isDeveloperOrPm(actor.role) &&
+        !isSuperAdmin(actor.role),
+    );
+    const params: Array<number | string> = [];
+    let scopeSql = '';
+    if (scoped && actor) {
+      params.push(actor.userId, actor.source);
+      scopeSql = `WHERE (
+        (p.project_manager_user_id = $1 AND p.project_manager_user_source = $2)
+        OR EXISTS (
+          SELECT 1
+          FROM pcmazing_project_members m2
+          WHERE m2.project_id = p.id
+            AND m2.user_id = $1
+            AND m2.user_source = $2
+        )
+      )`;
+    }
 
     const result = await this.databaseService.query<{
       id: number;
@@ -229,8 +291,10 @@ export class ProjectsService {
        FROM pcmazing_projects p
        INNER JOIN pcmazing_client_prospects c ON c.id = p.prospect_id
        LEFT JOIN pcmazing_project_members m ON m.project_id = p.id
+       ${scopeSql}
        GROUP BY p.id, c.client_name, c.company
        ORDER BY p.updated_at DESC, p.id DESC`,
+      params,
     );
 
     const managers = await this.resolveUsers(

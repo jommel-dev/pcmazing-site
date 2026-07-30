@@ -2,8 +2,14 @@
   <div class="flex flex-wrap items-end justify-between gap-3">
     <div>
       <p class="text-xs font-bold uppercase tracking-wide text-pcmazing-500">System Development</p>
-      <h2 class="mt-1 text-2xl font-bold text-slate-900">Projects</h2>
-      <p class="mt-1 text-sm text-slate-500">Projects created from signed contracts, with project managers and developer teams.</p>
+      <h2 class="mt-1 text-2xl font-bold text-slate-900">{{ isMyProjects() ? 'My Projects' : 'Projects' }}</h2>
+      <p class="mt-1 text-sm text-slate-500">
+        @if (isMyProjects()) {
+          Projects where you are the project manager or a team member.
+        } @else {
+          Projects created from signed contracts, with project managers and developer teams.
+        }
+      </p>
     </div>
   </div>
 
@@ -23,7 +29,11 @@
     <div class="mt-6 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{{ error() }}</div>
   } @else if (filteredProjects().length === 0) {
     <div class="mt-6 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">
-      No projects yet. Open a signed contract in Lead Generation and click <strong>Create Project</strong>.
+      @if (isMyProjects()) {
+        No assigned projects yet.
+      } @else {
+        No projects yet. Open a signed contract in Lead Generation and click <strong>Create Project</strong>.
+      }
     </div>
   } @else {
     <div class="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">

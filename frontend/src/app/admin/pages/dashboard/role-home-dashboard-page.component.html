@@ -1,0 +1,84 @@
+<section class="space-y-6">
+  <div>
+    <p class="text-xs font-bold uppercase tracking-wide text-pcmazing-500">Home</p>
+    <h2 class="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{{ title() }}</h2>
+    <p class="mt-1 text-sm text-slate-500">Shortcuts for your role.</p>
+  </div>
+
+  @if (error()) {
+    <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{{ error() }}</div>
+  }
+
+  @if (kind() === 'marketing') {
+    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <a routerLink="/admin/lead-generation" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-pcmazing-400 dark:border-slate-700 dark:bg-slate-900">
+        <p class="text-xs font-bold uppercase tracking-wide text-pcmazing-500">Module</p>
+        <h3 class="mt-2 text-lg font-bold text-slate-900 dark:text-white">Lead Generation</h3>
+        <p class="mt-1 text-sm text-slate-500">Capture and track client prospects.</p>
+      </a>
+      @if (showOrgLink()) {
+        <a routerLink="/admin/organization-team" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-pcmazing-400 dark:border-slate-700 dark:bg-slate-900">
+          <p class="text-xs font-bold uppercase tracking-wide text-pcmazing-500">Module</p>
+          <h3 class="mt-2 text-lg font-bold text-slate-900 dark:text-white">Organization & Team</h3>
+          <p class="mt-1 text-sm text-slate-500">Manage marketing teams and members.</p>
+        </a>
+      }
+    </div>
+  }
+
+  @if (kind() === 'sales') {
+    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <a routerLink="/admin/contact-inquiries" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-pcmazing-400 dark:border-slate-700 dark:bg-slate-900">
+        <p class="text-xs font-bold uppercase tracking-wide text-pcmazing-500">Website</p>
+        <h3 class="mt-2 text-lg font-bold text-slate-900 dark:text-white">Customer Inquiries</h3>
+        <p class="mt-1 text-sm text-slate-500">Website contact form submissions.</p>
+      </a>
+      <a routerLink="/admin/customer-reviews" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-pcmazing-400 dark:border-slate-700 dark:bg-slate-900">
+        <p class="text-xs font-bold uppercase tracking-wide text-pcmazing-500">Website</p>
+        <h3 class="mt-2 text-lg font-bold text-slate-900 dark:text-white">Customer Review</h3>
+        <p class="mt-1 text-sm text-slate-500">Moderate customer feedback.</p>
+      </a>
+      <a routerLink="/admin/quotations" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-pcmazing-400 dark:border-slate-700 dark:bg-slate-900">
+        <p class="text-xs font-bold uppercase tracking-wide text-pcmazing-500">Sales Ops</p>
+        <h3 class="mt-2 text-lg font-bold text-slate-900 dark:text-white">Quotation</h3>
+        <p class="mt-1 text-sm text-slate-500">Create and manage quotations.</p>
+      </a>
+      <a routerLink="/admin/inventory" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-pcmazing-400 dark:border-slate-700 dark:bg-slate-900">
+        <p class="text-xs font-bold uppercase tracking-wide text-pcmazing-500">Sales Ops</p>
+        <h3 class="mt-2 text-lg font-bold text-slate-900 dark:text-white">Inventory</h3>
+        <p class="mt-1 text-sm text-slate-500">Products and SRP (no cost/margins).</p>
+      </a>
+    </div>
+  }
+
+  @if (kind() === 'developers') {
+    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <a routerLink="/admin/projects" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-pcmazing-400 dark:border-slate-700 dark:bg-slate-900">
+        <p class="text-xs font-bold uppercase tracking-wide text-pcmazing-500">Projects</p>
+        <h3 class="mt-2 text-lg font-bold text-slate-900 dark:text-white">My Projects</h3>
+        <p class="mt-1 text-sm text-slate-500">
+          @if (loading()) { Loading... } @else { {{ projectCount() }} assigned project(s) }
+        </p>
+      </a>
+      <a routerLink="/admin/kanban" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-pcmazing-400 dark:border-slate-700 dark:bg-slate-900">
+        <p class="text-xs font-bold uppercase tracking-wide text-pcmazing-500">Tasks</p>
+        <h3 class="mt-2 text-lg font-bold text-slate-900 dark:text-white">Kanban</h3>
+        <p class="mt-1 text-sm text-slate-500">Open task boards for your projects.</p>
+      </a>
+    </div>
+
+    @if (projects().length) {
+      <div class="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
+        <h3 class="text-sm font-bold text-slate-800 dark:text-slate-100">Recent assigned projects</h3>
+        <ul class="mt-3 space-y-2">
+          @for (project of projects(); track project.id) {
+            <li class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-100 px-3 py-2 dark:border-slate-800">
+              <span class="text-sm font-semibold text-slate-800 dark:text-slate-100">{{ project.name }}</span>
+              <a [routerLink]="['/admin/projects', project.id, 'tasks']" class="text-xs font-bold text-pcmazing-500">Open tasks</a>
+            </li>
+          }
+        </ul>
+      </div>
+    }
+  }
+</section>

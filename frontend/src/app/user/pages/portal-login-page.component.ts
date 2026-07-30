@@ -2,15 +2,15 @@ import { Component, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
-import { getRoleHomeRoute, isSuperAdmin } from '../../rbac/admin-roles';
-import { AdminAuthService } from '../../services/admin-auth.service';
+import { getRoleHomeRoute, isSuperAdmin } from '../../admin/rbac/admin-roles';
+import { AdminAuthService } from '../../admin/services/admin-auth.service';
 
 @Component({
-  selector: 'app-admin-login-page',
+  selector: 'app-portal-login-page',
   imports: [FormsModule, RouterLink],
-  templateUrl: './admin-login-page.component.html',
+  templateUrl: './portal-login-page.component.html',
 })
-export class AdminLoginPageComponent {
+export class PortalLoginPageComponent {
   private readonly adminAuth = inject(AdminAuthService);
   private readonly router = inject(Router);
 
@@ -31,12 +31,12 @@ export class AdminLoginPageComponent {
 
     try {
       const response = await firstValueFrom(
-        this.adminAuth.login(this.username(), this.password(), this.rememberMe()),
+        this.adminAuth.portalLogin(this.username(), this.password(), this.rememberMe()),
       );
 
-      if (!isSuperAdmin(response.data.user.role)) {
+      if (isSuperAdmin(response.data.user.role)) {
         this.adminAuth.logout();
-        await this.router.navigateByUrl('/user/portal');
+        this.error.set('Super Admin must sign in at the admin staff portal.');
         return;
       }
 
@@ -48,14 +48,6 @@ export class AdminLoginPageComponent {
 
       await this.router.navigateByUrl(getRoleHomeRoute(response.data.user.role));
     } catch (error) {
-      if (this.adminAuth.isStaffGateAuthError(error)) {
-        this.adminAuth.clearStaffGateAccess();
-        await this.router.navigate(['/admin/access'], {
-          queryParams: { reason: 'staff-gate-expired' },
-        });
-        return;
-      }
-
       this.error.set(this.extractLoginError(error));
     } finally {
       this.loading.set(false);
