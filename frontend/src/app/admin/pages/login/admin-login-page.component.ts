@@ -36,7 +36,7 @@ export class AdminLoginPageComponent {
 
       if (!isSuperAdmin(response.data.user.role)) {
         this.adminAuth.logout();
-        await this.router.navigateByUrl('/user/portal');
+        await this.router.navigateByUrl('/user/login');
         return;
       }
 

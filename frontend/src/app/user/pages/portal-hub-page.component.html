@@ -1,0 +1,81 @@
+<section
+  class="relative flex min-h-screen flex-col overflow-hidden bg-slate-950 px-5 py-10 text-white sm:px-8 sm:py-14"
+>
+  <div
+    class="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(0,71,255,0.45),_transparent_55%),radial-gradient(ellipse_at_bottom_right,_rgba(0,51,204,0.35),_transparent_45%)]"
+    aria-hidden="true"
+  ></div>
+  <div
+    class="pointer-events-none absolute inset-0 opacity-[0.08]"
+    style="background-image: linear-gradient(rgba(255,255,255,0.35) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.35) 1px, transparent 1px); background-size: 48px 48px;"
+    aria-hidden="true"
+  ></div>
+
+  <div class="relative mx-auto flex w-full max-w-lg flex-1 flex-col justify-center">
+    <header class="mb-10 text-center sm:mb-12">
+      <img
+        src="/images/logopcm.png"
+        alt="PCmazing"
+        class="mx-auto h-14 w-auto object-contain sm:h-16"
+      />
+      <p class="mt-4 text-sm font-semibold tracking-wide text-slate-200 sm:text-base">
+        We Build It Better!
+      </p>
+    </header>
+
+    <nav class="grid gap-3" aria-label="PCmazing apps">
+      @for (app of apps; track app.path) {
+        <a
+          [routerLink]="app.path"
+          class="group block rounded-2xl border border-white/15 bg-white/10 px-5 py-5 shadow-lg backdrop-blur-sm transition hover:border-pcmazing-500/60 hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-pcmazing-500"
+        >
+          <div class="flex items-center gap-4">
+            <span
+              class="flex size-12 shrink-0 items-center justify-center rounded-xl bg-pcmazing-500/20 text-pcmazing-100 ring-1 ring-pcmazing-500/40"
+              aria-hidden="true"
+            >
+              @switch (app.id) {
+                @case ('admin') {
+                  <svg class="size-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 3 4.5 6.5v4.2c0 4.8 3.2 9.1 7.5 10.3 4.3-1.2 7.5-5.5 7.5-10.3V6.5L12 3Z" />
+                    <path d="M9.5 12.2 11.2 14l3.5-3.8" />
+                  </svg>
+                }
+                @case ('people') {
+                  <svg class="size-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="9" cy="8" r="3" />
+                    <path d="M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5" />
+                    <circle cx="17" cy="9" r="2.4" />
+                    <path d="M14.2 19c.4-2.2 1.8-3.6 3.8-3.6 1.2 0 2.2.4 3 .1.2" />
+                  </svg>
+                }
+                @case ('time-clock') {
+                  <svg class="size-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="8.5" />
+                    <path d="M12 7.5V12l3.2 2" />
+                  </svg>
+                }
+              }
+            </span>
+
+            <div class="min-w-0 flex-1">
+              <h2 class="text-lg font-bold text-white">{{ app.title }}</h2>
+              <p class="mt-1 text-sm leading-relaxed text-slate-300">{{ app.description }}</p>
+            </div>
+
+            <span
+              class="shrink-0 text-xl font-bold text-pcmazing-100 transition group-hover:translate-x-0.5"
+              aria-hidden="true"
+            >
+              →
+            </span>
+          </div>
+        </a>
+      }
+    </nav>
+
+    <p class="mt-10 text-center text-xs text-slate-500">
+      <a routerLink="/" class="font-semibold text-slate-400 hover:text-white">Back to website</a>
+    </p>
+  </div>
+</section>
