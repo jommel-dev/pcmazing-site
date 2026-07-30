@@ -14,7 +14,7 @@
       </p>
       <h2 class="mt-1 text-2xl font-bold text-slate-900">{{ item.clientName }}</h2>
       <p class="mt-1 text-sm text-slate-500">{{ item.company || 'No company' }} · Current: {{ statusLabel(item.status) }}</p>
-      @if (!recordingOutcome()) {
+      @if (!recordingOutcome() && item.status !== 'closed_won') {
         <p class="mt-2 text-sm font-semibold" [class.text-amber-700]="!hasReachedFollowUpLimit(item.followUpCount, item.maxFollowUps)" [class.text-red-700]="hasReachedFollowUpLimit(item.followUpCount, item.maxFollowUps)">
           Follow-ups: {{ item.followUpCount }} / {{ item.maxFollowUps }}
           @if (!hasReachedFollowUpLimit(item.followUpCount, item.maxFollowUps)) {
@@ -38,12 +38,16 @@
     } @else {
       @if (recordingOutcome()) {
         <div class="mt-4 rounded-2xl border border-blue-200 bg-blue-50 px-5 py-4 text-sm text-blue-800">
-          Record the meeting result. <strong>Win</strong> or <strong>Loss</strong> closes the prospect.
+          Record the meeting result. <strong>Win</strong> moves the prospect to Close Won first.
           <strong>No Response</strong> is for no-shows. <strong>Pending Decision</strong> is when the client met but needs time to think — marketing can follow up again.
+        </div>
+      } @else if (item.status === 'closed_won') {
+        <div class="mt-4 rounded-2xl border border-cyan-200 bg-cyan-50 px-5 py-4 text-sm text-cyan-800">
+          The client already agreed to the deal. Complete the signed contract details below to move this prospect from <strong>Close Won</strong> to <strong>Contract Signed</strong>.
         </div>
       }
 
-      <form class="mt-6 max-w-2xl space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" [formGroup]="updateForm" (ngSubmit)="submit()">
+      <form class="mt-6 space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" [formGroup]="updateForm" (ngSubmit)="submit()">
         <div>
           <label class="mb-1 block text-sm font-semibold">
             @if (recordingOutcome()) { Meeting outcome } @else { Update action }
@@ -133,6 +137,249 @@
           </div>
         }
 
+        @if (isContractUnderReviewStatus()) {
+          <div class="space-y-4 rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+            <div>
+              <p class="text-sm font-bold text-amber-900">Contract under review details</p>
+              <p class="mt-1 text-xs text-amber-800">Client is reviewing the contract. Add remarks and expected response date.</p>
+            </div>
+
+            <div>
+              <label class="mb-1 block text-sm font-semibold">Remarks</label>
+              <textarea formControlName="contractReviewRemarks" rows="3" class="w-full rounded-xl border px-4 py-2.5 text-sm" placeholder="Contract review remarks..."></textarea>
+            </div>
+
+            <div>
+              <label class="mb-1 block text-sm font-semibold">Response date</label>
+              <input type="date" formControlName="responseDate" class="w-full rounded-xl border px-4 py-2.5 text-sm" />
+            </div>
+          </div>
+        }
+
+        @if (isContractSignedStatus()) {
+          <div class="space-y-5">
+            <div class="rounded-xl border border-cyan-200 bg-cyan-50/50 p-4">
+              <div>
+                <p class="text-sm font-bold text-cyan-900">Signed contract details</p>
+                <p class="mt-1 text-xs text-cyan-800">Set the project identity for this signed deal.</p>
+              </div>
+
+              <div class="mt-4 grid gap-4 sm:grid-cols-3">
+                <div>
+                  <label class="mb-1 block text-sm font-semibold">Project name</label>
+                  <input type="text" formControlName="projectName" class="w-full rounded-xl border px-4 py-2.5 text-sm" placeholder="Inventory Management System" />
+                </div>
+                <div>
+                  <label class="mb-1 block text-sm font-semibold">Project type</label>
+                  <input type="text" formControlName="projectType" class="w-full rounded-xl border px-4 py-2.5 text-sm" placeholder="Web Application" />
+                </div>
+                <div>
+                  <label class="mb-1 block text-sm font-semibold">Signed date</label>
+                  <input type="date" formControlName="signedAt" class="w-full rounded-xl border px-4 py-2.5 text-sm" />
+                </div>
+              </div>
+            </div>
+
+            <div formArrayName="modules" class="rounded-xl border border-slate-200 bg-white p-4">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p class="text-sm font-bold text-slate-900">Modules</p>
+                  <p class="mt-0.5 text-xs text-slate-500">Each tab is one module. Features and Process flow describe the roadmap.</p>
+                </div>
+                <button type="button" class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700" (click)="addModule()">Add module</button>
+              </div>
+
+              <div class="mt-4 flex flex-wrap gap-2 border-b border-slate-200 pb-2">
+                @for (module of modulesControls(); track $index) {
+                  <button
+                    type="button"
+                    class="rounded-t-lg px-3 py-2 text-sm font-semibold transition"
+                    [class.bg-pcmazing-500]="activeModuleTab() === $index"
+                    [class.text-white]="activeModuleTab() === $index"
+                    [class.bg-slate-100]="activeModuleTab() !== $index"
+                    [class.text-slate-700]="activeModuleTab() !== $index"
+                    (click)="selectModuleTab($index)"
+                  >
+                    {{ moduleTabLabel($index) }}
+                  </button>
+                }
+              </div>
+
+              @for (module of modulesControls(); track $index) {
+                @if (activeModuleTab() === $index) {
+                  <div class="mt-4 space-y-4" [formGroupName]="$index">
+                    <div class="flex flex-wrap items-end justify-between gap-3">
+                      <div class="min-w-[220px] flex-1">
+                        <label class="mb-1 block text-sm font-semibold">Module name</label>
+                        <input type="text" formControlName="name" class="w-full rounded-xl border px-4 py-2.5 text-sm" placeholder="Inventory Module" />
+                      </div>
+                      <button
+                        type="button"
+                        class="text-xs font-bold text-red-600 disabled:opacity-40"
+                        (click)="removeModule($index)"
+                        [disabled]="modulesControls().length === 1"
+                      >
+                        Remove module
+                      </button>
+                    </div>
+
+                    <div>
+                      <label class="mb-1 block text-sm font-semibold">Description</label>
+                      <textarea formControlName="description" rows="2" class="w-full rounded-xl border px-4 py-2.5 text-sm" placeholder="Scope or summary for this module..."></textarea>
+                    </div>
+
+                    <div class="flex gap-2">
+                      <button
+                        type="button"
+                        class="rounded-full px-3 py-1.5 text-xs font-bold"
+                        [class.bg-slate-900]="moduleDetailTab() === 'features'"
+                        [class.text-white]="moduleDetailTab() === 'features'"
+                        [class.bg-slate-100]="moduleDetailTab() !== 'features'"
+                        [class.text-slate-700]="moduleDetailTab() !== 'features'"
+                        (click)="setModuleDetailTab('features')"
+                      >
+                        Features
+                      </button>
+                      <button
+                        type="button"
+                        class="rounded-full px-3 py-1.5 text-xs font-bold"
+                        [class.bg-slate-900]="moduleDetailTab() === 'processFlow'"
+                        [class.text-white]="moduleDetailTab() === 'processFlow'"
+                        [class.bg-slate-100]="moduleDetailTab() !== 'processFlow'"
+                        [class.text-slate-700]="moduleDetailTab() !== 'processFlow'"
+                        (click)="setModuleDetailTab('processFlow')"
+                      >
+                        Process flow
+                      </button>
+                    </div>
+
+                    @if (moduleDetailTab() === 'features') {
+                      <div>
+                        <label class="mb-1 block text-sm font-semibold">Features</label>
+                        <textarea
+                          formControlName="features"
+                          rows="4"
+                          class="w-full rounded-xl border px-4 py-2.5 text-sm"
+                          placeholder="Stocks, Purchase Order, Product History, CRUD"
+                        ></textarea>
+                      </div>
+                    } @else {
+                      <div>
+                        <label class="mb-1 block text-sm font-semibold">Process flow</label>
+                        <textarea
+                          formControlName="processFlow"
+                          rows="5"
+                          class="w-full rounded-xl border px-4 py-2.5 text-sm font-mono"
+                          placeholder="- Add Item -> Fill Details (sku, description, cost, price) -> List&#10;- Add Item Qty -> Create PO -> Receive stock"
+                        ></textarea>
+                      </div>
+                    }
+                  </div>
+                }
+              }
+            </div>
+
+            <div class="rounded-xl border border-slate-200 bg-white p-4">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p class="text-sm font-bold text-slate-900">Milestones</p>
+                  <p class="mt-0.5 text-xs text-slate-500">Phase steps with linked modules and target dates.</p>
+                </div>
+                <button type="button" class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700" (click)="openAddMilestoneModal()">Add milestone</button>
+              </div>
+
+              @if (milestonesControls().length === 0) {
+                <p class="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">No milestones yet. Click Add milestone to create Phase 1.</p>
+              } @else {
+                <div class="mt-4 flex gap-3 overflow-x-auto pb-2">
+                  @for (milestone of milestonesControls(); track $index) {
+                    <div class="flex min-w-[220px] items-stretch gap-3">
+                      <div class="flex w-56 flex-col rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <div class="flex items-start justify-between gap-2">
+                          <p class="text-sm font-bold text-slate-900">Phase {{ $index + 1 }}: {{ milestonePhaseLabel($index) }}</p>
+                          <div class="flex gap-2">
+                            <button type="button" class="text-[11px] font-bold text-pcmazing-500" (click)="openEditMilestoneModal($index)">Edit</button>
+                            <button type="button" class="text-[11px] font-bold text-red-600" (click)="removeMilestone($index)">Remove</button>
+                          </div>
+                        </div>
+                        <ul class="mt-3 flex-1 space-y-1 text-sm text-slate-600">
+                          @if (milestoneModuleNames($index).length === 0) {
+                            <li class="text-slate-400">No modules linked</li>
+                          } @else {
+                            @for (name of milestoneModuleNames($index); track name) {
+                              <li>- {{ name }}</li>
+                            }
+                          }
+                        </ul>
+                        <p class="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Target date</p>
+                        <p class="mt-1 text-sm font-semibold text-slate-800">{{ milestone.get('dueDate')?.value || '—' }}</p>
+                      </div>
+                      @if ($index < milestonesControls().length - 1) {
+                        <div class="flex items-center text-slate-300">
+                          <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                        </div>
+                      }
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+
+            <div class="rounded-xl border border-slate-200 bg-white p-4">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p class="text-sm font-bold text-slate-900">Payment schedule</p>
+                  <p class="mt-0.5 text-xs text-slate-500">Payments linked to milestone phases.</p>
+                </div>
+                <button type="button" class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700" (click)="openAddPaymentModal()">Add payment</button>
+              </div>
+
+              @if (paymentExceedsDeal()) {
+                <p class="mt-3 text-xs font-semibold text-red-600">Total payments exceed the proposed deal amount ({{ formatDealAmount(proposedDealAmount(item), item.currency) }}).</p>
+              }
+
+              @if (paymentScheduleControls().length === 0) {
+                <p class="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">No payments yet. Click Add payment to create Payment 1.</p>
+              } @else {
+                <div class="mt-4 flex gap-3 overflow-x-auto pb-2">
+                  @for (payment of paymentScheduleControls(); track $index) {
+                    <div class="w-64 shrink-0 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <div class="flex items-start justify-between gap-2">
+                        <p class="text-sm font-bold text-slate-900">Payment {{ $index + 1 }}: {{ payment.get('label')?.value || 'Untitled' }}</p>
+                        <div class="flex gap-2">
+                          <button type="button" class="text-[11px] font-bold text-pcmazing-500" (click)="openEditPaymentModal($index)">Edit</button>
+                          <button type="button" class="text-[11px] font-bold text-red-600" (click)="removePaymentSchedule($index)">Remove</button>
+                        </div>
+                      </div>
+                      <p class="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Description</p>
+                      <p class="mt-1 text-sm text-slate-700">{{ payment.get('description')?.value || '—' }}</p>
+                      <p class="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Milestone</p>
+                      <p class="mt-1 text-sm font-semibold text-slate-800">{{ paymentMilestoneLabel($index) }}</p>
+                      <p class="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Amount</p>
+                      <p class="mt-1 text-sm font-semibold text-slate-800">{{ formatDealAmount(paymentAmount($index), item.currency) }}</p>
+                      <p class="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Payment date</p>
+                      <p class="mt-1 text-sm font-semibold text-slate-800">{{ payment.get('dueDate')?.value || '—' }}</p>
+                      <p class="mt-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Notes</p>
+                      <p class="mt-1 text-sm text-slate-700">{{ payment.get('notes')?.value || '—' }}</p>
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+
+            <div class="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label class="mb-1 block text-sm font-semibold">Remarks</label>
+                <textarea formControlName="contractRemarks" rows="3" class="w-full rounded-xl border px-4 py-2.5 text-sm" placeholder="Contract remarks..."></textarea>
+              </div>
+              <div>
+                <label class="mb-1 block text-sm font-semibold">Notes</label>
+                <textarea formControlName="contractNotes" rows="3" class="w-full rounded-xl border px-4 py-2.5 text-sm" placeholder="Contract signing notes..."></textarea>
+              </div>
+            </div>
+          </div>
+        }
+
         @if (recordingOutcome()) {
           <div>
             <label class="mb-1 block text-sm font-semibold">Notes</label>
@@ -143,10 +390,102 @@
         <div class="flex justify-end gap-2">
           <a [routerLink]="['/admin/lead-generation', item.id, 'view']" class="rounded-xl border px-4 py-2.5 text-sm font-bold">Cancel</a>
           <button type="submit" class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white" [disabled]="saving()">
-            @if (isReturnToAvailable()) { Return to Available } @else if (recordingOutcome()) { Save outcome } @else if (isFollowUpStatus()) { Save follow-up } @else { Save update }
+            @if (isReturnToAvailable()) { Return to Available } @else if (recordingOutcome()) { Save outcome } @else if (isFollowUpStatus()) { Save follow-up } @else if (isContractSignedStatus()) { Save contract } @else { Save update }
           </button>
         </div>
       </form>
+
+      @if (milestoneModalOpen()) {
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" (click)="closeMilestoneModal()">
+          <div class="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-xl" (click)="$event.stopPropagation()" [formGroup]="milestoneDraft">
+            <h3 class="text-lg font-bold text-slate-900">
+              @if (editingMilestoneIndex() === null) { Add milestone } @else { Edit milestone }
+            </h3>
+            <p class="mt-1 text-sm text-slate-500">Define a phase, link modules, and set the target date.</p>
+
+            <div class="mt-4 space-y-4">
+              <div>
+                <label class="mb-1 block text-sm font-semibold">Milestone title</label>
+                <input type="text" formControlName="title" class="w-full rounded-xl border px-4 py-2.5 text-sm" placeholder="Milestone 1" />
+              </div>
+              <div>
+                <label class="mb-1 block text-sm font-semibold">Target date</label>
+                <input type="date" formControlName="dueDate" class="w-full rounded-xl border px-4 py-2.5 text-sm" />
+              </div>
+              <div>
+                <label class="mb-1 block text-sm font-semibold">Linked modules</label>
+                <div class="mt-2 space-y-2 rounded-xl border border-slate-200 p-3">
+                  @for (module of modulesControls(); track $index) {
+                    <label class="flex items-center gap-2 text-sm text-slate-700">
+                      <input type="checkbox" [checked]="isModuleLinked($index)" (change)="toggleModuleLink($index)" />
+                      {{ moduleTabLabel($index) }}
+                    </label>
+                  }
+                </div>
+              </div>
+              <div>
+                <label class="mb-1 block text-sm font-semibold">Description</label>
+                <textarea formControlName="description" rows="3" class="w-full rounded-xl border px-4 py-2.5 text-sm" placeholder="Deliverables or acceptance notes..."></textarea>
+              </div>
+            </div>
+
+            <div class="mt-6 flex justify-end gap-2">
+              <button type="button" class="rounded-xl border px-4 py-2.5 text-sm font-bold" (click)="closeMilestoneModal()">Cancel</button>
+              <button type="button" class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white" (click)="saveMilestoneModal()">Save milestone</button>
+            </div>
+          </div>
+        </div>
+      }
+
+      @if (paymentModalOpen()) {
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" (click)="closePaymentModal()">
+          <div class="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-xl" (click)="$event.stopPropagation()" [formGroup]="paymentDraft">
+            <h3 class="text-lg font-bold text-slate-900">
+              @if (editingPaymentIndex() === null) { Add payment } @else { Edit payment }
+            </h3>
+            <p class="mt-1 text-sm text-slate-500">Link this payment to a milestone phase.</p>
+
+            <div class="mt-4 space-y-4">
+              <div>
+                <label class="mb-1 block text-sm font-semibold">Payment name</label>
+                <input type="text" formControlName="label" class="w-full rounded-xl border px-4 py-2.5 text-sm" placeholder="Downpayment" />
+              </div>
+              <div>
+                <label class="mb-1 block text-sm font-semibold">Description</label>
+                <textarea formControlName="description" rows="2" class="w-full rounded-xl border px-4 py-2.5 text-sm" placeholder="Initial payment for start of development"></textarea>
+              </div>
+              <div>
+                <label class="mb-1 block text-sm font-semibold">Milestone</label>
+                <select formControlName="connectedMilestoneId" class="w-full rounded-xl border px-4 py-2.5 text-sm">
+                  <option value="">-- Select milestone --</option>
+                  @for (milestone of milestonesControls(); track $index) {
+                    <option [value]="$index">Phase {{ $index + 1 }}: {{ milestonePhaseLabel($index) }}</option>
+                  }
+                </select>
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="mb-1 block text-sm font-semibold">Amount</label>
+                  <input type="number" min="0" step="0.01" formControlName="amount" class="w-full rounded-xl border px-4 py-2.5 text-sm" placeholder="30000" />
+                </div>
+                <div>
+                  <label class="mb-1 block text-sm font-semibold">Payment date</label>
+                  <input type="date" formControlName="dueDate" class="w-full rounded-xl border px-4 py-2.5 text-sm" />
+                </div>
+              </div>
+              <div>
+                <label class="mb-1 block text-sm font-semibold">Notes</label>
+                <textarea formControlName="notes" rows="2" class="w-full rounded-xl border px-4 py-2.5 text-sm" placeholder="Invoice or banking notes..."></textarea>
+              </div>
+            </div>
+
+            <div class="mt-6 flex justify-end gap-2">
+              <button type="button" class="rounded-xl border px-4 py-2.5 text-sm font-bold" (click)="closePaymentModal()">Cancel</button>
+              <button type="button" class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white" (click)="savePaymentModal()">Save payment</button>
+            </div>
+          </div>
+        </div>
+      }
     }
   }
 </section>

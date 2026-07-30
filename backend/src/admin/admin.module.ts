@@ -29,9 +29,11 @@ import { CurrencyExchangeService } from './marketing/currency-exchange.service';
 import { PayrollController } from './payroll/payroll.controller';
 import { PayrollModule } from './payroll/payroll.module';
 import { TimeClockController } from './payroll/time-clock.controller';
+import { ProjectsController } from './projects/projects.controller';
+import { ProjectsModule } from './projects/projects.module';
 
 @Module({
-  imports: [DatabaseModule, AuthModule, PayrollModule],
+  imports: [DatabaseModule, AuthModule, PayrollModule, ProjectsModule],
   controllers: [
     DashboardController,
     ContactInquiriesController,
@@ -46,6 +48,7 @@ import { TimeClockController } from './payroll/time-clock.controller';
     TimeClockController,
     MarketingTeamsController,
     ClientProspectsController,
+    ProjectsController,
   ],
   providers: [
     DashboardService,
