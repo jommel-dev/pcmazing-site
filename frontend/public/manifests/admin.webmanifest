@@ -1,0 +1,21 @@
+{
+  "id": "/admin",
+  "name": "PCmazing Admin Portal",
+  "short_name": "Admin Portal",
+  "description": "PCmazing staff and employee portal",
+  "start_url": "/admin/login?source=pwa",
+  "scope": "/admin/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0f172a",
+  "theme_color": "#0047ff",
+  "lang": "en",
+  "icons": [
+    {
+      "src": "/images/favico.ico",
+      "sizes": "48x48",
+      "type": "image/x-icon",
+      "purpose": "any"
+    }
+  ]
+}
