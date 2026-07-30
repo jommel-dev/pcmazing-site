@@ -2,10 +2,10 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { json, urlencoded } from 'express';
-import { join } from 'node:path';
 import { AppModule } from './app.module';
 import { ApiExceptionFilter } from './common/filters/api-exception.filter';
 import { ApiErrorResponseInterceptor } from './common/interceptors/api-error-response.interceptor';
+import { ensureUploadsRoot, getUploadsRoot } from './common/uploads-path.util';
 
 async function bootstrap() {
   console.log('Starting PCmazing Site Backend...');
@@ -14,9 +14,12 @@ async function bootstrap() {
   console.log('DATABASE_URL present:', !!process.env.DATABASE_URL);
   console.log('CORS_ORIGINS:', process.env.CORS_ORIGINS || 'http://localhost:4200');
 
+  const uploadsRoot = ensureUploadsRoot();
+  console.log('UPLOADS_DIR:', uploadsRoot);
+
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  app.useStaticAssets(join(process.cwd(), 'uploads'), {
+  app.useStaticAssets(getUploadsRoot(), {
     prefix: '/uploads/',
   });
 
