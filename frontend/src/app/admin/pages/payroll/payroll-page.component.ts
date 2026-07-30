@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, HostListener, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
@@ -22,6 +22,8 @@ type PayrollTab = 'overview' | 'attendance' | 'employees' | 'period';
 })
 export class PayrollPageComponent implements OnInit {
   private readonly adminApi = inject(AdminApiService);
+
+  readonly selfieModal = signal<{ url: string; label: string } | null>(null);
 
   readonly tabs: Array<{ key: PayrollTab; label: string }> = [
     { key: 'overview', label: 'Overview' },
@@ -226,6 +228,19 @@ export class PayrollPageComponent implements OnInit {
 
   selfieUrl(path: string | null | undefined): string | null {
     return this.adminApi.resolveAttendanceSelfieUrl(path);
+  }
+
+  openSelfieModal(url: string, label: string): void {
+    this.selfieModal.set({ url, label });
+  }
+
+  closeSelfieModal(): void {
+    this.selfieModal.set(null);
+  }
+
+  @HostListener('document:keydown.escape')
+  onEscape(): void {
+    this.closeSelfieModal();
   }
 
   salaryTypeLabel(value: string): string {
