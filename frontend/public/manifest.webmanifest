@@ -1,0 +1,21 @@
+{
+  "id": "/",
+  "name": "PCmazing",
+  "short_name": "PCmazing",
+  "description": "PCmazing web development and tech solutions",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#ffffff",
+  "theme_color": "#0047ff",
+  "lang": "en",
+  "icons": [
+    {
+      "src": "/images/favico.ico",
+      "sizes": "48x48",
+      "type": "image/x-icon",
+      "purpose": "any"
+    }
+  ]
+}

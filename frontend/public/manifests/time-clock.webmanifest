@@ -1,0 +1,21 @@
+{
+  "id": "/time-clock",
+  "name": "PCmazing Time Clock",
+  "short_name": "Time Clock",
+  "description": "PCmazing employee time in / time out",
+  "start_url": "/time-clock?source=pwa",
+  "scope": "/time-clock",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#ffffff",
+  "theme_color": "#0047ff",
+  "lang": "en",
+  "icons": [
+    {
+      "src": "/images/favico.ico",
+      "sizes": "48x48",
+      "type": "image/x-icon",
+      "purpose": "any"
+    }
+  ]
+}
