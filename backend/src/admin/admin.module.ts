@@ -15,6 +15,8 @@ import { InventoryServicesService } from './inventory/inventory-services.service
 import { InventoryService } from './inventory/inventory.service';
 import { PurchaseController } from './inventory/purchase.controller';
 import { PurchaseService } from './inventory/purchase.service';
+import { EmployeeWorkspaceController } from './employee-workspace/employee-workspace.controller';
+import { EmployeeWorkspaceService } from './employee-workspace/employee-workspace.service';
 import { QuotationController } from './quotation/quotation.controller';
 import { QuotationService } from './quotation/quotation.service';
 import { RbacService } from './rbac/rbac.service';
@@ -49,6 +51,7 @@ import { ProjectsModule } from './projects/projects.module';
     MarketingTeamsController,
     ClientProspectsController,
     ProjectsController,
+    EmployeeWorkspaceController,
   ],
   providers: [
     DashboardService,
@@ -65,6 +68,7 @@ import { ProjectsModule } from './projects/projects.module';
     MarketingTeamsService,
     ClientProspectsService,
     CurrencyExchangeService,
+    EmployeeWorkspaceService,
   ],
 })
 export class AdminModule {}

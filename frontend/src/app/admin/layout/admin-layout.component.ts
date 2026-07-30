@@ -43,7 +43,18 @@ export class AdminLayoutComponent implements OnInit {
 
     this.router.events.pipe(filter((event) => event instanceof NavigationEnd)).subscribe(() => {
       this.user.set(this.adminAuth.getStoredUser());
+      this.closeSidebar();
+      this.closeProfileMenu();
     });
+  }
+
+  toggleSidebar(event: Event): void {
+    event.stopPropagation();
+    this.sidebarOpen.update((open) => !open);
+  }
+
+  closeSidebar(): void {
+    this.sidebarOpen.set(false);
   }
 
   toggleProfileMenu(event: Event): void {
@@ -92,11 +103,13 @@ export class AdminLayoutComponent implements OnInit {
   @HostListener('document:click')
   onDocumentClick(): void {
     this.closeProfileMenu();
+    this.closeSidebar();
   }
 
   @HostListener('document:keydown.escape')
   onEscape(): void {
     this.closeProfileMenu();
+    this.closeSidebar();
   }
 
   private async loadProfile(): Promise<void> {

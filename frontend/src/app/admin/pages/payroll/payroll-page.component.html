@@ -5,6 +5,7 @@
       <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
         Attendance, enrolled employees, and period pay estimates. Configure salary fields in
         <a routerLink="/admin/users" class="font-semibold text-pcmazing-500 hover:underline">User Management</a>.
+        Generate a cutoff in Period pay to publish payslips to employee portals.
       </p>
     </div>
     <button
@@ -253,6 +254,14 @@
       <button type="submit" class="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white dark:bg-slate-100 dark:text-slate-900">
         Compute
       </button>
+      <button
+        type="button"
+        class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:opacity-60"
+        [disabled]="generating() || periodItems().length === 0"
+        (click)="generatePayslips()"
+      >
+        @if (generating()) { Generating... } @else { Generate payslips }
+      </button>
     </form>
 
     <div class="mb-6 flex flex-wrap gap-2">
@@ -263,6 +272,12 @@
         16th–month end
       </button>
     </div>
+
+    @if (generateMessage()) {
+      <p class="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
+        {{ generateMessage() }}
+      </p>
+    }
 
     @if (periodMeta(); as meta) {
       <div class="mb-4 grid gap-3 sm:grid-cols-3">
@@ -281,7 +296,8 @@
       </div>
       <p class="mb-4 text-sm text-slate-500">
         Period {{ meta.dateFrom }} → {{ meta.dateTo }} ({{ meta.periodDays }} day{{ meta.periodDays === 1 ? '' : 's' }}).
-        Estimates: weekly uses hours; monthly/semi-monthly use completed days; cutoff is amount × completed days.
+        Compute previews the cutoff; Generate payslips publishes it to employee portals.
+        Estimates: weekly uses hours; monthly/semi-monthly use completed days; cutoff prorates amount over the selected date range.
       </p>
     }
 

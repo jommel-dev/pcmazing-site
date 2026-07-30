@@ -4,12 +4,14 @@ import { firstValueFrom } from 'rxjs';
 import { AdminApiService, ProjectListItem } from '../../services/admin-api.service';
 import { AdminAuthService } from '../../services/admin-auth.service';
 import { isMarketingLead } from '../../rbac/admin-roles';
+import { SalesEmployeeDashboardComponent } from './sales-employee-dashboard.component';
+import { SalesReportingDashboardComponent } from './sales-reporting-dashboard.component';
 
 type RoleHomeKind = 'marketing' | 'sales' | 'developers';
 
 @Component({
   selector: 'app-role-home-dashboard-page',
-  imports: [RouterLink],
+  imports: [RouterLink, SalesEmployeeDashboardComponent, SalesReportingDashboardComponent],
   templateUrl: './role-home-dashboard-page.component.html',
 })
 export class RoleHomeDashboardPageComponent implements OnInit {
@@ -24,9 +26,11 @@ export class RoleHomeDashboardPageComponent implements OnInit {
   readonly projects = signal<ProjectListItem[]>([]);
 
   readonly title = computed(() => {
+    if (this.kind() === 'sales') {
+      const name = this.adminAuth.getStoredUser()?.fullName?.trim().split(/\s+/)[0];
+      return name ? `Hi ${name}` : 'Hi';
+    }
     switch (this.kind()) {
-      case 'sales':
-        return 'Sales Dashboard';
       case 'developers':
         return 'Developers Dashboard';
       default:
