@@ -1,4 +1,4 @@
-import { Component, HostListener, inject, OnInit, signal } from '@angular/core';
+import { Component, HostListener, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
@@ -9,6 +9,8 @@ import {
   MaterialItem,
   PaginationMeta,
 } from '../../services/admin-api.service';
+import { AdminAuthService } from '../../services/admin-auth.service';
+import { canSeeInventoryCosts } from '../../rbac/admin-roles';
 import { InventorySubnavComponent } from './inventory-subnav.component';
 import {
   extendedMargin,
@@ -28,6 +30,7 @@ import {
 })
 export class InventoryPageComponent implements OnInit {
   private readonly adminApi = inject(AdminApiService);
+  private readonly adminAuth = inject(AdminAuthService);
 
   readonly loading = signal(true);
   readonly error = signal('');
@@ -43,6 +46,10 @@ export class InventoryPageComponent implements OnInit {
   readonly selectedCategoryLabel = signal('All Products');
   readonly openActionMenuId = signal<number | null>(null);
   readonly actionMenuPosition = signal<{ top: number; left: number } | null>(null);
+
+  readonly showCosts = computed(() =>
+    canSeeInventoryCosts(this.adminAuth.getStoredUser()?.role),
+  );
 
   readonly formatMoney = formatInventoryMoney;
   readonly unitCost = unitCost;

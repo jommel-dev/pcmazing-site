@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Param,
   ParseIntPipe,
@@ -12,6 +13,7 @@ import {
 import { Request } from 'express';
 import { AdminJwtPayload } from '../auth/guards/jwt-auth.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { isSalesRestrictedInventory } from '../rbac/admin-roles.util';
 import { CreatePurchaseDto } from './dto/create-purchase.dto';
 import { PurchaseService } from './purchase.service';
 
@@ -20,8 +22,15 @@ import { PurchaseService } from './purchase.service';
 export class PurchaseController {
   constructor(private readonly purchaseService: PurchaseService) {}
 
+  private assertNotSales(role?: string | null): void {
+    if (isSalesRestrictedInventory(role)) {
+      throw new ForbiddenException('Sales roles cannot access purchase orders.');
+    }
+  }
+
   @Get('vendors')
-  listVendors() {
+  listVendors(@Req() request: Request & { user?: AdminJwtPayload }) {
+    this.assertNotSales(request.user?.role);
     return this.purchaseService.listVendors().then((items) => ({
       success: true,
       data: items,
@@ -30,11 +39,13 @@ export class PurchaseController {
 
   @Get()
   list(
+    @Req() request: Request & { user?: AdminJwtPayload },
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('search') search?: string,
     @Query('status') status?: string,
   ) {
+    this.assertNotSales(request.user?.role);
     return this.purchaseService.list(page, limit, search, status).then((result) => ({
       success: true,
       data: result.items,
@@ -47,6 +58,7 @@ export class PurchaseController {
     @Body() dto: CreatePurchaseDto,
     @Req() request: Request & { user?: AdminJwtPayload },
   ) {
+    this.assertNotSales(request.user?.role);
     return this.purchaseService.create(dto, request.user?.sub).then((item) => ({
       success: true,
       message: 'Purchase order created.',
@@ -55,7 +67,11 @@ export class PurchaseController {
   }
 
   @Get(':id')
-  getById(@Param('id', ParseIntPipe) id: number) {
+  getById(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() request: Request & { user?: AdminJwtPayload },
+  ) {
+    this.assertNotSales(request.user?.role);
     return this.purchaseService.getById(id).then((item) => ({
       success: true,
       data: item,

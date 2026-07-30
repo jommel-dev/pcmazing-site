@@ -41,6 +41,17 @@ export class AuthController {
     };
   }
 
+  @Post('portal-login')
+  async portalLogin(@Body() dto: AdminLoginDto) {
+    const result = await this.authService.portalLogin(dto);
+
+    return {
+      success: true,
+      message: 'Login successful.',
+      data: result,
+    };
+  }
+
   @Get('me')
   @UseGuards(JwtAuthGuard)
   async me(@Req() request: Request & { user: AdminJwtPayload }) {

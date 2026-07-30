@@ -12,11 +12,16 @@ import { SetupPageComponent } from './website/pages/setup/setup-page.component';
 import { TimeClockPageComponent } from './website/pages/time-clock/time-clock-page.component';
 import { setupAvailableGuard } from './core/guards/setup-available.guard';
 import { adminRoutes } from './admin/admin.routes';
+import { userRoutes } from './user/user.routes';
 
 export const routes: Routes = [
   {
     path: 'admin',
     children: adminRoutes,
+  },
+  {
+    path: 'user',
+    children: userRoutes,
   },
   {
     path: 'time-clock',

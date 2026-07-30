@@ -98,6 +98,13 @@ export class AdminAuthService {
     );
   }
 
+  portalLogin(username: string, password: string, rememberMe = false) {
+    return this.http.post<ApiResponse<{ accessToken: string; user: AdminAuthUser }>>(
+      `${APP_CONFIG.apiUrl}/auth/portal-login`,
+      { username, password },
+    );
+  }
+
   getProfile() {
     return this.http.get<ApiResponse<AdminAuthUser>>(`${APP_CONFIG.apiUrl}/auth/me`, {
       headers: this.buildAuthHeaders(),

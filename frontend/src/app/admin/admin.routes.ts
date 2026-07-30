@@ -1,8 +1,14 @@
 import { Routes } from '@angular/router';
-import { adminAuthGuard, adminGuestGuard, staffGateGuard } from './guards/admin-auth.guards';
+import {
+  adminAuthGuard,
+  adminGuestGuard,
+  adminRoleGuard,
+  staffGateGuard,
+} from './guards/admin-auth.guards';
 import { AdminLayoutComponent } from './layout/admin-layout.component';
 import { StaffAccessPageComponent } from './pages/access/staff-access-page.component';
 import { AdminDashboardPageComponent } from './pages/dashboard/admin-dashboard-page.component';
+import { RoleHomeDashboardPageComponent } from './pages/dashboard/role-home-dashboard-page.component';
 import { AdminLoginPageComponent } from './pages/login/admin-login-page.component';
 import { ContactInquiriesPageComponent } from './pages/contact-inquiries/contact-inquiries-page.component';
 import { ContactInquiryDetailPageComponent } from './pages/contact-inquiries/contact-inquiry-detail-page.component';
@@ -32,6 +38,7 @@ import { PayrollPageComponent } from './pages/payroll/payroll-page.component';
 import { ProjectsPageComponent } from './pages/projects/projects-page.component';
 import { ProjectViewPageComponent } from './pages/projects/project-view-page.component';
 import { ProjectTasksPageComponent } from './pages/projects/project-tasks-page.component';
+import { KanbanHubPageComponent } from './pages/projects/kanban-hub-page.component';
 import { AdminModulePlaceholderPageComponent } from './pages/modules/admin-module-placeholder-page.component';
 
 export const adminRoutes: Routes = [
@@ -61,165 +68,256 @@ export const adminRoutes: Routes = [
         path: 'dashboard',
         component: AdminDashboardPageComponent,
         title: 'Admin Dashboard | PCMazing',
+        canActivate: [adminRoleGuard],
+        data: { module: 'dashboard' },
+      },
+      {
+        path: 'marketing-dashboard',
+        component: RoleHomeDashboardPageComponent,
+        title: 'Marketing Dashboard | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'marketing_dashboard', roleHome: 'marketing' },
+      },
+      {
+        path: 'sales-dashboard',
+        component: RoleHomeDashboardPageComponent,
+        title: 'Sales Dashboard | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'sales_dashboard', roleHome: 'sales' },
+      },
+      {
+        path: 'developers-dashboard',
+        component: RoleHomeDashboardPageComponent,
+        title: 'Developers Dashboard | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'developers_dashboard', roleHome: 'developers' },
       },
       {
         path: 'profile',
         component: EditProfilePageComponent,
         title: 'Edit Profile | PCMazing Admin',
+        data: { module: 'profile' },
       },
       {
         path: 'contact-inquiries',
         component: ContactInquiriesPageComponent,
         title: 'Customer Contact Us | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'contact_inquiries' },
       },
       {
         path: 'contact-inquiries/:id',
         component: ContactInquiryDetailPageComponent,
         title: 'Contact Inquiry Detail | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'contact_inquiries' },
       },
       {
         path: 'customer-reviews',
         component: CustomerReviewsPageComponent,
         title: 'Customer Reviews | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'customer_reviews' },
       },
       {
         path: 'customer-reviews/:id',
         component: CustomerReviewDetailPageComponent,
         title: 'Review Detail | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'customer_reviews' },
       },
       {
         path: 'demo-requests',
         component: DemoRequestsPageComponent,
         title: 'Schedule A Demo | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'demo_requests' },
       },
       {
         path: 'demo-requests/:id',
         component: DemoRequestDetailPageComponent,
         title: 'Demo Request Detail | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'demo_requests' },
       },
       {
         path: 'inventory',
         component: InventoryPageComponent,
         title: 'Inventory | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'inventory' },
       },
       {
         path: 'inventory/services',
         component: InventoryServicesPageComponent,
         title: 'Services | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'inventory', inventoryWrite: true },
       },
       {
         path: 'inventory/services/new',
         component: InventoryServiceCreatePageComponent,
         title: 'Add Service | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'inventory', inventoryWrite: true },
       },
       {
         path: 'inventory/services/:id',
         component: InventoryServiceCreatePageComponent,
         title: 'Edit Service | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'inventory', inventoryWrite: true },
       },
       {
         path: 'inventory/products/new',
         component: ProductCreatePageComponent,
         title: 'Add Product | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'inventory', inventoryWrite: true },
       },
       {
         path: 'inventory/purchase',
         component: PurchasePageComponent,
         title: 'Purchase Orders | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'inventory', inventoryWrite: true },
       },
       {
         path: 'inventory/purchase/new',
         component: PurchaseCreatePageComponent,
         title: 'Add Purchase Order | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'inventory', inventoryWrite: true },
       },
       {
         path: 'inventory/purchase/:id',
         component: PurchaseDetailPageComponent,
         title: 'Purchase Order Detail | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'inventory', inventoryWrite: true },
       },
       {
         path: 'inventory/materials/:id/edit',
         component: ProductEditPageComponent,
         title: 'Edit Product | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'inventory', inventoryWrite: true },
       },
       {
         path: 'inventory/materials/:id',
         component: InventoryDetailPageComponent,
         title: 'Material Detail | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'inventory' },
       },
       {
         path: 'quotations',
         component: QuotationsPageComponent,
         title: 'Quotations | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'quotation' },
       },
       {
         path: 'quotations/:id',
         component: QuotationDetailPageComponent,
         title: 'Quotation Detail | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'quotation' },
       },
       {
         path: 'users',
         component: UserManagementPageComponent,
         title: 'User Management | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'user_management' },
       },
       {
         path: 'payroll',
         component: PayrollPageComponent,
         title: 'Payroll | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'payroll' },
       },
       {
         path: 'projects',
         component: ProjectsPageComponent,
         title: 'Projects | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'projects' },
+      },
+      {
+        path: 'kanban',
+        component: KanbanHubPageComponent,
+        title: 'Kanban | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'kanban' },
       },
       {
         path: 'projects/:id/tasks',
         component: ProjectTasksPageComponent,
         title: 'Project Tasks | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'projects' },
       },
       {
         path: 'projects/:id',
         component: ProjectViewPageComponent,
         title: 'Project Details | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'projects' },
       },
       {
         path: 'lead-generation',
         component: LeadGenerationPageComponent,
         title: 'Lead Generation | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'lead_generation' },
       },
       {
         path: 'lead-generation/:id/edit',
         component: LeadProspectEditPageComponent,
         title: 'Edit Client Prospect | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'lead_generation' },
       },
       {
         path: 'lead-generation/:id/update',
         component: LeadProspectUpdatePageComponent,
         title: 'Update Client Prospect | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'lead_generation' },
       },
       {
         path: 'lead-generation/:id/view',
         component: LeadProspectViewPageComponent,
         title: 'View Client Prospect | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'lead_generation' },
       },
       {
         path: 'lead-generation/:id',
         component: LeadProspectViewPageComponent,
         title: 'View Client Prospect | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'lead_generation' },
       },
       {
         path: 'organization-team',
         component: OrganizationTeamPageComponent,
         title: 'Organization & Team | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'organization_team' },
       },
       {
         path: 'modules/:moduleKey',
         component: AdminModulePlaceholderPageComponent,
         title: 'Admin Module | PCMazing',
+        canActivate: [adminRoleGuard],
+        data: { module: 'dashboard' },
       },
       {
         path: '**',
-        redirectTo: 'dashboard',
+        redirectTo: 'profile',
       },
     ],
   },

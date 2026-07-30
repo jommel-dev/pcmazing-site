@@ -1,5 +1,12 @@
 import { inject } from '@angular/core';
 import { CanActivateFn, Router } from '@angular/router';
+import {
+  AdminModuleKey,
+  canAccessModule,
+  getRoleHomeRoute,
+  isSalesRestrictedInventory,
+  isSuperAdmin,
+} from '../rbac/admin-roles';
 import { AdminAuthService } from '../services/admin-auth.service';
 
 export const staffGateGuard: CanActivateFn = () => {
@@ -21,7 +28,8 @@ export const adminGuestGuard: CanActivateFn = () => {
     return true;
   }
 
-  return router.createUrlTree(['/admin/dashboard']);
+  const role = adminAuth.getStoredUser()?.role;
+  return router.createUrlTree([getRoleHomeRoute(role)]);
 };
 
 export const adminAuthGuard: CanActivateFn = () => {
@@ -37,4 +45,34 @@ export const adminAuthGuard: CanActivateFn = () => {
   }
 
   return router.createUrlTree(['/admin/access']);
+};
+
+export const adminRoleGuard: CanActivateFn = (route) => {
+  const adminAuth = inject(AdminAuthService);
+  const router = inject(Router);
+  const role = adminAuth.getStoredUser()?.role;
+  const moduleKey = (route.data?.['module'] ?? null) as AdminModuleKey | null;
+
+  if (!moduleKey) {
+    return true;
+  }
+
+  if (
+    moduleKey === 'inventory' &&
+    route.data?.['inventoryWrite'] &&
+    isSalesRestrictedInventory(role)
+  ) {
+    return router.createUrlTree(['/admin/inventory']);
+  }
+
+  if (canAccessModule(role, moduleKey)) {
+    return true;
+  }
+
+  // Super admin dashboard module key
+  if (moduleKey === 'dashboard' && isSuperAdmin(role)) {
+    return true;
+  }
+
+  return router.createUrlTree([getRoleHomeRoute(role)]);
 };

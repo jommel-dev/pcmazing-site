@@ -40,6 +40,7 @@ export interface ClientProspectListItem {
   company: string | null;
   email: string | null;
   phone: string | null;
+  address: string | null;
   status: string;
   source: string;
   assignedUserId: number | null;
@@ -71,7 +72,6 @@ export interface ProspectDealSummary {
 }
 
 export interface ClientProspectDetail extends ClientProspectListItem {
-  address: string | null;
   notes: string | null;
   assignedTeamId: number | null;
   contract: {
@@ -199,6 +199,7 @@ export class ClientProspectsService {
       company: string | null;
       email: string | null;
       phone: string | null;
+      address: string | null;
       status: string;
       source: string;
       assigned_user_id: number | null;
@@ -222,6 +223,7 @@ export class ClientProspectsService {
         p.company,
         p.email,
         p.phone,
+        p.address,
         p.status,
         p.source,
         p.assigned_user_id,
@@ -260,6 +262,7 @@ export class ClientProspectsService {
         company: row.company,
         email: row.email,
         phone: row.phone,
+        address: row.address,
         status: row.status,
         source: row.source,
         assignedUserId: row.assigned_user_id,
@@ -1690,6 +1693,7 @@ export class ClientProspectsService {
       company: string | null;
       email: string | null;
       phone: string | null;
+      address?: string | null;
       status: string;
       source: string;
       assigned_user_id: number | null;
@@ -1713,6 +1717,7 @@ export class ClientProspectsService {
       company: row.company,
       email: row.email,
       phone: row.phone,
+      address: row.address ?? null,
       status: row.status,
       source: row.source,
       assignedUserId: row.assigned_user_id,

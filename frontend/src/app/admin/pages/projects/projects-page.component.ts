@@ -1,8 +1,10 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
+import { isDeveloperOrPm, isSuperAdmin } from '../../rbac/admin-roles';
 import { AdminApiService, ProjectListItem } from '../../services/admin-api.service';
+import { AdminAuthService } from '../../services/admin-auth.service';
 
 @Component({
   selector: 'app-projects-page',
@@ -11,11 +13,17 @@ import { AdminApiService, ProjectListItem } from '../../services/admin-api.servi
 })
 export class ProjectsPageComponent implements OnInit {
   private readonly adminApi = inject(AdminApiService);
+  private readonly adminAuth = inject(AdminAuthService);
 
   readonly loading = signal(true);
   readonly error = signal('');
   readonly projects = signal<ProjectListItem[]>([]);
   readonly search = signal('');
+
+  readonly isMyProjects = computed(() => {
+    const role = this.adminAuth.getStoredUser()?.role;
+    return isDeveloperOrPm(role) && !isSuperAdmin(role);
+  });
 
   ngOnInit(): void {
     void this.load();
