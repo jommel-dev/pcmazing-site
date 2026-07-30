@@ -412,6 +412,7 @@ export interface ClientProspectListItem {
   company: string | null;
   email: string | null;
   phone: string | null;
+  address: string | null;
   status: string;
   source: string;
   assignedUserId: number | null;
@@ -615,7 +616,6 @@ export interface ProspectContract {
 }
 
 export interface ClientProspectDetail extends ClientProspectListItem {
-  address: string | null;
   notes: string | null;
   assignedTeamId: number | null;
   contract: ProspectContract | null;
@@ -760,7 +760,7 @@ export class AdminApiService {
       params = params.set('productTypeId', String(productTypeId));
     }
 
-    return this.http.get<ListResponse<MaterialItem> & { summary: InventoryStockSummary }>(
+    return this.http.get<ListResponse<MaterialItem> & { summary: InventoryStockSummary | null }>(
       `${APP_CONFIG.apiUrl}/admin/inventory/materials`,
       { headers: this.headers(), params },
     );

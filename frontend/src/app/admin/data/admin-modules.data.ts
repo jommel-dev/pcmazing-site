@@ -32,6 +32,27 @@ export const ADMIN_MODULES: AdminModuleItem[] = [
     referenceMenu: 'dashboard',
   },
   {
+    key: 'marketing_dashboard',
+    label: 'Marketing Dashboard',
+    route: '/admin/marketing-dashboard',
+    description: 'Marketing overview and shortcuts for lead generation.',
+    status: 'active',
+  },
+  {
+    key: 'sales_dashboard',
+    label: 'Sales Dashboard',
+    route: '/admin/sales-dashboard',
+    description: 'Sales overview for inquiries, reviews, and operations.',
+    status: 'active',
+  },
+  {
+    key: 'developers_dashboard',
+    label: 'Developers Dashboard',
+    route: '/admin/developers-dashboard',
+    description: 'Assigned projects and task boards for developers and project managers.',
+    status: 'active',
+  },
+  {
     key: 'contact_inquiries',
     label: 'Customer Inquiries',
     route: '/admin/contact-inquiries',
@@ -106,6 +127,13 @@ export const ADMIN_MODULES: AdminModuleItem[] = [
     status: 'active',
   },
   {
+    key: 'kanban',
+    label: 'Kanban',
+    route: '/admin/kanban',
+    description: 'Open task boards for projects assigned to you.',
+    status: 'active',
+  },
+  {
     key: 'developers_team',
     label: 'Developers & Team',
     route: '/admin/modules/developers-team',
@@ -169,18 +197,124 @@ export const ADMIN_NAV_SECTIONS: AdminNavSection[] = [
   {
     key: 'marketing',
     title: 'Marketing',
-    items: ADMIN_MODULES.filter((item) => ['lead_generation', 'organization_team'].includes(item.key)),
+    items: ADMIN_MODULES.filter((item) =>
+      ['marketing_dashboard', 'lead_generation', 'organization_team'].includes(item.key),
+    ),
   },
   {
     key: 'system_development',
     title: 'System Development',
-    items: ADMIN_MODULES.filter((item) => ['projects', 'developers_team'].includes(item.key)),
+    items: ADMIN_MODULES.filter((item) =>
+      ['developers_dashboard', 'projects', 'kanban', 'developers_team'].includes(item.key),
+    ),
+  },
+  {
+    key: 'sales_home',
+    title: 'Sales',
+    items: ADMIN_MODULES.filter((item) => item.key === 'sales_dashboard'),
   },
   {
     key: 'system_management',
     title: 'System Management',
     items: ADMIN_MODULES.filter((item) =>
-      ['payroll', 'accounting', 'user_management', 'settings', 'printing_generator'].includes(item.key),
+      ['payroll', 'accounting', 'user_management', 'settings', 'printing_generator'].includes(
+        item.key,
+      ),
     ),
   },
 ];
+
+export function filterNavSectionsForRole(
+  role: string | null | undefined,
+  allowed: Set<string> | 'all',
+): AdminNavSection[] {
+  const sections: AdminNavSection[] = [];
+
+  // Super admin keeps classic top dashboard link via layout; sections as today.
+  if (allowed === 'all') {
+    return [
+      {
+        key: 'website',
+        title: 'Website',
+        items: ADMIN_MODULES.filter((item) =>
+          ['contact_inquiries', 'customer_reviews', 'demo_requests'].includes(item.key),
+        ),
+      },
+      {
+        key: 'sales_operations',
+        title: 'Sales Operations',
+        items: ADMIN_MODULES.filter((item) =>
+          ['job_order', 'quotation', 'inventory', 'customers'].includes(item.key),
+        ),
+      },
+      {
+        key: 'marketing',
+        title: 'Marketing',
+        items: ADMIN_MODULES.filter((item) =>
+          ['lead_generation', 'organization_team'].includes(item.key),
+        ),
+      },
+      {
+        key: 'system_development',
+        title: 'System Development',
+        items: ADMIN_MODULES.filter((item) =>
+          ['projects', 'developers_team'].includes(item.key),
+        ),
+      },
+      {
+        key: 'system_management',
+        title: 'System Management',
+        items: ADMIN_MODULES.filter((item) =>
+          ['payroll', 'accounting', 'user_management', 'settings', 'printing_generator'].includes(
+            item.key,
+          ),
+        ),
+      },
+    ];
+  }
+
+  const marketingItems = ADMIN_MODULES.filter(
+    (item) =>
+      ['marketing_dashboard', 'lead_generation', 'organization_team'].includes(item.key) &&
+      allowed.has(item.key),
+  ).map((item) =>
+    item.key === 'projects'
+      ? item
+      : item,
+  );
+  if (marketingItems.length) {
+    sections.push({ key: 'marketing', title: 'Marketing', items: marketingItems });
+  }
+
+  const salesHome = ADMIN_MODULES.filter(
+    (item) => item.key === 'sales_dashboard' && allowed.has(item.key),
+  );
+  const salesWebsite = ADMIN_MODULES.filter(
+    (item) =>
+      ['contact_inquiries', 'customer_reviews'].includes(item.key) && allowed.has(item.key),
+  );
+  const salesOps = ADMIN_MODULES.filter(
+    (item) => ['quotation', 'inventory'].includes(item.key) && allowed.has(item.key),
+  );
+  if (salesHome.length) {
+    sections.push({ key: 'sales_home', title: 'Sales', items: salesHome });
+  }
+  if (salesWebsite.length) {
+    sections.push({ key: 'website', title: 'Website', items: salesWebsite });
+  }
+  if (salesOps.length) {
+    sections.push({ key: 'sales_operations', title: 'Sales Operations', items: salesOps });
+  }
+
+  const devItems = ADMIN_MODULES.filter(
+    (item) =>
+      ['developers_dashboard', 'projects', 'kanban'].includes(item.key) && allowed.has(item.key),
+  ).map((item) =>
+    item.key === 'projects' ? { ...item, label: 'My Projects' } : item,
+  );
+  if (devItems.length) {
+    sections.push({ key: 'system_development', title: 'System Development', items: devItems });
+  }
+
+  return sections;
+}

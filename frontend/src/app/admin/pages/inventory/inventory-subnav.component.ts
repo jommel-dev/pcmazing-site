@@ -1,5 +1,7 @@
-import { Component } from '@angular/core';
+import { Component, computed, inject } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
+import { isSalesRestrictedInventory } from '../../rbac/admin-roles';
+import { AdminAuthService } from '../../services/admin-auth.service';
 
 @Component({
   selector: 'app-inventory-subnav',
@@ -14,21 +16,29 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
       >
         Stock
       </a>
-      <a
-        routerLink="/admin/inventory/services"
-        routerLinkActive="bg-pcmazing-500 text-white"
-        class="rounded-full border border-slate-200 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-      >
-        Services
-      </a>
-      <a
-        routerLink="/admin/inventory/purchase"
-        routerLinkActive="bg-pcmazing-500 text-white"
-        class="rounded-full border border-slate-200 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-      >
-        Purchase
-      </a>
+      @if (showFullInventory()) {
+        <a
+          routerLink="/admin/inventory/services"
+          routerLinkActive="bg-pcmazing-500 text-white"
+          class="rounded-full border border-slate-200 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          Services
+        </a>
+        <a
+          routerLink="/admin/inventory/purchase"
+          routerLinkActive="bg-pcmazing-500 text-white"
+          class="rounded-full border border-slate-200 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          Purchase
+        </a>
+      }
     </nav>
   `,
 })
-export class InventorySubnavComponent {}
+export class InventorySubnavComponent {
+  private readonly adminAuth = inject(AdminAuthService);
+
+  readonly showFullInventory = computed(
+    () => !isSalesRestrictedInventory(this.adminAuth.getStoredUser()?.role),
+  );
+}

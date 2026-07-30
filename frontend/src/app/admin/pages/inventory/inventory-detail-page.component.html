@@ -22,17 +22,21 @@
             <p class="mt-1 text-sm text-slate-500">{{ item.brandName || 'No brand' }}</p>
           </div>
         </div>
-        <a [routerLink]="['/admin/inventory/materials', item.id, 'edit']" class="inline-flex shrink-0 items-center self-start rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600">
-          Edit product
-        </a>
+        @if (showCosts()) {
+          <a [routerLink]="['/admin/inventory/materials', item.id, 'edit']" class="inline-flex shrink-0 items-center self-start rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600">
+            Edit product
+          </a>
+        }
       </div>
 
       <div class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div class="rounded-xl bg-slate-50 p-4"><p class="text-xs font-bold uppercase text-slate-400">On hand</p><p class="mt-1 text-lg font-bold">{{ item.onHandStock ?? 0 }} {{ item.unit || '' }}</p></div>
         <div class="rounded-xl bg-slate-50 p-4"><p class="text-xs font-bold uppercase text-slate-400">Reorder level</p><p class="mt-1 text-lg font-bold">{{ item.reorderLevel ?? '—' }}</p></div>
-        <div class="rounded-xl bg-slate-50 p-4"><p class="text-xs font-bold uppercase text-slate-400">Cost</p><p class="mt-1 text-lg font-bold">{{ item.unitPrice ?? '—' }}</p></div>
-        <div class="rounded-xl bg-slate-50 p-4"><p class="text-xs font-bold uppercase text-slate-400">Order cost</p><p class="mt-1 text-lg font-bold">{{ item.orderCost ?? '—' }}</p></div>
-        <div class="rounded-xl bg-slate-50 p-4"><p class="text-xs font-bold uppercase text-slate-400">Sell price</p><p class="mt-1 text-lg font-bold">{{ item.sellPrice ?? '—' }}</p></div>
+        @if (showCosts()) {
+          <div class="rounded-xl bg-slate-50 p-4"><p class="text-xs font-bold uppercase text-slate-400">Cost</p><p class="mt-1 text-lg font-bold">{{ item.unitPrice ?? '—' }}</p></div>
+          <div class="rounded-xl bg-slate-50 p-4"><p class="text-xs font-bold uppercase text-slate-400">Order cost</p><p class="mt-1 text-lg font-bold">{{ item.orderCost ?? '—' }}</p></div>
+        }
+        <div class="rounded-xl bg-slate-50 p-4"><p class="text-xs font-bold uppercase text-slate-400">{{ showCosts() ? 'Sell price' : 'SRP' }}</p><p class="mt-1 text-lg font-bold">{{ item.sellPrice ?? '—' }}</p></div>
       </div>
 
       @if (item.description) {

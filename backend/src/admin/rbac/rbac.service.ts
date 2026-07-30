@@ -1,17 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { BUSINESS_ROLE_LABELS } from './admin-roles.util';
 
 /** Placeholder roles until RBAC permissions are finalized. */
-export const PLACEHOLDER_ROLES = [
-  'admin',
-  'staff',
-  'manager',
-  'sales',
-  'marketing',
-  'developer',
-  'accounting',
-  'hr',
-] as const;
+export const PLACEHOLDER_ROLES = [...BUSINESS_ROLE_LABELS] as const;
 
 @Injectable()
 export class RbacService {

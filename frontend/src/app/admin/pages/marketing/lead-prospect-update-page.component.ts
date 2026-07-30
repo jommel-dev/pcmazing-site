@@ -43,6 +43,7 @@ export class LeadProspectUpdatePageComponent implements OnInit {
   readonly loading = signal(true);
   readonly saving = signal(false);
   readonly error = signal('');
+  readonly blockingError = signal('');
   readonly conflictMessage = signal('');
   readonly prospect = signal<ClientProspectDetail | null>(null);
   readonly userRole = signal('');
@@ -432,6 +433,7 @@ export class LeadProspectUpdatePageComponent implements OnInit {
     const id = Number(this.route.snapshot.paramMap.get('id'));
     this.loading.set(true);
     this.error.set('');
+    this.blockingError.set('');
     try {
       const response = await firstValueFrom(this.adminApi.getClientProspect(id));
       const item = response.data;
@@ -440,14 +442,14 @@ export class LeadProspectUpdatePageComponent implements OnInit {
       this.refreshStatusOptions(item);
 
       if (isAvailableProspect(item.status)) {
-        this.error.set('Pick up this prospect before updating progress.');
+        this.blockingError.set('Pick up this prospect before updating progress.');
       } else if (!canUpdateProspect(item.status, this.userRole())) {
         if (isAwaitingMeetingOutcome(item.status)) {
-          this.error.set('Meeting is scheduled. View this prospect and wait for an admin to record the meeting outcome.');
+          this.blockingError.set('Meeting is scheduled. View this prospect and wait for an admin to record the meeting outcome.');
         } else if (item.status === 'contract_signed') {
-          this.error.set('This contract is already signed.');
+          this.blockingError.set('This contract is already signed.');
         } else {
-          this.error.set('This prospect cannot be updated.');
+          this.blockingError.set('This prospect cannot be updated.');
         }
       } else if (this.recordingOutcome()) {
         this.updateForm.patchValue({ status: 'closed_won' });
@@ -465,7 +467,7 @@ export class LeadProspectUpdatePageComponent implements OnInit {
         this.updateForm.patchValue({ status: 'follow_up' });
       }
     } catch {
-      this.error.set('Unable to load client prospect.');
+      this.blockingError.set('Unable to load client prospect.');
     } finally {
       this.loading.set(false);
     }
@@ -499,8 +501,7 @@ export class LeadProspectUpdatePageComponent implements OnInit {
 
   async submit(): Promise<void> {
     const item = this.prospect();
-    if (!item || this.updateForm.invalid || !canUpdateProspect(item.status, this.userRole())) {
-      this.updateForm.markAllAsTouched();
+    if (!item || !canUpdateProspect(item.status, this.userRole())) {
       return;
     }
 
@@ -508,19 +509,28 @@ export class LeadProspectUpdatePageComponent implements OnInit {
 
     if (value.status === 'follow_up') {
       if (!value.followUpDate || !value.followUpMethod) {
+        this.updateForm.controls.followUpDate.markAsTouched();
+        this.updateForm.controls.followUpMethod.markAsTouched();
         this.error.set('Follow-up date and method are required.');
         return;
       }
     }
 
     if (value.status === 'return_to_available' && !value.returnRemarks.trim()) {
+      this.updateForm.controls.returnRemarks.markAsTouched();
       this.error.set('Remarks are required when returning a prospect to Available.');
       return;
     }
 
-    if (value.status === 'meeting_set' && (!value.date || !value.title.trim())) {
-      this.error.set('Meeting title and date are required.');
-      return;
+    if (value.status === 'meeting_set') {
+      if (!value.title.trim() || !value.date || !value.startTime || !value.endTime) {
+        this.updateForm.controls.title.markAsTouched();
+        this.updateForm.controls.date.markAsTouched();
+        this.updateForm.controls.startTime.markAsTouched();
+        this.updateForm.controls.endTime.markAsTouched();
+        this.error.set('Meeting title, date, and start/end times are required.');
+        return;
+      }
     }
 
     if (value.status === 'contract_signed' && !this.isContractFormValid()) {
@@ -613,7 +623,7 @@ export class LeadProspectUpdatePageComponent implements OnInit {
     processFlow?: string | null;
   }) {
     return this.formBuilder.group({
-      name: [value?.name ?? '', [Validators.required]],
+      name: [value?.name ?? ''],
       description: [value?.description ?? ''],
       features: [value?.features ?? ''],
       processFlow: [value?.processFlow ?? ''],
@@ -627,7 +637,7 @@ export class LeadProspectUpdatePageComponent implements OnInit {
     connectedModuleId?: string | null;
   }) {
     return this.formBuilder.group({
-      title: [value?.title ?? '', [Validators.required]],
+      title: [value?.title ?? ''],
       description: [value?.description ?? ''],
       dueDate: [value?.dueDate ?? ''],
       connectedModuleId: [value?.connectedModuleId ?? ''],
@@ -643,9 +653,9 @@ export class LeadProspectUpdatePageComponent implements OnInit {
     connectedMilestoneId?: string | null;
   }) {
     return this.formBuilder.group({
-      label: [value?.label ?? '', [Validators.required]],
+      label: [value?.label ?? ''],
       description: [value?.description ?? ''],
-      amount: [value?.amount != null ? String(value.amount) : '', [Validators.required]],
+      amount: [value?.amount != null ? String(value.amount) : ''],
       dueDate: [value?.dueDate ?? ''],
       notes: [value?.notes ?? ''],
       connectedMilestoneId: [value?.connectedMilestoneId ?? ''],

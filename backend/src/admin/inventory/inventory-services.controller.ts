@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Param,
   Patch,
@@ -16,6 +17,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { Request } from 'express';
 import { AdminJwtPayload, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { isSalesRestrictedInventory } from '../rbac/admin-roles.util';
 import { CreateServiceDto } from './dto/create-service.dto';
 import { InventoryServicesService } from './inventory-services.service';
 
@@ -24,14 +26,22 @@ import { InventoryServicesService } from './inventory-services.service';
 export class InventoryServicesController {
   constructor(private readonly inventoryServicesService: InventoryServicesService) {}
 
+  private assertNotSales(role?: string | null): void {
+    if (isSalesRestrictedInventory(role)) {
+      throw new ForbiddenException('Sales roles cannot access services profitability.');
+    }
+  }
+
   @Get()
   list(
+    @Req() request: Request & { user?: AdminJwtPayload },
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('search') search?: string,
     @Query('type') type?: string,
     @Query('status') status?: string,
   ) {
+    this.assertNotSales(request.user?.role);
     return this.inventoryServicesService.list(page, limit, search, type, status).then((result) => ({
       success: true,
       data: result.items,
@@ -46,6 +56,7 @@ export class InventoryServicesController {
     @Body() dto: CreateServiceDto,
     @Req() request: Request & { user?: AdminJwtPayload },
   ) {
+    this.assertNotSales(request.user?.role);
     return this.inventoryServicesService.create(dto, request.user?.sub).then((item) => ({
       success: true,
       message: 'Service created.',
@@ -54,7 +65,11 @@ export class InventoryServicesController {
   }
 
   @Get(':id')
-  getById(@Param('id', ParseIntPipe) id: number) {
+  getById(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() request: Request & { user?: AdminJwtPayload },
+  ) {
+    this.assertNotSales(request.user?.role);
     return this.inventoryServicesService.getById(id).then((item) => ({
       success: true,
       data: item,
@@ -65,7 +80,9 @@ export class InventoryServicesController {
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: CreateServiceDto,
+    @Req() request: Request & { user?: AdminJwtPayload },
   ) {
+    this.assertNotSales(request.user?.role);
     return this.inventoryServicesService.update(id, dto).then((item) => ({
       success: true,
       message: 'Service updated.',
@@ -83,7 +100,9 @@ export class InventoryServicesController {
   uploadImage(
     @Param('id', ParseIntPipe) id: number,
     @UploadedFile() file: Express.Multer.File,
+    @Req() request: Request & { user?: AdminJwtPayload },
   ) {
+    this.assertNotSales(request.user?.role);
     return this.inventoryServicesService.uploadImage(id, file).then((item) => ({
       success: true,
       message: 'Service image updated.',
