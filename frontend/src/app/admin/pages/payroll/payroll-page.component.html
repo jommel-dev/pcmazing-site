@@ -123,16 +123,26 @@
                 <td class="px-4 py-3">
                   <div class="flex items-center gap-2">
                     @if (selfieUrl(item.timeInSelfieUrl); as inSelfie) {
-                      <a [href]="inSelfie" target="_blank" rel="noopener" title="Time in selfie">
+                      <button
+                        type="button"
+                        class="rounded-lg focus:outline-none focus:ring-2 focus:ring-pcmazing-400"
+                        title="View time in selfie"
+                        (click)="openSelfieModal(inSelfie, 'Time in selfie')"
+                      >
                         <img [src]="inSelfie" alt="Time in selfie" class="size-10 rounded-lg border border-slate-200 object-cover" />
-                      </a>
+                      </button>
                     } @else {
                       <span class="inline-flex size-10 items-center justify-center rounded-lg border border-dashed border-slate-300 text-[10px] text-slate-400">IN</span>
                     }
                     @if (selfieUrl(item.timeOutSelfieUrl); as outSelfie) {
-                      <a [href]="outSelfie" target="_blank" rel="noopener" title="Time out selfie">
+                      <button
+                        type="button"
+                        class="rounded-lg focus:outline-none focus:ring-2 focus:ring-pcmazing-400"
+                        title="View time out selfie"
+                        (click)="openSelfieModal(outSelfie, 'Time out selfie')"
+                      >
                         <img [src]="outSelfie" alt="Time out selfie" class="size-10 rounded-lg border border-slate-200 object-cover" />
-                      </a>
+                      </button>
                     } @else {
                       <span class="inline-flex size-10 items-center justify-center rounded-lg border border-dashed border-slate-300 text-[10px] text-slate-400">OUT</span>
                     }
@@ -313,5 +323,31 @@
         </table>
       </div>
     }
+  }
+
+  @if (selfieModal(); as modal) {
+    <div
+      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4"
+      (click)="closeSelfieModal()"
+    >
+      <div
+        class="relative w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-xl dark:bg-slate-900"
+        (click)="$event.stopPropagation()"
+      >
+        <div class="flex items-center justify-between border-b border-slate-200 px-5 py-3 dark:border-slate-700">
+          <h3 class="text-sm font-bold text-slate-900 dark:text-white">{{ modal.label }}</h3>
+          <button
+            type="button"
+            class="rounded-lg px-2 py-1 text-sm font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-slate-800"
+            (click)="closeSelfieModal()"
+          >
+            Close
+          </button>
+        </div>
+        <div class="bg-slate-950 p-3">
+          <img [src]="modal.url" [alt]="modal.label" class="mx-auto max-h-[75vh] w-auto max-w-full rounded-xl object-contain" />
+        </div>
+      </div>
+    </div>
   }
 </section>

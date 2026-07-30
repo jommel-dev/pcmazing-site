@@ -1,8 +1,14 @@
 import { BadRequestException } from '@nestjs/common';
 import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
+import {
+  getUploadSubdir,
+  isUnderUploadsUrl,
+  resolveUploadDiskPath,
+  toPublicUploadUrl,
+} from '../../common/uploads-path.util';
 
-const UPLOAD_DIR = join(process.cwd(), 'uploads', 'project-task-files');
+const UPLOAD_SUBDIR = 'project-task-files';
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 const IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
@@ -38,13 +44,14 @@ export async function saveProjectTaskAttachmentFile(
   }
 
   const extension = normalizeExtension(extname(file.originalname), file.mimetype);
-  await mkdir(UPLOAD_DIR, { recursive: true });
+  const uploadDir = getUploadSubdir(UPLOAD_SUBDIR);
+  await mkdir(uploadDir, { recursive: true });
 
   const filename = `task-${taskId}-${Date.now()}${extension}`;
-  await writeFile(join(UPLOAD_DIR, filename), file.buffer);
+  await writeFile(join(uploadDir, filename), file.buffer);
 
   return {
-    fileUrl: `/uploads/project-task-files/${filename}`,
+    fileUrl: toPublicUploadUrl(UPLOAD_SUBDIR, filename),
     kind: IMAGE_MIME.has(file.mimetype) ? 'screenshot' : 'file',
   };
 }
@@ -52,12 +59,12 @@ export async function saveProjectTaskAttachmentFile(
 export async function deleteProjectTaskAttachmentFile(
   fileUrl: string | null | undefined,
 ): Promise<void> {
-  if (!fileUrl?.startsWith('/uploads/project-task-files/')) {
+  if (!isUnderUploadsUrl(fileUrl, UPLOAD_SUBDIR)) {
     return;
   }
 
   try {
-    await unlink(join(process.cwd(), fileUrl));
+    await unlink(resolveUploadDiskPath(fileUrl!));
   } catch {
     // Ignore missing files during cleanup.
   }

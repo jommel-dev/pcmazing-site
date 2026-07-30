@@ -1,8 +1,14 @@
 import { BadRequestException } from '@nestjs/common';
 import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
+import {
+  getUploadSubdir,
+  isUnderUploadsUrl,
+  resolveUploadDiskPath,
+  toPublicUploadUrl,
+} from '../../common/uploads-path.util';
 
-const UPLOAD_DIR = join(process.cwd(), 'uploads', 'product-images');
+const UPLOAD_SUBDIR = 'product-images';
 const ALLOWED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif']);
 const ALLOWED_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
 const MAX_FILE_SIZE = 2 * 1024 * 1024;
@@ -24,21 +30,22 @@ export async function saveMaterialImageFile(
   }
 
   const extension = normalizeExtension(extname(file.originalname));
-  await mkdir(UPLOAD_DIR, { recursive: true });
+  const uploadDir = getUploadSubdir(UPLOAD_SUBDIR);
+  await mkdir(uploadDir, { recursive: true });
 
   const filename = `product-${materialId}-${Date.now()}${extension}`;
-  await writeFile(join(UPLOAD_DIR, filename), file.buffer);
+  await writeFile(join(uploadDir, filename), file.buffer);
 
-  return `/uploads/product-images/${filename}`;
+  return toPublicUploadUrl(UPLOAD_SUBDIR, filename);
 }
 
 export async function deleteMaterialImageFile(imageUrl: string | null | undefined): Promise<void> {
-  if (!imageUrl?.startsWith('/uploads/product-images/')) {
+  if (!isUnderUploadsUrl(imageUrl, UPLOAD_SUBDIR)) {
     return;
   }
 
   try {
-    await unlink(join(process.cwd(), imageUrl));
+    await unlink(resolveUploadDiskPath(imageUrl!));
   } catch {
     // Ignore missing files during cleanup.
   }
