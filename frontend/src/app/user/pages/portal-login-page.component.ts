@@ -36,7 +36,7 @@ export class PortalLoginPageComponent {
 
       if (isSuperAdmin(response.data.user.role)) {
         this.adminAuth.logout();
-        this.error.set('Super Admin must sign in at the admin staff portal.');
+        this.error.set('Super Admin must sign in at the Admin Portal.');
         return;
       }
 
