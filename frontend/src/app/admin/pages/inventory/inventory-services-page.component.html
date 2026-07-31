@@ -1,13 +1,12 @@
 <section class="min-w-0 max-w-full">
-  <app-inventory-subnav />
 
   <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
     <div class="min-w-0">
-      <h2 class="text-2xl font-bold text-slate-900">Services</h2>
-      <p class="mt-1 text-sm text-slate-500">Track service offerings, linked parts, assigned staff, and service profitability.</p>
+      <h2 class="text-2xl font-bold text-slate-900">Job Orders</h2>
+      <p class="mt-1 text-sm text-slate-500">Track service job orders, linked parts, assigned staff, and profitability.</p>
     </div>
     <a
-      routerLink="/admin/inventory/services/new"
+      routerLink="/admin/job-order/new"
       class="shrink-0 rounded-xl bg-pcmazing-500 px-4 py-2.5 text-center text-sm font-bold text-white hover:bg-pcmazing-600 sm:w-auto"
     >
       Add Service
@@ -90,11 +89,18 @@
       <div class="mb-4 flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <h3 class="min-w-0 truncate text-base font-bold text-slate-900 lg:text-lg">{{ sectionTitle() }}</h3>
         <div class="flex w-full shrink-0 gap-2 lg:max-w-xl lg:justify-end">
-          <details class="shrink-0">
-            <summary class="cursor-pointer list-none rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">
-              Columns
+          <details class="relative shrink-0">
+            <summary
+              class="inline-flex size-10 cursor-pointer list-none items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-slate-50"
+              title="Columns"
+              aria-label="Show columns"
+            >
+              <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 5.25h15A1.5 1.5 0 0 1 21 6.75v10.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.25V6.75a1.5 1.5 0 0 1 1.5-1.5Z" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 5.25v13.5M15 5.25v13.5" />
+              </svg>
             </summary>
-            <div class="absolute z-10 mt-2 w-56 rounded-2xl border border-slate-200 bg-white p-3 shadow-lg">
+            <div class="absolute right-0 z-10 mt-2 w-56 rounded-2xl border border-slate-200 bg-white p-3 shadow-lg">
               <p class="mb-2 text-xs font-bold tracking-[0.12em] text-slate-400 uppercase">Show Columns</p>
               <div class="space-y-2">
                 @for (column of columnOptions; track column.key) {
@@ -130,6 +136,13 @@
           </form>
         </div>
       </div>
+
+      @if (actionError()) {
+        <div class="mb-4 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{{ actionError() }}</div>
+      }
+      @if (actionSuccess()) {
+        <div class="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-700">{{ actionSuccess() }}</div>
+      }
 
       @if (loading()) {
         <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500">Loading services...</div>
@@ -177,6 +190,7 @@
                   <th class="px-2 py-2.5 text-right font-bold whitespace-nowrap text-pcmazing-600 sm:px-3">T.Sales</th>
                 }
                 <th class="px-2 py-2.5 text-left font-bold whitespace-nowrap text-slate-600 sm:px-3">Status</th>
+                <th class="px-2 py-2.5 text-right font-bold whitespace-nowrap text-slate-600 sm:px-3">Actions</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
@@ -192,20 +206,20 @@
                     </td>
                   }
                   <td class="px-2 py-2.5 font-medium whitespace-nowrap text-slate-700 sm:px-3">
-                    <a [routerLink]="['/admin/inventory/services', item.id]" class="hover:text-pcmazing-600 hover:underline">
+                    <a [routerLink]="['/admin/job-order', item.id]" class="hover:text-pcmazing-600 hover:underline">
                       {{ item.referenceNo || 'Pending' }}
                     </a>
                   </td>
                   @if (columnVisible('customer')) {
                     <td class="max-w-[180px] truncate px-2 py-2.5 text-slate-700 sm:max-w-[220px] sm:px-3" [title]="item.customerName">
-                      <a [routerLink]="['/admin/inventory/services', item.id]" class="hover:text-pcmazing-600 hover:underline">
+                      <a [routerLink]="['/admin/job-order', item.id]" class="hover:text-pcmazing-600 hover:underline">
                         {{ item.customerName }}
                       </a>
                     </td>
                   }
                   @if (columnVisible('serviceName')) {
                     <td class="max-w-[180px] truncate px-2 py-2.5 font-medium text-slate-900 sm:max-w-[220px] sm:px-3" [title]="item.serviceName">
-                      <a [routerLink]="['/admin/inventory/services', item.id]" class="hover:text-pcmazing-600 hover:underline">
+                      <a [routerLink]="['/admin/job-order', item.id]" class="hover:text-pcmazing-600 hover:underline">
                         {{ item.serviceName }}
                       </a>
                     </td>
@@ -237,13 +251,34 @@
                   @if (columnVisible('totalSales')) {
                     <td class="px-2 py-2.5 text-right whitespace-nowrap font-medium text-pcmazing-600 sm:px-3">{{ formatMoney(item.totalSales) }}</td>
                   }
-                  <td class="px-2 py-2.5 sm:px-3">
-                    <span
-                      class="inline-block rounded-full px-2.5 py-1 text-[10px] font-bold uppercase whitespace-nowrap"
-                      [class]="statusPillClass(item.status)"
+                  <td class="px-2 py-2.5 sm:px-3" (click)="$event.stopPropagation()">
+                    <select
+                      class="rounded-full border-0 px-2.5 py-1 text-[10px] font-bold uppercase focus:outline-none focus:ring-2 focus:ring-pcmazing-500 disabled:opacity-60"
+                      [ngClass]="statusPillClass(item.status)"
+                      [ngModel]="normalizeJobStatus(item.status)"
+                      [ngModelOptions]="{ standalone: true }"
+                      [disabled]="statusUpdatingId() === item.id || completionSaving()"
+                      (ngModelChange)="onStatusChange(item, $event)"
+                      [attr.aria-label]="'Change status for ' + (item.referenceNo || item.serviceName)"
                     >
-                      {{ item.status }}
-                    </span>
+                      @for (status of statusOptions; track status) {
+                        <option [ngValue]="status">{{ status }}</option>
+                      }
+                    </select>
+                  </td>
+                  <td class="px-2 py-2.5 text-right sm:px-3" (click)="$event.stopPropagation()">
+                    <button
+                      type="button"
+                      class="inline-flex size-8 items-center justify-center rounded-lg text-red-600 hover:bg-red-50"
+                      title="Delete"
+                      aria-label="Delete job order"
+                      (click)="requestDelete(item, $event)"
+                    >
+                      <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m2 0v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7h12Z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M10 11v6M14 11v6" />
+                      </svg>
+                    </button>
                   </td>
                 </tr>
               }
@@ -264,3 +299,221 @@
     </div>
   </div>
 </section>
+
+@if (pendingStatusChange(); as pending) {
+  <div
+    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4"
+    (click)="cancelStatusChange()"
+  >
+    <div
+      class="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl"
+      (click)="$event.stopPropagation()"
+    >
+      <div class="flex items-start gap-4">
+        <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-pcmazing-50 text-pcmazing-600 ring-1 ring-pcmazing-100">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+          </svg>
+        </div>
+        <div class="min-w-0">
+          <h3 class="text-lg font-bold text-slate-900">Change status?</h3>
+          <p class="mt-1 text-sm text-slate-500">
+            Update
+            <span class="font-semibold text-slate-800">{{ pending.item.referenceNo || pending.item.serviceName }}</span>
+            from
+            <span class="font-semibold text-slate-800">{{ pending.item.status }}</span>
+            to
+            <span class="font-semibold text-slate-800">{{ pending.nextStatus }}</span>?
+          </p>
+          @if (pending.nextStatus === 'Done') {
+            <p class="mt-2 text-xs text-slate-500">You will be asked to add a completion image next.</p>
+          } @else if (normalizeJobStatus(pending.item.status) === 'Done') {
+            <p class="mt-2 text-xs text-amber-600">
+              The completion image will be removed. Marking this job as Done again will require a new photo.
+            </p>
+          }
+        </div>
+      </div>
+
+      <div class="mt-6 flex justify-end gap-2">
+        <button
+          type="button"
+          class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50"
+          (click)="cancelStatusChange()"
+        >
+          No
+        </button>
+        <button
+          type="button"
+          class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600"
+          (click)="confirmStatusChange()"
+        >
+          Yes
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+@if (completionUpload(); as pending) {
+  <div
+    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4"
+    (click)="cancelCompletionUpload()"
+  >
+    <div
+      class="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-xl"
+      (click)="$event.stopPropagation()"
+    >
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <h3 class="text-lg font-bold text-slate-900">Completion image</h3>
+          <p class="mt-1 text-sm text-slate-500">
+            Add a completion photo for
+            <span class="font-semibold text-slate-800">{{ pending.item.referenceNo || pending.item.serviceName }}</span>
+            before marking it as Done.
+          </p>
+        </div>
+        <button
+          type="button"
+          class="rounded-lg px-2 py-1 text-sm font-semibold text-slate-500 hover:bg-slate-100"
+          [disabled]="completionSaving()"
+          (click)="cancelCompletionUpload()"
+        >
+          Close
+        </button>
+      </div>
+
+      @if (completionError()) {
+        <div class="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {{ completionError() }}
+        </div>
+      }
+
+      <div class="mt-4 overflow-hidden rounded-2xl border border-dashed border-slate-300 bg-slate-50">
+        @if (completionPreviewUrl(); as previewUrl) {
+          <img [src]="previewUrl" alt="Completion preview" class="max-h-72 w-full object-contain bg-slate-100" />
+        } @else {
+          <div class="flex min-h-48 flex-col items-center justify-center gap-2 px-4 py-10 text-center">
+            <svg class="size-10 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 7.5A1.5 1.5 0 0 1 4.5 6h3.1l1.2-1.8A1.5 1.5 0 0 1 10 3.5h4a1.5 1.5 0 0 1 1.2.7L16.4 6h3.1A1.5 1.5 0 0 1 21 7.5v10A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-10Z" />
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
+            </svg>
+            <p class="text-sm font-semibold text-slate-700">No image selected yet</p>
+            <p class="text-xs text-slate-500">JPEG, PNG, WEBP, or GIF up to 2MB</p>
+          </div>
+        }
+      </div>
+
+      <div class="mt-4 flex flex-col gap-2 sm:flex-row">
+        @if (isMobileDevice()) {
+          <label class="inline-flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600">
+            <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 7.5A1.5 1.5 0 0 1 4.5 6h3.1l1.2-1.8A1.5 1.5 0 0 1 10 3.5h4a1.5 1.5 0 0 1 1.2.7L16.4 6h3.1A1.5 1.5 0 0 1 21 7.5v10A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-10Z" />
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
+            </svg>
+            Take photo
+            <input
+              type="file"
+              class="sr-only"
+              accept="image/*"
+              [attr.capture]="'environment'"
+              [disabled]="completionSaving()"
+              (change)="onCompletionFileSelected($event)"
+            />
+          </label>
+          <label class="inline-flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">
+            Choose from gallery
+            <input
+              type="file"
+              class="sr-only"
+              accept="image/*"
+              [disabled]="completionSaving()"
+              (change)="onCompletionFileSelected($event)"
+            />
+          </label>
+        } @else {
+          <label class="inline-flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">
+            <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2A1.5 1.5 0 0 0 4.5 20h15a1.5 1.5 0 0 0 1.5-1.5v-2M16.5 8.5 12 4m0 0L7.5 8.5M12 4v12" />
+            </svg>
+            Upload image
+            <input
+              type="file"
+              class="sr-only"
+              accept="image/*"
+              [disabled]="completionSaving()"
+              (change)="onCompletionFileSelected($event)"
+            />
+          </label>
+        }
+      </div>
+
+      <div class="mt-6 flex justify-end gap-2">
+        <button
+          type="button"
+          class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+          [disabled]="completionSaving()"
+          (click)="cancelCompletionUpload()"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:opacity-60"
+          [disabled]="completionSaving() || !completionFile()"
+          (click)="confirmCompletionUpload()"
+        >
+          @if (completionSaving()) { Saving... } @else { Mark as Done }
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+@if (pendingDelete(); as item) {
+  <div
+    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4"
+    (click)="cancelDelete()"
+  >
+    <div
+      class="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl"
+      (click)="$event.stopPropagation()"
+    >
+      <div class="flex items-start gap-4">
+        <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-600 ring-1 ring-red-100">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m2 0v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7h12Z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10 11v6M14 11v6" />
+          </svg>
+        </div>
+        <div class="min-w-0">
+          <h3 class="text-lg font-bold text-slate-900">Remove job order?</h3>
+          <p class="mt-1 text-sm text-slate-500">
+            This will hide
+            <span class="font-semibold text-slate-800">{{ item.referenceNo || item.serviceName }}</span>
+            from the Job Orders list. The record is kept with a Deleted status.
+          </p>
+        </div>
+      </div>
+
+      <div class="mt-6 flex justify-end gap-2">
+        <button
+          type="button"
+          class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+          [disabled]="deleting()"
+          (click)="cancelDelete()"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          class="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-60"
+          [disabled]="deleting()"
+          (click)="confirmDelete()"
+        >
+          @if (deleting()) { Removing... } @else { Remove }
+        </button>
+      </div>
+    </div>
+  </div>
+}

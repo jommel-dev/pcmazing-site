@@ -76,9 +76,9 @@ export const ADMIN_MODULES: AdminModuleItem[] = [
   {
     key: 'job_order',
     label: 'Job Order',
-    route: '/admin/modules/job-order',
-    description: 'Sales order flow, fulfillment, and job tracking.',
-    status: 'coming_soon',
+    route: '/admin/job-order',
+    description: 'Service job orders, assigned staff, parts used, and status tracking.',
+    status: 'active',
     referenceMenu: 'sales_order_materials',
   },
   {
@@ -294,7 +294,8 @@ export function filterNavSectionsForRole(
       ['contact_inquiries', 'customer_reviews'].includes(item.key) && allowed.has(item.key),
   );
   const salesOps = ADMIN_MODULES.filter(
-    (item) => ['quotation', 'inventory'].includes(item.key) && allowed.has(item.key),
+    (item) =>
+      ['job_order', 'quotation', 'inventory'].includes(item.key) && allowed.has(item.key),
   );
   if (salesHome.length) {
     sections.push({ key: 'sales_home', title: 'Sales', items: salesHome });

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   Param,
@@ -19,6 +20,7 @@ import { Request } from 'express';
 import { AdminJwtPayload, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { isSalesRestrictedInventory } from '../rbac/admin-roles.util';
 import { CreateServiceDto } from './dto/create-service.dto';
+import { UpdateServiceStatusDto } from './dto/update-service-status.dto';
 import { InventoryServicesService } from './inventory-services.service';
 
 @Controller('admin/inventory/services')
@@ -87,6 +89,32 @@ export class InventoryServicesController {
       success: true,
       message: 'Service updated.',
       data: item,
+    }));
+  }
+
+  @Patch(':id/status')
+  updateStatus(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateServiceStatusDto,
+    @Req() request: Request & { user?: AdminJwtPayload },
+  ) {
+    this.assertNotSales(request.user?.role);
+    return this.inventoryServicesService.updateStatus(id, dto).then((item) => ({
+      success: true,
+      message: 'Service status updated.',
+      data: item,
+    }));
+  }
+
+  @Delete(':id')
+  remove(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() request: Request & { user?: AdminJwtPayload },
+  ) {
+    this.assertNotSales(request.user?.role);
+    return this.inventoryServicesService.softDelete(id).then(() => ({
+      success: true,
+      message: 'Service deleted.',
     }));
   }
 
