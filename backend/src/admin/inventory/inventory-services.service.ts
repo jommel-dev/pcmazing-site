@@ -57,50 +57,70 @@ export interface InventoryServiceFilterOption {
 export class InventoryServicesService {
   constructor(private readonly databaseService: DatabaseService) {}
 
-  async list(pageRaw?: string, limitRaw?: string, search?: string, type?: string, status?: string) {
+  async list(
+    pageRaw?: string,
+    limitRaw?: string,
+    search?: string,
+    type?: string,
+    status?: string,
+    sortByRaw?: string,
+    sortDirRaw?: string,
+  ) {
     if (!(await tableExists(this.databaseService, 'pcmazing_services'))) {
       throw new ServiceUnavailableException('Service catalog table is not available in this database.');
     }
 
     const { page, limit, offset } = buildPagination(pageRaw, limitRaw);
-    const params: unknown[] = [];
-    const conditions = ['s.deleted_at IS NULL'];
+    const listParams: unknown[] = [];
+    const listConditions = ['s.deleted_at IS NULL'];
+    const summaryParams: unknown[] = [];
+    const summaryConditions = ['s.deleted_at IS NULL'];
 
     if (search?.trim()) {
-      params.push(`%${search.trim()}%`);
-      conditions.push(
-        `(s.service_name ILIKE $${params.length}
-          OR s.service_type ILIKE $${params.length}
-          OR COALESCE(s.status, '') ILIKE $${params.length})`,
+      listParams.push(`%${search.trim()}%`);
+      listConditions.push(
+        `(s.service_name ILIKE $${listParams.length}
+          OR s.service_type ILIKE $${listParams.length}
+          OR COALESCE(s.status, '') ILIKE $${listParams.length}
+          OR COALESCE(s.customer_name, '') ILIKE $${listParams.length}
+          OR COALESCE(s.reference_no, '') ILIKE $${listParams.length})`,
       );
     }
 
     if (type?.trim()) {
-      params.push(type.trim());
-      conditions.push(`LOWER(s.service_type) = LOWER($${params.length})`);
+      listParams.push(type.trim());
+      listConditions.push(`LOWER(s.service_type) = LOWER($${listParams.length})`);
+      summaryParams.push(type.trim());
+      summaryConditions.push(`LOWER(s.service_type) = LOWER($${summaryParams.length})`);
     }
 
     if (status?.trim()) {
-      params.push(status.trim());
-      conditions.push(`LOWER(s.status) = LOWER($${params.length})`);
+      listParams.push(status.trim());
+      listConditions.push(`LOWER(s.status) = LOWER($${listParams.length})`);
+      summaryParams.push(status.trim());
+      summaryConditions.push(`LOWER(s.status) = LOWER($${summaryParams.length})`);
     }
 
-    const whereClause = `WHERE ${conditions.join(' AND ')}`;
+    const whereClause = `WHERE ${listConditions.join(' AND ')}`;
+    const summaryWhereClause = `WHERE ${summaryConditions.join(' AND ')}`;
+    const orderBy = this.buildListOrderBy(sortByRaw, sortDirRaw);
 
     const countResult = await this.databaseService.query<{ count: string }>(
       `SELECT COUNT(*)::text AS count
        FROM pcmazing_services s
        ${whereClause}`,
-      params,
+      listParams,
     );
     const total = Number(countResult.rows[0]?.count ?? 0);
 
     const summaryResult = await this.databaseService.query<{
+      item_count: string;
       total_parts_cost: string;
       total_base_cost: string;
       total_labor_sales: string;
     }>(
       `SELECT
+        COUNT(*)::text AS item_count,
         COALESCE(SUM(COALESCE(parts.parts_cost, 0)), 0)::text AS total_parts_cost,
         COALESCE(SUM(COALESCE(s.base_cost, 0)), 0)::text AS total_base_cost,
         COALESCE(SUM(COALESCE(s.labor, 0) + COALESCE(parts.parts_labor, 0)), 0)::text AS total_labor_sales
@@ -120,22 +140,16 @@ export class InventoryServicesService {
          LEFT JOIN tblmaterials m ON m.id = sp.material_id
          WHERE sp.service_id = s.id AND sp.deleted_at IS NULL
        ) parts ON TRUE
-       ${whereClause}`,
-      params,
+       ${summaryWhereClause}`,
+      summaryParams,
     );
 
+    const summaryItemCount = Number(summaryResult.rows[0]?.item_count ?? 0);
     const totalPartsCost = Number(summaryResult.rows[0]?.total_parts_cost ?? 0);
     const totalBaseCost = Number(summaryResult.rows[0]?.total_base_cost ?? 0);
     const totalLaborSales = Number(summaryResult.rows[0]?.total_labor_sales ?? 0);
 
-    const filterWhereClause = search?.trim()
-      ? `WHERE s.deleted_at IS NULL AND (
-          s.service_name ILIKE $1
-          OR s.service_type ILIKE $1
-          OR COALESCE(s.status, '') ILIKE $1
-        )`
-      : `WHERE s.deleted_at IS NULL`;
-    const filterParams = search?.trim() ? [`%${search.trim()}%`] : [];
+    const filterWhereClause = `WHERE s.deleted_at IS NULL`;
 
     const [typesResult, statusesResult] = await Promise.all([
       this.databaseService.query<{ label: string | null; count: string }>(
@@ -144,7 +158,6 @@ export class InventoryServicesService {
          ${filterWhereClause}
          GROUP BY NULLIF(TRIM(s.service_type), '')
          ORDER BY label ASC NULLS LAST`,
-        filterParams,
       ),
       this.databaseService.query<{ label: string | null; count: string }>(
         `SELECT NULLIF(TRIM(s.status), '') AS label, COUNT(*)::text AS count
@@ -152,12 +165,11 @@ export class InventoryServicesService {
          ${filterWhereClause}
          GROUP BY NULLIF(TRIM(s.status), '')
          ORDER BY label ASC NULLS LAST`,
-        filterParams,
       ),
     ]);
 
-    const limitIndex = params.length + 1;
-    const offsetIndex = params.length + 2;
+    const limitIndex = listParams.length + 1;
+    const offsetIndex = listParams.length + 2;
     const result = await this.databaseService.query<{
       id: number;
       reference_no: string | null;
@@ -218,9 +230,9 @@ export class InventoryServicesService {
          WHERE sp.service_id = s.id AND sp.deleted_at IS NULL
        ) parts ON TRUE
        ${whereClause}
-       ORDER BY s.service_name ASC
+       ${orderBy}
        LIMIT $${limitIndex} OFFSET $${offsetIndex}`,
-      [...params, limit, offset],
+      [...listParams, limit, offset],
     );
 
     const personNames = await this.loadPersonNames(
@@ -268,7 +280,7 @@ export class InventoryServicesService {
         totalSales: totalBaseCost + totalLaborSales,
         totalLaborSales,
         totalPartsCost,
-        itemCount: total,
+        itemCount: summaryItemCount,
       } satisfies InventoryServiceSummary,
       filters: {
         types: typesResult.rows
@@ -547,6 +559,29 @@ export class InventoryServicesService {
     );
 
     return this.getById(id);
+  }
+
+  private buildListOrderBy(sortByRaw?: string, sortDirRaw?: string): string {
+    const direction = String(sortDirRaw ?? '').trim().toLowerCase() === 'desc' ? 'DESC' : 'ASC';
+    const sortBy = String(sortByRaw ?? '').trim();
+
+    const sortMap: Record<string, string> = {
+      referenceNo: 's.reference_no',
+      customer: 's.customer_name',
+      serviceName: 's.service_name',
+      type: 's.service_type',
+      cost: 's.base_cost',
+      labor: '(COALESCE(s.labor, 0) + COALESCE(parts.parts_labor, 0))',
+      totalCosting: 'COALESCE(parts.parts_cost, 0)',
+      totalSales: '(COALESCE(s.base_cost, 0) + COALESCE(s.labor, 0) + COALESCE(parts.parts_labor, 0))',
+      status: 's.status',
+      interval: 's.started_at',
+      personInCharge: 's.person_in_charge_user_id',
+    };
+
+    const column = sortMap[sortBy] ?? 's.updated_at';
+    const fallbackDirection = sortMap[sortBy] ? direction : 'DESC';
+    return `ORDER BY ${column} ${fallbackDirection} NULLS LAST, s.id DESC`;
   }
 
   private isDoneStatus(status: string | null | undefined): boolean {

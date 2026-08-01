@@ -225,16 +225,8 @@ export class InventoryServiceCreatePageComponent implements OnInit {
             );
           }
         }
-        if (this.partsArray.length === 0) {
-          this.addPartRow();
-        }
-        if (this.customPartsArray.length === 0) {
-          this.addCustomPart();
-        }
       } else {
         this.serviceTypes.set(types);
-        this.addPartRow();
-        this.addCustomPart();
       }
       this.syncCostWithParts();
     } catch {
