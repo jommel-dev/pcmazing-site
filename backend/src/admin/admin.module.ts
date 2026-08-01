@@ -15,6 +15,8 @@ import { InventoryServicesService } from './inventory/inventory-services.service
 import { InventoryService } from './inventory/inventory.service';
 import { PurchaseController } from './inventory/purchase.controller';
 import { PurchaseService } from './inventory/purchase.service';
+import { ServiceTypesController } from './inventory/service-types.controller';
+import { ServiceTypesService } from './inventory/service-types.service';
 import { EmployeeWorkspaceController } from './employee-workspace/employee-workspace.controller';
 import { EmployeeWorkspaceService } from './employee-workspace/employee-workspace.service';
 import { QuotationController } from './quotation/quotation.controller';
@@ -43,6 +45,7 @@ import { ProjectsModule } from './projects/projects.module';
     DemoRequestsController,
     InventoryController,
     InventoryServicesController,
+    ServiceTypesController,
     PurchaseController,
     QuotationController,
     UsersController,
@@ -60,6 +63,7 @@ import { ProjectsModule } from './projects/projects.module';
     DemoRequestsService,
     InventoryService,
     InventoryServicesService,
+    ServiceTypesService,
     PurchaseService,
     QuotationService,
     RbacService,

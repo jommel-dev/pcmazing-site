@@ -10,6 +10,7 @@ import {
   Post,
   Query,
   Req,
+  Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -82,6 +83,77 @@ export class InventoryController {
         meta: result.meta,
         summary: hideCosts ? null : result.summary,
       }));
+  }
+
+  @Get('export')
+  exportCsv(
+    @Req() request: Request & { user?: AdminJwtPayload },
+    @Res({ passthrough: true }) response: import('express').Response,
+    @Query('search') search?: string,
+    @Query('brandId') brandId?: string,
+    @Query('productTypeId') productTypeId?: string,
+  ) {
+    this.assertCanMutateInventory(request.user?.role);
+    response.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    response.setHeader('Content-Disposition', 'attachment; filename="inventory-stock-export.csv"');
+    return this.inventoryService.exportCsv(search, brandId, productTypeId);
+  }
+
+  @Get('import/template')
+  getImportTemplate(
+    @Req() request: Request & { user?: AdminJwtPayload },
+    @Res({ passthrough: true }) response: import('express').Response,
+  ) {
+    this.assertCanMutateInventory(request.user?.role);
+    response.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    response.setHeader(
+      'Content-Disposition',
+      'attachment; filename="inventory-stock-import-template.csv"',
+    );
+    return this.inventoryService.getImportTemplate();
+  }
+
+  @Post('import/preview')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 },
+    }),
+  )
+  async previewImport(
+    @UploadedFile() file: Express.Multer.File,
+    @Req() request: Request & { user?: AdminJwtPayload },
+  ) {
+    this.assertCanMutateInventory(request.user?.role);
+    const content = file?.buffer?.toString('utf8') ?? '';
+    const data = await this.inventoryService.previewImportFromCsv(content);
+    return {
+      success: true,
+      data: {
+        ...data,
+        fileName: file?.originalname ?? 'upload.csv',
+      },
+    };
+  }
+
+  @Post('import')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 },
+    }),
+  )
+  importMaterials(
+    @UploadedFile() file: Express.Multer.File,
+    @Req() request: Request & { user?: AdminJwtPayload },
+  ) {
+    this.assertCanMutateInventory(request.user?.role);
+    const content = file?.buffer?.toString('utf8') ?? '';
+    return this.inventoryService.importFromCsv(content, request.user?.sub).then((data) => ({
+      success: true,
+      message: `${data.imported} product(s) imported (${data.created} created, ${data.updated} updated).`,
+      data,
+    }));
   }
 
   @Post()

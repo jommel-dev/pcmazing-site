@@ -20,6 +20,7 @@ import { InventoryPageComponent } from './pages/inventory/inventory-page.compone
 import { InventoryDetailPageComponent } from './pages/inventory/inventory-detail-page.component';
 import { InventoryServiceCreatePageComponent } from './pages/inventory/inventory-service-create-page.component';
 import { InventoryServicesPageComponent } from './pages/inventory/inventory-services-page.component';
+import { InventoryServiceTypesPageComponent } from './pages/inventory/inventory-service-types-page.component';
 import { PurchasePageComponent } from './pages/inventory/purchase-page.component';
 import { PurchaseDetailPageComponent } from './pages/inventory/purchase-detail-page.component';
 import { PurchaseCreatePageComponent } from './pages/inventory/purchase-create-page.component';
@@ -148,25 +149,46 @@ export const adminRoutes: Routes = [
         data: { module: 'inventory' },
       },
       {
-        path: 'inventory/services',
-        component: InventoryServicesPageComponent,
-        title: 'Services | PCMazing Admin',
+        path: 'inventory/service-types',
+        component: InventoryServiceTypesPageComponent,
+        title: 'Service Types | PCMazing Admin',
         canActivate: [adminRoleGuard],
         data: { module: 'inventory', inventoryWrite: true },
       },
       {
-        path: 'inventory/services/new',
+        path: 'job-order',
+        component: InventoryServicesPageComponent,
+        title: 'Job Order | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'job_order' },
+      },
+      {
+        path: 'job-order/new',
         component: InventoryServiceCreatePageComponent,
         title: 'Add Service | PCMazing Admin',
         canActivate: [adminRoleGuard],
-        data: { module: 'inventory', inventoryWrite: true },
+        data: { module: 'job_order' },
       },
       {
-        path: 'inventory/services/:id',
+        path: 'job-order/:id',
         component: InventoryServiceCreatePageComponent,
         title: 'Edit Service | PCMazing Admin',
         canActivate: [adminRoleGuard],
-        data: { module: 'inventory', inventoryWrite: true },
+        data: { module: 'job_order' },
+      },
+      {
+        path: 'inventory/services',
+        redirectTo: 'job-order',
+        pathMatch: 'full',
+      },
+      {
+        path: 'inventory/services/new',
+        redirectTo: 'job-order/new',
+        pathMatch: 'full',
+      },
+      {
+        path: 'inventory/services/:id',
+        redirectTo: 'job-order/:id',
       },
       {
         path: 'inventory/products/new',

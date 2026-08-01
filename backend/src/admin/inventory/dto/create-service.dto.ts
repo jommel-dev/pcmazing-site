@@ -36,6 +36,12 @@ class CreateServicePartDto {
   @Min(0)
   @Max(999999999.99)
   unitPrice?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(999999999.99)
+  labor?: number;
 }
 
 export class CreateServiceDto {
