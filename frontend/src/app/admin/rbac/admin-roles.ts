@@ -159,6 +159,7 @@ export function getAllowedModuleKeys(role?: string | null): Set<AdminModuleKey> 
       'sales_dashboard',
       'contact_inquiries',
       'customer_reviews',
+      'job_order',
       'quotation',
       'inventory',
       'profile',

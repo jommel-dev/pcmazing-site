@@ -1,4 +1,5 @@
 import { Component, inject, OnInit, signal } from '@angular/core';
+import { NgClass } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
@@ -9,7 +10,6 @@ import {
   InventoryServiceSummary,
   PaginationMeta,
 } from '../../services/admin-api.service';
-import { InventorySubnavComponent } from './inventory-subnav.component';
 import { formatInventoryMoney } from './inventory-stock.util';
 
 type ServiceColumnKey =
@@ -27,7 +27,7 @@ type ServiceColumnKey =
 
 @Component({
   selector: 'app-inventory-services-page',
-  imports: [FormsModule, RouterLink, InventorySubnavComponent],
+  imports: [FormsModule, RouterLink, NgClass],
   templateUrl: './inventory-services-page.component.html',
 })
 export class InventoryServicesPageComponent implements OnInit {
@@ -65,17 +65,47 @@ export class InventoryServicesPageComponent implements OnInit {
     personInCharge: true,
     type: true,
     partsUsed: true,
-    interval: true,
-    cost: true,
-    labor: true,
-    totalCosting: true,
+    interval: false,
+    cost: false,
+    labor: false,
+    totalCosting: false,
     totalSales: true,
   });
 
   readonly formatMoney = formatInventoryMoney;
+  readonly statusOptions = ['Active', 'Pending', 'Cancelled', 'Done'] as const;
+  readonly pendingDelete = signal<InventoryServiceItem | null>(null);
+  readonly deleting = signal(false);
+  readonly statusUpdatingId = signal<number | null>(null);
+  readonly actionError = signal('');
+  readonly actionSuccess = signal('');
+  readonly pendingStatusChange = signal<{
+    item: InventoryServiceItem;
+    nextStatus: string;
+  } | null>(null);
+  readonly completionUpload = signal<{
+    item: InventoryServiceItem;
+  } | null>(null);
+  readonly completionPreviewUrl = signal<string | null>(null);
+  readonly completionFile = signal<File | null>(null);
+  readonly completionError = signal('');
+  readonly completionSaving = signal(false);
+  readonly isMobileDevice = signal(false);
 
   ngOnInit(): void {
+    this.isMobileDevice.set(this.detectMobileDevice());
     void this.loadServices();
+  }
+
+  private detectMobileDevice(): boolean {
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+      return false;
+    }
+    const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
+    const mobileUa = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+      navigator.userAgent,
+    );
+    return coarsePointer || mobileUa;
   }
 
   async loadServices(): Promise<void> {
@@ -92,7 +122,7 @@ export class InventoryServicesPageComponent implements OnInit {
           this.selectedStatus(),
         ),
       );
-      this.items.set(response.data);
+      this.items.set(response.data.map((item) => this.withNormalizedStatus(item)));
       this.meta.set(response.meta);
       this.summary.set(response.summary);
       this.serviceTypes.set(response.filters.types);
@@ -157,7 +187,7 @@ export class InventoryServicesPageComponent implements OnInit {
   }
 
   statusPillClass(status: string): string {
-    switch (status.trim().toLowerCase()) {
+    switch (this.normalizeJobStatus(status).toLowerCase()) {
       case 'done':
         return 'bg-blue-50 text-blue-700 ring-1 ring-blue-200';
       case 'active':
@@ -168,6 +198,236 @@ export class InventoryServicesPageComponent implements OnInit {
         return 'bg-red-50 text-red-700 ring-1 ring-red-200';
       default:
         return 'bg-slate-100 text-slate-700 ring-1 ring-slate-200';
+    }
+  }
+
+  normalizeJobStatus(status: string | null | undefined): string {
+    const value = String(status ?? '').trim().toLowerCase();
+    const match = this.statusOptions.find((option) => option.toLowerCase() === value);
+    return match ?? 'Active';
+  }
+
+  private withNormalizedStatus(item: InventoryServiceItem): InventoryServiceItem {
+    return {
+      ...item,
+      status: this.normalizeJobStatus(item.status),
+    };
+  }
+
+  onStatusChange(item: InventoryServiceItem, status: string): void {
+    const currentStatus = this.normalizeJobStatus(item.status);
+    const nextStatus = this.normalizeJobStatus(status);
+    if (!nextStatus || nextStatus === currentStatus) {
+      return;
+    }
+
+    this.actionError.set('');
+    this.actionSuccess.set('');
+    this.pendingStatusChange.set({ item, nextStatus });
+  }
+
+  cancelStatusChange(): void {
+    if (this.statusUpdatingId() !== null || this.completionSaving()) {
+      return;
+    }
+    this.pendingStatusChange.set(null);
+  }
+
+  async confirmStatusChange(): Promise<void> {
+    const pending = this.pendingStatusChange();
+    if (!pending) {
+      return;
+    }
+
+    this.pendingStatusChange.set(null);
+
+    if (pending.nextStatus === 'Done') {
+      this.openCompletionUpload(pending.item);
+      return;
+    }
+
+    await this.applyStatusChange(pending.item, pending.nextStatus);
+  }
+
+  openCompletionUpload(item: InventoryServiceItem): void {
+    this.clearCompletionPreview();
+    this.completionError.set('');
+    this.completionFile.set(null);
+    this.completionUpload.set({ item });
+  }
+
+  cancelCompletionUpload(): void {
+    if (this.completionSaving()) {
+      return;
+    }
+    this.clearCompletionPreview();
+    this.completionUpload.set(null);
+    this.completionFile.set(null);
+    this.completionError.set('');
+  }
+
+  onCompletionFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0] ?? null;
+    input.value = '';
+
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      this.completionError.set('Please choose an image file.');
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      this.completionError.set('Image must be 2MB or smaller.');
+      return;
+    }
+
+    this.clearCompletionPreview();
+    this.completionError.set('');
+    this.completionFile.set(file);
+    this.completionPreviewUrl.set(URL.createObjectURL(file));
+  }
+
+  private clearCompletionPreview(): void {
+    const current = this.completionPreviewUrl();
+    if (current) {
+      URL.revokeObjectURL(current);
+    }
+    this.completionPreviewUrl.set(null);
+  }
+
+  async confirmCompletionUpload(): Promise<void> {
+    const pending = this.completionUpload();
+    const file = this.completionFile();
+    if (!pending) {
+      return;
+    }
+    if (!file) {
+      this.completionError.set('Please add a completion image before marking this job as Done.');
+      return;
+    }
+
+    this.completionSaving.set(true);
+    this.completionError.set('');
+    this.actionError.set('');
+    this.actionSuccess.set('');
+
+    try {
+      const imageResponse = await firstValueFrom(
+        this.adminApi.uploadInventoryServiceImage(pending.item.id, file),
+      );
+      const statusResponse = await firstValueFrom(
+        this.adminApi.updateInventoryServiceStatus(pending.item.id, 'Done'),
+      );
+
+      this.applyLocalStatusUpdate({
+        ...pending.item,
+        ...imageResponse.data,
+        status: this.normalizeJobStatus(statusResponse.data.status),
+        imageUrl: imageResponse.data.imageUrl ?? statusResponse.data.imageUrl,
+      });
+
+      this.clearCompletionPreview();
+      this.completionUpload.set(null);
+      this.completionFile.set(null);
+      this.actionSuccess.set('Job marked as Done with completion image.');
+    } catch (err: unknown) {
+      const httpErr = err as { error?: { message?: string | string[] } };
+      const msg = httpErr?.error?.message;
+      const detail = Array.isArray(msg) ? msg.join(', ') : msg || 'Unknown error';
+      this.completionError.set(`Unable to complete job order: ${detail}`);
+    } finally {
+      this.completionSaving.set(false);
+    }
+  }
+
+  private async applyStatusChange(item: InventoryServiceItem, status: string): Promise<void> {
+    this.actionError.set('');
+    this.actionSuccess.set('');
+    this.statusUpdatingId.set(item.id);
+
+    try {
+      const response = await firstValueFrom(
+        this.adminApi.updateInventoryServiceStatus(item.id, status),
+      );
+      this.applyLocalStatusUpdate({
+        ...item,
+        ...response.data,
+        status: this.normalizeJobStatus(response.data.status),
+        imageUrl: response.data.imageUrl ?? null,
+      });
+      const clearedImage =
+        this.normalizeJobStatus(item.status) === 'Done' &&
+        this.normalizeJobStatus(response.data.status) !== 'Done';
+      this.actionSuccess.set(
+        clearedImage
+          ? `Status updated to ${this.normalizeJobStatus(response.data.status)}. Completion image removed.`
+          : `Status updated to ${this.normalizeJobStatus(response.data.status)}.`,
+      );
+    } catch (err: unknown) {
+      const httpErr = err as { error?: { message?: string | string[] } };
+      const msg = httpErr?.error?.message;
+      const detail = Array.isArray(msg) ? msg.join(', ') : msg || 'Unknown error';
+      this.actionError.set(`Unable to update status: ${detail}`);
+    } finally {
+      this.statusUpdatingId.set(null);
+    }
+  }
+
+  private applyLocalStatusUpdate(item: InventoryServiceItem): void {
+    const normalized = this.withNormalizedStatus(item);
+    const selected = this.selectedStatus();
+    if (selected && selected.toLowerCase() !== normalized.status.toLowerCase()) {
+      this.items.update((rows) => rows.filter((row) => row.id !== normalized.id));
+      return;
+    }
+
+    this.items.update((rows) =>
+      rows.map((row) => (row.id === normalized.id ? { ...row, ...normalized } : row)),
+    );
+  }
+
+  requestDelete(item: InventoryServiceItem, event?: Event): void {
+    event?.stopPropagation();
+    event?.preventDefault();
+    this.actionError.set('');
+    this.actionSuccess.set('');
+    this.pendingDelete.set(item);
+  }
+
+  cancelDelete(): void {
+    if (this.deleting()) {
+      return;
+    }
+    this.pendingDelete.set(null);
+  }
+
+  async confirmDelete(): Promise<void> {
+    const item = this.pendingDelete();
+    if (!item) {
+      return;
+    }
+
+    this.deleting.set(true);
+    this.actionError.set('');
+    this.actionSuccess.set('');
+
+    try {
+      await firstValueFrom(this.adminApi.deleteInventoryService(item.id));
+      this.pendingDelete.set(null);
+      this.actionSuccess.set(`Job order "${item.referenceNo || item.serviceName}" removed from the list.`);
+      await this.loadServices();
+    } catch (err: unknown) {
+      const httpErr = err as { error?: { message?: string | string[] } };
+      const msg = httpErr?.error?.message;
+      const detail = Array.isArray(msg) ? msg.join(', ') : msg || 'Unknown error';
+      this.actionError.set(`Unable to delete job order: ${detail}`);
+      this.pendingDelete.set(null);
+    } finally {
+      this.deleting.set(false);
     }
   }
 

@@ -7,6 +7,12 @@ import {
 } from '../common/admin-table.util';
 import { CreateMaterialDto } from './dto/create-material.dto';
 import { UpdateMaterialDto } from './dto/update-material.dto';
+import {
+  buildMaterialImportPreview,
+  buildMaterialsExportCsv,
+  MATERIAL_IMPORT_TEMPLATE_CSV,
+  parseMaterialImportContent,
+} from './material-import.util';
 import { deleteMaterialImageFile, saveMaterialImageFile } from './material-image.util';
 
 export interface InventoryOption {
@@ -524,6 +530,169 @@ export class InventoryService {
     return this.getMaterial(id);
   }
 
+  getImportTemplate(): string {
+    return MATERIAL_IMPORT_TEMPLATE_CSV;
+  }
+
+  async listMaterialCodes(): Promise<Set<string>> {
+    if (!(await tableExists(this.databaseService, 'tblmaterials'))) {
+      return new Set();
+    }
+
+    const result = await this.databaseService.query<{ material_code: string }>(
+      `SELECT LOWER(TRIM(material_code)) AS material_code
+       FROM tblmaterials
+       WHERE deleted_at IS NULL
+         AND material_code IS NOT NULL
+         AND TRIM(material_code) <> ''`,
+    );
+
+    return new Set(result.rows.map((row) => row.material_code).filter(Boolean));
+  }
+
+  async previewImportFromCsv(content: string) {
+    const existingCodes = await this.listMaterialCodes();
+    return buildMaterialImportPreview(content, existingCodes);
+  }
+
+  async importFromCsv(content: string, userId?: number) {
+    const existingCodes = await this.listMaterialCodes();
+    const preview = buildMaterialImportPreview(content, existingCodes);
+    const { validRows } = parseMaterialImportContent(content);
+
+    let created = 0;
+    let updated = 0;
+
+    for (const row of validRows) {
+      const code = row.materialCode?.trim() || '';
+      const existingId = code ? await this.findMaterialIdByCode(code) : null;
+
+      const payload = {
+        materialName: row.materialName,
+        materialCode: row.materialCode ?? undefined,
+        brandName: row.brandName ?? undefined,
+        productTypeName: row.productTypeName ?? undefined,
+        unit: row.unit ?? undefined,
+        unitPrice: row.unitPrice ?? undefined,
+        orderCost: row.orderCost ?? undefined,
+        sellPrice: row.sellPrice ?? undefined,
+        onHandStock: row.onHandStock ?? undefined,
+        reorderLevel: row.reorderLevel ?? undefined,
+        description: row.description ?? undefined,
+      };
+
+      if (existingId) {
+        await this.updateMaterial(existingId, payload);
+        updated += 1;
+      } else {
+        await this.createMaterial(payload, userId);
+        created += 1;
+      }
+    }
+
+    return {
+      imported: created + updated,
+      created,
+      updated,
+      skipped: preview.skippedRows,
+    };
+  }
+
+  async exportCsv(search?: string, brandId?: string, productTypeId?: string): Promise<string> {
+    if (!(await tableExists(this.databaseService, 'tblmaterials'))) {
+      throw new ServiceUnavailableException('Inventory tables are not available in this database.');
+    }
+
+    const params: Array<string | number> = [];
+    const conditions = ['m.deleted_at IS NULL'];
+
+    if (search?.trim()) {
+      params.push(`%${search.trim()}%`);
+      conditions.push(
+        `(m.material_name ILIKE $${params.length} OR COALESCE(m.material_code, '') ILIKE $${params.length})`,
+      );
+    }
+
+    if (brandId?.trim()) {
+      const parsed = Number(brandId);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        params.push(parsed);
+        conditions.push(`m.brand_id = $${params.length}`);
+      }
+    }
+
+    if (productTypeId?.trim()) {
+      const parsed = Number(productTypeId);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        params.push(parsed);
+        conditions.push(`m.product_type_id = $${params.length}`);
+      }
+    }
+
+    const whereClause = `WHERE ${conditions.join(' AND ')}`;
+    const result = await this.databaseService.query<{
+      material_code: string | null;
+      material_name: string;
+      brand_name: string | null;
+      product_type_name: string | null;
+      unit: string | null;
+      unit_price: string | null;
+      order_cost: string | null;
+      sell_price: string | null;
+      on_hand_stock: string | null;
+      reorder_level: string | null;
+      description: string | null;
+    }>(
+      `SELECT
+        m.material_code,
+        m.material_name,
+        COALESCE(to_jsonb(b)->>'brandName', to_jsonb(b)->>'brandname', to_jsonb(b)->>'name') AS brand_name,
+        COALESCE(to_jsonb(pt)->>'name', to_jsonb(pt)->>'productTypeName') AS product_type_name,
+        m.unit,
+        m.unit_price::text,
+        m.order_cost::text,
+        m.sell_price::text,
+        m.on_hand_stock::text,
+        m.reorder_level::text,
+        m.description
+       FROM tblmaterials m
+       LEFT JOIN tblbrands b ON b.id = m.brand_id
+       LEFT JOIN tblproducttypes pt ON pt.id = m.product_type_id
+       ${whereClause}
+       ORDER BY m.material_name ASC
+       LIMIT 10000`,
+      params,
+    );
+
+    return buildMaterialsExportCsv(
+      result.rows.map((row) => ({
+        materialCode: row.material_code,
+        materialName: row.material_name,
+        brandName: row.brand_name,
+        productTypeName: row.product_type_name,
+        unit: row.unit,
+        unitPrice: row.unit_price !== null ? Number(row.unit_price) : null,
+        orderCost: row.order_cost !== null ? Number(row.order_cost) : null,
+        sellPrice: row.sell_price !== null ? Number(row.sell_price) : null,
+        onHandStock: row.on_hand_stock !== null ? Number(row.on_hand_stock) : null,
+        reorderLevel: row.reorder_level !== null ? Number(row.reorder_level) : null,
+        description: row.description,
+      })),
+    );
+  }
+
+  private async findMaterialIdByCode(materialCode: string): Promise<number | null> {
+    const result = await this.databaseService.query<{ id: number }>(
+      `SELECT id
+       FROM tblmaterials
+       WHERE LOWER(TRIM(material_code)) = LOWER(TRIM($1))
+         AND deleted_at IS NULL
+       LIMIT 1`,
+      [materialCode],
+    );
+    return result.rows[0]?.id ?? null;
+  }
+
   private async assertBrandExists(brandId: number): Promise<void> {
     if (!(await tableExists(this.databaseService, 'tblbrands'))) {
       throw new BadRequestException('Brand was not found.');
@@ -665,7 +834,7 @@ export class InventoryService {
     image_url?: string | null;
   }): MaterialListItem {
     return {
-      id: row.id,
+      id: Number(row.id),
       materialCode: row.material_code,
       materialName: row.material_name,
       brandName: row.brand_name,

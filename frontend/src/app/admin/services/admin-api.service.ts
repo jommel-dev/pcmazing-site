@@ -135,6 +135,7 @@ export interface InventoryServiceItem {
     customItemName?: string;
     quantity: number;
     unitPrice?: number;
+    labor?: number;
   }>;
   updatedAt: string | null;
 }
@@ -150,6 +151,7 @@ export interface CreateInventoryServicePayload {
     customItemName?: string;
     quantity: number;
     unitPrice?: number;
+    labor?: number;
   }>;
   cost?: number;
   labor?: number;
@@ -157,6 +159,17 @@ export interface CreateInventoryServicePayload {
   notes?: string;
   startedAt?: string;
   endedAt?: string;
+}
+
+export interface ServiceTypeItem {
+  id: number;
+  name: string;
+  description: string | null;
+  laborPrice: number;
+  usageCount: number;
+  totalLaborCollected: number;
+  isActive: boolean;
+  updatedAt: string | null;
 }
 
 export interface InventoryTreeNode {
@@ -542,6 +555,32 @@ export interface ProspectImportPreview {
   skippedDetails: Array<{ rowNumber: number; reason: string }>;
 }
 
+export interface MaterialImportPreviewRow {
+  rowNumber: number;
+  materialCode: string | null;
+  materialName: string;
+  brandName: string | null;
+  productTypeName: string | null;
+  unit: string | null;
+  unitPrice: number | null;
+  orderCost: number | null;
+  sellPrice: number | null;
+  onHandStock: number | null;
+  reorderLevel: number | null;
+  action: 'create' | 'update';
+}
+
+export interface MaterialImportPreview {
+  fileName: string;
+  totalDataRows: number;
+  validRows: number;
+  skippedRows: number;
+  createCount: number;
+  updateCount: number;
+  previewRows: MaterialImportPreviewRow[];
+  skippedDetails: Array<{ rowNumber: number; reason: string }>;
+}
+
 export interface ProspectContractModule {
   id: number;
   name: string;
@@ -845,6 +884,52 @@ export class AdminApiService {
     );
   }
 
+  exportMaterialsCsv(search = '', brandId?: number, productTypeId?: number) {
+    let params = new HttpParams();
+    if (search.trim()) {
+      params = params.set('search', search.trim());
+    }
+    if (brandId) {
+      params = params.set('brandId', String(brandId));
+    }
+    if (productTypeId) {
+      params = params.set('productTypeId', String(productTypeId));
+    }
+
+    return this.http.get(`${APP_CONFIG.apiUrl}/admin/inventory/materials/export`, {
+      headers: this.headers(),
+      params,
+      responseType: 'blob',
+    });
+  }
+
+  downloadMaterialsImportTemplate() {
+    return this.http.get(`${APP_CONFIG.apiUrl}/admin/inventory/materials/import/template`, {
+      headers: this.headers(),
+      responseType: 'blob',
+    });
+  }
+
+  previewImportMaterials(file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.http.post<ItemResponse<MaterialImportPreview>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/materials/import/preview`,
+      formData,
+      { headers: this.headers() },
+    );
+  }
+
+  importMaterials(file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.http.post<
+      MessageResponse<{ imported: number; created: number; updated: number; skipped: number }>
+    >(`${APP_CONFIG.apiUrl}/admin/inventory/materials/import`, formData, {
+      headers: this.headers(),
+    });
+  }
+
   listInventoryServices(page = 1, limit = 20, search = '', type = '', status = '') {
     let params = this.listParams(page, limit, search);
     if (type.trim()) {
@@ -891,6 +976,21 @@ export class AdminApiService {
     );
   }
 
+  updateInventoryServiceStatus(id: number, status: string) {
+    return this.http.patch<ItemResponse<InventoryServiceItem>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/services/${id}/status`,
+      { status },
+      { headers: this.headers() },
+    );
+  }
+
+  deleteInventoryService(id: number) {
+    return this.http.delete<{ success: boolean; message: string }>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/services/${id}`,
+      { headers: this.headers() },
+    );
+  }
+
   uploadInventoryServiceImage(id: number, file: File) {
     const formData = new FormData();
     formData.append('file', file);
@@ -898,6 +998,54 @@ export class AdminApiService {
     return this.http.post<ItemResponse<InventoryServiceItem>>(
       `${APP_CONFIG.apiUrl}/admin/inventory/services/${id}/image`,
       formData,
+      { headers: this.headers() },
+    );
+  }
+
+  listServiceTypes(activeOnly = false) {
+    let params = new HttpParams();
+    if (activeOnly) {
+      params = params.set('activeOnly', 'true');
+    }
+
+    return this.http.get<ItemResponse<ServiceTypeItem[]>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/service-types`,
+      { headers: this.headers(), params },
+    );
+  }
+
+  createServiceType(payload: {
+    name: string;
+    description?: string;
+    laborPrice?: number;
+    isActive?: boolean;
+  }) {
+    return this.http.post<ItemResponse<ServiceTypeItem>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/service-types`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  updateServiceType(
+    id: number,
+    payload: {
+      name?: string;
+      description?: string;
+      laborPrice?: number;
+      isActive?: boolean;
+    },
+  ) {
+    return this.http.patch<ItemResponse<ServiceTypeItem>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/service-types/${id}`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  deleteServiceType(id: number) {
+    return this.http.delete<{ success: boolean; message: string }>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/service-types/${id}`,
       { headers: this.headers() },
     );
   }

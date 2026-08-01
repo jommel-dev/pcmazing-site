@@ -6,6 +6,7 @@ import {
   tableExists,
 } from '../common/admin-table.util';
 import { CreateServiceDto } from './dto/create-service.dto';
+import { JOB_ORDER_STATUSES, UpdateServiceStatusDto } from './dto/update-service-status.dto';
 import { deleteServiceImageFile, saveServiceImageFile } from './service-image.util';
 
 export interface InventoryServiceListItem {
@@ -34,6 +35,7 @@ export interface InventoryServiceListItem {
     customItemName?: string;
     quantity: number;
     unitPrice?: number;
+    labor?: number;
   }>;
   updatedAt: string | null;
 }
@@ -101,7 +103,7 @@ export class InventoryServicesService {
       `SELECT
         COALESCE(SUM(COALESCE(parts.parts_cost, 0)), 0)::text AS total_parts_cost,
         COALESCE(SUM(COALESCE(s.base_cost, 0)), 0)::text AS total_base_cost,
-        COALESCE(SUM(COALESCE(s.labor, 0)), 0)::text AS total_labor_sales
+        COALESCE(SUM(COALESCE(s.labor, 0) + COALESCE(parts.parts_labor, 0)), 0)::text AS total_labor_sales
        FROM pcmazing_services s
        LEFT JOIN LATERAL (
          SELECT COALESCE(
@@ -112,7 +114,8 @@ export class InventoryServicesService {
              END
            ),
            0
-         ) AS parts_cost
+         ) AS parts_cost,
+         COALESCE(SUM(COALESCE(sp.labor, 0)), 0) AS parts_labor
          FROM pcmazing_service_parts sp
          LEFT JOIN tblmaterials m ON m.id = sp.material_id
          WHERE sp.service_id = s.id AND sp.deleted_at IS NULL
@@ -165,6 +168,7 @@ export class InventoryServicesService {
       service_type: string;
       parts_used: string | null;
       parts_cost: string | null;
+      parts_labor: string | null;
       base_cost: string | null;
       labor: string | null;
       status: string | null;
@@ -183,6 +187,7 @@ export class InventoryServicesService {
         s.service_type,
         parts.parts_used,
         COALESCE(parts.parts_cost, 0)::text AS parts_cost,
+        COALESCE(parts.parts_labor, 0)::text AS parts_labor,
         s.base_cost::text,
         s.labor::text,
         s.status,
@@ -206,7 +211,8 @@ export class InventoryServicesService {
                END
              ),
              0
-           ) AS parts_cost
+           ) AS parts_cost,
+           COALESCE(SUM(COALESCE(sp.labor, 0)), 0) AS parts_labor
          FROM pcmazing_service_parts sp
          LEFT JOIN tblmaterials m ON m.id = sp.material_id
          WHERE sp.service_id = s.id AND sp.deleted_at IS NULL
@@ -227,13 +233,13 @@ export class InventoryServicesService {
     return {
       items: result.rows.map((row) => {
         const baseCost = Number(row.base_cost ?? 0);
-        const labor = Number(row.labor ?? 0);
+        const labor = Number(row.labor ?? 0) + Number(row.parts_labor ?? 0);
         const partsCost = Number(row.parts_cost ?? 0);
         const userId = row.person_in_charge_user_id ? Number(row.person_in_charge_user_id) : null;
         const source = row.person_in_charge_source ?? 'tblusers';
 
         return {
-          id: row.id,
+          id: Number(row.id),
           referenceNo: row.reference_no,
           customerName: row.customer_name ?? 'Unknown customer',
           serviceName: row.service_name,
@@ -357,15 +363,17 @@ export class InventoryServicesService {
              material_id,
              custom_item_name,
              quantity,
-             unit_price
+             unit_price,
+             labor
            )
-           VALUES ($1, $2, $3, $4, $5)`,
+           VALUES ($1, $2, $3, $4, $5, $6)`,
           [
             serviceId,
             part.materialId ?? null,
             part.customItemName?.trim() || null,
             part.quantity,
             part.unitPrice ?? 0,
+            part.labor ?? 0,
           ],
         );
       }
@@ -381,14 +389,16 @@ export class InventoryServicesService {
       throw new ServiceUnavailableException('Service catalog table is not available in this database.');
     }
 
-    await this.getById(id);
+    const existing = await this.getById(id);
 
     const customerName = dto.customerName.trim();
     const serviceName = dto.serviceName.trim();
     const serviceType = dto.type.trim();
+    const nextStatus = dto.status?.trim() || 'Active';
     const source = dto.personInChargeSource ?? 'tblusers';
     const startedAt = dto.startedAt ? new Date(dto.startedAt) : null;
     const endedAt = dto.endedAt ? new Date(dto.endedAt) : null;
+    const leavingDone = this.isDoneStatus(existing.status) && !this.isDoneStatus(nextStatus);
 
     if (startedAt && Number.isNaN(startedAt.getTime())) {
       throw new BadRequestException('Start date/time is invalid.');
@@ -432,7 +442,7 @@ export class InventoryServicesService {
           serviceType,
           dto.cost ?? 0,
           dto.labor ?? 0,
-          dto.status?.trim() || 'Active',
+          nextStatus,
           dto.notes?.trim() || null,
           startedAt ? startedAt.toISOString() : null,
           endedAt ? endedAt.toISOString() : null,
@@ -454,21 +464,74 @@ export class InventoryServicesService {
              material_id,
              custom_item_name,
              quantity,
-             unit_price
+             unit_price,
+             labor
            )
-           VALUES ($1, $2, $3, $4, $5)`,
+           VALUES ($1, $2, $3, $4, $5, $6)`,
           [
             id,
             part.materialId ?? null,
             part.customItemName?.trim() || null,
             part.quantity,
             part.unitPrice ?? 0,
+            part.labor ?? 0,
           ],
         );
       }
     });
 
+    if (leavingDone) {
+      await this.clearCompletionImage(existing);
+    }
+
     return this.getById(id);
+  }
+
+  async updateStatus(id: number, dto: UpdateServiceStatusDto) {
+    if (!(await tableExists(this.databaseService, 'pcmazing_services'))) {
+      throw new ServiceUnavailableException('Service catalog table is not available in this database.');
+    }
+
+    const existing = await this.getById(id);
+
+    const status = dto.status.trim();
+    if (!(JOB_ORDER_STATUSES as readonly string[]).includes(status)) {
+      throw new BadRequestException(`Invalid status "${status}".`);
+    }
+
+    const leavingDone = this.isDoneStatus(existing.status) && !this.isDoneStatus(status);
+
+    await this.databaseService.query(
+      `UPDATE pcmazing_services
+       SET status = $1,
+           image_url = CASE WHEN $3::boolean THEN NULL ELSE image_url END,
+           updated_at = NOW()
+       WHERE id = $2 AND deleted_at IS NULL`,
+      [status, id, leavingDone],
+    );
+
+    if (leavingDone) {
+      await deleteServiceImageFile(existing.imageUrl);
+    }
+
+    return this.getById(id);
+  }
+
+  async softDelete(id: number): Promise<void> {
+    if (!(await tableExists(this.databaseService, 'pcmazing_services'))) {
+      throw new ServiceUnavailableException('Service catalog table is not available in this database.');
+    }
+
+    await this.getById(id);
+
+    await this.databaseService.query(
+      `UPDATE pcmazing_services
+       SET status = 'Deleted',
+           deleted_at = NOW(),
+           updated_at = NOW()
+       WHERE id = $1 AND deleted_at IS NULL`,
+      [id],
+    );
   }
 
   async uploadImage(id: number, file: Express.Multer.File) {
@@ -484,6 +547,27 @@ export class InventoryServicesService {
     );
 
     return this.getById(id);
+  }
+
+  private isDoneStatus(status: string | null | undefined): boolean {
+    return String(status ?? '').trim().toLowerCase() === 'done';
+  }
+
+  private async clearCompletionImage(existing: {
+    id: number;
+    imageUrl: string | null;
+  }): Promise<void> {
+    if (!existing.imageUrl) {
+      return;
+    }
+
+    await this.databaseService.query(
+      `UPDATE pcmazing_services
+       SET image_url = NULL, updated_at = NOW()
+       WHERE id = $1 AND deleted_at IS NULL`,
+      [existing.id],
+    );
+    await deleteServiceImageFile(existing.imageUrl);
   }
 
   private async loadPersonNames(
@@ -545,6 +629,7 @@ export class InventoryServicesService {
       service_type: string;
       parts_used: string | null;
       parts_cost: string | null;
+      parts_labor: string | null;
       base_cost: string | null;
       labor: string | null;
       status: string | null;
@@ -564,6 +649,7 @@ export class InventoryServicesService {
         s.service_type,
         parts.parts_used,
         COALESCE(parts.parts_cost, 0)::text AS parts_cost,
+        COALESCE(parts.parts_labor, 0)::text AS parts_labor,
         s.base_cost::text,
         s.labor::text,
         s.status,
@@ -588,7 +674,8 @@ export class InventoryServicesService {
                END
              ),
              0
-           ) AS parts_cost
+           ) AS parts_cost,
+           COALESCE(SUM(COALESCE(sp.labor, 0)), 0) AS parts_labor
          FROM pcmazing_service_parts sp
          LEFT JOIN tblmaterials m ON m.id = sp.material_id
          WHERE sp.service_id = s.id AND sp.deleted_at IS NULL
@@ -609,12 +696,14 @@ export class InventoryServicesService {
     const cost = Number(row.base_cost ?? 0);
     const labor = Number(row.labor ?? 0);
     const partsCost = Number(row.parts_cost ?? 0);
+    const partsLabor = Number(row.parts_labor ?? 0);
     const partsResult = await this.databaseService.query<{
       material_id: number | null;
       material_name: string | null;
       custom_item_name: string | null;
       quantity: string;
       unit_price: string | null;
+      labor: string | null;
     }>(
       `SELECT
          sp.material_id,
@@ -626,7 +715,8 @@ export class InventoryServicesService {
              WHEN sp.material_id IS NULL THEN COALESCE(sp.unit_price, 0)
              ELSE COALESCE(m.order_cost, m.unit_price, sp.unit_price, 0)
            END
-         )::text AS unit_price
+         )::text AS unit_price,
+         COALESCE(sp.labor, 0)::text AS labor
        FROM pcmazing_service_parts sp
        LEFT JOIN tblmaterials m ON m.id = sp.material_id
        WHERE sp.service_id = $1 AND sp.deleted_at IS NULL
@@ -635,7 +725,7 @@ export class InventoryServicesService {
     );
 
     return {
-      id: row.id,
+      id: Number(row.id),
       referenceNo: row.reference_no,
       customerName: row.customer_name ?? 'Unknown customer',
       serviceName: row.service_name,
@@ -652,7 +742,7 @@ export class InventoryServicesService {
       notes: row.notes,
       imageUrl: row.image_url,
       totalCosting: partsCost,
-      totalSales: cost + labor,
+      totalSales: cost + labor + partsLabor,
       startedAt: row.started_at,
       endedAt: row.ended_at,
       durationMinutes: this.computeDurationMinutes(row.started_at, row.ended_at),
@@ -662,6 +752,7 @@ export class InventoryServicesService {
         customItemName: part.custom_item_name ?? undefined,
         quantity: Number(part.quantity ?? 0),
         unitPrice: Number(part.unit_price ?? 0),
+        labor: Number(part.labor ?? 0),
       })),
       updatedAt: row.updated_at,
     };
@@ -724,14 +815,14 @@ export class InventoryServicesService {
       throw new BadRequestException('Inventory materials are not available.');
     }
 
-    const uniqueIds = [...new Set(inventoryIds)];
-    const result = await this.databaseService.query<{ id: number }>(
+    const uniqueIds = [...new Set(inventoryIds.map((id) => Number(id)))];
+    const result = await this.databaseService.query<{ id: number | string }>(
       `SELECT id
        FROM tblmaterials
        WHERE id = ANY($1::bigint[]) AND deleted_at IS NULL`,
       [uniqueIds],
     );
-    const validIds = new Set(result.rows.map((row) => row.id));
+    const validIds = new Set(result.rows.map((row) => Number(row.id)));
     const missing = uniqueIds.filter((id) => !validIds.has(id));
     if (missing.length) {
       throw new BadRequestException(`Parts not found: ${missing.join(', ')}`);
@@ -747,7 +838,7 @@ export class InventoryServicesService {
       throw new BadRequestException('Person in charge source table is not available.');
     }
 
-    const result = await this.databaseService.query<{ id: number }>(
+    const result = await this.databaseService.query<{ id: number | string }>(
       `SELECT id FROM ${tableName} WHERE id = $1 LIMIT 1`,
       [userId],
     );

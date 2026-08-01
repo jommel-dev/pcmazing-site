@@ -1,15 +1,28 @@
 <section>
-  <app-inventory-subnav />
-
-  <a routerLink="/admin/inventory/services" class="text-sm font-bold text-pcmazing-500 hover:text-pcmazing-600">
-    ← Back to services
+  <a routerLink="/admin/job-order" class="text-sm font-bold text-pcmazing-500 hover:text-pcmazing-600">
+    ← Back to job orders
   </a>
 
-  <div class="mt-4 mb-6">
-    <h2 class="text-2xl font-bold text-slate-900">{{ isEditMode() ? 'Edit Service' : 'Add Service' }}</h2>
-    <p class="mt-1 text-sm text-slate-500">
-      {{ isEditMode() ? 'Update service details and status.' : 'Create a service item and connect it to staff and inventory parts.' }}
-    </p>
+  <div class="mt-4 mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div>
+      <h2 class="text-2xl font-bold text-slate-900">{{ isEditMode() ? 'Edit Job Order' : 'Add Job Order' }}</h2>
+      <p class="mt-1 text-sm text-slate-500">
+        {{ isEditMode() ? 'Update service details and status.' : 'Create a service item and connect it to staff and inventory parts.' }}
+      </p>
+    </div>
+    @if (isEditMode()) {
+      <button
+        type="button"
+        class="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-2.5 text-sm font-bold text-red-600 hover:bg-red-50"
+        (click)="requestDelete()"
+      >
+        <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m2 0v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7h12Z" />
+          <path stroke-linecap="round" stroke-linejoin="round" d="M10 11v6M14 11v6" />
+        </svg>
+        Delete
+      </button>
+    }
   </div>
 
   @if (loading()) {
@@ -27,9 +40,11 @@
 
     <form class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start" [formGroup]="form" (ngSubmit)="submit()">
       <div class="space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-      <div class="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm text-slate-600">
-        Service images are added after the service is completed, not during initial creation.
-      </div>
+      @if (!isEditMode()) {
+        <div class="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm text-slate-600">
+          Service images are added after the service is completed, not during initial creation.
+        </div>
+      }
 
       <div class="grid gap-4 sm:grid-cols-2">
         <div class="sm:col-span-2">
@@ -54,12 +69,28 @@
 
         <div>
           <label class="mb-2 block text-sm font-semibold text-slate-800">Type *</label>
-          <input type="text" class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none" formControlName="type" placeholder="e.g. Repair, Installation, Upgrade" />
+          <select
+            class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none"
+            formControlName="type"
+            (change)="onServiceTypeChange()"
+          >
+            <option value="">Select service type</option>
+            @for (type of serviceTypes(); track type.id) {
+              <option [value]="type.name">{{ type.name }}{{ type.laborPrice > 0 ? ' — ' + (type.laborPrice | number: '1.2-2') : '' }}</option>
+            }
+          </select>
+          @if (serviceTypes().length === 0) {
+            <p class="mt-1 text-xs text-amber-600">No active service types yet. Add them under Inventory → Services.</p>
+          }
         </div>
 
         <div>
           <label class="mb-2 block text-sm font-semibold text-slate-800">Status</label>
-          <select class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none" formControlName="status">
+          <select
+            class="w-full rounded-xl border px-4 py-3 text-sm font-bold uppercase tracking-wide focus:outline-none focus:ring-2 focus:ring-pcmazing-500"
+            [ngClass]="statusSelectClass()"
+            formControlName="status"
+          >
             @for (status of statuses; track status) {
               <option [value]="status">{{ status }}</option>
             }
@@ -75,7 +106,7 @@
         <div>
           <label class="mb-2 block text-sm font-semibold text-slate-800">Labor</label>
           <input type="number" min="0" step="0.01" class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none" formControlName="labor" />
-          <p class="mt-1 text-xs text-slate-500">Labor is counted as part of total sales.</p>
+          <p class="mt-1 text-xs text-slate-500">Auto-fills from the service type labor price; you can still override it. Counted in total sales.</p>
         </div>
 
         <div class="sm:col-span-2">
@@ -84,67 +115,203 @@
         </div>
       </div>
 
-      @if (isEditMode()) {
+      @if (isEditMode() && selectedStatus() === 'Done') {
+        <div class="rounded-2xl border border-slate-200 p-4">
+          <div class="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p class="text-sm font-semibold text-slate-800">Completion image</p>
+              <p class="text-xs text-slate-500">
+                @if (completionImageSrc()) {
+                  Uploaded completion photo for this job order.
+                } @else {
+                  No completion image yet. Upload one when the job is finished.
+                }
+              </p>
+            </div>
+            <span
+              class="inline-flex w-fit rounded-full px-2.5 py-1 text-[10px] font-bold uppercase"
+              [ngClass]="statusSelectClass()"
+            >
+              {{ selectedStatus() }}
+            </span>
+          </div>
+
+          <div class="overflow-hidden rounded-2xl border border-dashed border-slate-300 bg-slate-50">
+            @if (completionImageSrc(); as imageSrc) {
+              <img [src]="imageSrc" alt="Completion image" class="max-h-80 w-full object-contain bg-slate-100" />
+            } @else {
+              <div class="flex min-h-40 flex-col items-center justify-center gap-2 px-4 py-8 text-center">
+                <svg class="size-10 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 7.5A1.5 1.5 0 0 1 4.5 6h3.1l1.2-1.8A1.5 1.5 0 0 1 10 3.5h4a1.5 1.5 0 0 1 1.2.7L16.4 6h3.1A1.5 1.5 0 0 1 21 7.5v10A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-10Z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
+                </svg>
+                <p class="text-sm font-semibold text-slate-700">No completion image</p>
+                <p class="text-xs text-slate-500">JPEG, PNG, WEBP, or GIF up to 2MB</p>
+              </div>
+            }
+          </div>
+
+          <div class="mt-3 flex flex-col gap-2 sm:flex-row">
+            @if (isMobileDevice()) {
+              <label class="inline-flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:opacity-60">
+                Take photo
+                <input
+                  type="file"
+                  class="sr-only"
+                  accept="image/*"
+                  [attr.capture]="'environment'"
+                  [disabled]="completionUploading()"
+                  (change)="onCompletionImageSelected($event)"
+                />
+              </label>
+              <label class="inline-flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60">
+                Choose from gallery
+                <input
+                  type="file"
+                  class="sr-only"
+                  accept="image/*"
+                  [disabled]="completionUploading()"
+                  (change)="onCompletionImageSelected($event)"
+                />
+              </label>
+            } @else {
+              <label class="inline-flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">
+                @if (completionUploading()) {
+                  Uploading...
+                } @else if (completionImageSrc()) {
+                  Replace image
+                } @else {
+                  Upload completion image
+                }
+                <input
+                  type="file"
+                  class="sr-only"
+                  accept="image/*"
+                  [disabled]="completionUploading()"
+                  (change)="onCompletionImageSelected($event)"
+                />
+              </label>
+            }
+          </div>
+        </div>
+      }
+
       <div class="rounded-2xl border border-slate-200 p-4">
         <div class="mb-4 flex items-center justify-between gap-3">
           <div>
-            <p class="text-sm font-semibold text-slate-800">Linked Parts</p>
-            <p class="text-xs text-slate-500">Edit the linked inventory items, quantity, and unit cost.</p>
+            <p class="text-sm font-semibold text-slate-800">Parts Used</p>
+            <p class="text-xs text-slate-500">
+              Type to search inventory products. Already-selected parts are hidden from other rows.
+            </p>
           </div>
           <button type="button" class="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" (click)="addPart()">
             Add part
           </button>
         </div>
 
-        <div formArrayName="parts" class="space-y-3">
-          @for (part of partsArray.controls; track $index) {
-            <div class="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_110px_140px_140px_auto]" [formGroupName]="$index">
-              <div>
-                <label class="mb-2 block text-xs font-semibold text-slate-700 uppercase">Material</label>
-                <input
-                  type="text"
-                  class="mb-1 w-full rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs focus:border-pcmazing-500 focus:outline-none"
-                  [value]="partQuery($index)"
-                  (input)="onPartQueryInput($index, $any($event.target).value)"
-                  placeholder="Search materials..."
-                />
-                <select
-                  class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none"
-                  formControlName="materialId"
-                  (change)="onPartMaterialChange($index)"
-                >
-                  <option value="">-- Select material --</option>
-                  @for (item of filteredMaterials($index); track item.id) {
-                    <option value="{{ item.id }}">{{ item.materialName }}</option>
+        <div formArrayName="parts" class="space-y-2">
+          @if (partsArray.length > 0) {
+            <div class="hidden gap-3 px-3 sm:grid sm:grid-cols-[minmax(0,1fr)_110px_140px_140px_auto]">
+              <p class="text-xs font-semibold uppercase text-slate-700">Material</p>
+              <p class="text-xs font-semibold uppercase text-slate-700">Qty</p>
+              <p class="text-xs font-semibold uppercase text-slate-700">Unit Price</p>
+              <p class="text-xs font-semibold uppercase text-slate-700">Subtotal</p>
+              <span></span>
+            </div>
+          }
+
+          @for (part of partsArray.controls; track $index; let partIndex = $index) {
+            <div
+              class="grid items-end gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_110px_140px_140px_auto]"
+              [formGroupName]="partIndex"
+            >
+              <div class="relative min-w-0">
+                <label class="mb-1 block text-xs font-semibold uppercase text-slate-700 sm:hidden">Material</label>
+                <div class="flex gap-2">
+                  <input
+                    type="text"
+                    class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none"
+                    [value]="partQuery(partIndex)"
+                    (input)="onPartQueryInput(partIndex, $any($event.target).value)"
+                    (focus)="openPartSearch(partIndex)"
+                    (blur)="scheduleClosePartSearch()"
+                    placeholder="Type to search materials..."
+                    autocomplete="off"
+                  />
+                  @if ($any(part).controls.materialId.value) {
+                    <button
+                      type="button"
+                      class="shrink-0 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-white"
+                      (click)="clearPartMaterial(partIndex)"
+                      title="Clear material"
+                    >
+                      Clear
+                    </button>
                   }
-                </select>
+                </div>
+                <input type="hidden" formControlName="materialId" />
+                @if (openPartSearchIndex() === partIndex) {
+                  <div class="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-xl border border-slate-200 bg-white shadow-lg">
+                    @if (partSearchLoading()) {
+                      <p class="px-4 py-3 text-sm text-slate-500">Searching materials...</p>
+                    } @else if (filteredMaterials(partIndex).length === 0) {
+                      <p class="px-4 py-3 text-sm text-slate-500">
+                        @if (selectedMaterialIds(partIndex).size > 0 && !partQuery(partIndex).trim()) {
+                          No other materials available, or already selected on another row.
+                        } @else {
+                          No materials found.
+                        }
+                      </p>
+                    } @else {
+                      @for (item of filteredMaterials(partIndex); track item.id) {
+                        <button
+                          type="button"
+                          class="block w-full border-b border-slate-100 px-4 py-3 text-left last:border-b-0 hover:bg-slate-50"
+                          (mousedown)="onPartSuggestionPointerDown($event, partIndex, item)"
+                        >
+                          <p class="text-sm font-medium text-slate-800">{{ item.materialName }}</p>
+                          <p class="mt-0.5 text-xs text-slate-500">
+                            ₱{{ resolveMaterialUnitPrice(item) | number:'1.2-2' }}
+                            @if (item.materialCode) {
+                              · {{ item.materialCode }}
+                            }
+                            @if (item.brandName) {
+                              · {{ item.brandName }}
+                            }
+                          </p>
+                        </button>
+                      }
+                    }
+                  </div>
+                }
               </div>
               <div>
-                <label class="mb-2 block text-xs font-semibold text-slate-700 uppercase">Qty</label>
+                <label class="mb-1 block text-xs font-semibold uppercase text-slate-700 sm:hidden">Qty</label>
                 <input type="number" min="0.01" step="0.01" class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none" formControlName="quantity" (input)="syncCostWithParts()" />
               </div>
               <div>
-                <label class="mb-2 block text-xs font-semibold text-slate-700 uppercase">Unit Cost</label>
+                <label class="mb-1 block text-xs font-semibold uppercase text-slate-700 sm:hidden">Unit Price</label>
                 <input type="number" min="0" step="0.01" class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none" formControlName="unitPrice" (input)="syncCostWithParts()" />
               </div>
               <div>
-                <label class="mb-2 block text-xs font-semibold text-slate-700 uppercase">Subtotal</label>
-                <p class="px-4 py-3 text-sm font-semibold text-slate-800">₱{{ partSubtotal($index) | number:'1.2-2' }}</p>
+                <label class="mb-1 block text-xs font-semibold uppercase text-slate-700 sm:hidden">Subtotal</label>
+                <p class="rounded-xl px-4 py-3 text-sm font-semibold text-slate-800">₱{{ partSubtotal(partIndex) | number:'1.2-2' }}</p>
               </div>
-              <div class="flex items-end justify-end">
-                <button type="button" class="rounded-xl px-3 py-2 text-sm font-semibold text-red-500 hover:bg-red-50" (click)="removePart($index)">
+              <div class="flex justify-end">
+                <button type="button" class="rounded-xl px-3 py-2 text-sm font-semibold text-red-500 hover:bg-red-50" (click)="removePart(partIndex)">
                   Remove
                 </button>
               </div>
             </div>
+          } @empty {
+            <p class="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+              No parts yet. Click “Add part” to select an inventory product.
+            </p>
           }
         </div>
+
+        <p class="mt-3 text-xs text-slate-500">{{ totalSelectedParts() }} inventory part row(s).</p>
       </div>
-      } @else {
-      <div class="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm text-slate-600">
-        Inventory `Parts Used` is temporarily hidden while its product-price lookup is being fixed.
-      </div>
-      }
 
       <div class="rounded-2xl border border-slate-200 p-4">
           <div class="mb-4 flex items-center justify-between gap-3">
@@ -159,7 +326,7 @@
 
           <div formArrayName="customParts" class="space-y-3">
             @for (part of customPartsArray.controls; track $index) {
-              <div class="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_120px_140px_auto]">
+              <div class="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_100px_120px_120px_auto]">
                 <div [formGroupName]="$index">
                   <label class="mb-2 block text-xs font-semibold text-slate-700 uppercase">Item / Service</label>
                   <input type="text" class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none" formControlName="customItemName" placeholder="e.g. Special bracket, courier fee, outside labor" />
@@ -172,12 +339,20 @@
                   <label class="mb-2 block text-xs font-semibold text-slate-700 uppercase">Amount</label>
                   <input type="number" min="0" step="0.01" class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none" formControlName="unitPrice" (input)="syncCostWithParts()" />
                 </div>
+                <div [formGroupName]="$index">
+                  <label class="mb-2 block text-xs font-semibold text-slate-700 uppercase">Labor</label>
+                  <input type="number" min="0" step="0.01" class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none" formControlName="labor" />
+                </div>
                 <div class="flex items-end justify-end">
-                  <button type="button" class="rounded-xl px-3 py-2 text-sm font-semibold text-red-500 hover:bg-red-50" (click)="removeCustomPart($index)" [disabled]="customPartsArray.length <= 1">
+                  <button type="button" class="rounded-xl px-3 py-2 text-sm font-semibold text-red-500 hover:bg-red-50" (click)="removeCustomPart($index)">
                     Remove
                   </button>
                 </div>
               </div>
+            } @empty {
+              <p class="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                No custom items yet. Click “Add custom item” if you need one.
+              </p>
             }
           </div>
 
@@ -185,7 +360,7 @@
       </div>
 
       <div class="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4">
-        <a routerLink="/admin/inventory/services" class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">Cancel</a>
+        <a routerLink="/admin/job-order" class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">Cancel</a>
         <button type="submit" class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:opacity-50" [disabled]="saving()">
           @if (saving()) { Saving... } @else if (isEditMode()) { Update service } @else { Save service }
         </button>
@@ -215,9 +390,12 @@
                   <p class="truncate font-medium text-slate-700">{{ $any(part).controls.customItemName.value }}</p>
                   <p class="text-xs text-slate-500">
                     {{ $any(part).controls.quantity.value || 0 }} x {{ ($any(part).controls.unitPrice.value || 0) | number:'1.2-2' }}
+                    @if (customPartLabor($index) > 0) {
+                      · labor {{ customPartLabor($index) | number:'1.2-2' }}
+                    }
                   </p>
                 </div>
-                <p class="shrink-0 font-medium text-slate-700">{{ customPartSubtotal($index) | number:'1.2-2' }}</p>
+                <p class="shrink-0 font-medium text-slate-700">{{ (customPartSubtotal($index) + customPartLabor($index)) | number:'1.2-2' }}</p>
               </div>
             }
           }
@@ -227,7 +405,7 @@
           </div>
           <div class="flex items-center justify-between">
             <span>Labor</span>
-            <span class="font-medium text-slate-800">{{ (form.controls.labor.value || 0) | number:'1.2-2' }}</span>
+            <span class="font-medium text-slate-800">{{ totalLabor() | number:'1.2-2' }}</span>
           </div>
           <div class="flex items-center justify-between border-t border-slate-200 pt-2 text-base font-bold text-slate-900">
             <span>Total to pay</span>
@@ -238,3 +416,51 @@
     </form>
   }
 </section>
+
+@if (pendingDelete()) {
+  <div
+    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4"
+    (click)="cancelDelete()"
+  >
+    <div
+      class="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl"
+      (click)="$event.stopPropagation()"
+    >
+      <div class="flex items-start gap-4">
+        <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-600 ring-1 ring-red-100">
+          <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m2 0v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7h12Z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10 11v6M14 11v6" />
+          </svg>
+        </div>
+        <div class="min-w-0">
+          <h3 class="text-lg font-bold text-slate-900">Remove job order?</h3>
+          <p class="mt-1 text-sm text-slate-500">
+            This will hide
+            <span class="font-semibold text-slate-800">{{ referenceNo() || form.controls.serviceName.value || 'this job order' }}</span>
+            from the Job Orders list. The record is kept with a Deleted status.
+          </p>
+        </div>
+      </div>
+
+      <div class="mt-6 flex justify-end gap-2">
+        <button
+          type="button"
+          class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+          [disabled]="deleting()"
+          (click)="cancelDelete()"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          class="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-60"
+          [disabled]="deleting()"
+          (click)="confirmDelete()"
+        >
+          @if (deleting()) { Removing... } @else { Remove }
+        </button>
+      </div>
+    </div>
+  </div>
+}
