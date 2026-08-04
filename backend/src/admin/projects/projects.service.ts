@@ -11,6 +11,8 @@ import { tableExists } from '../common/admin-table.util';
 import { buildTblusersSelectSql } from '../users/tblusers.util';
 import { isDeveloperOrPm, isSuperAdmin } from '../rbac/admin-roles.util';
 import { CreateProjectDto, ProjectUserRefDto } from './dto/create-project.dto';
+import { ProspectContractDto } from '../marketing/dto/prospect-contract.dto';
+import { assertDealContractReadyForSigning } from '../marketing/deal-contract-validation.util';
 import {
   CreateProjectTaskDto,
   MoveProjectEpicDto,
@@ -408,6 +410,22 @@ export class ProjectsService {
   async create(dto: CreateProjectDto, createdByUserId: number): Promise<ProjectDetail> {
     await this.ensureReady();
 
+    const manager = await this.requireActiveUser(dto.projectManager);
+    const teamMembers = await this.requireDeveloperUsers(dto.teamMembers);
+
+    const created = dto.prospectId
+      ? await this.createProjectFromSignedProspect(dto, createdByUserId, manager, teamMembers)
+      : await this.createProjectDirectly(dto, createdByUserId, manager, teamMembers);
+
+    return this.getById(created);
+  }
+
+  private async createProjectFromSignedProspect(
+    dto: CreateProjectDto,
+    createdByUserId: number,
+    manager: ProjectUserSummary,
+    teamMembers: ProjectUserSummary[],
+  ): Promise<number> {
     const prospect = await this.databaseService.query<{
       id: number;
       status: string;
@@ -436,59 +454,267 @@ export class ProjectsService {
       throw new BadRequestException('A project can only be created after the contract is signed.');
     }
 
-    const existing = await this.getByProspectId(dto.prospectId);
+    const existing = await this.getByProspectId(dto.prospectId!);
     if (existing) {
       throw new ConflictException('A project already exists for this signed contract.');
     }
 
-    const manager = await this.requireActiveUser(dto.projectManager);
-    const teamMembers = await this.requireDeveloperUsers(dto.teamMembers);
-
     const projectName = dto.name?.trim() || prospectRow.system_name?.trim() || prospectRow.client_name;
     const projectType = prospectRow.system_type?.trim() || null;
 
-    const created = await this.databaseService.withTransaction(async (client) => {
-      const insert = await client.query<{ id: number }>(
-        `INSERT INTO pcmazing_projects (
-          prospect_id,
-          name,
-          project_type,
+    return this.databaseService.withTransaction(async (client) => {
+      const projectId = await this.insertProjectRecord(
+        client,
+        dto.prospectId!,
+        projectName,
+        projectType,
+        manager,
+        createdByUserId,
+      );
+      await this.insertProjectMembers(client, projectId, teamMembers);
+      await this.seedPhasesAndModuleEpics(client, projectId, dto.prospectId!);
+      return projectId;
+    });
+  }
+
+  private async createProjectDirectly(
+    dto: CreateProjectDto,
+    createdByUserId: number,
+    manager: ProjectUserSummary,
+    teamMembers: ProjectUserSummary[],
+  ): Promise<number> {
+    const clientName = dto.clientName?.trim();
+    if (!clientName) {
+      throw new BadRequestException('Client name is required when adding a new project directly.');
+    }
+
+    const contract = dto.contract;
+    if (!contract) {
+      throw new BadRequestException('Signed contract details are required when adding a new project directly.');
+    }
+
+    assertDealContractReadyForSigning(contract);
+
+    const projectName = dto.name?.trim() || contract.projectName.trim();
+    const projectType = contract.projectType.trim() || null;
+
+    return this.databaseService.withTransaction(async (client) => {
+      const prospectResult = await client.query<{ id: number }>(
+        `INSERT INTO pcmazing_client_prospects (
+          client_name,
+          company,
+          email,
+          phone,
+          address,
           status,
-          project_manager_user_id,
-          project_manager_user_source,
-          created_by_user_id
-        ) VALUES ($1, $2, $3, 'active', $4, $5, $6)
+          source,
+          notes,
+          created_by_user_id,
+          client_type,
+          currency
+        ) VALUES ($1, $2, $3, $4, $5, 'contract_signed', 'manual', $6, $7, 'local', 'PHP')
         RETURNING id`,
         [
-          dto.prospectId,
-          projectName,
-          projectType,
-          manager.id,
-          manager.source,
+          clientName,
+          dto.company?.trim() || null,
+          dto.email?.trim() || null,
+          dto.phone?.trim() || null,
+          dto.address?.trim() || null,
+          dto.notes?.trim() || null,
           createdByUserId,
         ],
       );
 
-      const projectId = insert.rows[0]?.id;
-      if (!projectId) {
-        throw new BadRequestException('Unable to create project.');
+      const prospectId = prospectResult.rows[0]?.id;
+      if (!prospectId) {
+        throw new BadRequestException('Unable to create the linked client record for this project.');
       }
 
-      for (const member of teamMembers) {
-        await client.query(
-          `INSERT INTO pcmazing_project_members (project_id, user_id, user_source, member_role)
-           VALUES ($1, $2, $3, 'developer')
-           ON CONFLICT (project_id, user_id, user_source) DO NOTHING`,
-          [projectId, member.id, member.source],
-        );
-      }
+      await this.saveSignedContract(client, prospectId, contract, createdByUserId, dto.notes);
 
-      await this.seedPhasesAndModuleEpics(client, projectId, dto.prospectId);
-
+      const projectId = await this.insertProjectRecord(
+        client,
+        prospectId,
+        projectName,
+        projectType,
+        manager,
+        createdByUserId,
+      );
+      await this.insertProjectMembers(client, projectId, teamMembers);
+      await this.seedPhasesAndModuleEpics(client, projectId, prospectId);
       return projectId;
     });
+  }
 
-    return this.getById(created);
+  private async insertProjectRecord(
+    client: PoolClient,
+    prospectId: number,
+    projectName: string,
+    projectType: string | null,
+    manager: ProjectUserSummary,
+    createdByUserId: number,
+  ): Promise<number> {
+    const insert = await client.query<{ id: number }>(
+      `INSERT INTO pcmazing_projects (
+        prospect_id,
+        name,
+        project_type,
+        status,
+        project_manager_user_id,
+        project_manager_user_source,
+        created_by_user_id
+      ) VALUES ($1, $2, $3, 'active', $4, $5, $6)
+      RETURNING id`,
+      [
+        prospectId,
+        projectName,
+        projectType,
+        manager.id,
+        manager.source,
+        createdByUserId,
+      ],
+    );
+
+    const projectId = insert.rows[0]?.id;
+    if (!projectId) {
+      throw new BadRequestException('Unable to create project.');
+    }
+
+    return projectId;
+  }
+
+  private async insertProjectMembers(
+    client: PoolClient,
+    projectId: number,
+    teamMembers: ProjectUserSummary[],
+  ): Promise<void> {
+    for (const member of teamMembers) {
+      await client.query(
+        `INSERT INTO pcmazing_project_members (project_id, user_id, user_source, member_role)
+         VALUES ($1, $2, $3, 'developer')
+         ON CONFLICT (project_id, user_id, user_source) DO NOTHING`,
+        [projectId, member.id, member.source],
+      );
+    }
+  }
+
+  private async saveSignedContract(
+    client: PoolClient,
+    prospectId: number,
+    contract: ProspectContractDto,
+    userId: number,
+    notes?: string,
+  ): Promise<number> {
+    await client.query(
+      `INSERT INTO pcmazing_client_responses (prospect_id, user_id, response_type, notes, outcome, remarks)
+       VALUES ($1, $2, 'other', $3, 'Contract Signed', $4)`,
+      [
+        prospectId,
+        userId,
+        contract.remarks?.trim() || notes?.trim() || null,
+        contract.remarks?.trim() || null,
+      ],
+    );
+
+    const contractResult = await client.query<{ id: number }>(
+      `INSERT INTO pcmazing_client_contracts (
+        prospect_id,
+        system_name,
+        system_type,
+        signed_at,
+        remarks,
+        created_by_user_id,
+        updated_by_user_id
+      ) VALUES ($1, $2, $3, $4::date, $5, $6, $6)
+      ON CONFLICT (prospect_id) DO UPDATE
+      SET system_name = EXCLUDED.system_name,
+          system_type = EXCLUDED.system_type,
+          signed_at = EXCLUDED.signed_at,
+          remarks = EXCLUDED.remarks,
+          updated_by_user_id = EXCLUDED.updated_by_user_id,
+          updated_at = NOW()
+      RETURNING id`,
+      [
+        prospectId,
+        contract.projectName.trim(),
+        contract.projectType.trim(),
+        contract.signedAt ?? null,
+        contract.remarks?.trim() || null,
+        userId,
+      ],
+    );
+
+    const contractId = contractResult.rows[0]?.id;
+    if (!contractId) {
+      throw new BadRequestException('Unable to save contract details.');
+    }
+
+    await client.query(`DELETE FROM pcmazing_client_contract_modules WHERE contract_id = $1`, [contractId]);
+    await client.query(`DELETE FROM pcmazing_client_contract_milestones WHERE contract_id = $1`, [contractId]);
+    await client.query(`DELETE FROM pcmazing_client_contract_payment_schedules WHERE contract_id = $1`, [contractId]);
+
+    for (const [index, module] of contract.modules.entries()) {
+      await client.query(
+        `INSERT INTO pcmazing_client_contract_modules (
+          contract_id, prospect_id, sort_order, module_name, description, features, process_flow
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          contractId,
+          prospectId,
+          index,
+          module.name.trim(),
+          module.description?.trim() || null,
+          module.features?.trim() || null,
+          module.processFlow?.trim() || null,
+        ],
+      );
+    }
+
+    const milestoneIds: number[] = [];
+    for (const [index, milestone] of contract.milestones.entries()) {
+      const connectedModuleSortOrders = this.normalizeLinkedSortOrders(milestone.connectedModuleId);
+      const milestoneResult = await client.query<{ id: number }>(
+        `INSERT INTO pcmazing_client_contract_milestones (
+          contract_id, prospect_id, sort_order, title, description, due_date, connected_module_sort_order
+        ) VALUES ($1, $2, $3, $4, $5, $6::date, $7)
+        RETURNING id`,
+        [
+          contractId,
+          prospectId,
+          index,
+          milestone.title.trim(),
+          milestone.description?.trim() || null,
+          milestone.dueDate ?? null,
+          connectedModuleSortOrders,
+        ],
+      );
+      milestoneIds.push(milestoneResult.rows[0]?.id ?? 0);
+    }
+
+    for (const [index, payment] of contract.paymentSchedule.entries()) {
+      const connectedMilestoneSortOrder = this.parseLinkedSortOrder(payment.connectedMilestoneId);
+      const milestoneId =
+        connectedMilestoneSortOrder !== null ? milestoneIds[connectedMilestoneSortOrder] ?? null : null;
+
+      await client.query(
+        `INSERT INTO pcmazing_client_contract_payment_schedules (
+          contract_id, prospect_id, sort_order, label, amount, description, due_date, notes, milestone_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7::date, $8, $9)`,
+        [
+          contractId,
+          prospectId,
+          index,
+          payment.label.trim(),
+          payment.amount,
+          payment.description?.trim() || null,
+          payment.dueDate ?? null,
+          payment.notes?.trim() || null,
+          milestoneId,
+        ],
+      );
+    }
+
+    return contractId;
   }
 
   async listTasks(
@@ -542,10 +768,11 @@ export class ProjectsService {
 
     return {
       columns: [
-        { key: 'backlog', label: 'Backlog' },
+        { key: 'epics', label: 'Epics' },
         { key: 'todo', label: 'To Do' },
         { key: 'in_progress', label: 'In Progress' },
         { key: 'in_review', label: 'In Review' },
+        { key: 'testing', label: 'Testing' },
         { key: 'done', label: 'Done' },
       ],
       phases: await this.listPhases(projectId),
@@ -699,7 +926,7 @@ export class ProjectsService {
 
     await this.assertEpicBelongsToProject(projectId, dto.epicId);
 
-    const status = dto.status ?? 'todo';
+      const status = dto.status ?? 'epics';
     const priority = dto.priority ?? 'medium';
     let assigneeId: number | null = null;
     let assigneeSource: UserSource | null = null;
@@ -1297,12 +1524,13 @@ export class ProjectsService {
        GROUP BY e.id
        ORDER BY
          CASE e.board_status
-           WHEN 'backlog' THEN 1
+            WHEN 'epics' THEN 1
            WHEN 'todo' THEN 2
            WHEN 'in_progress' THEN 3
            WHEN 'in_review' THEN 4
-           WHEN 'done' THEN 5
-           ELSE 6
+            WHEN 'testing' THEN 5
+            WHEN 'done' THEN 6
+            ELSE 7
          END,
          e.sort_order ASC,
          e.id ASC`,
@@ -1375,12 +1603,13 @@ export class ProjectsService {
          AND e.phase_id = $2
        ORDER BY
          CASE t.status
-           WHEN 'backlog' THEN 1
+            WHEN 'epics' THEN 1
            WHEN 'todo' THEN 2
            WHEN 'in_progress' THEN 3
            WHEN 'in_review' THEN 4
-           WHEN 'done' THEN 5
-           ELSE 6
+            WHEN 'testing' THEN 5
+            WHEN 'done' THEN 6
+            ELSE 7
          END,
          t.sort_order ASC,
          t.id ASC`,
@@ -1468,11 +1697,11 @@ export class ProjectsService {
     }
 
     const openCount = Number(row.open_count ?? 0);
-    // If epic is Done but a subtask is no longer Done, pull it back to In Review.
+    // If epic is Done but a subtask is no longer Done, pull it back to Testing.
     if (row.board_status === 'done' && openCount > 0) {
       await this.databaseService.query(
         `UPDATE pcmazing_project_epics
-         SET board_status = 'in_review',
+         SET board_status = 'testing',
              status = 'active',
              updated_at = NOW()
          WHERE id = $1 AND project_id = $2`,
@@ -1540,8 +1769,8 @@ export class ProjectsService {
       const phaseId = phase.rows[0]?.id;
       const epic = await client.query<{ id: number }>(
         `INSERT INTO pcmazing_project_epics (
-          project_id, phase_id, title, description, sort_order, status
-        ) VALUES ($1, $2, 'General', 'Default epic', 0, 'active')
+            project_id, phase_id, title, description, sort_order, status, board_status
+          ) VALUES ($1, $2, 'General', 'Default epic', 0, 'active', 'epics')
         RETURNING id`,
         [projectId, phaseId],
       );
@@ -1644,8 +1873,8 @@ export class ProjectsService {
           const insertedEpic = await client.query<{ id: number }>(
             `INSERT INTO pcmazing_project_epics (
               project_id, phase_id, contract_milestone_id, contract_module_id,
-              title, description, sort_order, status
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'planned')
+              title, description, sort_order, status, board_status
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'planned', 'epics')
             RETURNING id`,
             [
               projectId,
@@ -1686,6 +1915,35 @@ export class ProjectsService {
       .split(',')
       .map((part) => Number(part.trim()))
       .filter((part) => Number.isInteger(part) && part >= 0);
+  }
+
+  private parseLinkedSortOrder(value?: string | null): number | null {
+    if (value === undefined || value === null || value === '') {
+      return null;
+    }
+
+    const first = String(value).split(',')[0]?.trim();
+    const parsed = Number(first);
+    return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
+  }
+
+  private normalizeLinkedSortOrders(value?: string | null): string | null {
+    if (value === undefined || value === null || value === '') {
+      return null;
+    }
+
+    const orders = String(value)
+      .split(',')
+      .map((part) => part.trim())
+      .filter((part) => part !== '')
+      .map((part) => Number(part))
+      .filter((part) => Number.isInteger(part) && part >= 0);
+
+    if (!orders.length) {
+      return null;
+    }
+
+    return [...new Set(orders)].join(',');
   }
 
   private async assertEpicBelongsToProject(projectId: number, epicId: number): Promise<void> {

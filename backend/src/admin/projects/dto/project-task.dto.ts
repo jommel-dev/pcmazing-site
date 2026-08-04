@@ -12,10 +12,11 @@ import {
 import { ProjectUserRefDto } from './create-project.dto';
 
 export const PROJECT_TASK_STATUSES = [
-  'backlog',
+  'epics',
   'todo',
   'in_progress',
   'in_review',
+  'testing',
   'done',
 ] as const;
 

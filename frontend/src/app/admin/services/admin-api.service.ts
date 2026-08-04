@@ -638,7 +638,7 @@ export interface ProjectDetail extends ProjectListItem {
   teamMembers: ProjectUserSummary[];
 }
 
-export type ProjectTaskStatus = 'backlog' | 'todo' | 'in_progress' | 'in_review' | 'done';
+export type ProjectTaskStatus = 'epics' | 'todo' | 'in_progress' | 'in_review' | 'testing' | 'done';
 export type ProjectTaskPriority = 'low' | 'medium' | 'high' | 'urgent';
 
 export interface ProjectTaskItem {
@@ -1396,8 +1396,40 @@ export class AdminApiService {
   }
 
   createProject(payload: {
-    prospectId: number;
+      prospectId?: number;
+      clientName?: string;
+      company?: string;
+      email?: string;
+      phone?: string;
+      address?: string;
+      notes?: string;
     name?: string;
+      contract?: {
+        projectName: string;
+        projectType: string;
+        signedAt?: string;
+        remarks?: string;
+        modules: Array<{
+          name: string;
+          description?: string;
+          features?: string;
+          processFlow?: string;
+        }>;
+        milestones: Array<{
+          title: string;
+          description?: string;
+          dueDate?: string;
+          connectedModuleId?: string;
+        }>;
+        paymentSchedule: Array<{
+          label: string;
+          amount: number;
+          description?: string;
+          dueDate?: string;
+          notes?: string;
+          connectedMilestoneId?: string;
+        }>;
+      };
     projectManager: ProjectUserRef;
     teamMembers: ProjectUserRef[];
   }) {

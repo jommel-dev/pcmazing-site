@@ -65,10 +65,11 @@ export class ProjectTasksPageComponent implements OnInit {
   readonly dragging = signal<DragPayload | null>(null);
   readonly priorities: ProjectTaskPriority[] = ['low', 'medium', 'high', 'urgent'];
   readonly taskStatuses: ProjectTaskStatus[] = [
-    'backlog',
+    'epics',
     'todo',
     'in_progress',
     'in_review',
+    'testing',
     'done',
   ];
   readonly projectId = computed(() => Number(this.route.snapshot.paramMap.get('id')));
@@ -142,7 +143,7 @@ export class ProjectTasksPageComponent implements OnInit {
     }
   }
 
-  openCreateModal(epicId?: number, status: ProjectTaskStatus = 'todo'): void {
+  openCreateModal(epicId?: number, status: ProjectTaskStatus = 'epics'): void {
     const targetEpicId = epicId ?? this.epics()[0]?.id ?? null;
     if (!targetEpicId) {
       this.error.set('No epic available in this phase.');
