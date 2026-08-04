@@ -13,6 +13,7 @@
         <p class="mt-1 text-sm text-slate-500">{{ item.projectType || 'No project type' }} · {{ item.clientName }}</p>
       </div>
       <div class="flex flex-wrap gap-2">
+        <button type="button" class="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700" (click)="openEditAssignments()">Edit team</button>
         <a [routerLink]="['/admin/projects', item.id, 'tasks']" class="rounded-xl bg-pcmazing-500 px-4 py-2 text-sm font-bold text-white">Open Tasks</a>
         <a [routerLink]="['/admin/lead-generation', item.prospectId, 'view']" class="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700">Signed contract</a>
       </div>
@@ -81,5 +82,84 @@
         }
       </div>
     </div>
+
+    @if (editOpen()) {
+      <div class="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <h3 class="text-sm font-bold uppercase tracking-wide text-slate-500">Edit project team</h3>
+            <p class="mt-1 text-sm text-slate-500">Type @username to filter the available developers and project managers.</p>
+          </div>
+          <button type="button" class="text-sm font-bold text-slate-600" (click)="closeEditAssignments()">Close</button>
+        </div>
+
+        @if (assignmentError()) {
+          <div class="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{{ assignmentError() }}</div>
+        }
+
+        <div class="mt-4 grid gap-4 lg:grid-cols-2">
+          <div>
+            <label class="mb-1 block text-sm font-semibold">Project manager</label>
+            <input type="text" class="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm" placeholder="Type @username or name" [ngModel]="managerSearch()" (ngModelChange)="managerSearch.set($event)" />
+            @if (selectedManagerKey()) {
+              <div class="mt-2 flex flex-wrap gap-2">
+                @for (user of assignees(); track user.source + ':' + user.id) {
+                  @if (userKey(user) === selectedManagerKey()) {
+                    <span class="rounded-full bg-pcmazing-50 px-3 py-1 text-sm font-semibold text-pcmazing-700">{{ user.fullName }} · @{{ user.username }}</span>
+                  }
+                }
+              </div>
+            }
+            <div class="mt-2 max-h-44 space-y-2 overflow-y-auto rounded-xl border border-slate-200 p-3">
+              @for (user of filteredManagerCandidates(); track user.source + ':' + user.id) {
+                <button type="button" class="flex w-full items-start justify-between rounded-xl border border-slate-200 px-3 py-2 text-left text-sm hover:bg-slate-50" (click)="selectManager(user)">
+                  <span>
+                    <span class="block font-semibold text-slate-900">{{ user.fullName }}</span>
+                    <span class="block text-xs text-slate-500">@{{ user.username }} · {{ user.role }}</span>
+                  </span>
+                  @if (userKey(user) === selectedManagerKey()) {
+                    <span class="text-xs font-bold text-pcmazing-600">Selected</span>
+                  }
+                </button>
+              }
+            </div>
+          </div>
+
+          <div>
+            <label class="mb-1 block text-sm font-semibold">Developer team</label>
+            <input type="text" class="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm" placeholder="Type @username or name" [ngModel]="assignmentSearch()" (ngModelChange)="assignmentSearch.set($event)" />
+            <div class="mt-2 flex min-h-10 flex-wrap gap-2">
+              @for (user of developerCandidates(); track user.source + ':' + user.id) {
+                @if (isDeveloperSelected(user)) {
+                  <button type="button" class="rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700" (click)="removeSelectedDeveloper(user)">
+                    {{ user.fullName }} ×
+                  </button>
+                }
+              }
+            </div>
+            <div class="mt-2 max-h-72 space-y-2 overflow-y-auto rounded-xl border border-slate-200 p-3">
+              @for (user of filteredDeveloperCandidates(); track user.source + ':' + user.id) {
+                <button type="button" class="flex w-full items-start justify-between rounded-xl border border-slate-200 px-3 py-2 text-left text-sm hover:bg-slate-50" (click)="toggleDeveloper(user)">
+                  <span>
+                    <span class="block font-semibold text-slate-900">{{ user.fullName }}</span>
+                    <span class="block text-xs text-slate-500">@{{ user.username }} · {{ user.role }}{{ user.email ? ' · ' + user.email : '' }}</span>
+                  </span>
+                  @if (isDeveloperSelected(user)) {
+                    <span class="text-xs font-bold text-pcmazing-600">Added</span>
+                  }
+                </button>
+              }
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-4 flex justify-end gap-2">
+          <button type="button" class="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-700" (click)="closeEditAssignments()">Cancel</button>
+          <button type="button" class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60" (click)="saveAssignments()" [disabled]="savingAssignments()">
+            {{ savingAssignments() ? 'Saving...' : 'Save team' }}
+          </button>
+        </div>
+      </div>
+    }
   }
 </section>

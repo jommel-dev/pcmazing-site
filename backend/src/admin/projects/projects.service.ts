@@ -21,6 +21,7 @@ import {
   SetCurrentPhaseDto,
   UpdateProjectTaskDto,
 } from './dto/project-task.dto';
+import { deduplicateProjectUserRefs } from './project-assignments.util';
 import { PoolClient } from 'pg';
 import {
   deleteProjectTaskAttachmentFile,
@@ -418,6 +419,32 @@ export class ProjectsService {
       : await this.createProjectDirectly(dto, createdByUserId, manager, teamMembers);
 
     return this.getById(created);
+  }
+
+  async updateAssignments(
+    projectId: number,
+    dto: { projectManager: ProjectUserRefDto; teamMembers: ProjectUserRefDto[] },
+  ): Promise<ProjectDetail> {
+    await this.ensureReady();
+
+    const manager = await this.requireActiveUser(dto.projectManager);
+    const teamMembers = await this.requireDeveloperUsers(deduplicateProjectUserRefs(dto.teamMembers));
+
+    await this.databaseService.withTransaction(async (client) => {
+      await client.query(
+        `UPDATE pcmazing_projects
+         SET project_manager_user_id = $1,
+             project_manager_user_source = $2,
+             updated_at = NOW()
+         WHERE id = $3`,
+        [manager.id, manager.source, projectId],
+      );
+
+      await client.query(`DELETE FROM pcmazing_project_members WHERE project_id = $1`, [projectId]);
+      await this.insertProjectMembers(client, projectId, teamMembers);
+    });
+
+    return this.getById(projectId);
   }
 
   private async createProjectFromSignedProspect(

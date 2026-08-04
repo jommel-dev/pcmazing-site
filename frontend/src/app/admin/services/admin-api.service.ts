@@ -1440,6 +1440,14 @@ export class AdminApiService {
     );
   }
 
+  updateProjectAssignments(projectId: number, payload: { projectManager: ProjectUserRef; teamMembers: ProjectUserRef[] }) {
+    return this.http.patch<MessageResponse<ProjectDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/projects/${projectId}/assignments`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
   listProjectTasks(projectId: number, options?: { phaseId?: number | null }) {
     let params = new HttpParams();
     if (options?.phaseId != null) {

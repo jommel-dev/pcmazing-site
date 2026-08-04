@@ -18,7 +18,7 @@ import { memoryStorage } from 'multer';
 import type { Request } from 'express';
 import { AdminJwtPayload, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../rbac/roles.guard';
-import { CreateProjectDto } from './dto/create-project.dto';
+import { CreateProjectDto, ProjectUserRefDto } from './dto/create-project.dto';
 import {
   CreateProjectTaskDto,
   MoveProjectEpicDto,
@@ -260,6 +260,20 @@ export class ProjectsController {
     return this.projectsService.create(dto, userId).then((data) => ({
       success: true,
       message: 'Project created.',
+      data,
+    }));
+  }
+
+  @Patch(':id/assignments')
+  async updateAssignments(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: { projectManager: ProjectUserRefDto; teamMembers: ProjectUserRefDto[] },
+    @Req() req: Request & { user?: AdminJwtPayload },
+  ) {
+    await this.projectsService.assertCanAccessProject(id, this.actorFrom(req));
+    return this.projectsService.updateAssignments(id, dto).then((data) => ({
+      success: true,
+      message: 'Project assignments updated.',
       data,
     }));
   }
