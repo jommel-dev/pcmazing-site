@@ -1,4 +1,5 @@
--- Add the dedicated Epics board and Testing task workflow stage.
+-- Correct databases where migration 39 was already applied:
+-- tasks use workflow columns, while epic cards remain on the dedicated Epics board.
 
 ALTER TABLE pcmazing_project_tasks
   DROP CONSTRAINT IF EXISTS pcmazing_project_tasks_status_check;

@@ -17,6 +17,7 @@ import {
   CreateProjectTaskDto,
   MoveProjectEpicDto,
   MoveProjectTaskDto,
+  PROJECT_BOARD_STATUSES,
   PROJECT_TASK_STATUSES,
   SetCurrentPhaseDto,
   UpdateProjectTaskDto,
@@ -29,7 +30,8 @@ import {
 } from './task-attachment.util';
 
 type UserSource = 'pcmazing_admin_users' | 'tblusers';
-type BoardStatus = (typeof PROJECT_TASK_STATUSES)[number];
+type BoardStatus = (typeof PROJECT_BOARD_STATUSES)[number];
+type TaskStatus = (typeof PROJECT_TASK_STATUSES)[number];
 
 export interface ProjectActor {
   userId: number;
@@ -62,6 +64,40 @@ export interface ProjectListItem {
 }
 
 export interface ProjectDetail extends ProjectListItem {
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  notes: string | null;
+  contract: {
+    id: number;
+    projectName: string;
+    projectType: string;
+    signedAt: string | null;
+    remarks: string | null;
+    modules: Array<{
+      id: number;
+      name: string;
+      description: string | null;
+      features: string | null;
+      processFlow: string | null;
+    }>;
+    milestones: Array<{
+      id: number;
+      title: string;
+      description: string | null;
+      dueDate: string | null;
+      connectedModuleId: string | null;
+    }>;
+    paymentSchedule: Array<{
+      id: number;
+      label: string;
+      amount: number;
+      description: string | null;
+      dueDate: string | null;
+      notes: string | null;
+      connectedMilestoneId: string | null;
+    }>;
+  } | null;
   teamMembers: ProjectUserSummary[];
 }
 
@@ -72,7 +108,7 @@ export interface ProjectTaskItem {
   epicTitle: string | null;
   title: string;
   description: string | null;
-  status: (typeof PROJECT_TASK_STATUSES)[number];
+  status: TaskStatus;
   priority: 'low' | 'medium' | 'high' | 'urgent';
   sortOrder: number;
   assignee: ProjectUserSummary | null;
@@ -335,6 +371,10 @@ export class ProjectsService {
       status: string;
       client_name: string;
       company: string | null;
+      email: string | null;
+      phone: string | null;
+      address: string | null;
+      notes: string | null;
       project_manager_user_id: number;
       project_manager_user_source: UserSource;
       created_at: string;
@@ -348,6 +388,10 @@ export class ProjectsService {
         p.status,
         c.client_name,
         c.company,
+        c.email,
+        c.phone,
+        c.address,
+        c.notes,
         p.project_manager_user_id,
         p.project_manager_user_source,
         p.created_at::text,
@@ -382,6 +426,7 @@ export class ProjectsService {
     const teamMembers = membersResult.rows
       .map((member) => users.get(`${member.user_source}:${member.user_id}`))
       .filter((user): user is ProjectUserSummary => Boolean(user));
+    const contract = await this.loadProjectContract(row.prospect_id);
 
     return {
       id: row.id,
@@ -391,6 +436,11 @@ export class ProjectsService {
       status: row.status,
       clientName: row.client_name,
       company: row.company,
+      email: row.email,
+      phone: row.phone,
+      address: row.address,
+      notes: row.notes,
+      contract,
       projectManager: users.get(`${row.project_manager_user_source}:${row.project_manager_user_id}`) ?? null,
       teamMemberCount: teamMembers.length,
       teamMembers,
@@ -419,6 +469,84 @@ export class ProjectsService {
       : await this.createProjectDirectly(dto, createdByUserId, manager, teamMembers);
 
     return this.getById(created);
+  }
+
+  async update(
+    projectId: number,
+    dto: CreateProjectDto,
+    updatedByUserId: number,
+  ): Promise<ProjectDetail> {
+    await this.ensureReady();
+    const existing = await this.getById(projectId);
+    const clientName = dto.clientName?.trim();
+    const contract = dto.contract;
+    if (!clientName) {
+      throw new BadRequestException('Client name is required.');
+    }
+    if (!contract) {
+      throw new BadRequestException('Signed contract details are required.');
+    }
+    assertDealContractReadyForSigning(contract);
+
+    const manager = await this.requireActiveUser(dto.projectManager);
+    const teamMembers = await this.requireDeveloperUsers(
+      deduplicateProjectUserRefs(dto.teamMembers),
+    );
+
+    await this.databaseService.withTransaction(async (client) => {
+      await client.query(
+        `UPDATE pcmazing_client_prospects
+         SET client_name = $1,
+             company = $2,
+             email = $3,
+             phone = $4,
+             address = $5,
+             notes = $6,
+             updated_at = NOW()
+         WHERE id = $7`,
+        [
+          clientName,
+          dto.company?.trim() || null,
+          dto.email?.trim() || null,
+          dto.phone?.trim() || null,
+          dto.address?.trim() || null,
+          dto.notes?.trim() || null,
+          existing.prospectId,
+        ],
+      );
+
+      await client.query(
+        `UPDATE pcmazing_projects
+         SET name = $1,
+             project_type = $2,
+             project_manager_user_id = $3,
+             project_manager_user_source = $4,
+             updated_at = NOW()
+         WHERE id = $5`,
+        [
+          dto.name?.trim() || contract.projectName.trim(),
+          contract.projectType.trim() || null,
+          manager.id,
+          manager.source,
+          projectId,
+        ],
+      );
+
+      await client.query(`DELETE FROM pcmazing_project_members WHERE project_id = $1`, [projectId]);
+      await this.insertProjectMembers(client, projectId, teamMembers);
+      await this.saveSignedContract(
+        client,
+        existing.prospectId,
+        contract,
+        updatedByUserId,
+        dto.notes,
+        false,
+      );
+      await this.syncProjectHierarchyMetadata(client, projectId);
+      await this.seedPhasesAndModuleEpics(client, projectId, existing.prospectId);
+    });
+
+    return this.getById(projectId);
   }
 
   async updateAssignments(
@@ -631,17 +759,20 @@ export class ProjectsService {
     contract: ProspectContractDto,
     userId: number,
     notes?: string,
+    recordSignedResponse = true,
   ): Promise<number> {
-    await client.query(
-      `INSERT INTO pcmazing_client_responses (prospect_id, user_id, response_type, notes, outcome, remarks)
-       VALUES ($1, $2, 'other', $3, 'Contract Signed', $4)`,
-      [
-        prospectId,
-        userId,
-        contract.remarks?.trim() || notes?.trim() || null,
-        contract.remarks?.trim() || null,
-      ],
-    );
+    if (recordSignedResponse) {
+      await client.query(
+        `INSERT INTO pcmazing_client_responses (prospect_id, user_id, response_type, notes, outcome, remarks)
+         VALUES ($1, $2, 'other', $3, 'Contract Signed', $4)`,
+        [
+          prospectId,
+          userId,
+          contract.remarks?.trim() || notes?.trim() || null,
+          contract.remarks?.trim() || null,
+        ],
+      );
+    }
 
     const contractResult = await client.query<{ id: number }>(
       `INSERT INTO pcmazing_client_contracts (
@@ -676,72 +807,316 @@ export class ProjectsService {
       throw new BadRequestException('Unable to save contract details.');
     }
 
-    await client.query(`DELETE FROM pcmazing_client_contract_modules WHERE contract_id = $1`, [contractId]);
-    await client.query(`DELETE FROM pcmazing_client_contract_milestones WHERE contract_id = $1`, [contractId]);
-    await client.query(`DELETE FROM pcmazing_client_contract_payment_schedules WHERE contract_id = $1`, [contractId]);
+    const existingModules = await client.query<{ id: number }>(
+      `SELECT id FROM pcmazing_client_contract_modules
+       WHERE contract_id = $1
+       ORDER BY sort_order ASC, id ASC`,
+      [contractId],
+    );
 
     for (const [index, module] of contract.modules.entries()) {
+      const existingId = existingModules.rows[index]?.id;
+      if (existingId) {
+        await client.query(
+          `UPDATE pcmazing_client_contract_modules
+           SET sort_order = $1,
+               module_name = $2,
+               description = $3,
+               features = $4,
+               process_flow = $5,
+               prospect_id = $6
+           WHERE id = $7`,
+          [
+            index,
+            module.name.trim(),
+            module.description?.trim() || null,
+            module.features?.trim() || null,
+            module.processFlow?.trim() || null,
+            prospectId,
+            existingId,
+          ],
+        );
+      } else {
+        await client.query(
+          `INSERT INTO pcmazing_client_contract_modules (
+            contract_id, prospect_id, sort_order, module_name, description, features, process_flow
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            contractId,
+            prospectId,
+            index,
+            module.name.trim(),
+            module.description?.trim() || null,
+            module.features?.trim() || null,
+            module.processFlow?.trim() || null,
+          ],
+        );
+      }
+    }
+    const removedModuleIds = existingModules.rows.slice(contract.modules.length).map((row) => row.id);
+    if (removedModuleIds.length) {
       await client.query(
-        `INSERT INTO pcmazing_client_contract_modules (
-          contract_id, prospect_id, sort_order, module_name, description, features, process_flow
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [
-          contractId,
-          prospectId,
-          index,
-          module.name.trim(),
-          module.description?.trim() || null,
-          module.features?.trim() || null,
-          module.processFlow?.trim() || null,
-        ],
+        `DELETE FROM pcmazing_client_contract_modules WHERE id = ANY($1::bigint[])`,
+        [removedModuleIds],
       );
     }
 
+    const existingMilestones = await client.query<{ id: number }>(
+      `SELECT id FROM pcmazing_client_contract_milestones
+       WHERE contract_id = $1
+       ORDER BY sort_order ASC, id ASC`,
+      [contractId],
+    );
     const milestoneIds: number[] = [];
     for (const [index, milestone] of contract.milestones.entries()) {
       const connectedModuleSortOrders = this.normalizeLinkedSortOrders(milestone.connectedModuleId);
-      const milestoneResult = await client.query<{ id: number }>(
-        `INSERT INTO pcmazing_client_contract_milestones (
-          contract_id, prospect_id, sort_order, title, description, due_date, connected_module_sort_order
-        ) VALUES ($1, $2, $3, $4, $5, $6::date, $7)
-        RETURNING id`,
-        [
-          contractId,
-          prospectId,
-          index,
-          milestone.title.trim(),
-          milestone.description?.trim() || null,
-          milestone.dueDate ?? null,
-          connectedModuleSortOrders,
-        ],
-      );
+      const existingId = existingMilestones.rows[index]?.id;
+      const milestoneResult = existingId
+        ? await client.query<{ id: number }>(
+            `UPDATE pcmazing_client_contract_milestones
+             SET sort_order = $1,
+                 title = $2,
+                 description = $3,
+                 due_date = $4::date,
+                 connected_module_sort_order = $5,
+                 prospect_id = $6
+             WHERE id = $7
+             RETURNING id`,
+            [
+              index,
+              milestone.title.trim(),
+              milestone.description?.trim() || null,
+              milestone.dueDate ?? null,
+              connectedModuleSortOrders,
+              prospectId,
+              existingId,
+            ],
+          )
+        : await client.query<{ id: number }>(
+            `INSERT INTO pcmazing_client_contract_milestones (
+              contract_id, prospect_id, sort_order, title, description, due_date, connected_module_sort_order
+            ) VALUES ($1, $2, $3, $4, $5, $6::date, $7)
+            RETURNING id`,
+            [
+              contractId,
+              prospectId,
+              index,
+              milestone.title.trim(),
+              milestone.description?.trim() || null,
+              milestone.dueDate ?? null,
+              connectedModuleSortOrders,
+            ],
+          );
       milestoneIds.push(milestoneResult.rows[0]?.id ?? 0);
     }
+    const removedMilestoneIds = existingMilestones.rows
+      .slice(contract.milestones.length)
+      .map((row) => row.id);
+    if (removedMilestoneIds.length) {
+      await client.query(
+        `DELETE FROM pcmazing_client_contract_milestones WHERE id = ANY($1::bigint[])`,
+        [removedMilestoneIds],
+      );
+    }
 
+    const existingPayments = await client.query<{ id: number }>(
+      `SELECT id FROM pcmazing_client_contract_payment_schedules
+       WHERE contract_id = $1
+       ORDER BY sort_order ASC, id ASC`,
+      [contractId],
+    );
     for (const [index, payment] of contract.paymentSchedule.entries()) {
       const connectedMilestoneSortOrder = this.parseLinkedSortOrder(payment.connectedMilestoneId);
       const milestoneId =
         connectedMilestoneSortOrder !== null ? milestoneIds[connectedMilestoneSortOrder] ?? null : null;
 
+      const existingId = existingPayments.rows[index]?.id;
+      if (existingId) {
+        await client.query(
+          `UPDATE pcmazing_client_contract_payment_schedules
+           SET sort_order = $1,
+               label = $2,
+               amount = $3,
+               description = $4,
+               due_date = $5::date,
+               notes = $6,
+               milestone_id = $7,
+               prospect_id = $8
+           WHERE id = $9`,
+          [
+            index,
+            payment.label.trim(),
+            payment.amount,
+            payment.description?.trim() || null,
+            payment.dueDate ?? null,
+            payment.notes?.trim() || null,
+            milestoneId,
+            prospectId,
+            existingId,
+          ],
+        );
+      } else {
+        await client.query(
+          `INSERT INTO pcmazing_client_contract_payment_schedules (
+            contract_id, prospect_id, sort_order, label, amount, description, due_date, notes, milestone_id
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7::date, $8, $9)`,
+          [
+            contractId,
+            prospectId,
+            index,
+            payment.label.trim(),
+            payment.amount,
+            payment.description?.trim() || null,
+            payment.dueDate ?? null,
+            payment.notes?.trim() || null,
+            milestoneId,
+          ],
+        );
+      }
+    }
+    const removedPaymentIds = existingPayments.rows
+      .slice(contract.paymentSchedule.length)
+      .map((row) => row.id);
+    if (removedPaymentIds.length) {
       await client.query(
-        `INSERT INTO pcmazing_client_contract_payment_schedules (
-          contract_id, prospect_id, sort_order, label, amount, description, due_date, notes, milestone_id
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7::date, $8, $9)`,
-        [
-          contractId,
-          prospectId,
-          index,
-          payment.label.trim(),
-          payment.amount,
-          payment.description?.trim() || null,
-          payment.dueDate ?? null,
-          payment.notes?.trim() || null,
-          milestoneId,
-        ],
+        `DELETE FROM pcmazing_client_contract_payment_schedules WHERE id = ANY($1::bigint[])`,
+        [removedPaymentIds],
       );
     }
 
     return contractId;
+  }
+
+  private async syncProjectHierarchyMetadata(client: PoolClient, projectId: number): Promise<void> {
+    await client.query(
+      `UPDATE pcmazing_project_phases phase
+       SET title = milestone.title,
+           description = milestone.description,
+           due_date = milestone.due_date,
+           sort_order = milestone.sort_order,
+           updated_at = NOW()
+       FROM pcmazing_client_contract_milestones milestone
+       WHERE phase.project_id = $1
+         AND phase.contract_milestone_id = milestone.id`,
+      [projectId],
+    );
+    await client.query(
+      `UPDATE pcmazing_project_epics epic
+       SET title = module.module_name,
+           description = module.description,
+           sort_order = module.sort_order,
+           updated_at = NOW()
+       FROM pcmazing_client_contract_modules module
+       WHERE epic.project_id = $1
+         AND epic.contract_module_id = module.id`,
+      [projectId],
+    );
+  }
+
+  private async loadProjectContract(prospectId: number): Promise<ProjectDetail['contract']> {
+    const contractResult = await this.databaseService.query<{
+      id: number;
+      system_name: string;
+      system_type: string;
+      signed_at: string | null;
+      remarks: string | null;
+    }>(
+      `SELECT id, system_name, system_type, signed_at::text, remarks
+       FROM pcmazing_client_contracts
+       WHERE prospect_id = $1
+       LIMIT 1`,
+      [prospectId],
+    );
+    const contractRow = contractResult.rows[0];
+    if (!contractRow) {
+      return null;
+    }
+
+    const [modulesResult, milestonesResult, paymentsResult] = await Promise.all([
+      this.databaseService.query<{
+        id: number;
+        module_name: string;
+        description: string | null;
+        features: string | null;
+        process_flow: string | null;
+      }>(
+        `SELECT id, module_name, description, features, process_flow
+         FROM pcmazing_client_contract_modules
+         WHERE contract_id = $1
+         ORDER BY sort_order ASC, id ASC`,
+        [contractRow.id],
+      ),
+      this.databaseService.query<{
+        id: number;
+        title: string;
+        description: string | null;
+        due_date: string | null;
+        connected_module_sort_order: string | number | null;
+        sort_order: number;
+      }>(
+        `SELECT id, title, description, due_date::text, connected_module_sort_order, sort_order
+         FROM pcmazing_client_contract_milestones
+         WHERE contract_id = $1
+         ORDER BY sort_order ASC, id ASC`,
+        [contractRow.id],
+      ),
+      this.databaseService.query<{
+        id: number;
+        label: string;
+        amount: string;
+        description: string | null;
+        due_date: string | null;
+        notes: string | null;
+        milestone_id: number | null;
+      }>(
+        `SELECT id, label, amount::text, description, due_date::text, notes, milestone_id
+         FROM pcmazing_client_contract_payment_schedules
+         WHERE contract_id = $1
+         ORDER BY sort_order ASC, id ASC`,
+        [contractRow.id],
+      ),
+    ]);
+
+    const milestoneSortOrderById = new Map(
+      milestonesResult.rows.map((row) => [row.id, row.sort_order]),
+    );
+    return {
+      id: contractRow.id,
+      projectName: contractRow.system_name,
+      projectType: contractRow.system_type,
+      signedAt: contractRow.signed_at,
+      remarks: contractRow.remarks,
+      modules: modulesResult.rows.map((row) => ({
+        id: row.id,
+        name: row.module_name,
+        description: row.description,
+        features: row.features,
+        processFlow: row.process_flow,
+      })),
+      milestones: milestonesResult.rows.map((row) => ({
+        id: row.id,
+        title: row.title,
+        description: row.description,
+        dueDate: row.due_date,
+        connectedModuleId:
+          row.connected_module_sort_order === null
+          || row.connected_module_sort_order === undefined
+            ? null
+            : String(row.connected_module_sort_order),
+      })),
+      paymentSchedule: paymentsResult.rows.map((row) => ({
+        id: row.id,
+        label: row.label,
+        amount: Number(row.amount),
+        description: row.description,
+        dueDate: row.due_date,
+        notes: row.notes,
+        connectedMilestoneId:
+          row.milestone_id != null && milestoneSortOrderById.has(row.milestone_id)
+            ? String(milestoneSortOrderById.get(row.milestone_id))
+            : null,
+      })),
+    };
   }
 
   async listTasks(
@@ -863,50 +1238,18 @@ export class ProjectsService {
     await this.getById(projectId);
     const epic = await this.getEpicById(projectId, epicId);
 
-    if (dto.status === 'done') {
-      const open = await this.countOpenTasksForEpic(epicId);
-      if (open > 0) {
-        throw new BadRequestException(
-          'Complete all subtasks before moving this epic to Done.',
-        );
-      }
-    }
-
     await this.databaseService.withTransaction(async (client) => {
-      if (epic.boardStatus !== dto.status) {
-        await client.query(
-          `UPDATE pcmazing_project_epics
-           SET sort_order = sort_order - 1,
-               updated_at = NOW()
-           WHERE project_id = $1
-             AND phase_id = $2
-             AND board_status = $3
-             AND sort_order > $4`,
-          [projectId, epic.phaseId, epic.boardStatus, epic.sortOrder],
-        );
+      if (dto.sortOrder < epic.sortOrder) {
         await client.query(
           `UPDATE pcmazing_project_epics
            SET sort_order = sort_order + 1,
                updated_at = NOW()
            WHERE project_id = $1
              AND phase_id = $2
-             AND board_status = $3
-             AND sort_order >= $4
+             AND sort_order >= $3
+             AND sort_order < $4
              AND id <> $5`,
-          [projectId, epic.phaseId, dto.status, dto.sortOrder, epicId],
-        );
-      } else if (dto.sortOrder < epic.sortOrder) {
-        await client.query(
-          `UPDATE pcmazing_project_epics
-           SET sort_order = sort_order + 1,
-               updated_at = NOW()
-           WHERE project_id = $1
-             AND phase_id = $2
-             AND board_status = $3
-             AND sort_order >= $4
-             AND sort_order < $5
-             AND id <> $6`,
-          [projectId, epic.phaseId, dto.status, dto.sortOrder, epic.sortOrder, epicId],
+          [projectId, epic.phaseId, dto.sortOrder, epic.sortOrder, epicId],
         );
       } else if (dto.sortOrder > epic.sortOrder) {
         await client.query(
@@ -915,23 +1258,19 @@ export class ProjectsService {
                updated_at = NOW()
            WHERE project_id = $1
              AND phase_id = $2
-             AND board_status = $3
-             AND sort_order <= $4
-             AND sort_order > $5
-             AND id <> $6`,
-          [projectId, epic.phaseId, dto.status, dto.sortOrder, epic.sortOrder, epicId],
+             AND sort_order <= $3
+             AND sort_order > $4
+             AND id <> $5`,
+          [projectId, epic.phaseId, dto.sortOrder, epic.sortOrder, epicId],
         );
       }
 
-      const lifecycleStatus = dto.status === 'done' ? 'completed' : 'active';
       await client.query(
         `UPDATE pcmazing_project_epics
-         SET board_status = $1,
-             sort_order = $2,
-             status = $3,
+         SET sort_order = $1,
              updated_at = NOW()
-         WHERE id = $4 AND project_id = $5`,
-        [dto.status, dto.sortOrder, lifecycleStatus, epicId, projectId],
+         WHERE id = $2 AND project_id = $3`,
+        [dto.sortOrder, epicId, projectId],
       );
     });
 
@@ -953,7 +1292,7 @@ export class ProjectsService {
 
     await this.assertEpicBelongsToProject(projectId, dto.epicId);
 
-      const status = dto.status ?? 'epics';
+    const status = dto.status ?? 'todo';
     const priority = dto.priority ?? 'medium';
     let assigneeId: number | null = null;
     let assigneeSource: UserSource | null = null;
@@ -966,32 +1305,56 @@ export class ProjectsService {
 
     const maxOrder = await this.databaseService.query<{ max: string | null }>(
       `SELECT MAX(sort_order)::text AS max
-       FROM pcmazing_project_tasks
-       WHERE project_id = $1 AND status = $2 AND epic_id = $3`,
+       FROM pcmazing_project_tasks task
+       WHERE task.project_id = $1
+         AND task.status = $2
+         AND task.epic_id IN (
+           SELECT epic.id
+           FROM pcmazing_project_epics epic
+           WHERE epic.phase_id = (
+             SELECT selected.phase_id
+             FROM pcmazing_project_epics selected
+             WHERE selected.id = $3 AND selected.project_id = $1
+           )
+         )`,
       [projectId, status, dto.epicId],
     );
     const sortOrder = Number(maxOrder.rows[0]?.max ?? -1) + 1;
 
-    const insert = await this.databaseService.query<{ id: number }>(
-      `INSERT INTO pcmazing_project_tasks (
-        project_id, epic_id, title, description, status, priority, sort_order,
-        assignee_user_id, assignee_user_source, due_date, created_by_user_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::date, $11)
-      RETURNING id`,
-      [
-        projectId,
-        dto.epicId,
-        dto.title.trim(),
-        dto.description?.trim() || null,
-        status,
-        priority,
-        sortOrder,
-        assigneeId,
-        assigneeSource,
-        dto.dueDate ?? null,
-        createdByUserId,
-      ],
-    );
+    let insert;
+    try {
+      insert = await this.databaseService.query<{ id: number }>(
+        `INSERT INTO pcmazing_project_tasks (
+          project_id, epic_id, title, description, status, priority, sort_order,
+          assignee_user_id, assignee_user_source, due_date, created_by_user_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::date, $11)
+        RETURNING id`,
+        [
+          projectId,
+          dto.epicId,
+          dto.title.trim(),
+          dto.description?.trim() || null,
+          status,
+          priority,
+          sortOrder,
+          assigneeId,
+          assigneeSource,
+          dto.dueDate ?? null,
+          createdByUserId,
+        ],
+      );
+    } catch (error: unknown) {
+      const databaseError = error as { code?: string; constraint?: string };
+      if (
+        databaseError.code === '23514'
+        && databaseError.constraint === 'pcmazing_project_tasks_status_check'
+      ) {
+        throw new ServiceUnavailableException(
+          'The Kanban database statuses are outdated. Apply migration 40 before using Testing.',
+        );
+      }
+      throw error;
+    }
 
     const taskId = insert.rows[0]?.id;
     if (!taskId) {
@@ -1105,7 +1468,15 @@ export class ProjectsService {
            WHERE project_id = $1
              AND status = $2
              AND sort_order > $3
-             AND COALESCE(epic_id, 0) = COALESCE($4::bigint, 0)`,
+             AND epic_id IN (
+               SELECT epic.id
+               FROM pcmazing_project_epics epic
+               WHERE epic.phase_id = (
+                 SELECT selected.phase_id
+                 FROM pcmazing_project_epics selected
+                 WHERE selected.id = $4 AND selected.project_id = $1
+               )
+             )`,
           [projectId, task.status, task.sortOrder, task.epicId],
         );
         await client.query(
@@ -1115,7 +1486,15 @@ export class ProjectsService {
            WHERE project_id = $1
              AND status = $2
              AND sort_order >= $3
-             AND COALESCE(epic_id, 0) = COALESCE($4::bigint, 0)`,
+             AND epic_id IN (
+               SELECT epic.id
+               FROM pcmazing_project_epics epic
+               WHERE epic.phase_id = (
+                 SELECT selected.phase_id
+                 FROM pcmazing_project_epics selected
+                 WHERE selected.id = $4 AND selected.project_id = $1
+               )
+             )`,
           [projectId, dto.status, dto.sortOrder, task.epicId],
         );
       } else if (dto.sortOrder < task.sortOrder) {
@@ -1128,7 +1507,15 @@ export class ProjectsService {
              AND sort_order >= $3
              AND sort_order < $4
              AND id <> $5
-             AND COALESCE(epic_id, 0) = COALESCE($6::bigint, 0)`,
+             AND epic_id IN (
+               SELECT epic.id
+               FROM pcmazing_project_epics epic
+               WHERE epic.phase_id = (
+                 SELECT selected.phase_id
+                 FROM pcmazing_project_epics selected
+                 WHERE selected.id = $6 AND selected.project_id = $1
+               )
+             )`,
           [projectId, dto.status, dto.sortOrder, task.sortOrder, taskId, task.epicId],
         );
       } else if (dto.sortOrder > task.sortOrder) {
@@ -1141,7 +1528,15 @@ export class ProjectsService {
              AND sort_order <= $3
              AND sort_order > $4
              AND id <> $5
-             AND COALESCE(epic_id, 0) = COALESCE($6::bigint, 0)`,
+             AND epic_id IN (
+               SELECT epic.id
+               FROM pcmazing_project_epics epic
+               WHERE epic.phase_id = (
+                 SELECT selected.phase_id
+                 FROM pcmazing_project_epics selected
+                 WHERE selected.id = $6 AND selected.project_id = $1
+               )
+             )`,
           [projectId, dto.status, dto.sortOrder, task.sortOrder, taskId, task.epicId],
         );
       }
@@ -1178,7 +1573,15 @@ export class ProjectsService {
          WHERE project_id = $1
            AND status = $2
            AND sort_order > $3
-           AND COALESCE(epic_id, 0) = COALESCE($4::bigint, 0)`,
+           AND epic_id IN (
+             SELECT epic.id
+             FROM pcmazing_project_epics epic
+             WHERE epic.phase_id = (
+               SELECT selected.phase_id
+               FROM pcmazing_project_epics selected
+               WHERE selected.id = $4 AND selected.project_id = $1
+             )
+           )`,
         [projectId, task.status, task.sortOrder, task.epicId],
       );
     });
@@ -1334,7 +1737,7 @@ export class ProjectsService {
       epic_title: string | null;
       title: string;
       description: string | null;
-      status: (typeof PROJECT_TASK_STATUSES)[number];
+      status: TaskStatus;
       priority: 'low' | 'medium' | 'high' | 'urgent';
       sort_order: number;
       assignee_user_id: number | null;
@@ -1573,7 +1976,8 @@ export class ProjectsService {
       description: row.description,
       sortOrder: row.sort_order,
       status: row.status,
-      boardStatus: row.board_status,
+      // Epic placement is a board invariant even before migration 40 normalizes legacy rows.
+      boardStatus: 'epics',
       taskCount: Number(row.task_count),
       doneTaskCount: Number(row.done_task_count),
       tasks: [],
@@ -1588,7 +1992,7 @@ export class ProjectsService {
       epic_title: string | null;
       title: string;
       description: string | null;
-      status: BoardStatus;
+      status: TaskStatus;
       priority: 'low' | 'medium' | 'high' | 'urgent';
       sort_order: number;
       assignee_user_id: number | null;
@@ -1690,25 +2094,12 @@ export class ProjectsService {
     return found;
   }
 
-  private async countOpenTasksForEpic(epicId: number): Promise<number> {
-    const result = await this.databaseService.query<{ count: string }>(
-      `SELECT COUNT(*)::text AS count
-       FROM pcmazing_project_tasks
-       WHERE epic_id = $1
-         AND status <> 'done'`,
-      [epicId],
-    );
-    return Number(result.rows[0]?.count ?? 0);
-  }
-
   private async syncEpicAfterTaskChange(projectId: number, epicId: number): Promise<void> {
     const epic = await this.databaseService.query<{
-      board_status: BoardStatus;
       task_count: string;
       open_count: string;
     }>(
       `SELECT
-        e.board_status,
         COUNT(t.id)::text AS task_count,
         COUNT(t.id) FILTER (WHERE t.status <> 'done')::text AS open_count
        FROM pcmazing_project_epics e
@@ -1723,18 +2114,17 @@ export class ProjectsService {
       return;
     }
 
+    const taskCount = Number(row.task_count ?? 0);
     const openCount = Number(row.open_count ?? 0);
-    // If epic is Done but a subtask is no longer Done, pull it back to Testing.
-    if (row.board_status === 'done' && openCount > 0) {
-      await this.databaseService.query(
-        `UPDATE pcmazing_project_epics
-         SET board_status = 'testing',
-             status = 'active',
-             updated_at = NOW()
-         WHERE id = $1 AND project_id = $2`,
-        [epicId, projectId],
-      );
-    }
+    const lifecycleStatus =
+      taskCount === 0 ? 'planned' : openCount === 0 ? 'completed' : 'active';
+    await this.databaseService.query(
+      `UPDATE pcmazing_project_epics
+       SET status = $1,
+           updated_at = NOW()
+       WHERE id = $2 AND project_id = $3`,
+      [lifecycleStatus, epicId, projectId],
+    );
   }
 
   private async ensureHierarchySeeded(projectId: number, prospectId: number): Promise<void> {

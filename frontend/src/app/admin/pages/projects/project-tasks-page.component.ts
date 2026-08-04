@@ -5,6 +5,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import {
   AdminApiService,
+  ProjectBoardStatus,
   ProjectDetail,
   ProjectEpicItem,
   ProjectPhaseItem,
@@ -36,7 +37,7 @@ export class ProjectTasksPageComponent implements OnInit {
   readonly saving = signal(false);
   readonly error = signal('');
   readonly project = signal<ProjectDetail | null>(null);
-  readonly columns = signal<Array<{ key: ProjectTaskStatus; label: string }>>([]);
+  readonly columns = signal<Array<{ key: ProjectBoardStatus; label: string }>>([]);
   readonly phases = signal<ProjectPhaseItem[]>([]);
   readonly epics = signal<ProjectEpicItem[]>([]);
   readonly tasks = signal<ProjectTaskItem[]>([]);
@@ -65,7 +66,6 @@ export class ProjectTasksPageComponent implements OnInit {
   readonly dragging = signal<DragPayload | null>(null);
   readonly priorities: ProjectTaskPriority[] = ['low', 'medium', 'high', 'urgent'];
   readonly taskStatuses: ProjectTaskStatus[] = [
-    'epics',
     'todo',
     'in_progress',
     'in_review',
@@ -83,13 +83,19 @@ export class ProjectTasksPageComponent implements OnInit {
     void this.load();
   }
 
-  epicsForColumn(status: ProjectTaskStatus): ProjectEpicItem[] {
+  epicsForColumn(status: ProjectBoardStatus): ProjectEpicItem[] {
+    if (status !== 'epics') {
+      return [];
+    }
     return this.epics()
-      .filter((epic) => epic.boardStatus === status)
+      .filter((epic) => epic.boardStatus === 'epics')
       .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
   }
 
-  tasksForColumn(status: ProjectTaskStatus): ProjectTaskItem[] {
+  tasksForColumn(status: ProjectBoardStatus): ProjectTaskItem[] {
+    if (status === 'epics') {
+      return [];
+    }
     return this.tasks()
       .filter((task) => task.status === status)
       .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
@@ -108,7 +114,7 @@ export class ProjectTasksPageComponent implements OnInit {
     }
   }
 
-  statusLabel(status: ProjectTaskStatus): string {
+  statusLabel(status: ProjectBoardStatus): string {
     return this.columns().find((column) => column.key === status)?.label ?? status;
   }
 
@@ -143,7 +149,7 @@ export class ProjectTasksPageComponent implements OnInit {
     }
   }
 
-  openCreateModal(epicId?: number, status: ProjectTaskStatus = 'epics'): void {
+  openCreateModal(epicId?: number, status: ProjectTaskStatus = 'todo'): void {
     const targetEpicId = epicId ?? this.epics()[0]?.id ?? null;
     if (!targetEpicId) {
       this.error.set('No epic available in this phase.');
@@ -376,7 +382,7 @@ export class ProjectTasksPageComponent implements OnInit {
   }
 
   async onDrop(
-    status: ProjectTaskStatus,
+    status: ProjectBoardStatus,
     event: DragEvent,
     options?: { epicIndex?: number; taskIndex?: number },
   ): Promise<void> {
@@ -398,7 +404,13 @@ export class ProjectTasksPageComponent implements OnInit {
     }
 
     if (payload.kind === 'epic') {
+      if (status !== 'epics') {
+        return;
+      }
       await this.moveEpicCard(payload.id, status, options?.epicIndex);
+      return;
+    }
+    if (status === 'epics') {
       return;
     }
     await this.moveTaskCard(payload.id, status, options?.taskIndex);
@@ -406,16 +418,11 @@ export class ProjectTasksPageComponent implements OnInit {
 
   private async moveEpicCard(
     epicId: number,
-    status: ProjectTaskStatus,
+    status: 'epics',
     insertIndex?: number,
   ): Promise<void> {
     const epic = this.epics().find((item) => item.id === epicId);
     if (!epic) {
-      return;
-    }
-
-    if (status === 'done' && epic.taskCount > 0 && epic.doneTaskCount < epic.taskCount) {
-      this.error.set('Complete all tasks under this epic before moving it to Done.');
       return;
     }
 
@@ -425,7 +432,7 @@ export class ProjectTasksPageComponent implements OnInit {
         ? columnEpics.length
         : Math.max(0, Math.min(insertIndex, columnEpics.length));
 
-    if (epic.boardStatus === status && epic.sortOrder === sortOrder) {
+    if (epic.boardStatus === 'epics' && epic.sortOrder === sortOrder) {
       return;
     }
 
@@ -543,7 +550,7 @@ export class ProjectTasksPageComponent implements OnInit {
   }
 
   private applyBoard(board: {
-    columns: Array<{ key: ProjectTaskStatus; label: string }>;
+    columns: Array<{ key: ProjectBoardStatus; label: string }>;
     phases: ProjectPhaseItem[];
     epics: ProjectEpicItem[];
     tasks: ProjectTaskItem[];

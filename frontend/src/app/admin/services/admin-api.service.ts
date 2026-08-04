@@ -635,10 +635,64 @@ export interface ProjectListItem {
 }
 
 export interface ProjectDetail extends ProjectListItem {
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  notes: string | null;
+  contract: {
+    id: number;
+    projectName: string;
+    projectType: string;
+    signedAt: string | null;
+    remarks: string | null;
+    modules: ProspectContractModule[];
+    milestones: ProspectContractMilestone[];
+    paymentSchedule: ProspectContractPaymentSchedule[];
+  } | null;
   teamMembers: ProjectUserSummary[];
 }
 
-export type ProjectTaskStatus = 'epics' | 'todo' | 'in_progress' | 'in_review' | 'testing' | 'done';
+export interface ProjectWritePayload {
+  prospectId?: number;
+  clientName?: string;
+  company?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  notes?: string;
+  name?: string;
+  contract?: {
+    projectName: string;
+    projectType: string;
+    signedAt?: string;
+    remarks?: string;
+    modules: Array<{
+      name: string;
+      description?: string;
+      features?: string;
+      processFlow?: string;
+    }>;
+    milestones: Array<{
+      title: string;
+      description?: string;
+      dueDate?: string;
+      connectedModuleId?: string;
+    }>;
+    paymentSchedule: Array<{
+      label: string;
+      amount: number;
+      description?: string;
+      dueDate?: string;
+      notes?: string;
+      connectedMilestoneId?: string;
+    }>;
+  };
+  projectManager: ProjectUserRef;
+  teamMembers: ProjectUserRef[];
+}
+
+export type ProjectBoardStatus = 'epics' | ProjectTaskStatus;
+export type ProjectTaskStatus = 'todo' | 'in_progress' | 'in_review' | 'testing' | 'done';
 export type ProjectTaskPriority = 'low' | 'medium' | 'high' | 'urgent';
 
 export interface ProjectTaskItem {
@@ -707,14 +761,14 @@ export interface ProjectEpicItem {
   description: string | null;
   sortOrder: number;
   status: 'planned' | 'active' | 'completed';
-  boardStatus: ProjectTaskStatus;
+  boardStatus: ProjectBoardStatus;
   taskCount: number;
   doneTaskCount: number;
   tasks: ProjectTaskItem[];
 }
 
 export interface ProjectTaskBoard {
-  columns: Array<{ key: ProjectTaskStatus; label: string }>;
+  columns: Array<{ key: ProjectBoardStatus; label: string }>;
   phases: ProjectPhaseItem[];
   epics: ProjectEpicItem[];
   tasks: ProjectTaskItem[];
@@ -1395,46 +1449,17 @@ export class AdminApiService {
     );
   }
 
-  createProject(payload: {
-      prospectId?: number;
-      clientName?: string;
-      company?: string;
-      email?: string;
-      phone?: string;
-      address?: string;
-      notes?: string;
-    name?: string;
-      contract?: {
-        projectName: string;
-        projectType: string;
-        signedAt?: string;
-        remarks?: string;
-        modules: Array<{
-          name: string;
-          description?: string;
-          features?: string;
-          processFlow?: string;
-        }>;
-        milestones: Array<{
-          title: string;
-          description?: string;
-          dueDate?: string;
-          connectedModuleId?: string;
-        }>;
-        paymentSchedule: Array<{
-          label: string;
-          amount: number;
-          description?: string;
-          dueDate?: string;
-          notes?: string;
-          connectedMilestoneId?: string;
-        }>;
-      };
-    projectManager: ProjectUserRef;
-    teamMembers: ProjectUserRef[];
-  }) {
+  createProject(payload: ProjectWritePayload) {
     return this.http.post<MessageResponse<ProjectDetail>>(
       `${APP_CONFIG.apiUrl}/admin/projects`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  updateProject(projectId: number, payload: ProjectWritePayload) {
+    return this.http.patch<MessageResponse<ProjectDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/projects/${projectId}`,
       payload,
       { headers: this.headers() },
     );
@@ -1477,7 +1502,7 @@ export class AdminApiService {
   moveProjectEpic(
     projectId: number,
     epicId: number,
-    payload: { status: ProjectTaskStatus; sortOrder: number },
+    payload: { status: 'epics'; sortOrder: number },
   ) {
     return this.http.patch<MessageResponse<ProjectEpicItem>>(
       `${APP_CONFIG.apiUrl}/admin/projects/${projectId}/epics/${epicId}/move`,

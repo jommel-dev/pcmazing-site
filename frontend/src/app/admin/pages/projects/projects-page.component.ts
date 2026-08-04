@@ -1,7 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormArray, FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { isDeveloperOrPm, isSuperAdmin } from '../../rbac/admin-roles';
 import {
@@ -20,6 +20,8 @@ export class ProjectsPageComponent implements OnInit {
   private readonly adminApi = inject(AdminApiService);
   private readonly adminAuth = inject(AdminAuthService);
   private readonly formBuilder = inject(FormBuilder);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
 
   readonly loading = signal(true);
   readonly error = signal('');
@@ -29,9 +31,12 @@ export class ProjectsPageComponent implements OnInit {
   readonly createProjectLoading = signal(false);
   readonly createProjectSaving = signal(false);
   readonly createProjectError = signal('');
+  readonly formPage = signal(false);
+  readonly projectId = signal<number | null>(null);
   readonly managers = signal<ProjectUserSummary[]>([]);
   readonly developers = signal<ProjectUserSummary[]>([]);
   readonly selectedManagerKey = signal('');
+  readonly managerSearch = signal('');
   readonly selectedDeveloperKeys = signal<string[]>([]);
   readonly activeModuleTab = signal(0);
   readonly activeMilestoneTab = signal(0);
@@ -58,8 +63,46 @@ export class ProjectsPageComponent implements OnInit {
     return isDeveloperOrPm(role) && !isSuperAdmin(role);
   });
 
+  readonly filteredManagers = computed(() => {
+    const query = this.managerSearch().trim().toLowerCase().replace(/^@/, '');
+    if (!query) {
+      return this.managers();
+    }
+
+    return this.managers().filter((manager) =>
+      [
+        manager.fullName,
+        manager.username,
+        manager.role,
+        manager.email ?? '',
+      ].some((value) => value.toLowerCase().includes(query)),
+    );
+  });
+
+  readonly selectedManager = computed(() =>
+    this.managers().find((manager) => this.userKey(manager) === this.selectedManagerKey()) ?? null,
+  );
+
   ngOnInit(): void {
+    const id = Number(this.route.snapshot.paramMap.get('id'));
+    const isNewRoute = this.route.snapshot.routeConfig?.path === 'projects/new';
+    if (isNewRoute || Number.isInteger(id) && id > 0) {
+      this.formPage.set(true);
+      this.projectId.set(Number.isInteger(id) && id > 0 ? id : null);
+      void this.loadProjectForm();
+      return;
+    }
+
     void this.load();
+  }
+
+  isUpdateMode(): boolean {
+    return this.projectId() !== null;
+  }
+
+  cancelRoute(): string[] {
+    const id = this.projectId();
+    return id ? ['/admin/projects', String(id)] : ['/admin/projects'];
   }
 
   filteredProjects(): ProjectListItem[] {
@@ -126,32 +169,22 @@ export class ProjectsPageComponent implements OnInit {
     this.selectedDeveloperKeys.set(current);
   }
 
-  async openCreateProjectModal(): Promise<void> {
-    this.createProjectOpen.set(true);
-    this.createProjectLoading.set(true);
-    this.createProjectError.set('');
+  selectManager(manager: ProjectUserSummary): void {
+    this.selectedManagerKey.set(this.userKey(manager));
+    this.managerSearch.set('');
+  }
+
+  clearManager(): void {
     this.selectedManagerKey.set('');
-    this.selectedDeveloperKeys.set([]);
-    this.resetCreateForm();
+    this.managerSearch.set('');
+  }
 
-    try {
-      const [managersResponse, developersResponse] = await Promise.all([
-        firstValueFrom(this.adminApi.listProjectAssignees()),
-        firstValueFrom(this.adminApi.listProjectAssignees('developer')),
-      ]);
-
-      this.managers.set(managersResponse.data);
-      this.developers.set(developersResponse.data);
-    } catch {
-      this.createProjectError.set('Unable to load project assignees.');
-    } finally {
-      this.createProjectLoading.set(false);
-    }
+  async openCreateProjectModal(): Promise<void> {
+    await this.router.navigate(['/admin/projects/new']);
   }
 
   closeCreateProjectModal(): void {
-    this.createProjectOpen.set(false);
-    this.createProjectError.set('');
+    void this.router.navigate(this.cancelRoute());
   }
 
   moduleLabel(index: number): string {
@@ -277,8 +310,7 @@ export class ProjectsPageComponent implements OnInit {
 
     const value = this.createForm.getRawValue();
     try {
-      await firstValueFrom(
-        this.adminApi.createProject({
+      const payload = {
           clientName: value.clientName.trim(),
           company: this.optionalText(value.company),
           email: this.optionalText(value.email),
@@ -314,10 +346,12 @@ export class ProjectsPageComponent implements OnInit {
           },
           projectManager: this.parseUserKey(managerKey),
           teamMembers: developerKeys.map((key) => this.parseUserKey(key)),
-        }),
-      );
-      this.closeCreateProjectModal();
-      await this.load();
+      };
+      const id = this.projectId();
+      const response = id
+        ? await firstValueFrom(this.adminApi.updateProject(id, payload))
+        : await firstValueFrom(this.adminApi.createProject(payload));
+      await this.router.navigate(['/admin/projects', response.data.id]);
     } catch (err: unknown) {
       const message =
         typeof err === 'object'
@@ -325,7 +359,7 @@ export class ProjectsPageComponent implements OnInit {
         && 'error' in err
         && typeof (err as { error?: { message?: string } }).error?.message === 'string'
           ? (err as { error: { message: string } }).error.message
-          : 'Unable to create project.';
+          : `Unable to ${this.isUpdateMode() ? 'update' : 'create'} project.`;
       this.createProjectError.set(message);
     } finally {
       this.createProjectSaving.set(false);
@@ -342,6 +376,76 @@ export class ProjectsPageComponent implements OnInit {
       this.error.set('Unable to load projects.');
     } finally {
       this.loading.set(false);
+    }
+  }
+
+  private async loadProjectForm(): Promise<void> {
+    this.createProjectLoading.set(true);
+    this.createProjectError.set('');
+    this.selectedManagerKey.set('');
+    this.managerSearch.set('');
+    this.selectedDeveloperKeys.set([]);
+    this.resetCreateForm();
+
+    try {
+      const id = this.projectId();
+      const [managersResponse, developersResponse, projectResponse] = await Promise.all([
+        firstValueFrom(this.adminApi.listProjectAssignees()),
+        firstValueFrom(this.adminApi.listProjectAssignees('developer')),
+        id ? firstValueFrom(this.adminApi.getProject(id)) : Promise.resolve(null),
+      ]);
+
+      this.managers.set(managersResponse.data);
+      this.developers.set(developersResponse.data);
+
+      if (projectResponse) {
+        const project = projectResponse.data;
+        const contract = project.contract;
+        this.createForm.patchValue({
+          clientName: project.clientName,
+          company: project.company ?? '',
+          email: project.email ?? '',
+          phone: project.phone ?? '',
+          address: project.address ?? '',
+          notes: project.notes ?? '',
+          projectName: contract?.projectName ?? project.name,
+          projectType: contract?.projectType ?? project.projectType ?? '',
+          signedAt: contract?.signedAt ?? '',
+          contractRemarks: contract?.remarks ?? '',
+        });
+
+        this.modulesForm.clear();
+        this.milestonesForm.clear();
+        this.paymentScheduleForm.clear();
+        for (const module of contract?.modules ?? []) {
+          this.modulesForm.push(this.createModuleGroup(module));
+        }
+        for (const milestone of contract?.milestones ?? []) {
+          this.milestonesForm.push(this.createMilestoneGroup(milestone));
+        }
+        for (const payment of contract?.paymentSchedule ?? []) {
+          this.paymentScheduleForm.push(this.createPaymentScheduleGroup(payment));
+        }
+        if (!this.modulesForm.length) this.modulesForm.push(this.createModuleGroup());
+        if (!this.milestonesForm.length) this.milestonesForm.push(this.createMilestoneGroup());
+        if (!this.paymentScheduleForm.length) this.paymentScheduleForm.push(this.createPaymentScheduleGroup());
+
+        this.selectedManagerKey.set(
+          project.projectManager ? this.userKey(project.projectManager) : '',
+        );
+        this.selectedDeveloperKeys.set(project.teamMembers.map((member) => this.userKey(member)));
+      }
+    } catch (err: unknown) {
+      const message =
+        typeof err === 'object'
+        && err !== null
+        && 'error' in err
+        && typeof (err as { error?: { message?: string } }).error?.message === 'string'
+          ? (err as { error: { message: string } }).error.message
+          : 'Unable to load project form.';
+      this.createProjectError.set(message);
+    } finally {
+      this.createProjectLoading.set(false);
     }
   }
 

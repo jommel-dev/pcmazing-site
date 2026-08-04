@@ -264,6 +264,21 @@ export class ProjectsController {
     }));
   }
 
+  @Patch(':id')
+  async update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CreateProjectDto,
+    @Req() req: Request & { user?: AdminJwtPayload },
+  ) {
+    await this.projectsService.assertCanAccessProject(id, this.actorFrom(req));
+    const userId = Number(req.user?.sub);
+    return this.projectsService.update(id, dto, userId).then((data) => ({
+      success: true,
+      message: 'Project updated.',
+      data,
+    }));
+  }
+
   @Patch(':id/assignments')
   async updateAssignments(
     @Param('id', ParseIntPipe) id: number,
