@@ -1,4 +1,4 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { NgClass } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -25,19 +25,86 @@ type ServiceColumnKey =
   | 'totalCosting'
   | 'totalSales';
 
+type ServiceSortKey =
+  | 'referenceNo'
+  | 'customer'
+  | 'serviceName'
+  | 'personInCharge'
+  | 'type'
+  | 'interval'
+  | 'cost'
+  | 'labor'
+  | 'totalCosting'
+  | 'totalSales'
+  | 'status';
+
+type ActionToast = {
+  id: number;
+  type: 'success' | 'error';
+  message: string;
+};
+
 @Component({
   selector: 'app-inventory-services-page',
   imports: [FormsModule, RouterLink, NgClass],
   templateUrl: './inventory-services-page.component.html',
+  styles: [
+    `
+      .job-toast {
+        opacity: 0;
+        transform: translate3d(18px, -10px, 0) scale(0.96);
+        transition:
+          opacity 220ms ease,
+          transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+      }
+
+      .job-toast.is-visible {
+        opacity: 1;
+        transform: translate3d(0, 0, 0) scale(1);
+      }
+
+      .job-toast.is-leaving {
+        opacity: 0;
+        transform: translate3d(14px, -8px, 0) scale(0.97);
+        transition:
+          opacity 200ms ease,
+          transform 200ms ease;
+      }
+
+      .job-toast-progress {
+        transform-origin: left center;
+        animation: job-toast-progress 3.2s linear forwards;
+      }
+
+      @keyframes job-toast-progress {
+        from {
+          transform: scaleX(1);
+        }
+        to {
+          transform: scaleX(0);
+        }
+      }
+    `,
+  ],
 })
-export class InventoryServicesPageComponent implements OnInit {
+export class InventoryServicesPageComponent implements OnInit, OnDestroy {
   private readonly adminApi = inject(AdminApiService);
+  private toastHideTimer: ReturnType<typeof setTimeout> | null = null;
+  private toastClearTimer: ReturnType<typeof setTimeout> | null = null;
+  private searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private toastSeq = 0;
+  private readonly toastDurationMs = 3200;
+  private readonly toastExitMs = 220;
+  private readonly searchDebounceMs = 300;
 
   readonly loading = signal(true);
   readonly error = signal('');
   readonly search = signal('');
   readonly page = signal(1);
-  readonly pageSize = 50;
+  readonly pageSize = signal(25);
+  readonly pageSizeOptions = [10, 25, 50] as const;
+  readonly sortBy = signal<ServiceSortKey>('referenceNo');
+  readonly sortDir = signal<'asc' | 'desc'>('desc');
   readonly items = signal<InventoryServiceItem[]>([]);
   readonly meta = signal<PaginationMeta | null>(null);
   readonly summary = signal<InventoryServiceSummary | null>(null);
@@ -77,8 +144,9 @@ export class InventoryServicesPageComponent implements OnInit {
   readonly pendingDelete = signal<InventoryServiceItem | null>(null);
   readonly deleting = signal(false);
   readonly statusUpdatingId = signal<number | null>(null);
-  readonly actionError = signal('');
-  readonly actionSuccess = signal('');
+  readonly toast = signal<ActionToast | null>(null);
+  readonly toastVisible = signal(false);
+  readonly toastLeaving = signal(false);
   readonly pendingStatusChange = signal<{
     item: InventoryServiceItem;
     nextStatus: string;
@@ -95,6 +163,49 @@ export class InventoryServicesPageComponent implements OnInit {
   ngOnInit(): void {
     this.isMobileDevice.set(this.detectMobileDevice());
     void this.loadServices();
+  }
+
+  ngOnDestroy(): void {
+    this.clearToastTimers();
+    this.clearSearchDebounce();
+  }
+
+  showToast(type: 'success' | 'error', message: string): void {
+    this.clearToastTimers();
+    this.toastLeaving.set(false);
+    this.toastVisible.set(false);
+    this.toast.set({ id: ++this.toastSeq, type, message });
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => this.toastVisible.set(true));
+    });
+
+    this.toastHideTimer = setTimeout(() => this.dismissToast(), this.toastDurationMs);
+  }
+
+  dismissToast(): void {
+    if (!this.toast() || this.toastLeaving()) {
+      return;
+    }
+
+    this.clearToastTimers();
+    this.toastLeaving.set(true);
+    this.toastVisible.set(false);
+    this.toastClearTimer = setTimeout(() => {
+      this.toast.set(null);
+      this.toastLeaving.set(false);
+    }, this.toastExitMs);
+  }
+
+  private clearToastTimers(): void {
+    if (this.toastHideTimer) {
+      clearTimeout(this.toastHideTimer);
+      this.toastHideTimer = null;
+    }
+    if (this.toastClearTimer) {
+      clearTimeout(this.toastClearTimer);
+      this.toastClearTimer = null;
+    }
   }
 
   private detectMobileDevice(): boolean {
@@ -116,10 +227,12 @@ export class InventoryServicesPageComponent implements OnInit {
       const response = await firstValueFrom(
         this.adminApi.listInventoryServices(
           this.page(),
-          this.pageSize,
+          this.pageSize(),
           this.search(),
           this.selectedType(),
           this.selectedStatus(),
+          this.sortBy(),
+          this.sortDir(),
         ),
       );
       this.items.set(response.data.map((item) => this.withNormalizedStatus(item)));
@@ -135,8 +248,26 @@ export class InventoryServicesPageComponent implements OnInit {
   }
 
   async searchServices(): Promise<void> {
+    this.clearSearchDebounce();
     this.page.set(1);
     await this.loadServices();
+  }
+
+  onSearchInput(value: string): void {
+    this.search.set(value);
+    this.clearSearchDebounce();
+    this.searchDebounceTimer = setTimeout(() => {
+      this.searchDebounceTimer = null;
+      this.page.set(1);
+      void this.loadServices();
+    }, this.searchDebounceMs);
+  }
+
+  private clearSearchDebounce(): void {
+    if (this.searchDebounceTimer) {
+      clearTimeout(this.searchDebounceTimer);
+      this.searchDebounceTimer = null;
+    }
   }
 
   async filterByType(type: string): Promise<void> {
@@ -154,6 +285,30 @@ export class InventoryServicesPageComponent implements OnInit {
   async goToPage(nextPage: number): Promise<void> {
     this.page.set(nextPage);
     await this.loadServices();
+  }
+
+  async changePageSize(size: number): Promise<void> {
+    this.pageSize.set(size);
+    this.page.set(1);
+    await this.loadServices();
+  }
+
+  async toggleSort(key: ServiceSortKey): Promise<void> {
+    if (this.sortBy() === key) {
+      this.sortDir.set(this.sortDir() === 'asc' ? 'desc' : 'asc');
+    } else {
+      this.sortBy.set(key);
+      this.sortDir.set('asc');
+    }
+    this.page.set(1);
+    await this.loadServices();
+  }
+
+  sortIndicator(key: ServiceSortKey): string {
+    if (this.sortBy() !== key) {
+      return '';
+    }
+    return this.sortDir() === 'asc' ? ' ↑' : ' ↓';
   }
 
   sectionTitle(): string {
@@ -221,8 +376,6 @@ export class InventoryServicesPageComponent implements OnInit {
       return;
     }
 
-    this.actionError.set('');
-    this.actionSuccess.set('');
     this.pendingStatusChange.set({ item, nextStatus });
   }
 
@@ -312,8 +465,6 @@ export class InventoryServicesPageComponent implements OnInit {
 
     this.completionSaving.set(true);
     this.completionError.set('');
-    this.actionError.set('');
-    this.actionSuccess.set('');
 
     try {
       const imageResponse = await firstValueFrom(
@@ -333,7 +484,7 @@ export class InventoryServicesPageComponent implements OnInit {
       this.clearCompletionPreview();
       this.completionUpload.set(null);
       this.completionFile.set(null);
-      this.actionSuccess.set('Job marked as Done with completion image.');
+      this.showToast('success', 'Job marked as Done with completion image.');
     } catch (err: unknown) {
       const httpErr = err as { error?: { message?: string | string[] } };
       const msg = httpErr?.error?.message;
@@ -345,8 +496,6 @@ export class InventoryServicesPageComponent implements OnInit {
   }
 
   private async applyStatusChange(item: InventoryServiceItem, status: string): Promise<void> {
-    this.actionError.set('');
-    this.actionSuccess.set('');
     this.statusUpdatingId.set(item.id);
 
     try {
@@ -362,7 +511,8 @@ export class InventoryServicesPageComponent implements OnInit {
       const clearedImage =
         this.normalizeJobStatus(item.status) === 'Done' &&
         this.normalizeJobStatus(response.data.status) !== 'Done';
-      this.actionSuccess.set(
+      this.showToast(
+        'success',
         clearedImage
           ? `Status updated to ${this.normalizeJobStatus(response.data.status)}. Completion image removed.`
           : `Status updated to ${this.normalizeJobStatus(response.data.status)}.`,
@@ -371,7 +521,7 @@ export class InventoryServicesPageComponent implements OnInit {
       const httpErr = err as { error?: { message?: string | string[] } };
       const msg = httpErr?.error?.message;
       const detail = Array.isArray(msg) ? msg.join(', ') : msg || 'Unknown error';
-      this.actionError.set(`Unable to update status: ${detail}`);
+      this.showToast('error', `Unable to update status: ${detail}`);
     } finally {
       this.statusUpdatingId.set(null);
     }
@@ -393,8 +543,6 @@ export class InventoryServicesPageComponent implements OnInit {
   requestDelete(item: InventoryServiceItem, event?: Event): void {
     event?.stopPropagation();
     event?.preventDefault();
-    this.actionError.set('');
-    this.actionSuccess.set('');
     this.pendingDelete.set(item);
   }
 
@@ -412,19 +560,20 @@ export class InventoryServicesPageComponent implements OnInit {
     }
 
     this.deleting.set(true);
-    this.actionError.set('');
-    this.actionSuccess.set('');
 
     try {
       await firstValueFrom(this.adminApi.deleteInventoryService(item.id));
       this.pendingDelete.set(null);
-      this.actionSuccess.set(`Job order "${item.referenceNo || item.serviceName}" removed from the list.`);
+      this.showToast(
+        'success',
+        `Job order "${item.referenceNo || item.serviceName}" removed from the list.`,
+      );
       await this.loadServices();
     } catch (err: unknown) {
       const httpErr = err as { error?: { message?: string | string[] } };
       const msg = httpErr?.error?.message;
       const detail = Array.isArray(msg) ? msg.join(', ') : msg || 'Unknown error';
-      this.actionError.set(`Unable to delete job order: ${detail}`);
+      this.showToast('error', `Unable to delete job order: ${detail}`);
       this.pendingDelete.set(null);
     } finally {
       this.deleting.set(false);
