@@ -605,6 +605,99 @@ export interface ProspectContractPaymentSchedule {
   dueDate: string | null;
   notes: string | null;
   connectedMilestoneId: string | null;
+  status?: 'pending' | 'paid' | 'overdue';
+  settledAt?: string | null;
+  paymentMethod?: string | null;
+  referenceNumber?: string | null;
+  checkDate?: string | null;
+  amountPaid?: number;
+  remainingBalance?: number;
+  settlements?: PaymentScheduleSettlementItem[];
+}
+
+export interface PaymentScheduleSettlementItem {
+  id: number;
+  paymentScheduleId: number;
+  amount: number;
+  settledOn: string;
+  paymentMethod: string;
+  referenceNumber: string | null;
+  checkDate: string | null;
+  remainingBalance: number;
+  createdAt: string;
+}
+
+export type ProjectPaymentStatus = 'paid' | 'overdue' | 'unpaid' | 'none';
+
+export type ProjectPaymentSettlePayload = {
+  date: string;
+  paymentMethod: string;
+  settlementType: 'partial' | 'full';
+  amount?: number;
+  referenceNumber?: string;
+  checkNumber?: string;
+  checkDate?: string;
+};
+
+export interface ProjectSettlePaymentResult {
+  payment: ProspectContractPaymentSchedule;
+  settlement: PaymentScheduleSettlementItem;
+  remainingBalance: number;
+}
+
+export interface ProjectInvoiceData {
+  projectId: number;
+  projectName: string;
+  projectType: string | null;
+  clientName: string;
+  company: string | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  currency: string;
+  issuedAt: string;
+  invoiceNumber: string | null;
+  phaseNumber: number | null;
+  phaseTitle: string | null;
+  phaseDescription: string | null;
+  phaseDueDate: string | null;
+  milestones: Array<{
+    id: number;
+    title: string;
+    description: string | null;
+    dueDate: string | null;
+  }>;
+  payments: Array<{
+    id: number;
+    label: string;
+    amount: number;
+    amountPaid: number;
+    remainingBalance: number;
+    dueDate: string | null;
+    status: string;
+    connectedMilestoneId: string | null;
+    connectedMilestoneTitle: string | null;
+  }>;
+  totalAmount: number;
+  totalPaid: number;
+  totalDue: number;
+}
+
+export interface ProjectReceiptData {
+  projectId: number;
+  projectName: string;
+  clientName: string;
+  company: string | null;
+  currency: string;
+  settlement: PaymentScheduleSettlementItem;
+  paymentLabel: string;
+  scheduleAmount: number;
+  amountPaid: number;
+  remainingBalance: number;
+  phaseNumber: number | null;
+  phaseName: string | null;
+  phaseDescription: string | null;
+  phaseDueDate: string | null;
 }
 
 export interface ProjectUserRef {
@@ -630,16 +723,118 @@ export interface ProjectListItem {
   company: string | null;
   projectManager: ProjectUserSummary | null;
   teamMemberCount: number;
+  paymentStatus?: ProjectPaymentStatus;
+  paymentTotal?: number;
+  settledTotal?: number;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface ProjectDetail extends ProjectListItem {
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  notes: string | null;
+  currency?: string | null;
+  contract: {
+    id: number;
+    projectName: string;
+    projectType: string;
+    signedAt: string | null;
+    remarks: string | null;
+    modules: ProspectContractModule[];
+    milestones: ProspectContractMilestone[];
+    paymentSchedule: ProspectContractPaymentSchedule[];
+  } | null;
   teamMembers: ProjectUserSummary[];
 }
 
-export type ProjectTaskStatus = 'backlog' | 'todo' | 'in_progress' | 'in_review' | 'done';
+export interface ProjectWritePayload {
+  prospectId?: number;
+  clientName?: string;
+  company?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  notes?: string;
+  name?: string;
+  contract?: {
+    projectName: string;
+    projectType: string;
+    signedAt?: string;
+    remarks?: string;
+    modules: Array<{
+      name: string;
+      description?: string;
+      features?: string;
+      processFlow?: string;
+    }>;
+    milestones: Array<{
+      title: string;
+      description?: string;
+      dueDate?: string;
+      connectedModuleId?: string;
+    }>;
+    paymentSchedule: Array<{
+      label: string;
+      amount: number;
+      description?: string;
+      dueDate?: string;
+      notes?: string;
+      connectedMilestoneId?: string;
+    }>;
+  };
+  projectManager: ProjectUserRef;
+  teamMembers: ProjectUserRef[];
+}
+
+export type ProjectBoardStatus = 'epics' | ProjectTaskStatus;
+export type ProjectTaskStatus =
+  | 'backlog'
+  | 'todo'
+  | 'in_progress'
+  | 'in_review'
+  | 'testing'
+  | 'done';
 export type ProjectTaskPriority = 'low' | 'medium' | 'high' | 'urgent';
+export type ProjectTaskActivityActionType =
+  | 'created'
+  | 'edited'
+  | 'moved'
+  | 'deleted'
+  | 'comment_added'
+  | 'attachment_added'
+  | 'attachment_deleted';
+
+export interface ProjectTaskActivityActor {
+  userId: number | null;
+  source: 'pcmazing_admin_users' | 'tblusers' | null;
+  name: string | null;
+}
+
+export interface ProjectTaskActivityItem {
+  id: number;
+  projectId: number;
+  phaseId: number | null;
+  taskId: number | null;
+  taskTitle: string;
+  epicId: number | null;
+  epicTitle: string | null;
+  actionType: ProjectTaskActivityActionType;
+  actor: ProjectTaskActivityActor;
+  fromStatus: string | null;
+  toStatus: string | null;
+  details: string | null;
+  meta: Record<string, unknown> | null;
+  summary: string;
+  createdAt: string;
+}
+
+export interface ProjectTaskActivityList {
+  items: ProjectTaskActivityItem[];
+  meta: PaginationMeta;
+  selectedPhaseId: number | null;
+}
 
 export interface ProjectTaskItem {
   id: number;
@@ -707,14 +902,14 @@ export interface ProjectEpicItem {
   description: string | null;
   sortOrder: number;
   status: 'planned' | 'active' | 'completed';
-  boardStatus: ProjectTaskStatus;
+  boardStatus: ProjectBoardStatus;
   taskCount: number;
   doneTaskCount: number;
   tasks: ProjectTaskItem[];
 }
 
 export interface ProjectTaskBoard {
-  columns: Array<{ key: ProjectTaskStatus; label: string }>;
+  columns: Array<{ key: ProjectBoardStatus; label: string }>;
   phases: ProjectPhaseItem[];
   epics: ProjectEpicItem[];
   tasks: ProjectTaskItem[];
@@ -1390,6 +1585,36 @@ export class AdminApiService {
     );
   }
 
+  settleProjectPayment(
+    projectId: number,
+    paymentId: number,
+    payload: ProjectPaymentSettlePayload,
+  ) {
+    return this.http.post<MessageResponse<ProjectSettlePaymentResult>>(
+      `${APP_CONFIG.apiUrl}/admin/projects/${projectId}/settle-payment/${paymentId}`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  getProjectInvoice(projectId: number, milestoneId?: number) {
+    const params =
+      milestoneId != null && Number.isInteger(milestoneId) && milestoneId > 0
+        ? { milestoneId: String(milestoneId) }
+        : undefined;
+    return this.http.get<ItemResponse<ProjectInvoiceData>>(
+      `${APP_CONFIG.apiUrl}/admin/projects/${projectId}/invoice`,
+      { headers: this.headers(), params },
+    );
+  }
+
+  getProjectReceipt(projectId: number, settlementId: number) {
+    return this.http.get<ItemResponse<ProjectReceiptData>>(
+      `${APP_CONFIG.apiUrl}/admin/projects/${projectId}/receipts/${settlementId}`,
+      { headers: this.headers() },
+    );
+  }
+
   getProjectByProspect(prospectId: number) {
     return this.http.get<ItemResponse<{ id: number } | null>>(
       `${APP_CONFIG.apiUrl}/admin/projects/by-prospect/${prospectId}`,
@@ -1409,14 +1634,25 @@ export class AdminApiService {
     );
   }
 
-  createProject(payload: {
-    prospectId: number;
-    name?: string;
-    projectManager: ProjectUserRef;
-    teamMembers: ProjectUserRef[];
-  }) {
+  createProject(payload: ProjectWritePayload) {
     return this.http.post<MessageResponse<ProjectDetail>>(
       `${APP_CONFIG.apiUrl}/admin/projects`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  updateProject(projectId: number, payload: ProjectWritePayload) {
+    return this.http.patch<MessageResponse<ProjectDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/projects/${projectId}`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  updateProjectAssignments(projectId: number, payload: { projectManager: ProjectUserRef; teamMembers: ProjectUserRef[] }) {
+    return this.http.patch<MessageResponse<ProjectDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/projects/${projectId}/assignments`,
       payload,
       { headers: this.headers() },
     );
@@ -1430,6 +1666,30 @@ export class AdminApiService {
 
     return this.http.get<ItemResponse<ProjectTaskBoard>>(
       `${APP_CONFIG.apiUrl}/admin/projects/${projectId}/tasks`,
+      { headers: this.headers(), params },
+    );
+  }
+
+  listProjectTaskActivity(
+    projectId: number,
+    options?: { phaseId?: number | null; taskId?: number | null; page?: number; limit?: number },
+  ) {
+    let params = new HttpParams();
+    if (options?.phaseId != null) {
+      params = params.set('phaseId', String(options.phaseId));
+    }
+    if (options?.taskId != null) {
+      params = params.set('taskId', String(options.taskId));
+    }
+    if (options?.page != null) {
+      params = params.set('page', String(options.page));
+    }
+    if (options?.limit != null) {
+      params = params.set('limit', String(options.limit));
+    }
+
+    return this.http.get<ItemResponse<ProjectTaskActivityList>>(
+      `${APP_CONFIG.apiUrl}/admin/projects/${projectId}/task-activity`,
       { headers: this.headers(), params },
     );
   }
@@ -1451,7 +1711,7 @@ export class AdminApiService {
   moveProjectEpic(
     projectId: number,
     epicId: number,
-    payload: { status: ProjectTaskStatus; sortOrder: number },
+    payload: { status: 'epics'; sortOrder: number },
   ) {
     return this.http.patch<MessageResponse<ProjectEpicItem>>(
       `${APP_CONFIG.apiUrl}/admin/projects/${projectId}/epics/${epicId}/move`,

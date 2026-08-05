@@ -1,0 +1,116 @@
+<section class="mx-auto max-w-2xl">
+  <div class="no-print mb-4 flex flex-wrap items-center justify-between gap-3">
+    <a
+      [routerLink]="['/admin/projects', receipt()?.projectId || projectId()]"
+      class="text-sm font-bold text-pcmazing-500 hover:text-pcmazing-600"
+    >
+      ← Back to project
+    </a>
+    <button
+      type="button"
+      class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50"
+      [disabled]="loading() || !receipt()"
+      (click)="print()"
+    >
+      Print / Save as PDF
+    </button>
+  </div>
+
+  @if (loading()) {
+    <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500">
+      Loading receipt...
+    </div>
+  } @else if (error()) {
+    <div class="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{{ error() }}</div>
+  } @else if (receipt(); as doc) {
+    <article class="print-sheet rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+      <header class="border-b border-slate-200 pb-6 text-center">
+        <p class="text-xs font-bold uppercase tracking-wide text-pcmazing-500">PCMazing</p>
+        <h1 class="mt-2 text-2xl font-bold text-slate-900">Payment Receipt</h1>
+        <p class="mt-1 text-sm text-slate-500">Receipt #{{ doc.settlement.id }}</p>
+      </header>
+
+      <section class="mt-6 grid gap-4 sm:grid-cols-2">
+        <div>
+          <h2 class="text-xs font-bold uppercase tracking-wide text-slate-400">Project</h2>
+          <p class="mt-2 font-semibold text-slate-900">{{ doc.projectName }}</p>
+        </div>
+        <div>
+          <h2 class="text-xs font-bold uppercase tracking-wide text-slate-400">Client</h2>
+          <p class="mt-2 font-semibold text-slate-900">{{ doc.clientName }}</p>
+          @if (doc.company) {
+            <p class="text-sm text-slate-600">{{ doc.company }}</p>
+          }
+        </div>
+      </section>
+
+      <section class="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-5">
+        <h2 class="text-xs font-bold uppercase tracking-wide text-slate-400">Applied to phase</h2>
+        <p class="mt-2 text-base font-semibold text-slate-900">
+          @if (doc.phaseNumber) {
+            Phase {{ doc.phaseNumber }}: {{ doc.phaseName }}
+          } @else {
+            {{ doc.phaseName || doc.paymentLabel }}
+          }
+        </p>
+        @if (doc.phaseDescription) {
+          <p class="mt-2 text-sm text-slate-600">{{ doc.phaseDescription }}</p>
+        }
+        @if (doc.phaseDueDate) {
+          <p class="mt-2 text-xs text-slate-500">Phase due date: {{ formatDate(doc.phaseDueDate) }}</p>
+        }
+      </section>
+
+      <section class="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-5">
+        <dl class="space-y-3 text-sm">
+          <div class="flex justify-between gap-4">
+            <dt class="text-slate-500">Payment date</dt>
+            <dd class="font-semibold text-slate-800">{{ formatDate(doc.settlement.settledOn) }}</dd>
+          </div>
+          <div class="flex justify-between gap-4">
+            <dt class="text-slate-500">Payment method</dt>
+            <dd class="font-semibold text-slate-800">{{ doc.settlement.paymentMethod }}</dd>
+          </div>
+          @if (doc.settlement.paymentMethod === 'Check') {
+            @if (doc.settlement.referenceNumber) {
+              <div class="flex justify-between gap-4">
+                <dt class="text-slate-500">Check number</dt>
+                <dd class="font-semibold text-slate-800">{{ doc.settlement.referenceNumber }}</dd>
+              </div>
+            }
+            @if (doc.settlement.checkDate) {
+              <div class="flex justify-between gap-4">
+                <dt class="text-slate-500">Check date</dt>
+                <dd class="font-semibold text-slate-800">{{ formatDate(doc.settlement.checkDate) }}</dd>
+              </div>
+            }
+          } @else if (doc.settlement.paymentMethod !== 'Cash' && doc.settlement.referenceNumber) {
+            <div class="flex justify-between gap-4">
+              <dt class="text-slate-500">Reference number</dt>
+              <dd class="font-semibold text-slate-800">{{ doc.settlement.referenceNumber }}</dd>
+            </div>
+          }
+          <div class="flex justify-between gap-4 border-t border-slate-200 pt-3">
+            <dt class="text-slate-500">Phase total</dt>
+            <dd class="font-semibold text-slate-800">{{ formatDealAmount(doc.scheduleAmount, doc.currency) }}</dd>
+          </div>
+          <div class="flex justify-between gap-4">
+            <dt class="font-bold text-slate-700">Amount paid</dt>
+            <dd class="text-lg font-bold text-emerald-700">
+              {{ formatDealAmount(doc.settlement.amount, doc.currency) }}
+            </dd>
+          </div>
+          <div class="flex justify-between gap-4 border-t border-slate-200 pt-3">
+            <dt class="font-bold text-slate-700">Remaining balance (this phase)</dt>
+            <dd class="font-bold text-slate-900">{{ formatDealAmount(doc.remainingBalance, doc.currency) }}</dd>
+          </div>
+        </dl>
+      </section>
+
+      <footer class="mt-10 border-t border-slate-200 pt-4 text-center text-xs text-slate-500">
+        Thank you for your payment · Use Print → Save as PDF to keep a copy.
+      </footer>
+    </article>
+  }
+</section>
+
