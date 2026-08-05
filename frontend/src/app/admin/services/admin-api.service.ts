@@ -692,8 +692,52 @@ export interface ProjectWritePayload {
 }
 
 export type ProjectBoardStatus = 'epics' | ProjectTaskStatus;
-export type ProjectTaskStatus = 'todo' | 'in_progress' | 'in_review' | 'testing' | 'done';
+export type ProjectTaskStatus =
+  | 'backlog'
+  | 'todo'
+  | 'in_progress'
+  | 'in_review'
+  | 'testing'
+  | 'done';
 export type ProjectTaskPriority = 'low' | 'medium' | 'high' | 'urgent';
+export type ProjectTaskActivityActionType =
+  | 'created'
+  | 'edited'
+  | 'moved'
+  | 'deleted'
+  | 'comment_added'
+  | 'attachment_added'
+  | 'attachment_deleted';
+
+export interface ProjectTaskActivityActor {
+  userId: number | null;
+  source: 'pcmazing_admin_users' | 'tblusers' | null;
+  name: string | null;
+}
+
+export interface ProjectTaskActivityItem {
+  id: number;
+  projectId: number;
+  phaseId: number | null;
+  taskId: number | null;
+  taskTitle: string;
+  epicId: number | null;
+  epicTitle: string | null;
+  actionType: ProjectTaskActivityActionType;
+  actor: ProjectTaskActivityActor;
+  fromStatus: string | null;
+  toStatus: string | null;
+  details: string | null;
+  meta: Record<string, unknown> | null;
+  summary: string;
+  createdAt: string;
+}
+
+export interface ProjectTaskActivityList {
+  items: ProjectTaskActivityItem[];
+  meta: PaginationMeta;
+  selectedPhaseId: number | null;
+}
 
 export interface ProjectTaskItem {
   id: number;
@@ -1481,6 +1525,30 @@ export class AdminApiService {
 
     return this.http.get<ItemResponse<ProjectTaskBoard>>(
       `${APP_CONFIG.apiUrl}/admin/projects/${projectId}/tasks`,
+      { headers: this.headers(), params },
+    );
+  }
+
+  listProjectTaskActivity(
+    projectId: number,
+    options?: { phaseId?: number | null; taskId?: number | null; page?: number; limit?: number },
+  ) {
+    let params = new HttpParams();
+    if (options?.phaseId != null) {
+      params = params.set('phaseId', String(options.phaseId));
+    }
+    if (options?.taskId != null) {
+      params = params.set('taskId', String(options.taskId));
+    }
+    if (options?.page != null) {
+      params = params.set('page', String(options.page));
+    }
+    if (options?.limit != null) {
+      params = params.set('limit', String(options.limit));
+    }
+
+    return this.http.get<ItemResponse<ProjectTaskActivityList>>(
+      `${APP_CONFIG.apiUrl}/admin/projects/${projectId}/task-activity`,
       { headers: this.headers(), params },
     );
   }

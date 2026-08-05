@@ -38,6 +38,7 @@ export class ProjectsPageComponent implements OnInit {
   readonly selectedManagerKey = signal('');
   readonly managerSearch = signal('');
   readonly selectedDeveloperKeys = signal<string[]>([]);
+  readonly developerSearch = signal('');
   readonly activeModuleTab = signal(0);
   readonly activeMilestoneTab = signal(0);
   readonly activePaymentTab = signal(0);
@@ -65,23 +66,52 @@ export class ProjectsPageComponent implements OnInit {
 
   readonly filteredManagers = computed(() => {
     const query = this.managerSearch().trim().toLowerCase().replace(/^@/, '');
-    if (!query) {
-      return this.managers();
-    }
+    const selectedKey = this.selectedManagerKey();
 
-    return this.managers().filter((manager) =>
-      [
+    return this.managers().filter((manager) => {
+      if (this.userKey(manager) === selectedKey) {
+        return false;
+      }
+      if (!query) {
+        return true;
+      }
+      return [
         manager.fullName,
         manager.username,
         manager.role,
         manager.email ?? '',
-      ].some((value) => value.toLowerCase().includes(query)),
-    );
+      ].some((value) => value.toLowerCase().includes(query));
+    });
+  });
+
+  readonly filteredDevelopers = computed(() => {
+    const query = this.developerSearch().trim().toLowerCase().replace(/^@/, '');
+    const selectedKeys = new Set(this.selectedDeveloperKeys());
+
+    return this.developers().filter((developer) => {
+      if (selectedKeys.has(this.userKey(developer))) {
+        return false;
+      }
+      if (!query) {
+        return true;
+      }
+      return [
+        developer.fullName,
+        developer.username,
+        developer.role,
+        developer.email ?? '',
+      ].some((value) => value.toLowerCase().includes(query));
+    });
   });
 
   readonly selectedManager = computed(() =>
     this.managers().find((manager) => this.userKey(manager) === this.selectedManagerKey()) ?? null,
   );
+
+  readonly selectedDevelopers = computed(() => {
+    const keys = new Set(this.selectedDeveloperKeys());
+    return this.developers().filter((developer) => keys.has(this.userKey(developer)));
+  });
 
   ngOnInit(): void {
     const id = Number(this.route.snapshot.paramMap.get('id'));
@@ -153,10 +183,6 @@ export class ProjectsPageComponent implements OnInit {
     return `${user.source}:${user.id}`;
   }
 
-  isDeveloperSelected(user: ProjectUserSummary): boolean {
-    return this.selectedDeveloperKeys().includes(this.userKey(user));
-  }
-
   toggleDeveloper(user: ProjectUserSummary): void {
     const key = this.userKey(user);
     const current = [...this.selectedDeveloperKeys()];
@@ -167,6 +193,12 @@ export class ProjectsPageComponent implements OnInit {
       current.push(key);
     }
     this.selectedDeveloperKeys.set(current);
+    this.developerSearch.set('');
+  }
+
+  clearDeveloper(user: ProjectUserSummary): void {
+    const key = this.userKey(user);
+    this.selectedDeveloperKeys.set(this.selectedDeveloperKeys().filter((item) => item !== key));
   }
 
   selectManager(manager: ProjectUserSummary): void {
@@ -385,18 +417,18 @@ export class ProjectsPageComponent implements OnInit {
     this.selectedManagerKey.set('');
     this.managerSearch.set('');
     this.selectedDeveloperKeys.set([]);
+    this.developerSearch.set('');
     this.resetCreateForm();
 
     try {
       const id = this.projectId();
-      const [managersResponse, developersResponse, projectResponse] = await Promise.all([
+      const [assigneesResponse, projectResponse] = await Promise.all([
         firstValueFrom(this.adminApi.listProjectAssignees()),
-        firstValueFrom(this.adminApi.listProjectAssignees('developer')),
         id ? firstValueFrom(this.adminApi.getProject(id)) : Promise.resolve(null),
       ]);
 
-      this.managers.set(managersResponse.data);
-      this.developers.set(developersResponse.data);
+      this.managers.set(assigneesResponse.data);
+      this.developers.set(assigneesResponse.data);
 
       if (projectResponse) {
         const project = projectResponse.data;

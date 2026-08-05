@@ -13,6 +13,7 @@ import { ProjectUserRefDto } from './create-project.dto';
 
 export const PROJECT_BOARD_STATUSES = [
   'epics',
+  'backlog',
   'todo',
   'in_progress',
   'in_review',
@@ -21,6 +22,7 @@ export const PROJECT_BOARD_STATUSES = [
 ] as const;
 
 export const PROJECT_TASK_STATUSES = [
+  'backlog',
   'todo',
   'in_progress',
   'in_review',

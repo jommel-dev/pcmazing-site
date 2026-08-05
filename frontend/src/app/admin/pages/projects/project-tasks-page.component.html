@@ -30,20 +30,20 @@
           <button
             type="button"
             class="rounded-xl border px-3 py-2 text-left transition"
-            [class.border-pcmazing-500]="selectedPhaseId() === phase.id"
-            [class.bg-pcmazing-500]="selectedPhaseId() === phase.id"
-            [class.text-white]="selectedPhaseId() === phase.id"
-            [class.border-slate-200]="selectedPhaseId() !== phase.id"
-            [class.bg-white]="selectedPhaseId() !== phase.id"
-            [class.text-slate-800]="selectedPhaseId() !== phase.id"
+            [class.border-pcmazing-500]="isPhaseSelected(phase)"
+            [class.bg-pcmazing-500]="isPhaseSelected(phase)"
+            [class.text-white]="isPhaseSelected(phase)"
+            [class.border-slate-200]="!isPhaseSelected(phase)"
+            [class.bg-white]="!isPhaseSelected(phase)"
+            [class.text-slate-800]="!isPhaseSelected(phase)"
             (click)="selectPhase(phase.id)"
           >
             <p class="max-w-[240px] truncate text-sm font-semibold">
               <span class="uppercase">{{ phase.phaseLabel }}</span>: {{ phase.title }}
             </p>
             <p class="mt-1 text-[11px] opacity-80">
-              {{ phase.epicCount }} epics
-              @if (currentPhaseId() === phase.id) {
+              {{ phase.epicCount }} modules
+              @if (isCurrentPhase(phase)) {
                 · current
               }
             </p>
@@ -52,122 +52,275 @@
       </div>
       @if (selectedPhase(); as phase) {
         <div class="mt-2 flex flex-wrap items-center gap-3 text-xs text-slate-500">
+          <span>Showing modules for {{ phase.phaseLabel }}: {{ phase.title }}</span>
           @if (phase.dueDate) {
             <span>Target: {{ phase.dueDate }}</span>
           }
-          @if (currentPhaseId() !== phase.id) {
+          @if (!isCurrentPhase(phase)) {
             <button type="button" class="font-bold text-pcmazing-500" (click)="setAsCurrentPhase(phase.id)">Set as current phase</button>
           }
         </div>
       }
     </div>
 
-    <div class="mt-3 flex min-h-0 flex-1 gap-3 overflow-x-auto px-1 pb-1">
-      @for (column of columns(); track column.key) {
-        <div
-          class="flex h-full w-80 shrink-0 flex-col rounded-2xl border border-slate-200 bg-slate-50"
-          (dragover)="onDragOver($event)"
-          (drop)="onDrop(column.key, $event)"
+    <div class="mt-3 shrink-0 px-1">
+      <div class="inline-flex rounded-xl border border-slate-200 bg-white p-1">
+        <button
+          type="button"
+          class="rounded-lg px-3 py-1.5 text-sm font-bold transition"
+          [class.bg-pcmazing-500]="viewMode() === 'board'"
+          [class.text-white]="viewMode() === 'board'"
+          [class.text-slate-600]="viewMode() !== 'board'"
+          (click)="setViewMode('board')"
         >
-          <div class="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 px-3 py-3">
-            <div>
-              <p class="text-sm font-bold text-slate-800">{{ column.label }}</p>
-              <p class="text-xs text-slate-500">
-                @if (column.key === 'epics') {
-                  {{ epicsForColumn(column.key).length }} epics
-                } @else {
-                  {{ tasksForColumn(column.key).length }} tasks
-                }
-              </p>
-            </div>
-            @if (column.key !== 'epics') {
-              <button
-                type="button"
-                class="rounded-lg border border-slate-300 px-2 py-1 text-xs font-bold text-slate-600"
-                (click)="openCreateModal(undefined, column.key)"
-              >
-                +
-              </button>
-            }
-          </div>
+          Board
+        </button>
+        <button
+          type="button"
+          class="rounded-lg px-3 py-1.5 text-sm font-bold transition"
+          [class.bg-pcmazing-500]="viewMode() === 'history'"
+          [class.text-white]="viewMode() === 'history'"
+          [class.text-slate-600]="viewMode() !== 'history'"
+          (click)="setViewMode('history')"
+        >
+          History
+        </button>
+      </div>
+    </div>
 
-          <div class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
-            @for (epic of epicsForColumn(column.key); track epic.id; let eIdx = $index) {
-              <article
-                class="cursor-grab rounded-xl border border-violet-200 bg-violet-50/70 p-3 active:cursor-grabbing"
-                draggable="true"
-                (dragstart)="onDragStart('epic', epic.id, $event)"
-                (dragover)="onDragOver($event)"
-                (drop)="onDrop(column.key, $event, { epicIndex: eIdx })"
-              >
-                <div class="flex items-start justify-between gap-2">
-                  <div>
-                    <span class="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold uppercase text-violet-700">Epic</span>
-                    <p class="mt-1.5 text-sm font-semibold text-slate-900">{{ epic.title }}</p>
-                  </div>
-                  <span class="text-[11px] font-semibold text-slate-500">{{ epic.doneTaskCount }}/{{ epic.taskCount }}</span>
-                </div>
+    @if (viewMode() === 'board') {
+      <div class="mt-3 flex min-h-0 flex-1 gap-3 overflow-x-auto px-1 pb-1">
+        @for (column of columns(); track column.key) {
+          <div
+            class="flex h-full w-80 shrink-0 flex-col rounded-2xl border border-slate-200 bg-slate-50"
+            (dragover)="onDragOver($event)"
+            (drop)="onDrop(column.key, $event)"
+          >
+            <div class="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 px-3 py-3">
+              <div>
+                <p class="text-sm font-bold text-slate-800">{{ column.label }}</p>
+                <p class="text-xs text-slate-500">
+                  @if (column.key === 'epics') {
+                    @if (selectedPhase(); as phase) {
+                      {{ epicsForColumn(column.key).length }} modules · {{ phase.phaseLabel }}
+                    } @else {
+                      {{ epicsForColumn(column.key).length }} modules
+                    }
+                  } @else {
+                    {{ tasksForColumn(column.key).length }} tasks
+                  }
+                </p>
+              </div>
+              @if (column.key !== 'epics') {
                 <button
                   type="button"
-                  class="mt-3 w-full rounded-lg border border-dashed border-violet-300 bg-white/70 px-2 py-1.5 text-[11px] font-bold text-violet-700 hover:border-violet-500"
-                  (click)="openCreateModal(epic.id, 'todo'); $event.stopPropagation()"
-                  (mousedown)="$event.stopPropagation()"
+                  class="rounded-lg border border-slate-300 px-2 py-1 text-xs font-bold text-slate-600"
+                  (click)="openCreateModal(undefined, column.key)"
                 >
-                  + Add task under {{ epic.title }}
+                  +
                 </button>
-              </article>
-            }
+              }
+            </div>
 
-            @for (task of tasksForColumn(column.key); track task.id; let tIdx = $index) {
-              <article
-                class="cursor-grab rounded-xl border border-slate-200 bg-white p-3 shadow-sm active:cursor-grabbing"
-                draggable="true"
-                (dragstart)="onDragStart('task', task.id, $event)"
-                (dragover)="onDragOver($event)"
-                (drop)="onDrop(column.key, $event, { taskIndex: tIdx })"
-              >
-                <div class="flex items-start justify-between gap-2">
-                  <div class="min-w-0">
-                    @if (task.epicTitle) {
-                      <p class="truncate text-[10px] font-bold uppercase tracking-wide text-violet-600">{{ task.epicTitle }}</p>
-                    }
-                    <p class="mt-0.5 text-sm font-semibold text-slate-900">{{ task.title }}</p>
+            <div class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
+              @for (epic of epicsForColumn(column.key); track epic.id; let eIdx = $index) {
+                <article
+                  class="cursor-grab rounded-xl border border-violet-200 bg-violet-50/70 p-3 active:cursor-grabbing"
+                  draggable="true"
+                  (dragstart)="onDragStart('epic', epic.id, $event)"
+                  (dragover)="onDragOver($event)"
+                  (drop)="onDrop(column.key, $event, { epicIndex: eIdx })"
+                >
+                  <div class="flex items-start justify-between gap-2">
+                    <div>
+                      <span class="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold uppercase text-violet-700">Module</span>
+                      <p class="mt-1.5 text-sm font-semibold text-slate-900">{{ epic.title }}</p>
+                    </div>
+                    <span class="text-[11px] font-semibold text-slate-500">{{ epic.doneTaskCount }}/{{ epic.taskCount }}</span>
                   </div>
-                  <span class="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase {{ priorityClass(task.priority) }}">{{ task.priority }}</span>
-                </div>
-                @if (task.description) {
-                  <p class="mt-2 line-clamp-2 text-xs text-slate-500">{{ task.description }}</p>
-                }
-                <div class="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
-                  <span>{{ task.assignee?.fullName || 'Unassigned' }}</span>
-                  <span>{{ task.commentCount }} comments · {{ task.attachmentCount }} files</span>
-                </div>
-                <div class="mt-3 flex flex-wrap gap-2">
-                  <button type="button" class="text-[11px] font-bold text-pcmazing-500" (click)="openTaskDetail(task.id); $event.stopPropagation()" (mousedown)="$event.stopPropagation()">View</button>
-                  <button type="button" class="text-[11px] font-bold text-slate-600" (click)="openEditModal(task); $event.stopPropagation()" (mousedown)="$event.stopPropagation()">Edit</button>
-                  <button type="button" class="text-[11px] font-bold text-red-600" (click)="deleteTask(task); $event.stopPropagation()" (mousedown)="$event.stopPropagation()">Delete</button>
-                </div>
-              </article>
-            }
+                  <button
+                    type="button"
+                    class="mt-3 w-full rounded-lg border border-dashed border-violet-300 bg-white/70 px-2 py-1.5 text-[11px] font-bold text-violet-700 hover:border-violet-500"
+                    (click)="openCreateModal(epic.id, 'todo'); $event.stopPropagation()"
+                    (mousedown)="$event.stopPropagation()"
+                  >
+                    + Add task under {{ epic.title }}
+                  </button>
+                </article>
+              }
 
-            @if (epicsForColumn(column.key).length === 0 && tasksForColumn(column.key).length === 0) {
-              <div
-                class="flex flex-1 items-center justify-center rounded-xl border border-dashed border-slate-300 px-3 py-8 text-center text-xs text-slate-400"
-                (dragover)="onDragOver($event)"
-                (drop)="onDrop(column.key, $event, { taskIndex: 0, epicIndex: 0 })"
-              >
-                {{ column.key === 'epics' ? 'Drop epic cards here' : 'Drop task cards here' }}
-              </div>
-            }
+              @for (task of tasksForColumn(column.key); track task.id; let tIdx = $index) {
+                <article
+                  class="cursor-grab rounded-xl border border-slate-200 bg-white p-3 shadow-sm active:cursor-grabbing"
+                  draggable="true"
+                  (dragstart)="onDragStart('task', task.id, $event)"
+                  (dragover)="onDragOver($event)"
+                  (drop)="onDrop(column.key, $event, { taskIndex: tIdx })"
+                >
+                  <div class="flex items-start justify-between gap-2">
+                    <div class="min-w-0">
+                      @if (task.epicTitle) {
+                        <p class="truncate text-[10px] font-bold uppercase tracking-wide text-violet-600">{{ task.epicTitle }}</p>
+                      }
+                      <p class="mt-0.5 text-sm font-semibold text-slate-900">{{ task.title }}</p>
+                    </div>
+                    <span class="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase {{ priorityClass(task.priority) }}">{{ task.priority }}</span>
+                  </div>
+                  @if (task.description) {
+                    <p class="mt-2 line-clamp-2 text-xs text-slate-500">{{ task.description }}</p>
+                  }
+                  <div class="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
+                    <span>{{ task.assignee?.fullName || 'Unassigned' }}</span>
+                    <span>{{ task.commentCount }} comments · {{ task.attachmentCount }} files</span>
+                  </div>
+                  <div class="mt-3 flex flex-wrap gap-2">
+                    <button type="button" class="text-[11px] font-bold text-pcmazing-500" (click)="openTaskDetail(task.id); $event.stopPropagation()" (mousedown)="$event.stopPropagation()">View</button>
+                    <button type="button" class="text-[11px] font-bold text-slate-600" (click)="openEditModal(task); $event.stopPropagation()" (mousedown)="$event.stopPropagation()">Edit</button>
+                    <button type="button" class="text-[11px] font-bold text-red-600" (click)="deleteTask(task); $event.stopPropagation()" (mousedown)="$event.stopPropagation()">Delete</button>
+                  </div>
+                </article>
+              }
+
+              @if (epicsForColumn(column.key).length === 0 && tasksForColumn(column.key).length === 0) {
+                <div
+                  class="flex flex-1 items-center justify-center rounded-xl border border-dashed border-slate-300 px-3 py-8 text-center text-xs text-slate-400"
+                  (dragover)="onDragOver($event)"
+                  (drop)="onDrop(column.key, $event, { taskIndex: 0, epicIndex: 0 })"
+                >
+                  @if (column.key === 'epics') {
+                    @if (selectedPhase(); as phase) {
+                      No modules linked to {{ phase.phaseLabel }}
+                    } @else {
+                      No modules in this phase
+                    }
+                  } @else {
+                    Drop task cards here
+                  }
+                </div>
+              }
+            </div>
           </div>
+        }
+      </div>
+    } @else {
+      <div class="mt-3 flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white px-1">
+        <div class="shrink-0 border-b border-slate-200 px-4 py-3">
+          <p class="text-sm font-bold text-slate-800">Phase activity</p>
+          <p class="mt-0.5 text-xs text-slate-500">
+            @if (selectedPhase(); as phase) {
+              Newest first for {{ phase.phaseLabel }}: {{ phase.title }}
+            } @else {
+              Select a phase to view history
+            }
+          </p>
         </div>
-      }
-    </div>
+
+        <div class="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+          @if (historyLoading()) {
+            <p class="py-8 text-center text-sm text-slate-500">Loading history...</p>
+          } @else if (historyError()) {
+            <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{{ historyError() }}</div>
+          } @else {
+            <div class="space-y-3">
+              @for (item of historyItems(); track item.id) {
+                <article class="rounded-xl border border-slate-200 px-4 py-3">
+                  <div class="flex flex-wrap items-start justify-between gap-2">
+                    <div class="min-w-0">
+                      <div class="flex flex-wrap items-center gap-2">
+                        <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase text-slate-600">
+                          {{ activityActionLabel(item.actionType) }}
+                        </span>
+                        @if (item.actionType === 'deleted') {
+                          <span class="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold uppercase text-red-600">Deleted task</span>
+                        }
+                      </div>
+                      <p class="mt-1.5 text-sm font-semibold text-slate-900">{{ item.summary }}</p>
+                      <p class="mt-1 text-xs text-slate-500">
+                        {{ activityActorName(item) }}
+                        @if (item.epicTitle) {
+                          · {{ item.epicTitle }}
+                        }
+                      </p>
+                    </div>
+                    <time class="shrink-0 text-[11px] text-slate-400">{{ formatActivityTime(item.createdAt) }}</time>
+                  </div>
+
+                  <div class="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+                    <span class="font-medium text-slate-700">{{ item.taskTitle }}</span>
+                    @if (item.fromStatus || item.toStatus) {
+                      <span>
+                        {{ statusLabel(item.fromStatus || '—') }}
+                        →
+                        {{ statusLabel(item.toStatus || '—') }}
+                      </span>
+                    }
+                    @if (item.actionType === 'comment_added' && item.details) {
+                      <span class="w-full whitespace-pre-wrap text-slate-600">{{ item.details }}</span>
+                    }
+                    @if ((item.actionType === 'attachment_added' || item.actionType === 'attachment_deleted') && activityAttachmentName(item); as fileName) {
+                      <span>File: {{ fileName }}</span>
+                    }
+                  </div>
+
+                  <div class="mt-3">
+                    @if (canOpenActivityTask(item)) {
+                      <button
+                        type="button"
+                        class="text-[11px] font-bold text-pcmazing-500"
+                        (click)="openTaskDetail(item.taskId!)"
+                      >
+                        Open task
+                      </button>
+                    } @else {
+                      <span class="text-[11px] text-slate-400">Task no longer available</span>
+                    }
+                  </div>
+                </article>
+              } @empty {
+                <p class="rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center text-sm text-slate-400">
+                  No activity for this phase yet.
+                </p>
+              }
+            </div>
+          }
+        </div>
+
+        @if (historyMeta(); as pagination) {
+          @if (pagination.totalPages > 1) {
+            <div class="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 text-xs text-slate-500">
+              <span>Page {{ pagination.page }} of {{ pagination.totalPages }} · {{ pagination.total }} total</span>
+              <div class="flex gap-2">
+                <button
+                  type="button"
+                  class="rounded-lg border border-slate-200 px-3 py-1.5 font-bold disabled:opacity-40"
+                  [disabled]="pagination.page <= 1 || historyLoading()"
+                  (click)="goToHistoryPage(pagination.page - 1)"
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  class="rounded-lg border border-slate-200 px-3 py-1.5 font-bold disabled:opacity-40"
+                  [disabled]="pagination.page >= pagination.totalPages || historyLoading()"
+                  (click)="goToHistoryPage(pagination.page + 1)"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          }
+        }
+      </div>
+    }
   }
 
   @if (modalOpen()) {
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" (click)="closeModal()">
-      <div class="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-xl" (click)="$event.stopPropagation()">
+      <div
+        class="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"
+        (click)="$event.stopPropagation()"
+        (paste)="onCreateModalPaste($event)"
+      >
         <h3 class="text-lg font-bold text-slate-900">
           @if (editingTaskId() === null) { Add task } @else { Edit task }
         </h3>
@@ -223,6 +376,111 @@
             <label class="mb-1 block text-sm font-semibold">Due date</label>
             <input type="date" class="w-full rounded-xl border px-4 py-2.5 text-sm" [ngModel]="draftDueDate()" (ngModelChange)="draftDueDate.set($event)" />
           </div>
+          @if (editingTaskId() === null) {
+            <div>
+              <label class="mb-1 block text-sm font-semibold">Images</label>
+              <p class="mb-2 text-xs text-slate-500">
+                Drag & drop images into the box below, click to browse, or paste a screenshot. JPEG, PNG, WebP, or GIF · max 10MB · originals as-is.
+              </p>
+              <div
+                class="rounded-xl border-2 border-dashed px-3 py-3 transition"
+                [class.border-slate-300]="!imageDropActive()"
+                [class.bg-slate-50]="!imageDropActive()"
+                [class.border-pcmazing-500]="imageDropActive()"
+                [class.bg-pcmazing-50]="imageDropActive()"
+                [class.ring-2]="imageDropActive()"
+                [class.ring-pcmazing-200]="imageDropActive()"
+                (dragenter)="onImageDropZoneDragOver($event)"
+                (dragover)="onImageDropZoneDragOver($event)"
+                (dragleave)="onImageDropZoneDragLeave($event)"
+                (drop)="onImageDropZoneDrop($event)"
+              >
+                @if (pendingCreateAttachments().length) {
+                  <div class="grid grid-cols-3 gap-2">
+                    @for (item of pendingCreateAttachments(); track item.id) {
+                      <div
+                        class="relative cursor-grab overflow-hidden rounded-xl border bg-white active:cursor-grabbing"
+                        [class.border-slate-200]="pendingAttachmentDropTargetId() !== item.id"
+                        [class.border-pcmazing-500]="pendingAttachmentDropTargetId() === item.id"
+                        [class.ring-2]="pendingAttachmentDropTargetId() === item.id"
+                        [class.ring-pcmazing-200]="pendingAttachmentDropTargetId() === item.id"
+                        [class.opacity-50]="draggingPendingAttachmentId() === item.id"
+                        draggable="true"
+                        (dragstart)="onPendingAttachmentDragStart(item.id, $event)"
+                        (dragover)="onPendingAttachmentDragOver(item.id, $event)"
+                        (dragleave)="onPendingAttachmentDragLeave(item.id)"
+                        (drop)="onPendingAttachmentDrop(item.id, $event)"
+                        (dragend)="onPendingAttachmentDragEnd()"
+                      >
+                        <div class="pointer-events-none absolute left-1 top-1 rounded-md bg-white/90 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500 shadow">
+                          Reorder
+                        </div>
+                        <img [src]="item.previewUrl" [alt]="item.file.name" class="pointer-events-none h-24 w-full object-cover" />
+                        <button
+                          type="button"
+                          class="absolute right-1 top-1 rounded-md bg-white/90 px-1.5 py-0.5 text-[10px] font-bold text-red-600 shadow"
+                          (click)="removePendingCreateAttachment(item.id); $event.stopPropagation()"
+                          (mousedown)="$event.stopPropagation()"
+                          (dragstart)="$event.preventDefault(); $event.stopPropagation()"
+                          [disabled]="saving()"
+                        >
+                          Remove
+                        </button>
+                        <p class="truncate px-2 py-1 text-[10px] text-slate-500">{{ item.file.name }}</p>
+                      </div>
+                    }
+                  </div>
+                  <div class="mt-3 flex flex-col items-center gap-2 border-t border-dashed border-slate-200 pt-3">
+                    <p class="text-center text-xs font-semibold text-slate-600">
+                      @if (imageDropActive()) {
+                        Drop to add more images
+                      } @else {
+                        Drop more images here
+                      }
+                    </p>
+                    <label class="cursor-pointer rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">
+                      Browse files
+                      <input
+                        type="file"
+                        class="hidden"
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        multiple
+                        (change)="onCreateAttachmentsSelected($event)"
+                        [disabled]="saving()"
+                      />
+                    </label>
+                  </div>
+                } @else {
+                  <div class="flex flex-col items-center justify-center gap-2 px-3 py-10 text-center">
+                    <p class="text-sm font-semibold text-slate-700">
+                      @if (imageDropActive()) {
+                        Drop images to add them
+                      } @else {
+                        Drag & drop images here
+                      }
+                    </p>
+                    <p class="text-xs text-slate-400">or</p>
+                    <label class="cursor-pointer rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
+                      Browse files
+                      <input
+                        type="file"
+                        class="hidden"
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        multiple
+                        (change)="onCreateAttachmentsSelected($event)"
+                        [disabled]="saving()"
+                      />
+                    </label>
+                  </div>
+                }
+              </div>
+              @if (pendingAttachmentError()) {
+                <div class="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  {{ pendingAttachmentError() }}
+                </div>
+              }
+            </div>
+          }
           @if (modalError()) {
             <div class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{{ modalError() }}</div>
           }
@@ -240,7 +498,12 @@
 
   @if (detailOpen()) {
     <div class="fixed inset-0 z-50 flex justify-end bg-slate-900/40" (click)="closeDetail()">
-      <div class="flex h-full w-full max-w-xl flex-col bg-white shadow-2xl" (click)="$event.stopPropagation()">
+      <div
+        class="flex h-full w-full max-w-xl flex-col bg-white shadow-2xl"
+        (click)="$event.stopPropagation()"
+        (paste)="onDetailPanelPaste($event)"
+        tabindex="-1"
+      >
         <div class="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
           <div class="min-w-0">
             <p class="text-xs font-bold uppercase tracking-wide text-pcmazing-500">Task details</p>
@@ -254,86 +517,244 @@
           <button type="button" class="rounded-lg border px-3 py-1.5 text-sm font-bold text-slate-600" (click)="closeDetail()">Close</button>
         </div>
 
+        <div class="flex shrink-0 gap-1 border-b border-slate-200 px-5 pt-1">
+          <button
+            type="button"
+            class="border-b-2 px-3 py-2.5 text-sm font-bold transition disabled:opacity-40"
+            [class.border-pcmazing-500]="detailTab() === 'details'"
+            [class.text-pcmazing-600]="detailTab() === 'details'"
+            [class.border-transparent]="detailTab() !== 'details'"
+            [class.text-slate-500]="detailTab() !== 'details'"
+            [disabled]="detailLoading() && !detailTask()"
+            (click)="setDetailTab('details')"
+          >
+            Details
+          </button>
+          <button
+            type="button"
+            class="border-b-2 px-3 py-2.5 text-sm font-bold transition disabled:opacity-40"
+            [class.border-pcmazing-500]="detailTab() === 'history'"
+            [class.text-pcmazing-600]="detailTab() === 'history'"
+            [class.border-transparent]="detailTab() !== 'history'"
+            [class.text-slate-500]="detailTab() !== 'history'"
+            [disabled]="detailLoading() && !detailTask()"
+            (click)="setDetailTab('history')"
+          >
+            History
+          </button>
+        </div>
+
         <div class="min-h-0 flex-1 overflow-y-auto px-5 py-4">
           @if (detailLoading()) {
             <p class="text-sm text-slate-500">Loading details...</p>
           } @else if (detailTask(); as task) {
-            <div class="space-y-5">
-              <div class="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-                <p>{{ task.description || 'No description.' }}</p>
-                <div class="mt-3 flex flex-wrap gap-3 text-xs">
-                  <span class="rounded-full bg-white px-2 py-1 font-semibold">{{ statusLabel(task.status) }}</span>
-                  <span class="rounded-full px-2 py-1 font-semibold uppercase {{ priorityClass(task.priority) }}">{{ task.priority }}</span>
-                  <span>{{ task.assignee?.fullName || 'Unassigned' }}</span>
-                  <span>{{ task.dueDate || 'No due date' }}</span>
+            @if (detailTab() === 'details') {
+              <div class="space-y-5">
+                <div class="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                  <p>{{ task.description || 'No description.' }}</p>
+                  <div class="mt-3 flex flex-wrap gap-3 text-xs">
+                    <span class="rounded-full bg-white px-2 py-1 font-semibold">{{ statusLabel(task.status) }}</span>
+                    <span class="rounded-full px-2 py-1 font-semibold uppercase {{ priorityClass(task.priority) }}">{{ task.priority }}</span>
+                    <span>{{ task.assignee?.fullName || 'Unassigned' }}</span>
+                    <span>{{ task.dueDate || 'No due date' }}</span>
+                  </div>
+                  <div class="mt-3 flex gap-2">
+                    <button type="button" class="text-xs font-bold text-pcmazing-500" (click)="openEditModal(task)">Edit task</button>
+                    <button type="button" class="text-xs font-bold text-red-600" (click)="deleteTask(task)">Delete</button>
+                  </div>
                 </div>
-                <div class="mt-3 flex gap-2">
-                  <button type="button" class="text-xs font-bold text-pcmazing-500" (click)="openEditModal(task)">Edit task</button>
-                  <button type="button" class="text-xs font-bold text-red-600" (click)="deleteTask(task)">Delete</button>
-                </div>
-              </div>
 
-              <div>
-                <div class="mb-2 flex items-center justify-between gap-2">
-                  <h4 class="text-sm font-bold text-slate-800">Evidence & files</h4>
-                  <label class="cursor-pointer rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">
-                    Upload
-                    <input type="file" class="hidden" (change)="onAttachmentSelected($event)" [disabled]="detailSaving()" />
-                  </label>
-                </div>
-                <div class="space-y-2">
-                  @for (file of task.attachments; track file.id) {
-                    <div class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2">
-                      <div class="min-w-0">
-                        <p class="truncate text-sm font-semibold text-slate-800">{{ file.fileName }}</p>
-                        <p class="text-[11px] uppercase text-slate-400">{{ file.kind }} · {{ file.mimeType }}</p>
-                        @if (isImageAttachment(file) && attachmentUrl(file.fileUrl); as url) {
-                          <a [href]="url" target="_blank" rel="noopener" class="mt-1 block">
-                            <img [src]="url" [alt]="file.fileName" class="mt-1 max-h-28 rounded-lg border border-slate-200 object-cover" />
-                          </a>
-                        } @else if (attachmentUrl(file.fileUrl); as url) {
-                          <a [href]="url" target="_blank" rel="noopener" class="text-xs font-bold text-pcmazing-500">Open file</a>
-                        }
-                      </div>
-                      <button type="button" class="text-xs font-bold text-red-600" (click)="deleteAttachment(file)" [disabled]="detailSaving()">Delete</button>
-                    </div>
-                  } @empty {
-                    <p class="rounded-xl border border-dashed border-slate-300 px-3 py-4 text-center text-xs text-slate-400">No screenshots or files yet.</p>
-                  }
-                </div>
-              </div>
-
-              <div>
-                <h4 class="mb-2 text-sm font-bold text-slate-800">Comments</h4>
-                <div class="space-y-2">
-                  @for (comment of task.comments; track comment.id) {
-                    <div class="rounded-xl border border-slate-200 px-3 py-2">
-                      <p class="whitespace-pre-wrap text-sm text-slate-700">{{ comment.body }}</p>
-                      <p class="mt-1 text-[11px] text-slate-400">{{ comment.createdAt }}</p>
-                    </div>
-                  } @empty {
-                    <p class="rounded-xl border border-dashed border-slate-300 px-3 py-4 text-center text-xs text-slate-400">No comments yet.</p>
-                  }
-                </div>
-                <div class="mt-3 space-y-2">
-                  <textarea
-                    rows="3"
-                    class="w-full rounded-xl border px-3 py-2 text-sm"
-                    placeholder="Add a comment..."
-                    [ngModel]="commentDraft()"
-                    (ngModelChange)="commentDraft.set($event)"
-                  ></textarea>
-                  <button
-                    type="button"
-                    class="rounded-xl bg-pcmazing-500 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
-                    (click)="addComment()"
-                    [disabled]="detailSaving() || !commentDraft().trim()"
+                <div>
+                  <h4 class="mb-2 text-sm font-bold text-slate-800">Evidence & files</h4>
+                  <p class="mb-2 text-xs text-slate-500">
+                    Drag & drop images here, browse, or paste a screenshot. JPEG, PNG, WebP, or GIF · max 10MB · originals as-is.
+                  </p>
+                  <div
+                    class="mb-3 rounded-xl border-2 border-dashed px-3 py-3 transition"
+                    [class.border-slate-300]="!detailImageDropActive()"
+                    [class.bg-slate-50]="!detailImageDropActive()"
+                    [class.border-pcmazing-500]="detailImageDropActive()"
+                    [class.bg-pcmazing-50]="detailImageDropActive()"
+                    [class.ring-2]="detailImageDropActive()"
+                    [class.ring-pcmazing-200]="detailImageDropActive()"
+                    (dragenter)="onDetailImageDropZoneDragOver($event)"
+                    (dragover)="onDetailImageDropZoneDragOver($event)"
+                    (dragleave)="onDetailImageDropZoneDragLeave($event)"
+                    (drop)="onDetailImageDropZoneDrop($event)"
                   >
-                    Post comment
-                  </button>
+                    <div class="flex flex-col items-center justify-center gap-2 px-2 py-6 text-center">
+                      <p class="text-sm font-semibold text-slate-700">
+                        @if (detailImageDropActive()) {
+                          Drop images to upload
+                        } @else if (detailSaving()) {
+                          Uploading...
+                        } @else {
+                          Drag & drop images here
+                        }
+                      </p>
+                      <p class="text-xs text-slate-400">or</p>
+                      <label
+                        class="cursor-pointer rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                        [class.pointer-events-none]="detailSaving()"
+                        [class.opacity-50]="detailSaving()"
+                      >
+                        Browse files
+                        <input
+                          type="file"
+                          class="hidden"
+                          accept="image/jpeg,image/png,image/webp,image/gif"
+                          multiple
+                          (change)="onAttachmentSelected($event)"
+                          [disabled]="detailSaving()"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                  @if (detailAttachmentError()) {
+                    <div class="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                      {{ detailAttachmentError() }}
+                    </div>
+                  }
+                  <div class="space-y-2">
+                    @for (file of task.attachments; track file.id) {
+                      <div class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2">
+                        <div class="min-w-0">
+                          <p class="truncate text-sm font-semibold text-slate-800">{{ file.fileName }}</p>
+                          <p class="text-[11px] uppercase text-slate-400">{{ file.kind }} · {{ file.mimeType }}</p>
+                          @if (isImageAttachment(file) && attachmentUrl(file.fileUrl); as url) {
+                            <a [href]="url" target="_blank" rel="noopener" class="mt-1 block">
+                              <img [src]="url" [alt]="file.fileName" class="mt-1 max-h-28 rounded-lg border border-slate-200 object-cover" />
+                            </a>
+                          } @else if (attachmentUrl(file.fileUrl); as url) {
+                            <a [href]="url" target="_blank" rel="noopener" class="text-xs font-bold text-pcmazing-500">Open file</a>
+                          }
+                        </div>
+                        <button type="button" class="text-xs font-bold text-red-600" (click)="deleteAttachment(file)" [disabled]="detailSaving()">Delete</button>
+                      </div>
+                    } @empty {
+                      <p class="rounded-xl border border-dashed border-slate-300 px-3 py-4 text-center text-xs text-slate-400">No screenshots or files yet.</p>
+                    }
+                  </div>
+                </div>
+
+                <div>
+                  <h4 class="mb-2 text-sm font-bold text-slate-800">Comments</h4>
+                  <div class="space-y-2">
+                    @for (comment of task.comments; track comment.id) {
+                      <div class="rounded-xl border border-slate-200 px-3 py-2">
+                        <p class="whitespace-pre-wrap text-sm text-slate-700">{{ comment.body }}</p>
+                        <p class="mt-1 text-[11px] text-slate-400">{{ comment.createdAt }}</p>
+                      </div>
+                    } @empty {
+                      <p class="rounded-xl border border-dashed border-slate-300 px-3 py-4 text-center text-xs text-slate-400">No comments yet.</p>
+                    }
+                  </div>
+                  <div class="mt-3 space-y-2">
+                    <textarea
+                      rows="3"
+                      class="w-full rounded-xl border px-3 py-2 text-sm"
+                      placeholder="Add a comment..."
+                      [ngModel]="commentDraft()"
+                      (ngModelChange)="commentDraft.set($event)"
+                    ></textarea>
+                    <button
+                      type="button"
+                      class="rounded-xl bg-pcmazing-500 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
+                      (click)="addComment()"
+                      [disabled]="detailSaving() || !commentDraft().trim()"
+                    >
+                      Post comment
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
+            } @else {
+              <div class="flex min-h-0 flex-col">
+                <div class="mb-3">
+                  <p class="text-sm font-bold text-slate-800">Task activity</p>
+                  <p class="mt-0.5 text-xs text-slate-500">Newest first for this task</p>
+                </div>
+
+                @if (detailHistoryLoading()) {
+                  <p class="py-8 text-center text-sm text-slate-500">Loading history...</p>
+                } @else if (detailHistoryError()) {
+                  <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{{ detailHistoryError() }}</div>
+                } @else {
+                  <div class="space-y-3">
+                    @for (item of detailHistoryItems(); track item.id) {
+                      <article class="rounded-xl border border-slate-200 px-4 py-3">
+                        <div class="flex flex-wrap items-start justify-between gap-2">
+                          <div class="min-w-0">
+                            <div class="flex flex-wrap items-center gap-2">
+                              <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase text-slate-600">
+                                {{ activityActionLabel(item.actionType) }}
+                              </span>
+                              @if (item.actionType === 'deleted') {
+                                <span class="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold uppercase text-red-600">Deleted task</span>
+                              }
+                            </div>
+                            <p class="mt-1.5 text-sm font-semibold text-slate-900">{{ item.summary }}</p>
+                            <p class="mt-1 text-xs text-slate-500">
+                              {{ activityActorName(item) }}
+                              @if (item.epicTitle) {
+                                · {{ item.epicTitle }}
+                              }
+                            </p>
+                          </div>
+                          <time class="shrink-0 text-[11px] text-slate-400">{{ formatActivityTime(item.createdAt) }}</time>
+                        </div>
+
+                        <div class="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+                          @if (item.fromStatus || item.toStatus) {
+                            <span>
+                              {{ statusLabel(item.fromStatus || '—') }}
+                              →
+                              {{ statusLabel(item.toStatus || '—') }}
+                            </span>
+                          }
+                          @if (item.actionType === 'comment_added' && item.details) {
+                            <span class="w-full whitespace-pre-wrap text-slate-600">{{ item.details }}</span>
+                          }
+                          @if ((item.actionType === 'attachment_added' || item.actionType === 'attachment_deleted') && activityAttachmentName(item); as fileName) {
+                            <span>File: {{ fileName }}</span>
+                          }
+                        </div>
+                      </article>
+                    } @empty {
+                      <p class="rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center text-sm text-slate-400">
+                        No activity for this task yet.
+                      </p>
+                    }
+                  </div>
+                }
+
+                @if (detailHistoryMeta(); as pagination) {
+                  @if (pagination.totalPages > 1) {
+                    <div class="mt-4 flex items-center justify-between gap-3 border-t border-slate-200 pt-3 text-xs text-slate-500">
+                      <span>Page {{ pagination.page }} of {{ pagination.totalPages }} · {{ pagination.total }} total</span>
+                      <div class="flex gap-2">
+                        <button
+                          type="button"
+                          class="rounded-lg border border-slate-200 px-3 py-1.5 font-bold disabled:opacity-40"
+                          [disabled]="pagination.page <= 1 || detailHistoryLoading()"
+                          (click)="goToDetailHistoryPage(pagination.page - 1)"
+                        >
+                          Previous
+                        </button>
+                        <button
+                          type="button"
+                          class="rounded-lg border border-slate-200 px-3 py-1.5 font-bold disabled:opacity-40"
+                          [disabled]="pagination.page >= pagination.totalPages || detailHistoryLoading()"
+                          (click)="goToDetailHistoryPage(pagination.page + 1)"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    </div>
+                  }
+                }
+              </div>
+            }
           }
 
           @if (detailError()) {

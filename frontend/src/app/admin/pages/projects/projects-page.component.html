@@ -443,43 +443,64 @@
                           <button
                             type="button"
                             class="flex w-full items-start justify-between rounded-xl border border-slate-200 px-3 py-2 text-left text-sm hover:bg-slate-50"
-                            [class.border-pcmazing-300]="userKey(manager) === selectedManagerKey()"
-                            [class.bg-pcmazing-50]="userKey(manager) === selectedManagerKey()"
                             (click)="selectManager(manager)"
                           >
                             <span>
                               <span class="block font-semibold text-slate-900">{{ manager.fullName }}</span>
                               <span class="block text-xs text-slate-500">@{{ manager.username }} · {{ manager.role }}{{ manager.email ? ' · ' + manager.email : '' }}</span>
                             </span>
-                            @if (userKey(manager) === selectedManagerKey()) {
-                              <span class="text-xs font-bold text-pcmazing-600">Tagged</span>
-                            }
                           </button>
                         } @empty {
-                          <p class="px-2 py-3 text-center text-sm text-slate-500">No matching project manager.</p>
+                          <p class="px-2 py-3 text-center text-sm text-slate-500">No matching user.</p>
                         }
                       </div>
                     }
                   </div>
 
                   <div class="mt-4">
-                    <label class="mb-2 block text-sm font-semibold">Developer team</label>
-                    <div class="max-h-96 space-y-2 overflow-y-auto rounded-xl border border-slate-200 p-3">
-                      @for (developer of developers(); track userKey(developer)) {
-                        <label class="flex items-start gap-3 rounded-xl border border-slate-200 px-3 py-2 text-sm">
-                          <input
-                            type="checkbox"
-                            class="mt-1"
-                            [checked]="isDeveloperSelected(developer)"
-                            (change)="toggleDeveloper(developer)"
-                          />
-                          <span>
-                            <span class="block font-semibold text-slate-900">{{ developer.fullName }}</span>
-                            <span class="block text-xs text-slate-500">{{ developer.role }}{{ developer.email ? ' · ' + developer.email : '' }}</span>
-                          </span>
-                        </label>
-                      }
-                    </div>
+                    <label class="mb-1 block text-sm font-semibold">Developer team</label>
+                    <input
+                      type="search"
+                      class="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm"
+                      placeholder="Type @username, name, role, or email"
+                      [ngModel]="developerSearch()"
+                      [ngModelOptions]="{ standalone: true }"
+                      (ngModelChange)="developerSearch.set($event)"
+                    />
+
+                    @if (selectedDevelopers().length) {
+                      <div class="mt-2 flex flex-wrap gap-2">
+                        @for (developer of selectedDevelopers(); track userKey(developer)) {
+                          <button
+                            type="button"
+                            class="rounded-full bg-pcmazing-50 px-3 py-1.5 text-sm font-semibold text-pcmazing-700"
+                            title="Remove developer"
+                            (click)="clearDeveloper(developer)"
+                          >
+                            {{ developer.fullName }} · @{{ developer.username }} ×
+                          </button>
+                        }
+                      </div>
+                    }
+
+                    @if (developerSearch().trim()) {
+                      <div class="mt-2 max-h-56 space-y-2 overflow-y-auto rounded-xl border border-slate-200 p-3">
+                        @for (developer of filteredDevelopers(); track userKey(developer)) {
+                          <button
+                            type="button"
+                            class="flex w-full items-start justify-between rounded-xl border border-slate-200 px-3 py-2 text-left text-sm hover:bg-slate-50"
+                            (click)="toggleDeveloper(developer)"
+                          >
+                            <span>
+                              <span class="block font-semibold text-slate-900">{{ developer.fullName }}</span>
+                              <span class="block text-xs text-slate-500">@{{ developer.username }} · {{ developer.role }}{{ developer.email ? ' · ' + developer.email : '' }}</span>
+                            </span>
+                          </button>
+                        } @empty {
+                          <p class="px-2 py-3 text-center text-sm text-slate-500">No matching user.</p>
+                        }
+                      </div>
+                    }
                   </div>
                 </div>
 
