@@ -28,6 +28,13 @@ import {
 } from './dto/project-task.dto';
 import { deduplicateProjectUserRefs } from './project-assignments.util';
 import {
+  computeProjectPaymentStatus,
+  remainingForSchedule,
+  roundMoney,
+  type PaymentScheduleSettlementItem,
+  type ProjectPaymentStatus,
+} from './project-payment.util';
+import {
   actorDisplayName,
   buildTaskActivityPhaseFilter,
   mapTaskActivityRow,
@@ -80,8 +87,29 @@ export interface ProjectListItem {
   company: string | null;
   projectManager: ProjectUserSummary | null;
   teamMemberCount: number;
+  paymentStatus: ProjectPaymentStatus;
+  paymentTotal: number;
+  settledTotal: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ProjectPaymentScheduleItem {
+  id: number;
+  label: string;
+  amount: number;
+  description: string | null;
+  dueDate: string | null;
+  notes: string | null;
+  connectedMilestoneId: string | null;
+  status: 'pending' | 'paid' | 'overdue';
+  settledAt: string | null;
+  paymentMethod: string | null;
+  referenceNumber: string | null;
+  checkDate: string | null;
+  amountPaid: number;
+  remainingBalance: number;
+  settlements: PaymentScheduleSettlementItem[];
 }
 
 export interface ProjectDetail extends ProjectListItem {
@@ -89,6 +117,7 @@ export interface ProjectDetail extends ProjectListItem {
   phone: string | null;
   address: string | null;
   notes: string | null;
+  currency: string;
   contract: {
     id: number;
     projectName: string;
@@ -109,17 +138,70 @@ export interface ProjectDetail extends ProjectListItem {
       dueDate: string | null;
       connectedModuleId: string | null;
     }>;
-    paymentSchedule: Array<{
-      id: number;
-      label: string;
-      amount: number;
-      description: string | null;
-      dueDate: string | null;
-      notes: string | null;
-      connectedMilestoneId: string | null;
-    }>;
+    paymentSchedule: ProjectPaymentScheduleItem[];
   } | null;
   teamMembers: ProjectUserSummary[];
+}
+
+export interface ProjectSettlePaymentResult {
+  payment: ProjectPaymentScheduleItem;
+  settlement: PaymentScheduleSettlementItem;
+  remainingBalance: number;
+}
+
+export interface ProjectInvoiceData {
+  projectId: number;
+  projectName: string;
+  projectType: string | null;
+  clientName: string;
+  company: string | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  currency: string;
+  issuedAt: string;
+  invoiceNumber: string | null;
+  phaseNumber: number | null;
+  phaseTitle: string | null;
+  phaseDescription: string | null;
+  phaseDueDate: string | null;
+  milestones: Array<{
+    id: number;
+    title: string;
+    description: string | null;
+    dueDate: string | null;
+  }>;
+  payments: Array<{
+    id: number;
+    label: string;
+    amount: number;
+    amountPaid: number;
+    remainingBalance: number;
+    dueDate: string | null;
+    status: string;
+    connectedMilestoneId: string | null;
+    connectedMilestoneTitle: string | null;
+  }>;
+  totalAmount: number;
+  totalPaid: number;
+  totalDue: number;
+}
+
+export interface ProjectReceiptData {
+  projectId: number;
+  projectName: string;
+  clientName: string;
+  company: string | null;
+  currency: string;
+  settlement: PaymentScheduleSettlementItem;
+  paymentLabel: string;
+  scheduleAmount: number;
+  amountPaid: number;
+  remainingBalance: number;
+  phaseNumber: number | null;
+  phaseName: string | null;
+  phaseDescription: string | null;
+  phaseDueDate: string | null;
 }
 
 export interface ProjectTaskItem {
@@ -256,7 +338,93 @@ export class ProjectsService {
       );
     }
 
+    await this.ensurePaymentSettlementsTable();
+
     this.schemaReady = true;
+  }
+
+  private async ensurePaymentSettlementsTable(): Promise<void> {
+    if (!(await tableExists(this.databaseService, 'pcmazing_client_contract_payment_settlements'))) {
+      await this.databaseService.query(`
+        CREATE TABLE IF NOT EXISTS pcmazing_client_contract_payment_settlements (
+          id BIGSERIAL PRIMARY KEY,
+          payment_schedule_id BIGINT NOT NULL
+            REFERENCES pcmazing_client_contract_payment_schedules(id) ON DELETE CASCADE,
+          amount NUMERIC(14, 2) NOT NULL CHECK (amount > 0),
+          settled_on DATE NOT NULL,
+          payment_method VARCHAR(100) NOT NULL,
+          payment_code VARCHAR(100),
+          check_date DATE,
+          remaining_balance NUMERIC(14, 2) NOT NULL CHECK (remaining_balance >= 0),
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await this.databaseService.query(`
+        CREATE INDEX IF NOT EXISTS idx_pcmazing_payment_settlements_schedule
+          ON pcmazing_client_contract_payment_settlements(payment_schedule_id, settled_on DESC, id DESC)
+      `);
+    }
+
+    // Backfill paid rows that have no ledger entries yet.
+    await this.databaseService.query(`
+      INSERT INTO pcmazing_client_contract_payment_settlements (
+        payment_schedule_id,
+        amount,
+        settled_on,
+        payment_method,
+        payment_code,
+        check_date,
+        remaining_balance,
+        created_at
+      )
+      SELECT
+        ps.id,
+        ps.amount,
+        COALESCE(ps.settled_at::date, ps.due_date, CURRENT_DATE),
+        COALESCE(NULLIF(TRIM(ps.payment_method), ''), 'Cash'),
+        ps.payment_code,
+        ps.check_date,
+        0,
+        COALESCE(ps.settled_at, NOW())
+      FROM pcmazing_client_contract_payment_schedules ps
+      WHERE LOWER(COALESCE(ps.status, '')) = 'paid'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM pcmazing_client_contract_payment_settlements s
+          WHERE s.payment_schedule_id = ps.id
+        )
+    `);
+  }
+
+  private async ensurePaymentSettledAtColumn(): Promise<boolean> {
+    const settledAtColumn = await this.databaseService.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+       FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name = 'pcmazing_client_contract_payment_schedules'
+         AND column_name = 'settled_at'`,
+    );
+    if (Number(settledAtColumn.rows[0]?.count ?? 0) === 0) {
+      await this.databaseService.query(
+        `ALTER TABLE pcmazing_client_contract_payment_schedules
+         ADD COLUMN IF NOT EXISTS settled_at TIMESTAMPTZ`,
+      );
+    }
+
+    const checkDateColumn = await this.databaseService.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+       FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name = 'pcmazing_client_contract_payment_schedules'
+         AND column_name = 'check_date'`,
+    );
+    if (Number(checkDateColumn.rows[0]?.count ?? 0) === 0) {
+      await this.databaseService.query(
+        `ALTER TABLE pcmazing_client_contract_payment_schedules
+         ADD COLUMN IF NOT EXISTS check_date DATE`,
+      );
+    }
+    return true;
   }
 
   async listAssignees(role?: string): Promise<ProjectUserSummary[]> {
@@ -338,6 +506,9 @@ export class ProjectsService {
       project_manager_user_id: number;
       project_manager_user_source: UserSource;
       team_member_count: string;
+      payment_total: string;
+      settled_total: string;
+      overdue_unpaid_count: string;
       created_at: string;
       updated_at: string;
     }>(
@@ -351,14 +522,44 @@ export class ProjectsService {
         c.company,
         p.project_manager_user_id,
         p.project_manager_user_source,
-        COUNT(m.id)::text AS team_member_count,
+        COUNT(DISTINCT m.id)::text AS team_member_count,
+        COALESCE(pay.payment_total, 0)::text AS payment_total,
+        COALESCE(pay.settled_total, 0)::text AS settled_total,
+        COALESCE(pay.overdue_unpaid_count, 0)::text AS overdue_unpaid_count,
         p.created_at::text,
         p.updated_at::text
        FROM pcmazing_projects p
        INNER JOIN pcmazing_client_prospects c ON c.id = p.prospect_id
        LEFT JOIN pcmazing_project_members m ON m.project_id = p.id
+       LEFT JOIN LATERAL (
+         SELECT
+           COALESCE(SUM(ps.amount), 0) AS payment_total,
+           COALESCE((
+             SELECT SUM(s.amount)
+             FROM pcmazing_client_contract_payment_settlements s
+             INNER JOIN pcmazing_client_contract_payment_schedules ps2
+               ON ps2.id = s.payment_schedule_id
+             WHERE ps2.contract_id = cc.id
+           ), 0) AS settled_total,
+           COUNT(*) FILTER (
+             WHERE LOWER(COALESCE(ps.status, '')) <> 'paid'
+               AND ps.due_date IS NOT NULL
+               AND ps.due_date < CURRENT_DATE
+           )::int AS overdue_unpaid_count
+         FROM pcmazing_client_contracts cc
+         LEFT JOIN pcmazing_client_contract_payment_schedules ps ON ps.contract_id = cc.id
+         WHERE cc.prospect_id = p.prospect_id
+         GROUP BY cc.id
+         LIMIT 1
+       ) pay ON TRUE
        ${scopeSql}
-       GROUP BY p.id, c.client_name, c.company
+       GROUP BY
+         p.id,
+         c.client_name,
+         c.company,
+         pay.payment_total,
+         pay.settled_total,
+         pay.overdue_unpaid_count
        ORDER BY p.updated_at DESC, p.id DESC`,
       params,
     );
@@ -371,19 +572,31 @@ export class ProjectsService {
     );
 
     return {
-      items: result.rows.map((row) => ({
-        id: row.id,
-        prospectId: row.prospect_id,
-        name: row.name,
-        projectType: row.project_type,
-        status: row.status,
-        clientName: row.client_name,
-        company: row.company,
-        projectManager: managers.get(`${row.project_manager_user_source}:${row.project_manager_user_id}`) ?? null,
-        teamMemberCount: Number(row.team_member_count),
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-      })),
+      items: result.rows.map((row) => {
+        const paymentTotal = roundMoney(Number(row.payment_total));
+        const settledTotal = roundMoney(Number(row.settled_total));
+        return {
+          id: row.id,
+          prospectId: row.prospect_id,
+          name: row.name,
+          projectType: row.project_type,
+          status: row.status,
+          clientName: row.client_name,
+          company: row.company,
+          projectManager:
+            managers.get(`${row.project_manager_user_source}:${row.project_manager_user_id}`) ?? null,
+          teamMemberCount: Number(row.team_member_count),
+          paymentStatus: computeProjectPaymentStatus({
+            totalAmount: paymentTotal,
+            settledAmount: settledTotal,
+            hasOverdueUnpaid: Number(row.overdue_unpaid_count) > 0,
+          }),
+          paymentTotal,
+          settledTotal,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        };
+      }),
     };
   }
 
@@ -402,6 +615,7 @@ export class ProjectsService {
       phone: string | null;
       address: string | null;
       notes: string | null;
+      currency: string | null;
       project_manager_user_id: number;
       project_manager_user_source: UserSource;
       created_at: string;
@@ -419,6 +633,7 @@ export class ProjectsService {
         c.phone,
         c.address,
         c.notes,
+        c.currency,
         p.project_manager_user_id,
         p.project_manager_user_source,
         p.created_at::text,
@@ -454,6 +669,15 @@ export class ProjectsService {
       .map((member) => users.get(`${member.user_source}:${member.user_id}`))
       .filter((user): user is ProjectUserSummary => Boolean(user));
     const contract = await this.loadProjectContract(row.prospect_id);
+    const paymentTotal = roundMoney(
+      (contract?.paymentSchedule ?? []).reduce((sum, item) => sum + item.amount, 0),
+    );
+    const settledTotal = roundMoney(
+      (contract?.paymentSchedule ?? []).reduce((sum, item) => sum + item.amountPaid, 0),
+    );
+    const hasOverdueUnpaid = (contract?.paymentSchedule ?? []).some(
+      (item) => item.status !== 'paid' && item.remainingBalance > 0 && item.status === 'overdue',
+    );
 
     return {
       id: row.id,
@@ -467,10 +691,18 @@ export class ProjectsService {
       phone: row.phone,
       address: row.address,
       notes: row.notes,
+      currency: (row.currency || 'PHP').trim().toUpperCase() || 'PHP',
       contract,
       projectManager: users.get(`${row.project_manager_user_source}:${row.project_manager_user_id}`) ?? null,
       teamMemberCount: teamMembers.length,
       teamMembers,
+      paymentStatus: computeProjectPaymentStatus({
+        totalAmount: paymentTotal,
+        settledAmount: settledTotal,
+        hasOverdueUnpaid,
+      }),
+      paymentTotal,
+      settledTotal,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -1043,6 +1275,8 @@ export class ProjectsService {
   }
 
   private async loadProjectContract(prospectId: number): Promise<ProjectDetail['contract']> {
+    await this.ensurePaymentSettledAtColumn();
+
     const contractResult = await this.databaseService.query<{
       id: number;
       system_name: string;
@@ -1061,7 +1295,7 @@ export class ProjectsService {
       return null;
     }
 
-    const [modulesResult, milestonesResult, paymentsResult] = await Promise.all([
+    const [modulesResult, milestonesResult, paymentsResult, settlementsResult] = await Promise.all([
       this.databaseService.query<{
         id: number;
         module_name: string;
@@ -1097,11 +1331,55 @@ export class ProjectsService {
         due_date: string | null;
         notes: string | null;
         milestone_id: number | null;
+        status: string;
+        settled_at: string | null;
+        payment_method: string | null;
+        payment_code: string | null;
+        check_date: string | null;
       }>(
-        `SELECT id, label, amount::text, description, due_date::text, notes, milestone_id
+        `SELECT
+          id,
+          label,
+          amount::text,
+          description,
+          due_date::text,
+          notes,
+          milestone_id,
+          status,
+          settled_at::text,
+          payment_method,
+          payment_code,
+          check_date::text
          FROM pcmazing_client_contract_payment_schedules
          WHERE contract_id = $1
          ORDER BY sort_order ASC, id ASC`,
+        [contractRow.id],
+      ),
+      this.databaseService.query<{
+        id: number;
+        payment_schedule_id: number;
+        amount: string;
+        settled_on: string;
+        payment_method: string;
+        payment_code: string | null;
+        check_date: string | null;
+        remaining_balance: string;
+        created_at: string;
+      }>(
+        `SELECT
+          s.id,
+          s.payment_schedule_id,
+          s.amount::text,
+          s.settled_on::text,
+          s.payment_method,
+          s.payment_code,
+          s.check_date::text,
+          s.remaining_balance::text,
+          s.created_at::text
+         FROM pcmazing_client_contract_payment_settlements s
+         INNER JOIN pcmazing_client_contract_payment_schedules ps ON ps.id = s.payment_schedule_id
+         WHERE ps.contract_id = $1
+         ORDER BY s.settled_on DESC, s.id DESC`,
         [contractRow.id],
       ),
     ]);
@@ -1109,6 +1387,24 @@ export class ProjectsService {
     const milestoneSortOrderById = new Map(
       milestonesResult.rows.map((row) => [row.id, row.sort_order]),
     );
+    const settlementsBySchedule = new Map<number, PaymentScheduleSettlementItem[]>();
+    for (const row of settlementsResult.rows) {
+      const scheduleId = Number(row.payment_schedule_id);
+      const list = settlementsBySchedule.get(scheduleId) ?? [];
+      list.push({
+        id: Number(row.id),
+        paymentScheduleId: scheduleId,
+        amount: Number(row.amount),
+        settledOn: row.settled_on,
+        paymentMethod: row.payment_method,
+        referenceNumber: row.payment_code,
+        checkDate: row.check_date,
+        remainingBalance: Number(row.remaining_balance),
+        createdAt: row.created_at,
+      });
+      settlementsBySchedule.set(scheduleId, list);
+    }
+
     return {
       id: contractRow.id,
       projectName: contractRow.system_name,
@@ -1133,18 +1429,544 @@ export class ProjectsService {
             ? null
             : String(row.connected_module_sort_order),
       })),
-      paymentSchedule: paymentsResult.rows.map((row) => ({
-        id: row.id,
-        label: row.label,
-        amount: Number(row.amount),
-        description: row.description,
-        dueDate: row.due_date,
-        notes: row.notes,
-        connectedMilestoneId:
-          row.milestone_id != null && milestoneSortOrderById.has(row.milestone_id)
-            ? String(milestoneSortOrderById.get(row.milestone_id))
-            : null,
-      })),
+      paymentSchedule: paymentsResult.rows.map((row) => {
+        const settlements = settlementsBySchedule.get(Number(row.id)) ?? [];
+        const amount = Number(row.amount);
+        const amountPaid = roundMoney(settlements.reduce((sum, item) => sum + item.amount, 0));
+        const remaining = remainingForSchedule(amount, amountPaid);
+        return {
+          id: Number(row.id),
+          label: row.label,
+          amount,
+          description: row.description,
+          dueDate: row.due_date,
+          notes: row.notes,
+          connectedMilestoneId:
+            row.milestone_id != null && milestoneSortOrderById.has(row.milestone_id)
+              ? String(milestoneSortOrderById.get(row.milestone_id))
+              : null,
+          status: this.normalizePaymentStatus(
+            amountPaid >= amount - 0.001 ? 'paid' : row.status,
+            row.due_date,
+          ),
+          settledAt: row.settled_at,
+          paymentMethod: row.payment_method,
+          referenceNumber: row.payment_code,
+          checkDate: row.check_date,
+          amountPaid,
+          remainingBalance: remaining,
+          settlements,
+        };
+      }),
+    };
+  }
+
+  private normalizePaymentStatus(
+    statusRaw: string | null | undefined,
+    dueDate: string | null,
+  ): 'pending' | 'paid' | 'overdue' {
+    const status = (statusRaw || 'pending').trim().toLowerCase();
+    if (status === 'paid') {
+      return 'paid';
+    }
+    if (status === 'overdue') {
+      return 'overdue';
+    }
+    if (dueDate) {
+      const due = new Date(`${dueDate}T00:00:00`);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (!Number.isNaN(due.getTime()) && due.getTime() < today.getTime()) {
+        return 'overdue';
+      }
+    }
+    return 'pending';
+  }
+
+  async settleProjectPayment(
+    projectId: number,
+    paymentId: number,
+    dto: {
+      date: string;
+      paymentMethod: string;
+      settlementType: 'partial' | 'full';
+      amount?: number;
+      referenceNumber?: string;
+      checkNumber?: string;
+      checkDate?: string;
+    },
+  ): Promise<ProjectSettlePaymentResult> {
+    await this.ensureReady();
+    await this.ensurePaymentSettledAtColumn();
+
+    const settledDate = String(dto.date || '').trim();
+    const paymentMethod = String(dto.paymentMethod || '').trim();
+    const settlementType = String(dto.settlementType || '').trim().toLowerCase() as
+      | 'partial'
+      | 'full';
+    const referenceNumber = String(dto.referenceNumber || '').trim();
+    const checkNumber = String(dto.checkNumber || '').trim();
+    const checkDate = String(dto.checkDate || '').trim();
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(settledDate)) {
+      throw new BadRequestException('Settlement date is required (YYYY-MM-DD).');
+    }
+    if (!paymentMethod) {
+      throw new BadRequestException('Payment method is required.');
+    }
+    if (settlementType !== 'partial' && settlementType !== 'full') {
+      throw new BadRequestException('Settlement type must be partial or full.');
+    }
+
+    let paymentCode: string | null = null;
+    let storedCheckDate: string | null = null;
+
+    if (paymentMethod === 'Cash') {
+      paymentCode = null;
+      storedCheckDate = null;
+    } else if (paymentMethod === 'Check') {
+      if (!checkNumber) {
+        throw new BadRequestException('Check number is required.');
+      }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(checkDate)) {
+        throw new BadRequestException('Check date is required (YYYY-MM-DD).');
+      }
+      paymentCode = checkNumber;
+      storedCheckDate = checkDate;
+    } else if (['Bank Transfer', 'Wise', 'PayPal'].includes(paymentMethod)) {
+      if (!referenceNumber) {
+        throw new BadRequestException('Reference number is required.');
+      }
+      paymentCode = referenceNumber;
+      storedCheckDate = null;
+    } else {
+      throw new BadRequestException('Invalid payment method.');
+    }
+
+    const project = await this.getById(projectId);
+    if (!project.contract) {
+      throw new BadRequestException('This project has no signed contract payment schedule.');
+    }
+
+    const ownership = await this.databaseService.query<{
+      id: number;
+      label: string;
+      amount: string;
+      description: string | null;
+      due_date: string | null;
+      notes: string | null;
+      milestone_id: number | null;
+      status: string;
+      settled_at: string | null;
+      payment_method: string | null;
+      payment_code: string | null;
+      check_date: string | null;
+      sort_order: number;
+    }>(
+      `SELECT
+        ps.id,
+        ps.label,
+        ps.amount::text,
+        ps.description,
+        ps.due_date::text,
+        ps.notes,
+        ps.milestone_id,
+        ps.status,
+        ps.settled_at::text,
+        ps.payment_method,
+        ps.payment_code,
+        ps.check_date::text,
+        ps.sort_order
+       FROM pcmazing_client_contract_payment_schedules ps
+       INNER JOIN pcmazing_client_contracts c ON c.id = ps.contract_id
+       INNER JOIN pcmazing_projects p ON p.prospect_id = c.prospect_id
+       WHERE p.id = $1
+         AND ps.id = $2
+       LIMIT 1`,
+      [projectId, paymentId],
+    );
+
+    const existing = ownership.rows[0];
+    if (!existing) {
+      throw new NotFoundException('Payment schedule item not found for this project.');
+    }
+
+    const scheduleAmount = roundMoney(Number(existing.amount));
+    const priorSettlements = await this.databaseService.query<{
+      amount: string;
+    }>(
+      `SELECT amount::text
+       FROM pcmazing_client_contract_payment_settlements
+       WHERE payment_schedule_id = $1`,
+      [paymentId],
+    );
+    const amountPaidBefore = roundMoney(
+      priorSettlements.rows.reduce((sum, row) => sum + Number(row.amount), 0),
+    );
+    const remainingBefore = remainingForSchedule(scheduleAmount, amountPaidBefore);
+
+    if (remainingBefore <= 0 || (existing.status || '').toLowerCase() === 'paid') {
+      throw new BadRequestException('This payment is already fully paid.');
+    }
+
+    let settleAmount: number;
+    if (settlementType === 'full') {
+      settleAmount = remainingBefore;
+    } else {
+      settleAmount = roundMoney(Number(dto.amount));
+      if (!Number.isFinite(settleAmount) || settleAmount <= 0) {
+        throw new BadRequestException('Settlement amount must be greater than zero.');
+      }
+      if (settleAmount > remainingBefore) {
+        throw new BadRequestException(
+          `Settlement amount cannot exceed remaining balance (${remainingBefore}).`,
+        );
+      }
+    }
+
+    const remainingAfter = remainingForSchedule(
+      scheduleAmount,
+      roundMoney(amountPaidBefore + settleAmount),
+    );
+    const isFullyPaid = remainingAfter <= 0;
+
+    const settlementInsert = await this.databaseService.query<{
+      id: number;
+      payment_schedule_id: number;
+      amount: string;
+      settled_on: string;
+      payment_method: string;
+      payment_code: string | null;
+      check_date: string | null;
+      remaining_balance: string;
+      created_at: string;
+    }>(
+      `INSERT INTO pcmazing_client_contract_payment_settlements (
+        payment_schedule_id,
+        amount,
+        settled_on,
+        payment_method,
+        payment_code,
+        check_date,
+        remaining_balance
+      ) VALUES ($1, $2, $3::date, $4, $5, $6::date, $7)
+       RETURNING
+         id,
+         payment_schedule_id,
+         amount::text,
+         settled_on::text,
+         payment_method,
+         payment_code,
+         check_date::text,
+         remaining_balance::text,
+         created_at::text`,
+      [
+        paymentId,
+        settleAmount,
+        settledDate,
+        paymentMethod,
+        paymentCode,
+        storedCheckDate,
+        remainingAfter,
+      ],
+    );
+
+    const settlementRow = settlementInsert.rows[0];
+    if (!settlementRow) {
+      throw new ServiceUnavailableException('Unable to record payment settlement.');
+    }
+
+    let scheduleRow = existing;
+    if (isFullyPaid) {
+      const updated = await this.databaseService.query<{
+        id: number;
+        label: string;
+        amount: string;
+        description: string | null;
+        due_date: string | null;
+        notes: string | null;
+        milestone_id: number | null;
+        status: string;
+        settled_at: string | null;
+        payment_method: string | null;
+        payment_code: string | null;
+        check_date: string | null;
+        sort_order: number;
+      }>(
+        `UPDATE pcmazing_client_contract_payment_schedules
+         SET status = 'paid',
+             settled_at = ($1::date + TIME '12:00:00') AT TIME ZONE 'UTC',
+             payment_method = $2,
+             payment_code = $3,
+             check_date = $4::date
+         WHERE id = $5
+         RETURNING
+           id,
+           label,
+           amount::text,
+           description,
+           due_date::text,
+           notes,
+           milestone_id,
+           status,
+           settled_at::text,
+           payment_method,
+           payment_code,
+           check_date::text,
+           sort_order`,
+        [settledDate, paymentMethod, paymentCode, storedCheckDate, paymentId],
+      );
+      scheduleRow = updated.rows[0] ?? existing;
+    }
+
+    const linkedFromContract = project.contract.paymentSchedule.find(
+      (item) => Number(item.id) === Number(scheduleRow.id),
+    );
+    const settlementsFromContract = linkedFromContract?.settlements ?? [];
+    const newSettlement: PaymentScheduleSettlementItem = {
+      id: Number(settlementRow.id),
+      paymentScheduleId: Number(settlementRow.payment_schedule_id),
+      amount: Number(settlementRow.amount),
+      settledOn: settlementRow.settled_on,
+      paymentMethod: settlementRow.payment_method,
+      referenceNumber: settlementRow.payment_code,
+      checkDate: settlementRow.check_date,
+      remainingBalance: Number(settlementRow.remaining_balance),
+      createdAt: settlementRow.created_at,
+    };
+    const settlements = [newSettlement, ...settlementsFromContract.filter((s) => s.id !== newSettlement.id)];
+    const amountPaid = roundMoney(amountPaidBefore + settleAmount);
+    const remainingBalance = remainingAfter;
+
+    const payment: ProjectPaymentScheduleItem = {
+      id: Number(scheduleRow.id),
+      label: scheduleRow.label,
+      amount: scheduleAmount,
+      description: scheduleRow.description,
+      dueDate: scheduleRow.due_date,
+      notes: scheduleRow.notes,
+      connectedMilestoneId:
+        linkedFromContract?.connectedMilestoneId ??
+        (scheduleRow.milestone_id != null ? String(scheduleRow.sort_order) : null),
+      status: this.normalizePaymentStatus(
+        isFullyPaid ? 'paid' : scheduleRow.status,
+        scheduleRow.due_date,
+      ),
+      settledAt: scheduleRow.settled_at,
+      paymentMethod: scheduleRow.payment_method,
+      referenceNumber: scheduleRow.payment_code,
+      checkDate: scheduleRow.check_date,
+      amountPaid,
+      remainingBalance,
+      settlements,
+    };
+
+    return {
+      payment,
+      settlement: newSettlement,
+      remainingBalance,
+    };
+  }
+
+  async getInvoice(projectId: number, milestoneId?: number): Promise<ProjectInvoiceData> {
+    const project = await this.getById(projectId);
+    if (!project.contract) {
+      throw new BadRequestException('This project has no signed contract to invoice.');
+    }
+
+    const milestones = project.contract.milestones.map((m) => ({
+      id: m.id,
+      title: m.title,
+      description: m.description,
+      dueDate: m.dueDate,
+    }));
+
+    const milestoneTitleByConnectedId = new Map(
+      project.contract.milestones.map((m, index) => [String(index), m.title]),
+    );
+
+    const payments = project.contract.paymentSchedule.map((item) => ({
+      id: item.id,
+      label: item.label,
+      amount: item.amount,
+      amountPaid: item.amountPaid,
+      remainingBalance: item.remainingBalance,
+      dueDate: item.dueDate,
+      status: item.status,
+      connectedMilestoneId: item.connectedMilestoneId,
+      connectedMilestoneTitle: item.connectedMilestoneId
+        ? milestoneTitleByConnectedId.get(String(item.connectedMilestoneId)) ?? null
+        : null,
+    }));
+
+    const base: ProjectInvoiceData = {
+      projectId: project.id,
+      projectName: project.name,
+      projectType: project.projectType,
+      clientName: project.clientName,
+      company: project.company,
+      email: project.email,
+      phone: project.phone,
+      address: project.address,
+      currency: project.currency,
+      issuedAt: new Date().toISOString(),
+      invoiceNumber: null,
+      phaseNumber: null,
+      phaseTitle: null,
+      phaseDescription: null,
+      phaseDueDate: null,
+      milestones,
+      payments,
+      totalAmount: roundMoney(payments.reduce((sum, p) => sum + p.amount, 0)),
+      totalPaid: roundMoney(payments.reduce((sum, p) => sum + p.amountPaid, 0)),
+      totalDue: 0,
+    };
+    base.totalDue = remainingForSchedule(base.totalAmount, base.totalPaid);
+
+    if (milestoneId == null || !Number.isInteger(milestoneId) || milestoneId <= 0) {
+      return base;
+    }
+
+    const milestoneIndex = milestones.findIndex((m) => m.id === milestoneId);
+    if (milestoneIndex < 0) {
+      throw new NotFoundException('Milestone not found on this project.');
+    }
+
+    const milestone = milestones[milestoneIndex];
+    let phasePayments = payments.filter((payment) => {
+      const linked = Number(String(payment.connectedMilestoneId ?? '').trim());
+      return Number.isInteger(linked) && linked === milestoneIndex;
+    });
+    if (!phasePayments.length) {
+      const fallback = payments[milestoneIndex];
+      if (fallback) {
+        const fallbackLinked = Number(String(fallback.connectedMilestoneId ?? '').trim());
+        const fallbackUnlinked =
+          !Number.isInteger(fallbackLinked) ||
+          fallbackLinked < 0 ||
+          fallbackLinked >= milestones.length;
+        if (fallbackUnlinked) {
+          phasePayments = [fallback];
+        }
+      }
+    }
+
+    const totalAmount = roundMoney(phasePayments.reduce((sum, p) => sum + p.amount, 0));
+    const totalPaid = roundMoney(phasePayments.reduce((sum, p) => sum + p.amountPaid, 0));
+    const totalDue = remainingForSchedule(totalAmount, totalPaid);
+    const phaseTitle = milestone.title?.trim() || `Phase ${milestoneIndex + 1}`;
+
+    return {
+      ...base,
+      invoiceNumber: String(milestoneIndex + 1).padStart(3, '0'),
+      phaseNumber: milestoneIndex + 1,
+      phaseTitle,
+      phaseDescription: milestone.description,
+      phaseDueDate: milestone.dueDate ?? phasePayments[0]?.dueDate ?? null,
+      milestones: [milestone],
+      payments: phasePayments,
+      totalAmount,
+      totalPaid,
+      totalDue,
+    };
+  }
+
+  async getReceipt(projectId: number, settlementId: number): Promise<ProjectReceiptData> {
+    await this.ensureReady();
+
+    const result = await this.databaseService.query<{
+      settlement_id: number;
+      payment_schedule_id: number;
+      amount: string;
+      settled_on: string;
+      payment_method: string;
+      payment_code: string | null;
+      check_date: string | null;
+      remaining_balance: string;
+      created_at: string;
+      payment_label: string;
+      schedule_amount: string;
+      project_id: number;
+      project_name: string;
+      client_name: string;
+      company: string | null;
+      currency: string | null;
+      milestone_title: string | null;
+      milestone_description: string | null;
+      milestone_due_date: string | null;
+      milestone_sort_order: number | null;
+    }>(
+      `SELECT
+        s.id AS settlement_id,
+        s.payment_schedule_id,
+        s.amount::text,
+        s.settled_on::text,
+        s.payment_method,
+        s.payment_code,
+        s.check_date::text,
+        s.remaining_balance::text,
+        s.created_at::text,
+        ps.label AS payment_label,
+        ps.amount::text AS schedule_amount,
+        p.id AS project_id,
+        p.name AS project_name,
+        c.client_name,
+        c.company,
+        c.currency,
+        m.title AS milestone_title,
+        m.description AS milestone_description,
+        m.due_date::text AS milestone_due_date,
+        m.sort_order AS milestone_sort_order
+       FROM pcmazing_client_contract_payment_settlements s
+       INNER JOIN pcmazing_client_contract_payment_schedules ps ON ps.id = s.payment_schedule_id
+       INNER JOIN pcmazing_client_contracts cc ON cc.id = ps.contract_id
+       INNER JOIN pcmazing_projects p ON p.prospect_id = cc.prospect_id
+       INNER JOIN pcmazing_client_prospects c ON c.id = p.prospect_id
+       LEFT JOIN pcmazing_client_contract_milestones m ON m.id = ps.milestone_id
+       WHERE p.id = $1
+         AND s.id = $2
+       LIMIT 1`,
+      [projectId, settlementId],
+    );
+
+    const row = result.rows[0];
+    if (!row) {
+      throw new NotFoundException('Receipt not found for this project.');
+    }
+
+    const scheduleAmount = roundMoney(Number(row.schedule_amount));
+    const settlementAmount = roundMoney(Number(row.amount));
+    const remainingBalance = roundMoney(Number(row.remaining_balance));
+    const amountPaid = remainingForSchedule(scheduleAmount, remainingBalance);
+
+    const settlement: PaymentScheduleSettlementItem = {
+      id: Number(row.settlement_id),
+      paymentScheduleId: Number(row.payment_schedule_id),
+      amount: settlementAmount,
+      settledOn: row.settled_on,
+      paymentMethod: row.payment_method,
+      referenceNumber: row.payment_code,
+      checkDate: row.check_date,
+      remainingBalance,
+      createdAt: row.created_at,
+    };
+
+    return {
+      projectId: Number(row.project_id),
+      projectName: row.project_name,
+      clientName: row.client_name,
+      company: row.company,
+      currency: (row.currency || 'PHP').trim().toUpperCase() || 'PHP',
+      settlement,
+      paymentLabel: row.payment_label,
+      scheduleAmount,
+      amountPaid,
+      remainingBalance,
+      phaseNumber:
+        row.milestone_sort_order != null ? Number(row.milestone_sort_order) + 1 : null,
+      phaseName: row.milestone_title?.trim() || row.payment_label,
+      phaseDescription: row.milestone_description,
+      phaseDueDate: row.milestone_due_date,
     };
   }
 

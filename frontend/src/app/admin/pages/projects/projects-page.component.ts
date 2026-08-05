@@ -135,6 +135,19 @@ export class ProjectsPageComponent implements OnInit {
     return id ? ['/admin/projects', String(id)] : ['/admin/projects'];
   }
 
+  projectPaymentBadge(project: ProjectListItem): { label: string; className: string } {
+    switch (project.paymentStatus) {
+      case 'paid':
+        return { label: 'Paid', className: 'bg-emerald-50 text-emerald-700' };
+      case 'overdue':
+        return { label: 'Overdue', className: 'bg-red-50 text-red-700' };
+      case 'unpaid':
+        return { label: 'Unpaid', className: 'bg-amber-50 text-amber-800' };
+      default:
+        return { label: '—', className: 'bg-slate-100 text-slate-500' };
+    }
+  }
+
   filteredProjects(): ProjectListItem[] {
     const query = this.search().trim().toLowerCase();
     if (!query) {

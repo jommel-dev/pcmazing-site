@@ -38,6 +38,8 @@ import { EditProfilePageComponent } from './pages/profile/edit-profile-page.comp
 import { PayrollPageComponent } from './pages/payroll/payroll-page.component';
 import { ProjectsPageComponent } from './pages/projects/projects-page.component';
 import { ProjectViewPageComponent } from './pages/projects/project-view-page.component';
+import { ProjectInvoicePageComponent } from './pages/projects/project-invoice-page.component';
+import { ProjectReceiptPageComponent } from './pages/projects/project-receipt-page.component';
 import { ProjectTasksPageComponent } from './pages/projects/project-tasks-page.component';
 import { KanbanHubPageComponent } from './pages/projects/kanban-hub-page.component';
 import { AdminModulePlaceholderPageComponent } from './pages/modules/admin-module-placeholder-page.component';
@@ -285,6 +287,20 @@ export const adminRoutes: Routes = [
         path: 'projects/:id/tasks',
         component: ProjectTasksPageComponent,
         title: 'Project Tasks | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'projects' },
+      },
+      {
+        path: 'projects/:id/invoice',
+        component: ProjectInvoicePageComponent,
+        title: 'Project Invoice | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'projects' },
+      },
+      {
+        path: 'projects/:id/receipts/:settlementId',
+        component: ProjectReceiptPageComponent,
+        title: 'Payment Receipt | PCMazing Admin',
         canActivate: [adminRoleGuard],
         data: { module: 'projects' },
       },

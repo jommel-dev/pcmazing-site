@@ -13,11 +13,20 @@
         <p class="mt-1 text-sm text-slate-500">{{ item.projectType || 'No project type' }} · {{ item.clientName }}</p>
       </div>
       <div class="flex flex-wrap gap-2">
+        @if (item.contract && paymentSchedule().length) {
+          <a
+            [routerLink]="['/admin/projects', item.id, 'invoice']"
+            class="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700"
+          >
+            Billing Invoice
+          </a>
+        }
         <a [routerLink]="['/admin/projects', item.id, 'edit']" class="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700">Update Project</a>
         <a [routerLink]="['/admin/projects', item.id, 'tasks']" class="rounded-xl bg-pcmazing-500 px-4 py-2 text-sm font-bold text-white">Open Tasks</a>
         <a [routerLink]="['/admin/lead-generation', item.prospectId, 'view']" class="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700">Signed contract</a>
       </div>
     </div>
+
 
     <div class="mt-6 grid gap-4 lg:grid-cols-3">
       <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-2">
@@ -83,5 +92,354 @@
       </div>
     </div>
 
+    <div class="mt-4 grid gap-4 lg:grid-cols-2">
+      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div class="flex items-center justify-between gap-3">
+          <h3 class="text-sm font-bold uppercase tracking-wide text-slate-500">Milestones</h3>
+          <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">{{ milestones().length }}</span>
+        </div>
+
+        @if (!item.contract) {
+          <p class="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+            No signed contract on this project yet.
+          </p>
+        } @else if (milestones().length === 0) {
+          <p class="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+            No milestones defined.
+          </p>
+        } @else {
+          <div class="mt-4 space-y-3">
+            @for (milestone of milestones(); track milestone.id; let i = $index) {
+              <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div class="flex flex-wrap items-start justify-between gap-2">
+                  <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <p class="font-semibold text-slate-900">{{ milestoneLabel(milestone, i) }}</p>
+                      @if (paymentForMilestone(i); as payment) {
+                        @if (paymentStatusBadge(payment); as status) {
+                          <span class="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase {{ status.className }}">
+                            {{ status.label }}
+                          </span>
+                        }
+                      }
+                    </div>
+                    @if (milestone.description) {
+                      <p class="mt-2 text-sm text-slate-600">{{ milestone.description }}</p>
+                    }
+                    <p class="mt-2 text-xs text-slate-500">
+                      Linked modules:
+                      {{ linkedModuleNames(item.contract.modules, milestone.connectedModuleId) }}
+                    </p>
+                    @if (paymentForMilestone(i); as payment) {
+                      <p class="mt-1 text-xs text-slate-500">
+                        Payment: {{ payment.label }} · {{ formatDealAmount(payment.amount, currency()) }}
+                      </p>
+                      <p class="mt-1 text-xs text-slate-500">
+                        Paid {{ formatDealAmount(paymentAmountPaid(payment), currency()) }}
+                        · Remaining {{ formatDealAmount(paymentRemaining(payment), currency()) }}
+                      </p>
+                      @if (payment.status === 'paid') {
+                        <p class="mt-1 text-xs text-emerald-700">Settled date: {{ formatDate(payment.settledAt?.slice(0, 10)) }}</p>
+                        @if (payment.paymentMethod) {
+                          <p class="mt-1 text-xs text-slate-500">Method: {{ payment.paymentMethod }}</p>
+                        }
+                      }
+                    }
+                  </div>
+                  <div class="flex shrink-0 flex-col items-end gap-2">
+                    <span class="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-slate-600">
+                      Due {{ formatDate(milestone.dueDate) }}
+                    </span>
+                    @if (canShowMilestoneBillingInvoice(i)) {
+                      <a
+                        [routerLink]="['/admin/projects', item.id, 'invoice']"
+                        [queryParams]="{ milestoneId: milestone.id }"
+                        class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700"
+                      >
+                        Billing Invoice #{{ milestoneInvoiceNumber(i) }}
+                      </a>
+                    }
+                    @if (paymentForMilestone(i); as payment) {
+                      @if (canSettlePayment(payment)) {
+                        <button
+                          type="button"
+                          class="rounded-lg bg-pcmazing-500 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50"
+                          [disabled]="settleSaving() || settlingPaymentId() !== null"
+                          (click)="openSettleModal(payment)"
+                        >
+                          Settle
+                        </button>
+                      }
+                    }
+                  </div>
+                </div>
+              </div>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <h3 class="text-sm font-bold uppercase tracking-wide text-slate-500">Payment History</h3>
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700">
+              {{ paymentSchedule().length }}
+            </span>
+            @if (paymentSchedule().length) {
+              <span class="rounded-full bg-pcmazing-50 px-2.5 py-1 text-xs font-bold text-pcmazing-700">
+                Total {{ formatDealAmount(paymentTotal(), currency()) }}
+              </span>
+              <span class="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">
+                Settled {{ formatDealAmount(settledTotal(), currency()) }}
+              </span>
+            }
+          </div>
+        </div>
+
+        @if (!item.contract) {
+          <p class="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+            No signed contract on this project yet.
+          </p>
+        } @else if (paymentSchedule().length === 0) {
+          <p class="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+            No payment schedule defined.
+          </p>
+        } @else {
+          <div class="mt-4 space-y-3">
+            @for (payment of paymentSchedule(); track payment.id) {
+              <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                  <div class="min-w-0 flex-1">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <p class="font-semibold text-slate-900">{{ payment.label }}</p>
+                      @if (paymentStatusBadge(payment); as status) {
+                        <span class="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase {{ status.className }}">
+                          {{ status.label }}
+                        </span>
+                      }
+                    </div>
+                    @if (payment.description) {
+                      <p class="mt-1 text-sm text-slate-600">{{ payment.description }}</p>
+                    }
+                    <p class="mt-2 text-xs text-slate-500">
+                      Milestone: {{ paymentMilestoneLabel(payment, milestones()) }}
+                    </p>
+                    <p class="mt-1 text-xs text-slate-500">Due: {{ formatDate(payment.dueDate) }}</p>
+                    <p class="mt-1 text-xs text-slate-600">
+                      Paid {{ formatDealAmount(paymentAmountPaid(payment), currency()) }}
+                      of {{ formatDealAmount(payment.amount, currency()) }}
+                      · Remaining {{ formatDealAmount(paymentRemaining(payment), currency()) }}
+                    </p>
+                    @if (payment.status === 'paid') {
+                      <p class="mt-1 text-xs text-emerald-700">Settled date: {{ formatDate(payment.settledAt?.slice(0, 10)) }}</p>
+                      @if (payment.paymentMethod) {
+                        <p class="mt-1 text-xs text-slate-500">Method: {{ payment.paymentMethod }}</p>
+                      }
+                    }
+                  </div>
+                  <div class="flex shrink-0 flex-col items-end gap-2">
+                    <p class="text-sm font-bold text-slate-900">
+                      {{ formatDealAmount(payment.amount, currency()) }}
+                    </p>
+                  </div>
+                </div>
+                @if (payment.notes) {
+                  <p class="mt-2 text-sm text-slate-600">{{ payment.notes }}</p>
+                }
+                @if (payment.settlements?.length) {
+                  <div class="mt-3 border-t border-slate-200 pt-3">
+                    <p class="text-[11px] font-bold uppercase tracking-wide text-slate-500">Settlement history</p>
+                    <ul class="mt-2 space-y-2">
+                      @for (settlement of payment.settlements; track settlement.id) {
+                        <li class="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+                          <span>
+                            {{ formatDate(settlement.settledOn) }}
+                            · {{ formatDealAmount(settlement.amount, currency()) }}
+                            · {{ settlement.paymentMethod }}
+                            · Remaining {{ formatDealAmount(settlement.remainingBalance, currency()) }}
+                          </span>
+                          <a
+                            [routerLink]="['/admin/projects', item.id, 'receipts', settlement.id]"
+                            class="rounded-lg bg-pcmazing-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-pcmazing-600"
+                          >
+                            Receipt
+                          </a>
+                        </li>
+                      }
+                    </ul>
+                  </div>
+                }
+              </div>
+            }
+          </div>
+        }
+
+        @if (paymentActionError()) {
+          <div class="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {{ paymentActionError() }}
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+  @if (settleModalOpen() && settleTarget(); as payment) {
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" (click)="closeSettleModal()">
+      <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" (click)="$event.stopPropagation()">
+        <h3 class="text-lg font-bold text-slate-900">Settle payment</h3>
+        <p class="mt-1 text-sm text-slate-500">
+          {{ payment.label }} · Schedule {{ formatDealAmount(payment.amount, currency()) }}
+        </p>
+        <p class="mt-1 text-sm font-semibold text-slate-700">
+          Remaining balance: {{ formatDealAmount(settleRemainingBefore(), currency()) }}
+        </p>
+
+        <div class="mt-5 space-y-4">
+          <div>
+            <label class="mb-2 block text-sm font-semibold text-slate-800">Settlement type</label>
+            <div class="flex flex-wrap gap-4">
+              <label class="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="radio"
+                  name="settlementType"
+                  value="full"
+                  [checked]="settleSettlementType() === 'full'"
+                  (change)="onSettleSettlementTypeChange('full')"
+                  [disabled]="settleSaving()"
+                />
+                Full Payment
+              </label>
+              <label class="flex items-center gap-2 text-sm text-slate-700">
+                <input
+                  type="radio"
+                  name="settlementType"
+                  value="partial"
+                  [checked]="settleSettlementType() === 'partial'"
+                  (change)="onSettleSettlementTypeChange('partial')"
+                  [disabled]="settleSaving()"
+                />
+                Partial Payment
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <label class="mb-1 block text-sm font-semibold text-slate-800">Amount</label>
+            <input
+              type="number"
+              min="0.01"
+              step="0.01"
+              class="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm disabled:bg-slate-50"
+              [ngModel]="settleSettlementType() === 'full' ? settleRemainingBefore() : settleAmount()"
+              (ngModelChange)="settleAmount.set($event)"
+              [readonly]="settleSettlementType() === 'full'"
+              [disabled]="settleSaving()"
+              required
+            />
+            <p class="mt-1 text-xs text-slate-500">
+              Remaining after this payment:
+              <span class="font-semibold text-slate-700">{{ formatDealAmount(settleRemainingAfter(), currency()) }}</span>
+            </p>
+          </div>
+
+          <div>
+            <label class="mb-1 block text-sm font-semibold text-slate-800">Date</label>
+            <input
+              type="date"
+              class="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm"
+              [ngModel]="settleDate()"
+              (ngModelChange)="settleDate.set($event)"
+              [disabled]="settleSaving()"
+              required
+            />
+          </div>
+
+          <div>
+            <label class="mb-1 block text-sm font-semibold text-slate-800">Payment Method</label>
+            <select
+              class="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm"
+              [ngModel]="settlePaymentMethod()"
+              (ngModelChange)="onSettlePaymentMethodChange($event)"
+              [disabled]="settleSaving()"
+              required
+            >
+              <option value="">Select payment method</option>
+              @for (method of paymentMethods; track method) {
+                <option [value]="method">{{ method }}</option>
+              }
+            </select>
+          </div>
+
+          @if (settlePaymentMethod() === 'Check') {
+            <div>
+              <label class="mb-1 block text-sm font-semibold text-slate-800">Check Number</label>
+              <input
+                type="text"
+                class="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm"
+                placeholder="e.g. 001234"
+                [ngModel]="settleCheckNumber()"
+                (ngModelChange)="settleCheckNumber.set($event)"
+                [disabled]="settleSaving()"
+                required
+              />
+            </div>
+            <div>
+              <label class="mb-1 block text-sm font-semibold text-slate-800">Check Date</label>
+              <input
+                type="date"
+                class="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm"
+                [ngModel]="settleCheckDate()"
+                (ngModelChange)="settleCheckDate.set($event)"
+                [disabled]="settleSaving()"
+                required
+              />
+            </div>
+          } @else if (settlePaymentMethod() && settlePaymentMethod() !== 'Cash') {
+            <div>
+              <label class="mb-1 block text-sm font-semibold text-slate-800">Reference Number</label>
+              <input
+                type="text"
+                class="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm"
+                placeholder="e.g. TXN-99881"
+                [ngModel]="settleReferenceNumber()"
+                (ngModelChange)="settleReferenceNumber.set($event)"
+                [disabled]="settleSaving()"
+                required
+              />
+            </div>
+          }
+
+          @if (settleFormError()) {
+            <div class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {{ settleFormError() }}
+            </div>
+          }
+        </div>
+
+        <div class="mt-6 flex justify-end gap-2">
+          <button
+            type="button"
+            class="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-700 disabled:opacity-50"
+            (click)="closeSettleModal()"
+            [disabled]="settleSaving()"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50"
+            (click)="submitSettleModal()"
+            [disabled]="settleSaving()"
+          >
+            @if (settleSaving()) {
+              Saving...
+            } @else {
+              Save
+            }
+          </button>
+        </div>
+      </div>
+    </div>
   }
 </section>

@@ -4,5 +4,5 @@
 export const ENV = {
   API_URL: 'http://localhost:3000',
   PUBLIC_SITE_URL: 'http://localhost:4200',
-  BUILD_ID: 'msfiukv7-2tbt1e',
+  BUILD_ID: 'msfmo877-ud7ja4',
 } as const;

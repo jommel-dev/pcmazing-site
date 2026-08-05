@@ -605,6 +605,99 @@ export interface ProspectContractPaymentSchedule {
   dueDate: string | null;
   notes: string | null;
   connectedMilestoneId: string | null;
+  status?: 'pending' | 'paid' | 'overdue';
+  settledAt?: string | null;
+  paymentMethod?: string | null;
+  referenceNumber?: string | null;
+  checkDate?: string | null;
+  amountPaid?: number;
+  remainingBalance?: number;
+  settlements?: PaymentScheduleSettlementItem[];
+}
+
+export interface PaymentScheduleSettlementItem {
+  id: number;
+  paymentScheduleId: number;
+  amount: number;
+  settledOn: string;
+  paymentMethod: string;
+  referenceNumber: string | null;
+  checkDate: string | null;
+  remainingBalance: number;
+  createdAt: string;
+}
+
+export type ProjectPaymentStatus = 'paid' | 'overdue' | 'unpaid' | 'none';
+
+export type ProjectPaymentSettlePayload = {
+  date: string;
+  paymentMethod: string;
+  settlementType: 'partial' | 'full';
+  amount?: number;
+  referenceNumber?: string;
+  checkNumber?: string;
+  checkDate?: string;
+};
+
+export interface ProjectSettlePaymentResult {
+  payment: ProspectContractPaymentSchedule;
+  settlement: PaymentScheduleSettlementItem;
+  remainingBalance: number;
+}
+
+export interface ProjectInvoiceData {
+  projectId: number;
+  projectName: string;
+  projectType: string | null;
+  clientName: string;
+  company: string | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  currency: string;
+  issuedAt: string;
+  invoiceNumber: string | null;
+  phaseNumber: number | null;
+  phaseTitle: string | null;
+  phaseDescription: string | null;
+  phaseDueDate: string | null;
+  milestones: Array<{
+    id: number;
+    title: string;
+    description: string | null;
+    dueDate: string | null;
+  }>;
+  payments: Array<{
+    id: number;
+    label: string;
+    amount: number;
+    amountPaid: number;
+    remainingBalance: number;
+    dueDate: string | null;
+    status: string;
+    connectedMilestoneId: string | null;
+    connectedMilestoneTitle: string | null;
+  }>;
+  totalAmount: number;
+  totalPaid: number;
+  totalDue: number;
+}
+
+export interface ProjectReceiptData {
+  projectId: number;
+  projectName: string;
+  clientName: string;
+  company: string | null;
+  currency: string;
+  settlement: PaymentScheduleSettlementItem;
+  paymentLabel: string;
+  scheduleAmount: number;
+  amountPaid: number;
+  remainingBalance: number;
+  phaseNumber: number | null;
+  phaseName: string | null;
+  phaseDescription: string | null;
+  phaseDueDate: string | null;
 }
 
 export interface ProjectUserRef {
@@ -630,6 +723,9 @@ export interface ProjectListItem {
   company: string | null;
   projectManager: ProjectUserSummary | null;
   teamMemberCount: number;
+  paymentStatus?: ProjectPaymentStatus;
+  paymentTotal?: number;
+  settledTotal?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -639,6 +735,7 @@ export interface ProjectDetail extends ProjectListItem {
   phone: string | null;
   address: string | null;
   notes: string | null;
+  currency?: string | null;
   contract: {
     id: number;
     projectName: string;
@@ -1484,6 +1581,36 @@ export class AdminApiService {
   getProject(id: number) {
     return this.http.get<ItemResponse<ProjectDetail>>(
       `${APP_CONFIG.apiUrl}/admin/projects/${id}`,
+      { headers: this.headers() },
+    );
+  }
+
+  settleProjectPayment(
+    projectId: number,
+    paymentId: number,
+    payload: ProjectPaymentSettlePayload,
+  ) {
+    return this.http.post<MessageResponse<ProjectSettlePaymentResult>>(
+      `${APP_CONFIG.apiUrl}/admin/projects/${projectId}/settle-payment/${paymentId}`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  getProjectInvoice(projectId: number, milestoneId?: number) {
+    const params =
+      milestoneId != null && Number.isInteger(milestoneId) && milestoneId > 0
+        ? { milestoneId: String(milestoneId) }
+        : undefined;
+    return this.http.get<ItemResponse<ProjectInvoiceData>>(
+      `${APP_CONFIG.apiUrl}/admin/projects/${projectId}/invoice`,
+      { headers: this.headers(), params },
+    );
+  }
+
+  getProjectReceipt(projectId: number, settlementId: number) {
+    return this.http.get<ItemResponse<ProjectReceiptData>>(
+      `${APP_CONFIG.apiUrl}/admin/projects/${projectId}/receipts/${settlementId}`,
       { headers: this.headers() },
     );
   }

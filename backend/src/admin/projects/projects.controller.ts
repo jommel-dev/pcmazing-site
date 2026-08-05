@@ -27,6 +27,7 @@ import {
   UpdateProjectTaskDto,
 } from './dto/project-task.dto';
 import { CreateProjectTaskCommentDto } from './dto/task-activity.dto';
+import { SettleProjectPaymentDto } from './dto/settle-project-payment.dto';
 import { ProjectActor, ProjectsService } from './projects.service';
 
 @Controller('admin/projects')
@@ -132,6 +133,55 @@ export class ProjectsController {
     return this.projectsService.setCurrentPhase(id, dto).then((data) => ({
       success: true,
       message: 'Current phase updated.',
+      data,
+    }));
+  }
+
+  /**
+   * Flat path (same pattern as task-activity) — Nest/Express 5 is unreliable
+   * with deeper POST segments like `:id/payments/:paymentId/settle`.
+   */
+  @Post(':id/settle-payment/:paymentId')
+  async settlePayment(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('paymentId', ParseIntPipe) paymentId: number,
+    @Body() dto: SettleProjectPaymentDto,
+    @Req() req: Request & { user?: AdminJwtPayload },
+  ) {
+    await this.projectsService.assertCanAccessProject(id, this.actorFrom(req));
+    return this.projectsService.settleProjectPayment(id, paymentId, dto).then((data) => ({
+      success: true,
+      message: 'Payment settled.',
+      data,
+    }));
+  }
+
+  @Get(':id/invoice')
+  async getInvoice(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('milestoneId') milestoneIdRaw: string | undefined,
+    @Req() req: Request & { user?: AdminJwtPayload },
+  ) {
+    await this.projectsService.assertCanAccessProject(id, this.actorFrom(req));
+    const milestoneId =
+      milestoneIdRaw != null && milestoneIdRaw !== ''
+        ? Number(milestoneIdRaw)
+        : undefined;
+    return this.projectsService.getInvoice(id, milestoneId).then((data) => ({
+      success: true,
+      data,
+    }));
+  }
+
+  @Get(':id/receipts/:settlementId')
+  async getReceipt(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('settlementId', ParseIntPipe) settlementId: number,
+    @Req() req: Request & { user?: AdminJwtPayload },
+  ) {
+    await this.projectsService.assertCanAccessProject(id, this.actorFrom(req));
+    return this.projectsService.getReceipt(id, settlementId).then((data) => ({
+      success: true,
       data,
     }));
   }
