@@ -11,13 +11,26 @@ import {
 } from 'class-validator';
 import { ProjectUserRefDto } from './create-project.dto';
 
+export const PROJECT_BOARD_STATUSES = [
+  'epics',
+  'backlog',
+  'todo',
+  'in_progress',
+  'in_review',
+  'testing',
+  'done',
+] as const;
+
 export const PROJECT_TASK_STATUSES = [
   'backlog',
   'todo',
   'in_progress',
   'in_review',
+  'testing',
   'done',
 ] as const;
+
+export const PROJECT_EPIC_BOARD_STATUSES = ['epics'] as const;
 
 export const PROJECT_TASK_PRIORITIES = ['low', 'medium', 'high', 'urgent'] as const;
 
@@ -106,8 +119,8 @@ export class MoveProjectTaskDto {
 }
 
 export class MoveProjectEpicDto {
-  @IsIn(PROJECT_TASK_STATUSES)
-  status!: (typeof PROJECT_TASK_STATUSES)[number];
+  @IsIn(PROJECT_EPIC_BOARD_STATUSES)
+  status!: (typeof PROJECT_EPIC_BOARD_STATUSES)[number];
 
   @Type(() => Number)
   @IsInt()

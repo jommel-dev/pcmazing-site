@@ -1,4 +1,5 @@
-import { Component, HostListener, computed, inject, OnInit, signal } from '@angular/core';
+import { DOCUMENT } from '@angular/common';
+import { Component, HostListener, OnDestroy, Renderer2, computed, inject, OnInit, signal } from '@angular/core';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs/operators';
 import { firstValueFrom } from 'rxjs';
@@ -22,6 +23,8 @@ export class AdminLayoutComponent implements OnInit {
   private readonly adminAuth = inject(AdminAuthService);
   private readonly adminApi = inject(AdminApiService);
   private readonly router = inject(Router);
+  private readonly renderer = inject(Renderer2);
+  private readonly document = inject(DOCUMENT);
   readonly themeService = inject(AdminThemeService);
 
   readonly user = signal(this.adminAuth.getStoredUser());
@@ -39,6 +42,7 @@ export class AdminLayoutComponent implements OnInit {
   readonly logoSrc = '/images/logo.png';
 
   ngOnInit(): void {
+    this.renderer.addClass(this.document.body, 'admin-shell-active');
     void this.loadProfile();
 
     this.router.events.pipe(filter((event) => event instanceof NavigationEnd)).subscribe(() => {
@@ -46,6 +50,10 @@ export class AdminLayoutComponent implements OnInit {
       this.closeSidebar();
       this.closeProfileMenu();
     });
+  }
+
+  ngOnDestroy(): void {
+    this.renderer.removeClass(this.document.body, 'admin-shell-active');
   }
 
   toggleSidebar(event: Event): void {

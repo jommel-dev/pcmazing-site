@@ -42,15 +42,19 @@ export class InventoryServicesController {
     @Query('search') search?: string,
     @Query('type') type?: string,
     @Query('status') status?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: string,
   ) {
     this.assertNotSales(request.user?.role);
-    return this.inventoryServicesService.list(page, limit, search, type, status).then((result) => ({
-      success: true,
-      data: result.items,
-      meta: result.meta,
-      summary: result.summary,
-      filters: result.filters,
-    }));
+    return this.inventoryServicesService
+      .list(page, limit, search, type, status, sortBy, sortDir)
+      .then((result) => ({
+        success: true,
+        data: result.items,
+        meta: result.meta,
+        summary: result.summary,
+        filters: result.filters,
+      }));
   }
 
   @Post()

@@ -1,4 +1,4 @@
-import { DatePipe } from '@angular/common';
+import { CommonModule } from '@angular/common';
 import { Component, inject, OnInit, signal } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
@@ -6,7 +6,7 @@ import { AdminApiService, ProjectDetail } from '../../services/admin-api.service
 
 @Component({
   selector: 'app-project-view-page',
-  imports: [DatePipe, RouterLink],
+  imports: [CommonModule, RouterLink],
   templateUrl: './project-view-page.component.html',
 })
 export class ProjectViewPageComponent implements OnInit {
@@ -16,7 +16,6 @@ export class ProjectViewPageComponent implements OnInit {
   readonly loading = signal(true);
   readonly error = signal('');
   readonly project = signal<ProjectDetail | null>(null);
-
   ngOnInit(): void {
     void this.load();
   }
@@ -34,4 +33,5 @@ export class ProjectViewPageComponent implements OnInit {
       this.loading.set(false);
     }
   }
+
 }

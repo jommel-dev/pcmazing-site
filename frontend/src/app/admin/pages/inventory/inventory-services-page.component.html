@@ -34,62 +34,44 @@
     </div>
   }
 
-  <div class="grid min-w-0 gap-6 xl:grid-cols-[240px_minmax(0,1fr)]">
-    <aside class="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm xl:max-h-[calc(100vh-18rem)] xl:overflow-y-auto">
-      <div>
-        <p class="text-xs font-bold tracking-[0.15em] text-slate-400 uppercase">Types</p>
-        <button
-          type="button"
-          class="mt-3 block w-full rounded-lg px-3 py-2 text-left text-sm font-semibold hover:bg-slate-50"
-          [class.bg-pcmazing-50]="selectedType() === ''"
-          [class.text-pcmazing-600]="selectedType() === ''"
-          (click)="filterByType('')"
-        >
-          All Types
-        </button>
-        @for (type of serviceTypes(); track type.label) {
-          <button
-            type="button"
-            class="mt-1 block w-full rounded-lg px-3 py-2 text-left text-sm text-slate-600 hover:bg-slate-50"
-            [class.bg-pcmazing-50]="selectedType() === type.label"
-            [class.text-pcmazing-600]="selectedType() === type.label"
-            (click)="filterByType(type.label)"
-          >
-            {{ type.label }} ({{ type.count }})
-          </button>
-        }
-      </div>
-
-      <div class="mt-6">
-        <p class="text-xs font-bold tracking-[0.15em] text-slate-400 uppercase">Status</p>
-        <button
-          type="button"
-          class="mt-3 block w-full rounded-lg px-3 py-2 text-left text-sm font-semibold hover:bg-slate-50"
-          [class.bg-pcmazing-50]="selectedStatus() === ''"
-          [class.text-pcmazing-600]="selectedStatus() === ''"
-          (click)="filterByStatus('')"
-        >
-          All Statuses
-        </button>
-        @for (status of statuses(); track status.label) {
-          <button
-            type="button"
-            class="mt-1 block w-full rounded-lg px-3 py-2 text-left text-sm text-slate-600 hover:bg-slate-50"
-            [class.bg-pcmazing-50]="selectedStatus() === status.label"
-            [class.text-pcmazing-600]="selectedStatus() === status.label"
-            (click)="filterByStatus(status.label)"
-          >
-            {{ status.label }} ({{ status.count }})
-          </button>
-        }
-      </div>
-    </aside>
-
-    <div class="min-w-0">
+  <div class="min-w-0">
+    <div class="mb-4 rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div class="relative z-20 p-4">
       <div class="mb-4 flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <h3 class="min-w-0 truncate text-base font-bold text-slate-900 lg:text-lg">{{ sectionTitle() }}</h3>
-        <div class="flex w-full shrink-0 gap-2 lg:max-w-xl lg:justify-end">
-          <details class="relative shrink-0">
+        <div class="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center lg:max-w-3xl lg:justify-end">
+          <label class="flex min-w-0 flex-1 flex-col gap-1 sm:max-w-[11rem]">
+            <span class="text-[10px] font-bold tracking-[0.12em] text-slate-400 uppercase">Status</span>
+            <select
+              class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 focus:border-pcmazing-500 focus:outline-none"
+              [ngModel]="selectedStatus()"
+              (ngModelChange)="filterByStatus($event)"
+              name="statusFilter"
+            >
+              <option [ngValue]="''">All Statuses</option>
+              @for (status of statuses(); track status.label) {
+                <option [ngValue]="status.label">{{ status.label }} ({{ status.count }})</option>
+              }
+            </select>
+          </label>
+
+          <label class="flex min-w-0 flex-1 flex-col gap-1 sm:max-w-[11rem]">
+            <span class="text-[10px] font-bold tracking-[0.12em] text-slate-400 uppercase">Type</span>
+            <select
+              class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 focus:border-pcmazing-500 focus:outline-none"
+              [ngModel]="selectedType()"
+              (ngModelChange)="filterByType($event)"
+              name="typeFilter"
+            >
+              <option [ngValue]="''">All Types</option>
+              @for (type of serviceTypes(); track type.label) {
+                <option [ngValue]="type.label">{{ type.label }} ({{ type.count }})</option>
+              }
+            </select>
+          </label>
+
+          <div class="flex w-full gap-2 sm:w-auto sm:items-end sm:pt-5">
+          <details class="relative z-30 shrink-0">
             <summary
               class="inline-flex size-10 cursor-pointer list-none items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm hover:bg-slate-50"
               title="Columns"
@@ -100,7 +82,7 @@
                 <path stroke-linecap="round" stroke-linejoin="round" d="M9 5.25v13.5M15 5.25v13.5" />
               </svg>
             </summary>
-            <div class="absolute right-0 z-10 mt-2 w-56 rounded-2xl border border-slate-200 bg-white p-3 shadow-lg">
+            <div class="absolute right-0 z-50 mt-2 max-h-80 w-56 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3 shadow-lg">
               <p class="mb-2 text-xs font-bold tracking-[0.12em] text-slate-400 uppercase">Show Columns</p>
               <div class="space-y-2">
                 @for (column of columnOptions; track column.key) {
@@ -118,14 +100,14 @@
             </div>
           </details>
 
-          <form class="w-full lg:max-w-xs" (ngSubmit)="searchServices()">
+          <form class="min-w-0 flex-1 sm:w-56 sm:flex-none" (ngSubmit)="searchServices()">
             <div class="relative">
             <input
               type="search"
               class="w-full rounded-xl border border-slate-200 py-2.5 pr-4 pl-10 text-sm focus:border-pcmazing-500 focus:outline-none"
-              placeholder="Filter services..."
+              placeholder="Search job orders..."
               [ngModel]="search()"
-              (ngModelChange)="search.set($event)"
+              (ngModelChange)="onSearchInput($event)"
               name="search"
             />
             <svg viewBox="0 0 20 20" class="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -134,15 +116,9 @@
             </svg>
             </div>
           </form>
+          </div>
         </div>
       </div>
-
-      @if (actionError()) {
-        <div class="mb-4 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{{ actionError() }}</div>
-      }
-      @if (actionSuccess()) {
-        <div class="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-700">{{ actionSuccess() }}</div>
-      }
 
       @if (loading()) {
         <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500">Loading services...</div>
@@ -152,108 +128,152 @@
         <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500">No services found.</div>
       } @else {
         <div class="max-w-full overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <table class="w-full min-w-[980px] text-xs sm:text-sm">
+          <table class="w-full min-w-[980px] text-[11px] leading-snug">
             <thead class="bg-slate-50">
               <tr>
                 @if (columnVisible('image')) {
-                  <th class="px-2 py-2.5 text-left font-bold whitespace-nowrap text-slate-600 sm:px-3">Image</th>
+                  <th class="px-2 py-2 text-left font-bold whitespace-nowrap text-slate-600">Image</th>
                 }
-                <th class="px-2 py-2.5 text-left font-bold whitespace-nowrap text-slate-600 sm:px-3">Ref No</th>
+                <th class="px-2 py-2 text-left font-bold whitespace-nowrap text-slate-600">
+                  <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('referenceNo')">
+                    Ref No{{ sortIndicator('referenceNo') }}
+                  </button>
+                </th>
                 @if (columnVisible('customer')) {
-                  <th class="px-2 py-2.5 text-left font-bold whitespace-nowrap text-slate-600 sm:px-3">Customer</th>
+                  <th class="px-2 py-2 text-left font-bold whitespace-nowrap text-slate-600">
+                    <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('customer')">
+                      Customer{{ sortIndicator('customer') }}
+                    </button>
+                  </th>
                 }
                 @if (columnVisible('serviceName')) {
-                  <th class="max-w-[180px] px-2 py-2.5 text-left font-bold text-slate-600 sm:max-w-[220px] sm:px-3">Service Name</th>
+                  <th class="max-w-[180px] px-2 py-2 text-left font-bold text-slate-600 sm:max-w-[220px]">
+                    <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('serviceName')">
+                      Service Name{{ sortIndicator('serviceName') }}
+                    </button>
+                  </th>
                 }
                 @if (columnVisible('personInCharge')) {
-                  <th class="px-2 py-2.5 text-left font-bold whitespace-nowrap text-slate-600 sm:px-3">Person In Charge</th>
+                  <th class="px-2 py-2 text-left font-bold whitespace-nowrap text-slate-600">
+                    <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('personInCharge')">
+                      Person In Charge{{ sortIndicator('personInCharge') }}
+                    </button>
+                  </th>
                 }
                 @if (columnVisible('type')) {
-                  <th class="px-2 py-2.5 text-left font-bold whitespace-nowrap text-slate-600 sm:px-3">Type</th>
+                  <th class="px-2 py-2 text-left font-bold whitespace-nowrap text-slate-600">
+                    <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('type')">
+                      Type{{ sortIndicator('type') }}
+                    </button>
+                  </th>
                 }
                 @if (columnVisible('partsUsed')) {
-                  <th class="max-w-[220px] px-2 py-2.5 text-left font-bold text-slate-600 sm:max-w-[260px] sm:px-3">Parts Used</th>
+                  <th class="max-w-[220px] px-2 py-2 text-left font-bold text-slate-600 sm:max-w-[260px]">Parts Used</th>
                 }
                 @if (columnVisible('interval')) {
-                  <th class="px-2 py-2.5 text-left font-bold whitespace-nowrap text-slate-600 sm:px-3">Interval</th>
+                  <th class="px-2 py-2 text-left font-bold whitespace-nowrap text-slate-600">
+                    <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('interval')">
+                      Interval{{ sortIndicator('interval') }}
+                    </button>
+                  </th>
                 }
                 @if (columnVisible('cost')) {
-                  <th class="px-2 py-2.5 text-right font-bold whitespace-nowrap text-slate-600 sm:px-3">Cost</th>
+                  <th class="px-2 py-2 text-right font-bold whitespace-nowrap text-slate-600">
+                    <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('cost')">
+                      Cost{{ sortIndicator('cost') }}
+                    </button>
+                  </th>
                 }
                 @if (columnVisible('labor')) {
-                  <th class="px-2 py-2.5 text-right font-bold whitespace-nowrap text-slate-600 sm:px-3">Labor</th>
+                  <th class="px-2 py-2 text-right font-bold whitespace-nowrap text-slate-600">
+                    <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('labor')">
+                      Labor{{ sortIndicator('labor') }}
+                    </button>
+                  </th>
                 }
                 @if (columnVisible('totalCosting')) {
-                  <th class="px-2 py-2.5 text-right font-bold whitespace-nowrap text-emerald-700 sm:px-3">T.Costing</th>
+                  <th class="px-2 py-2 text-right font-bold whitespace-nowrap text-emerald-700">
+                    <button type="button" class="inline-flex items-center gap-0.5 hover:text-emerald-800" (click)="toggleSort('totalCosting')">
+                      T.Costing{{ sortIndicator('totalCosting') }}
+                    </button>
+                  </th>
                 }
                 @if (columnVisible('totalSales')) {
-                  <th class="px-2 py-2.5 text-right font-bold whitespace-nowrap text-pcmazing-600 sm:px-3">T.Sales</th>
+                  <th class="px-2 py-2 text-right font-bold whitespace-nowrap text-pcmazing-600">
+                    <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-700" (click)="toggleSort('totalSales')">
+                      T.Sales{{ sortIndicator('totalSales') }}
+                    </button>
+                  </th>
                 }
-                <th class="px-2 py-2.5 text-left font-bold whitespace-nowrap text-slate-600 sm:px-3">Status</th>
-                <th class="px-2 py-2.5 text-right font-bold whitespace-nowrap text-slate-600 sm:px-3">Actions</th>
+                <th class="px-2 py-2 text-left font-bold whitespace-nowrap text-slate-600">
+                  <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('status')">
+                    Status{{ sortIndicator('status') }}
+                  </button>
+                </th>
+                <th class="px-2 py-2 text-right font-bold whitespace-nowrap text-slate-600">Actions</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
               @for (item of items(); track item.id) {
                 <tr class="hover:bg-slate-50">
                   @if (columnVisible('image')) {
-                    <td class="px-2 py-2.5 sm:px-3">
+                    <td class="px-2 py-2">
                       @if (serviceImageUrl(item); as imageUrl) {
-                        <img [src]="imageUrl" [alt]="imageAlt(item)" class="size-10 rounded-lg border border-slate-200 object-cover" />
+                        <img [src]="imageUrl" [alt]="imageAlt(item)" class="size-8 rounded-md border border-slate-200 object-cover" />
                       } @else {
-                        <span class="inline-flex size-10 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 text-[10px] font-bold text-slate-400">N/A</span>
+                        <span class="inline-flex size-8 items-center justify-center rounded-md border border-dashed border-slate-200 bg-slate-50 text-[9px] font-bold text-slate-400">N/A</span>
                       }
                     </td>
                   }
-                  <td class="px-2 py-2.5 font-medium whitespace-nowrap text-slate-700 sm:px-3">
+                  <td class="px-2 py-2 font-medium whitespace-nowrap text-slate-700">
                     <a [routerLink]="['/admin/job-order', item.id]" class="hover:text-pcmazing-600 hover:underline">
                       {{ item.referenceNo || 'Pending' }}
                     </a>
                   </td>
                   @if (columnVisible('customer')) {
-                    <td class="max-w-[180px] truncate px-2 py-2.5 text-slate-700 sm:max-w-[220px] sm:px-3" [title]="item.customerName">
+                    <td class="max-w-[180px] truncate px-2 py-2 text-slate-700 sm:max-w-[220px]" [title]="item.customerName">
                       <a [routerLink]="['/admin/job-order', item.id]" class="hover:text-pcmazing-600 hover:underline">
                         {{ item.customerName }}
                       </a>
                     </td>
                   }
                   @if (columnVisible('serviceName')) {
-                    <td class="max-w-[180px] truncate px-2 py-2.5 font-medium text-slate-900 sm:max-w-[220px] sm:px-3" [title]="item.serviceName">
+                    <td class="max-w-[180px] truncate px-2 py-2 font-medium text-slate-900 sm:max-w-[220px]" [title]="item.serviceName">
                       <a [routerLink]="['/admin/job-order', item.id]" class="hover:text-pcmazing-600 hover:underline">
                         {{ item.serviceName }}
                       </a>
                     </td>
                   }
                   @if (columnVisible('personInCharge')) {
-                    <td class="max-w-[180px] truncate px-2 py-2.5 text-slate-600 sm:max-w-[220px] sm:px-3">{{ item.personInChargeName || 'Unassigned' }}</td>
+                    <td class="max-w-[180px] truncate px-2 py-2 text-slate-600 sm:max-w-[220px]">{{ item.personInChargeName || 'Unassigned' }}</td>
                   }
                   @if (columnVisible('type')) {
-                    <td class="px-2 py-2.5 whitespace-nowrap text-slate-600 sm:px-3">{{ item.type }}</td>
+                    <td class="px-2 py-2 whitespace-nowrap text-slate-600">{{ item.type }}</td>
                   }
                   @if (columnVisible('partsUsed')) {
-                    <td class="max-w-[220px] truncate px-2 py-2.5 text-slate-600 sm:max-w-[260px] sm:px-3" [title]="partsUsedLabel(item)">{{ partsUsedLabel(item) }}</td>
+                    <td class="max-w-[220px] truncate px-2 py-2 text-slate-600 sm:max-w-[260px]" [title]="partsUsedLabel(item)">{{ partsUsedLabel(item) }}</td>
                   }
                   @if (columnVisible('interval')) {
-                    <td class="min-w-[190px] px-2 py-2.5 text-slate-600 sm:px-3">
+                    <td class="min-w-[170px] px-2 py-2 text-slate-600">
                       <div class="font-medium text-slate-700">{{ serviceIntervalLabel(item) }}</div>
-                      <div class="text-xs text-slate-500">{{ serviceDurationLabel(item) }}</div>
+                      <div class="text-[10px] text-slate-500">{{ serviceDurationLabel(item) }}</div>
                     </td>
                   }
                   @if (columnVisible('cost')) {
-                    <td class="px-2 py-2.5 text-right whitespace-nowrap text-slate-600 sm:px-3">{{ formatMoney(item.cost) }}</td>
+                    <td class="px-2 py-2 text-right whitespace-nowrap text-slate-600">{{ formatMoney(item.cost) }}</td>
                   }
                   @if (columnVisible('labor')) {
-                    <td class="px-2 py-2.5 text-right whitespace-nowrap text-slate-600 sm:px-3">{{ formatMoney(item.labor) }}</td>
+                    <td class="px-2 py-2 text-right whitespace-nowrap text-slate-600">{{ formatMoney(item.labor) }}</td>
                   }
                   @if (columnVisible('totalCosting')) {
-                    <td class="px-2 py-2.5 text-right whitespace-nowrap font-medium text-emerald-700 sm:px-3">{{ formatMoney(item.totalCosting) }}</td>
+                    <td class="px-2 py-2 text-right whitespace-nowrap font-medium text-emerald-700">{{ formatMoney(item.totalCosting) }}</td>
                   }
                   @if (columnVisible('totalSales')) {
-                    <td class="px-2 py-2.5 text-right whitespace-nowrap font-medium text-pcmazing-600 sm:px-3">{{ formatMoney(item.totalSales) }}</td>
+                    <td class="px-2 py-2 text-right whitespace-nowrap font-medium text-pcmazing-600">{{ formatMoney(item.totalSales) }}</td>
                   }
-                  <td class="px-2 py-2.5 sm:px-3" (click)="$event.stopPropagation()">
+                  <td class="px-2 py-2" (click)="$event.stopPropagation()">
                     <select
-                      class="rounded-full border-0 px-2.5 py-1 text-[10px] font-bold uppercase focus:outline-none focus:ring-2 focus:ring-pcmazing-500 disabled:opacity-60"
+                      class="rounded-full border-0 px-2 py-0.5 text-[9px] font-bold uppercase focus:outline-none focus:ring-2 focus:ring-pcmazing-500 disabled:opacity-60"
                       [ngClass]="statusPillClass(item.status)"
                       [ngModel]="normalizeJobStatus(item.status)"
                       [ngModelOptions]="{ standalone: true }"
@@ -266,15 +286,15 @@
                       }
                     </select>
                   </td>
-                  <td class="px-2 py-2.5 text-right sm:px-3" (click)="$event.stopPropagation()">
+                  <td class="px-2 py-2 text-right" (click)="$event.stopPropagation()">
                     <button
                       type="button"
-                      class="inline-flex size-8 items-center justify-center rounded-lg text-red-600 hover:bg-red-50"
+                      class="inline-flex size-7 items-center justify-center rounded-lg text-red-600 hover:bg-red-50"
                       title="Delete"
                       aria-label="Delete job order"
                       (click)="requestDelete(item, $event)"
                     >
-                      <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                      <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m2 0v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7h12Z" />
                         <path stroke-linecap="round" stroke-linejoin="round" d="M10 11v6M14 11v6" />
                       </svg>
@@ -287,18 +307,129 @@
         </div>
 
         @if (meta(); as pagination) {
-          <div class="mt-4 flex flex-col gap-3 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-            <span class="min-w-0 truncate">Page {{ pagination.page }} of {{ pagination.totalPages }} · {{ pagination.total }} total</span>
+          <div class="mt-4 flex flex-col gap-3 text-[11px] text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+            <div class="flex min-w-0 flex-wrap items-center gap-3">
+              <span class="truncate">
+                Page {{ pagination.page }} of {{ pagination.totalPages || 1 }} · {{ pagination.total }} total
+              </span>
+              <label class="inline-flex items-center gap-1.5">
+                <span>Rows</span>
+                <select
+                  class="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-700 focus:border-pcmazing-500 focus:outline-none"
+                  [ngModel]="pageSize()"
+                  (ngModelChange)="changePageSize($event)"
+                >
+                  @for (size of pageSizeOptions; track size) {
+                    <option [ngValue]="size">{{ size }}</option>
+                  }
+                </select>
+              </label>
+            </div>
             <div class="flex shrink-0 gap-2">
-              <button type="button" class="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page <= 1" (click)="goToPage(pagination.page - 1)">Previous</button>
-              <button type="button" class="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page >= pagination.totalPages" (click)="goToPage(pagination.page + 1)">Next</button>
+              <button
+                type="button"
+                class="rounded-lg border border-slate-200 px-2.5 py-1 disabled:opacity-40"
+                [disabled]="pagination.page <= 1"
+                (click)="goToPage(1)"
+              >
+                First
+              </button>
+              <button
+                type="button"
+                class="rounded-lg border border-slate-200 px-2.5 py-1 disabled:opacity-40"
+                [disabled]="pagination.page <= 1"
+                (click)="goToPage(pagination.page - 1)"
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                class="rounded-lg border border-slate-200 px-2.5 py-1 disabled:opacity-40"
+                [disabled]="pagination.page >= pagination.totalPages"
+                (click)="goToPage(pagination.page + 1)"
+              >
+                Next
+              </button>
+              <button
+                type="button"
+                class="rounded-lg border border-slate-200 px-2.5 py-1 disabled:opacity-40"
+                [disabled]="pagination.page >= pagination.totalPages || pagination.totalPages <= 1"
+                (click)="goToPage(pagination.totalPages)"
+              >
+                Last
+              </button>
             </div>
           </div>
         }
       }
+      </div>
     </div>
   </div>
 </section>
+
+@for (notice of toast() ? [toast()!] : []; track notice.id) {
+  <div
+    class="pointer-events-none fixed inset-x-0 top-0 z-[70] flex justify-center p-4 sm:inset-x-auto sm:right-4 sm:left-auto sm:justify-end"
+    role="status"
+    aria-live="polite"
+  >
+    <div
+      class="job-toast pointer-events-auto w-full max-w-sm overflow-hidden rounded-2xl border bg-white/95 shadow-2xl shadow-slate-900/15 backdrop-blur-md"
+      [class.is-visible]="toastVisible() && !toastLeaving()"
+      [class.is-leaving]="toastLeaving()"
+      [class.border-emerald-200]="notice.type === 'success'"
+      [class.border-red-200]="notice.type === 'error'"
+    >
+      <div class="flex items-start gap-3 px-4 pt-4 pb-3">
+        <div
+          class="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-xl ring-1"
+          [class.bg-emerald-50]="notice.type === 'success'"
+          [class.text-emerald-600]="notice.type === 'success'"
+          [class.ring-emerald-100]="notice.type === 'success'"
+          [class.bg-red-50]="notice.type === 'error'"
+          [class.text-red-600]="notice.type === 'error'"
+          [class.ring-red-100]="notice.type === 'error'"
+        >
+          @if (notice.type === 'success') {
+            <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+          } @else {
+            <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m0 3.75h.008M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+          }
+        </div>
+
+        <div class="min-w-0 flex-1 pt-0.5">
+          <p class="text-sm font-bold text-slate-900">
+            @if (notice.type === 'success') { Success } @else { Something went wrong }
+          </p>
+          <p class="mt-0.5 text-sm leading-snug text-slate-600">{{ notice.message }}</p>
+        </div>
+
+        <button
+          type="button"
+          class="rounded-lg px-1.5 py-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+          aria-label="Dismiss notification"
+          (click)="dismissToast()"
+        >
+          <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M18 6 6 18" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="h-1 bg-slate-100">
+        <div
+          class="job-toast-progress h-full"
+          [class.bg-emerald-500]="notice.type === 'success'"
+          [class.bg-red-500]="notice.type === 'error'"
+        ></div>
+      </div>
+    </div>
+  </div>
+}
 
 @if (pendingStatusChange(); as pending) {
   <div

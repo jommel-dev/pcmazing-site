@@ -268,6 +268,13 @@ export const adminRoutes: Routes = [
         data: { module: 'projects' },
       },
       {
+        path: 'projects/new',
+        component: ProjectsPageComponent,
+        title: 'Create Project | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'projects' },
+      },
+      {
         path: 'kanban',
         component: KanbanHubPageComponent,
         title: 'Kanban | PCMazing Admin',
@@ -278,6 +285,13 @@ export const adminRoutes: Routes = [
         path: 'projects/:id/tasks',
         component: ProjectTasksPageComponent,
         title: 'Project Tasks | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'projects' },
+      },
+      {
+        path: 'projects/:id/edit',
+        component: ProjectsPageComponent,
+        title: 'Update Project | PCMazing Admin',
         canActivate: [adminRoleGuard],
         data: { module: 'projects' },
       },
