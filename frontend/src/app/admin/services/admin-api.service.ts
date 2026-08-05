@@ -1028,13 +1028,27 @@ export class AdminApiService {
     });
   }
 
-  listInventoryServices(page = 1, limit = 20, search = '', type = '', status = '') {
+  listInventoryServices(
+    page = 1,
+    limit = 20,
+    search = '',
+    type = '',
+    status = '',
+    sortBy = '',
+    sortDir: 'asc' | 'desc' = 'desc',
+  ) {
     let params = this.listParams(page, limit, search);
     if (type.trim()) {
       params = params.set('type', type.trim());
     }
     if (status.trim()) {
       params = params.set('status', status.trim());
+    }
+    if (sortBy.trim()) {
+      params = params.set('sortBy', sortBy.trim());
+    }
+    if (sortDir) {
+      params = params.set('sortDir', sortDir);
     }
 
     return this.http.get<
