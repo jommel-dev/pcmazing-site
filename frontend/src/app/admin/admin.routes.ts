@@ -19,6 +19,7 @@ import { DemoRequestDetailPageComponent } from './pages/demo-requests/demo-reque
 import { InventoryPageComponent } from './pages/inventory/inventory-page.component';
 import { InventoryDetailPageComponent } from './pages/inventory/inventory-detail-page.component';
 import { InventoryServiceCreatePageComponent } from './pages/inventory/inventory-service-create-page.component';
+import { InventoryServiceReceiptPageComponent } from './pages/inventory/inventory-service-receipt-page.component';
 import { InventoryServicesPageComponent } from './pages/inventory/inventory-services-page.component';
 import { InventoryServiceTypesPageComponent } from './pages/inventory/inventory-service-types-page.component';
 import { PurchasePageComponent } from './pages/inventory/purchase-page.component';
@@ -166,6 +167,13 @@ export const adminRoutes: Routes = [
         path: 'job-order/new',
         component: InventoryServiceCreatePageComponent,
         title: 'Add Service | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'job_order' },
+      },
+      {
+        path: 'job-order/:id/receipt',
+        component: InventoryServiceReceiptPageComponent,
+        title: 'Sales Receipt | PCMazing Admin',
         canActivate: [adminRoleGuard],
         data: { module: 'job_order' },
       },

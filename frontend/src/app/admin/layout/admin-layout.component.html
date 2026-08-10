@@ -16,7 +16,7 @@
     }
 
     <aside
-      class="fixed inset-y-0 left-0 z-40 flex h-dvh w-72 transform flex-col overflow-hidden border-r border-slate-200 bg-white text-slate-900 transition-all duration-200 lg:static lg:h-full lg:translate-x-0 lg:shrink-0 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+      class="admin-print-hide fixed inset-y-0 left-0 z-40 flex h-dvh w-72 transform flex-col overflow-hidden border-r border-slate-200 bg-white text-slate-900 transition-all duration-200 lg:static lg:h-full lg:translate-x-0 lg:shrink-0 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
       [class.-translate-x-full]="!sidebarOpen()"
       (click)="$event.stopPropagation()"
     >
@@ -104,9 +104,9 @@
       </nav>
     </aside>
 
-    <div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden lg:ml-0">
+    <div class="admin-print-main flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden lg:ml-0">
       <header
-        class="sticky top-0 z-30 border-b px-4 py-3 backdrop-blur sm:px-6"
+        class="admin-print-hide sticky top-0 z-30 border-b px-4 py-3 backdrop-blur sm:px-6"
         [class.border-slate-200]="!themeService.isDark()"
         [class.bg-white/95]="!themeService.isDark()"
         [class.border-slate-800]="themeService.isDark()"
@@ -248,7 +248,7 @@
         </div>
       </header>
 
-      <main class="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
+      <main class="admin-print-main flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
         <router-outlet />
       </main>
     </div>

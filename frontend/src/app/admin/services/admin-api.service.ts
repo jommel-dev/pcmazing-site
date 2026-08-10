@@ -129,13 +129,17 @@ export interface InventoryServiceItem {
   endedAt: string | null;
   durationMinutes: number | null;
   notes?: string | null;
+  laborDiscountType?: 'none' | 'senior' | 'pwd';
   parts?: Array<{
     materialId?: number;
     materialName?: string | null;
+    materialCode?: string | null;
+    description?: string | null;
     customItemName?: string;
     quantity: number;
     unitPrice?: number;
     labor?: number;
+    discountType?: 'none' | 'senior' | 'pwd';
   }>;
   updatedAt: string | null;
 }
@@ -152,9 +156,11 @@ export interface CreateInventoryServicePayload {
     quantity: number;
     unitPrice?: number;
     labor?: number;
+    discountType?: 'none' | 'senior' | 'pwd';
   }>;
   cost?: number;
   labor?: number;
+  laborDiscountType?: 'none' | 'senior' | 'pwd';
   status?: string;
   notes?: string;
   startedAt?: string;
