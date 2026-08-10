@@ -1,7 +1,7 @@
 import { Component, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { NgClass } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import {
   AdminApiService,
@@ -89,6 +89,7 @@ type ActionToast = {
 })
 export class InventoryServicesPageComponent implements OnInit, OnDestroy {
   private readonly adminApi = inject(AdminApiService);
+  private readonly router = inject(Router);
   private toastHideTimer: ReturnType<typeof setTimeout> | null = null;
   private toastClearTimer: ReturnType<typeof setTimeout> | null = null;
   private searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -144,6 +145,7 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
   readonly pendingDelete = signal<InventoryServiceItem | null>(null);
   readonly deleting = signal(false);
   readonly statusUpdatingId = signal<number | null>(null);
+  readonly imageUploadingId = signal<number | null>(null);
   readonly toast = signal<ActionToast | null>(null);
   readonly toastVisible = signal(false);
   readonly toastLeaving = signal(false);
@@ -151,17 +153,8 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
     item: InventoryServiceItem;
     nextStatus: string;
   } | null>(null);
-  readonly completionUpload = signal<{
-    item: InventoryServiceItem;
-  } | null>(null);
-  readonly completionPreviewUrl = signal<string | null>(null);
-  readonly completionFile = signal<File | null>(null);
-  readonly completionError = signal('');
-  readonly completionSaving = signal(false);
-  readonly isMobileDevice = signal(false);
 
   ngOnInit(): void {
-    this.isMobileDevice.set(this.detectMobileDevice());
     void this.loadServices();
   }
 
@@ -206,17 +199,6 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
       clearTimeout(this.toastClearTimer);
       this.toastClearTimer = null;
     }
-  }
-
-  private detectMobileDevice(): boolean {
-    if (typeof window === 'undefined' || typeof navigator === 'undefined') {
-      return false;
-    }
-    const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
-    const mobileUa = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-      navigator.userAgent,
-    );
-    return coarsePointer || mobileUa;
   }
 
   async loadServices(): Promise<void> {
@@ -326,6 +308,54 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
     return this.adminApi.resolveServiceImageUrl(item.imageUrl);
   }
 
+  async onTableImageSelected(item: InventoryServiceItem, event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0] ?? null;
+    input.value = '';
+
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      this.showToast('error', 'Please choose an image file.');
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      this.showToast('error', 'Image must be 2MB or smaller.');
+      return;
+    }
+
+    this.imageUploadingId.set(item.id);
+
+    try {
+      const response = await firstValueFrom(
+        this.adminApi.uploadInventoryServiceImage(item.id, file),
+      );
+      this.items.update((rows) =>
+        rows.map((row) =>
+          row.id === item.id
+            ? {
+                ...row,
+                ...response.data,
+                status: this.normalizeJobStatus(response.data.status ?? row.status),
+                imageUrl: response.data.imageUrl ?? null,
+              }
+            : row,
+        ),
+      );
+      this.showToast('success', 'Completion image uploaded.');
+    } catch (err: unknown) {
+      const httpErr = err as { error?: { message?: string | string[] } };
+      const msg = httpErr?.error?.message;
+      const detail = Array.isArray(msg) ? msg.join(', ') : msg || 'Unknown error';
+      this.showToast('error', `Unable to upload image: ${detail}`);
+    } finally {
+      this.imageUploadingId.set(null);
+    }
+  }
+
   partsUsedLabel(item: InventoryServiceItem): string {
     return item.partsUsed.length ? item.partsUsed.join(', ') : 'No parts linked';
   }
@@ -380,7 +410,7 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
   }
 
   cancelStatusChange(): void {
-    if (this.statusUpdatingId() !== null || this.completionSaving()) {
+    if (this.statusUpdatingId() !== null) {
       return;
     }
     this.pendingStatusChange.set(null);
@@ -393,106 +423,7 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
     }
 
     this.pendingStatusChange.set(null);
-
-    if (pending.nextStatus === 'Done') {
-      this.openCompletionUpload(pending.item);
-      return;
-    }
-
     await this.applyStatusChange(pending.item, pending.nextStatus);
-  }
-
-  openCompletionUpload(item: InventoryServiceItem): void {
-    this.clearCompletionPreview();
-    this.completionError.set('');
-    this.completionFile.set(null);
-    this.completionUpload.set({ item });
-  }
-
-  cancelCompletionUpload(): void {
-    if (this.completionSaving()) {
-      return;
-    }
-    this.clearCompletionPreview();
-    this.completionUpload.set(null);
-    this.completionFile.set(null);
-    this.completionError.set('');
-  }
-
-  onCompletionFileSelected(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0] ?? null;
-    input.value = '';
-
-    if (!file) {
-      return;
-    }
-
-    if (!file.type.startsWith('image/')) {
-      this.completionError.set('Please choose an image file.');
-      return;
-    }
-
-    if (file.size > 2 * 1024 * 1024) {
-      this.completionError.set('Image must be 2MB or smaller.');
-      return;
-    }
-
-    this.clearCompletionPreview();
-    this.completionError.set('');
-    this.completionFile.set(file);
-    this.completionPreviewUrl.set(URL.createObjectURL(file));
-  }
-
-  private clearCompletionPreview(): void {
-    const current = this.completionPreviewUrl();
-    if (current) {
-      URL.revokeObjectURL(current);
-    }
-    this.completionPreviewUrl.set(null);
-  }
-
-  async confirmCompletionUpload(): Promise<void> {
-    const pending = this.completionUpload();
-    const file = this.completionFile();
-    if (!pending) {
-      return;
-    }
-    if (!file) {
-      this.completionError.set('Please add a completion image before marking this job as Done.');
-      return;
-    }
-
-    this.completionSaving.set(true);
-    this.completionError.set('');
-
-    try {
-      const imageResponse = await firstValueFrom(
-        this.adminApi.uploadInventoryServiceImage(pending.item.id, file),
-      );
-      const statusResponse = await firstValueFrom(
-        this.adminApi.updateInventoryServiceStatus(pending.item.id, 'Done'),
-      );
-
-      this.applyLocalStatusUpdate({
-        ...pending.item,
-        ...imageResponse.data,
-        status: this.normalizeJobStatus(statusResponse.data.status),
-        imageUrl: imageResponse.data.imageUrl ?? statusResponse.data.imageUrl,
-      });
-
-      this.clearCompletionPreview();
-      this.completionUpload.set(null);
-      this.completionFile.set(null);
-      this.showToast('success', 'Job marked as Done with completion image.');
-    } catch (err: unknown) {
-      const httpErr = err as { error?: { message?: string | string[] } };
-      const msg = httpErr?.error?.message;
-      const detail = Array.isArray(msg) ? msg.join(', ') : msg || 'Unknown error';
-      this.completionError.set(`Unable to complete job order: ${detail}`);
-    } finally {
-      this.completionSaving.set(false);
-    }
   }
 
   private async applyStatusChange(item: InventoryServiceItem, status: string): Promise<void> {
@@ -502,21 +433,27 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
       const response = await firstValueFrom(
         this.adminApi.updateInventoryServiceStatus(item.id, status),
       );
+      const nextStatus = this.normalizeJobStatus(response.data.status);
       this.applyLocalStatusUpdate({
         ...item,
         ...response.data,
-        status: this.normalizeJobStatus(response.data.status),
+        status: nextStatus,
         imageUrl: response.data.imageUrl ?? null,
       });
       const clearedImage =
-        this.normalizeJobStatus(item.status) === 'Done' &&
-        this.normalizeJobStatus(response.data.status) !== 'Done';
+        this.normalizeJobStatus(item.status) === 'Done' && nextStatus !== 'Done';
       this.showToast(
         'success',
         clearedImage
-          ? `Status updated to ${this.normalizeJobStatus(response.data.status)}. Completion image removed.`
-          : `Status updated to ${this.normalizeJobStatus(response.data.status)}.`,
+          ? `Status updated to ${nextStatus}. Completion image removed.`
+          : `Status updated to ${nextStatus}.`,
       );
+
+      if (nextStatus === 'Done') {
+        await this.router.navigate(['/admin/job-order', item.id, 'receipt'], {
+          queryParams: { print: '1' },
+        });
+      }
     } catch (err: unknown) {
       const httpErr = err as { error?: { message?: string | string[] } };
       const msg = httpErr?.error?.message;

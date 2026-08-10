@@ -1,0 +1,157 @@
+<section class="receipt-page min-w-0 max-w-full">
+  <div class="no-print mb-4 flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <a routerLink="/admin/job-order" class="text-sm font-bold text-pcmazing-500 hover:text-pcmazing-600">
+        ← Back to Job Orders
+      </a>
+      <h2 class="mt-2 text-2xl font-bold text-slate-900">Sales Receipt</h2>
+      <p class="mt-1 text-sm text-slate-500">Review the receipt, then print or save as PDF.</p>
+    </div>
+    <div class="flex flex-wrap gap-2">
+      <button
+        type="button"
+        class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50"
+        (click)="backToJob()"
+      >
+        Back to job
+      </button>
+      <button
+        type="button"
+        class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:opacity-60"
+        [disabled]="loading() || !!error() || !item()"
+        (click)="printReceipt()"
+      >
+        Print receipt
+      </button>
+    </div>
+  </div>
+
+  @if (loading()) {
+    <div class="no-print rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500">
+      Loading receipt...
+    </div>
+  } @else if (error()) {
+    <div class="no-print rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{{ error() }}</div>
+  } @else if (item(); as job) {
+    <div class="receipt-sheet mx-auto bg-white text-black shadow-sm">
+      <div class="receipt-meta">
+        <div class="receipt-meta-left">
+          <div>Printed: {{ printedAt() | date:'M/d/yyyy h:mm:ss a' }}</div>
+          <div>Store: 1</div>
+          <div>Workstation: 1</div>
+        </div>
+        <div class="receipt-meta-right">
+          <div><strong>Sales Receipt #{{ receiptNo() }}</strong></div>
+          <div>Date: {{ printedAt() | date:'M/d/yyyy' }}</div>
+          <div>Cashier: {{ cashierName() }}</div>
+          <div>Page 1</div>
+        </div>
+      </div>
+
+      <div class="receipt-brand">
+        <p class="receipt-reprinted">REPRINTED</p>
+        <img src="/images/logopcm.png" alt="PCmazing IT SERVICES" class="receipt-logo" />
+        <p class="receipt-company">PCmazing</p>
+        <p class="receipt-address">Mabini Extension, Cabanatuan City, 3100</p>
+      </div>
+
+      <div class="receipt-bill-to">
+        <p><strong>Bill To:</strong></p>
+        <p>{{ job.customerName }}</p>
+      </div>
+
+      <table class="receipt-table">
+        <thead>
+          <tr>
+            <th>Item Name</th>
+            <th>Item Description</th>
+            <th class="num">Qty</th>
+            <th class="num">Regular Price</th>
+            <th class="num">Discount</th>
+            <th class="num">Ext Price</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (line of lines(); track $index) {
+            <tr>
+              <td>{{ line.itemName }}</td>
+              <td>{{ line.description }}</td>
+              <td class="num">{{ line.qty | number:'1.0-2' }}</td>
+              <td class="num">{{ formatMoney(line.unitPrice) }}</td>
+              <td class="num">{{ formatDiscount(line) }}</td>
+              <td class="num">{{ formatMoney(line.extPrice) }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+
+      <div class="receipt-totals">
+        <div class="receipt-totals-left">
+          <div>Total Sales Discounts: {{ formatMoney(discountTotal()) }}</div>
+        </div>
+        <div class="receipt-totals-right">
+          <div class="totals-row">
+            <span>Subtotal</span>
+            <span>{{ formatMoney(subtotal()) }}</span>
+          </div>
+          <div class="totals-row totals-row-strong">
+            <span>RECEIPT TOTAL</span>
+            <span>{{ formatMoney(receiptTotal()) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="receipt-warranty">
+        <p class="warranty-title">“PCmazing Warranty Policy”</p>
+        <ul>
+          <li>
+            <strong>Major PC Parts:</strong> <strong>1-Year Warranty</strong>,
+            <strong>5-Day Replacement</strong> (Factory Defects Only)
+          </li>
+          <li>
+            <strong>PC Accessories:</strong> <strong>5-Day Replacement</strong>,
+            <strong>1-Month Warranty</strong> (Factory Defects Only)
+          </li>
+          <li>
+            <strong>Original Receipt Required</strong> —
+            <strong>NO RECEIPT, NO WARRANTY</strong>
+          </li>
+          <li>
+            <strong>Monitor dead pixels are NOT covered</strong> under replacement/warranty.
+          </li>
+          <li>
+            Physical, liquid, electrical, accidental, or customer-caused damage
+            <strong>voids the warranty</strong>.
+          </li>
+        </ul>
+        <p class="warranty-ack">
+          <strong>
+            By purchasing this product, you acknowledge that you have read, understood, and accepted
+            the terms and conditions of this warranty policy.
+          </strong>
+        </p>
+      </div>
+
+      <div class="receipt-footer">
+        <p>This slip is not valid for input tax</p>
+        <p class="thanks">Thanks for shopping with us!</p>
+
+        <div class="receipt-barcode-wrap">
+          <div class="receipt-barcode" aria-hidden="true">
+            @for (bar of barcodeBars(); track $index) {
+              <span
+                [style.width.px]="bar.width"
+                [class.filled]="bar.filled"
+              ></span>
+            }
+          </div>
+          <p class="barcode-label">{{ receiptNo() }}</p>
+        </div>
+
+        <div class="receipt-signature">
+          <span></span>
+        </div>
+      </div>
+    </div>
+  }
+</section>

@@ -42,6 +42,11 @@ class CreateServicePartDto {
   @Min(0)
   @Max(999999999.99)
   labor?: number;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['none', 'senior', 'pwd'])
+  discountType?: 'none' | 'senior' | 'pwd';
 }
 
 export class CreateServiceDto {
@@ -88,6 +93,11 @@ export class CreateServiceDto {
   @Min(0)
   @Max(999999999.99)
   labor?: number;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['none', 'senior', 'pwd'])
+  laborDiscountType?: 'none' | 'senior' | 'pwd';
 
   @IsOptional()
   @IsString()

@@ -217,12 +217,32 @@
               @for (item of items(); track item.id) {
                 <tr class="hover:bg-slate-50">
                   @if (columnVisible('image')) {
-                    <td class="px-2 py-2">
-                      @if (serviceImageUrl(item); as imageUrl) {
-                        <img [src]="imageUrl" [alt]="imageAlt(item)" class="size-8 rounded-md border border-slate-200 object-cover" />
-                      } @else {
-                        <span class="inline-flex size-8 items-center justify-center rounded-md border border-dashed border-slate-200 bg-slate-50 text-[9px] font-bold text-slate-400">N/A</span>
-                      }
+                    <td class="px-2 py-2" (click)="$event.stopPropagation()">
+                      <label
+                        class="group relative inline-flex size-8 cursor-pointer items-center justify-center overflow-hidden rounded-md border border-dashed border-slate-300 bg-slate-50 text-[9px] font-bold text-slate-400 transition hover:border-pcmazing-400 hover:bg-pcmazing-50 hover:text-pcmazing-600"
+                        [class.pointer-events-none]="imageUploadingId() === item.id"
+                        [class.opacity-60]="imageUploadingId() === item.id"
+                        [attr.title]="serviceImageUrl(item) ? 'Replace completion image' : 'Upload completion image'"
+                        [attr.aria-label]="(serviceImageUrl(item) ? 'Replace' : 'Upload') + ' completion image for ' + (item.referenceNo || item.serviceName)"
+                      >
+                        @if (imageUploadingId() === item.id) {
+                          <span class="size-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-pcmazing-500"></span>
+                        } @else if (serviceImageUrl(item); as imageUrl) {
+                          <img [src]="imageUrl" [alt]="imageAlt(item)" class="size-full object-cover" />
+                          <span class="absolute inset-0 flex items-center justify-center bg-slate-900/45 text-[8px] font-bold tracking-wide text-white uppercase opacity-0 transition group-hover:opacity-100">
+                            Edit
+                          </span>
+                        } @else {
+                          <span class="leading-none">Add</span>
+                        }
+                        <input
+                          type="file"
+                          class="sr-only"
+                          accept="image/*"
+                          [disabled]="imageUploadingId() === item.id"
+                          (change)="onTableImageSelected(item, $event)"
+                        />
+                      </label>
                     </td>
                   }
                   <td class="px-2 py-2 font-medium whitespace-nowrap text-slate-700">
@@ -277,7 +297,7 @@
                       [ngClass]="statusPillClass(item.status)"
                       [ngModel]="normalizeJobStatus(item.status)"
                       [ngModelOptions]="{ standalone: true }"
-                      [disabled]="statusUpdatingId() === item.id || completionSaving()"
+                      [disabled]="statusUpdatingId() === item.id"
                       (ngModelChange)="onStatusChange(item, $event)"
                       [attr.aria-label]="'Change status for ' + (item.referenceNo || item.serviceName)"
                     >
@@ -456,11 +476,9 @@
             to
             <span class="font-semibold text-slate-800">{{ pending.nextStatus }}</span>?
           </p>
-          @if (pending.nextStatus === 'Done') {
-            <p class="mt-2 text-xs text-slate-500">You will be asked to add a completion image next.</p>
-          } @else if (normalizeJobStatus(pending.item.status) === 'Done') {
+          @if (normalizeJobStatus(pending.item.status) === 'Done' && pending.nextStatus !== 'Done') {
             <p class="mt-2 text-xs text-amber-600">
-              The completion image will be removed. Marking this job as Done again will require a new photo.
+              The completion image will be removed if one was uploaded.
             </p>
           }
         </div>
@@ -480,121 +498,6 @@
           (click)="confirmStatusChange()"
         >
           Yes
-        </button>
-      </div>
-    </div>
-  </div>
-}
-
-@if (completionUpload(); as pending) {
-  <div
-    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4"
-    (click)="cancelCompletionUpload()"
-  >
-    <div
-      class="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-xl"
-      (click)="$event.stopPropagation()"
-    >
-      <div class="flex items-start justify-between gap-3">
-        <div>
-          <h3 class="text-lg font-bold text-slate-900">Completion image</h3>
-          <p class="mt-1 text-sm text-slate-500">
-            Add a completion photo for
-            <span class="font-semibold text-slate-800">{{ pending.item.referenceNo || pending.item.serviceName }}</span>
-            before marking it as Done.
-          </p>
-        </div>
-        <button
-          type="button"
-          class="rounded-lg px-2 py-1 text-sm font-semibold text-slate-500 hover:bg-slate-100"
-          [disabled]="completionSaving()"
-          (click)="cancelCompletionUpload()"
-        >
-          Close
-        </button>
-      </div>
-
-      @if (completionError()) {
-        <div class="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {{ completionError() }}
-        </div>
-      }
-
-      <div class="mt-4 overflow-hidden rounded-2xl border border-dashed border-slate-300 bg-slate-50">
-        @if (completionPreviewUrl(); as previewUrl) {
-          <img [src]="previewUrl" alt="Completion preview" class="max-h-72 w-full object-contain bg-slate-100" />
-        } @else {
-          <div class="flex min-h-48 flex-col items-center justify-center gap-2 px-4 py-10 text-center">
-            <svg class="size-10 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M3 7.5A1.5 1.5 0 0 1 4.5 6h3.1l1.2-1.8A1.5 1.5 0 0 1 10 3.5h4a1.5 1.5 0 0 1 1.2.7L16.4 6h3.1A1.5 1.5 0 0 1 21 7.5v10A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-10Z" />
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
-            </svg>
-            <p class="text-sm font-semibold text-slate-700">No image selected yet</p>
-            <p class="text-xs text-slate-500">JPEG, PNG, WEBP, or GIF up to 2MB</p>
-          </div>
-        }
-      </div>
-
-      <div class="mt-4 flex flex-col gap-2 sm:flex-row">
-        @if (isMobileDevice()) {
-          <label class="inline-flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600">
-            <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M3 7.5A1.5 1.5 0 0 1 4.5 6h3.1l1.2-1.8A1.5 1.5 0 0 1 10 3.5h4a1.5 1.5 0 0 1 1.2.7L16.4 6h3.1A1.5 1.5 0 0 1 21 7.5v10A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-10Z" />
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
-            </svg>
-            Take photo
-            <input
-              type="file"
-              class="sr-only"
-              accept="image/*"
-              [attr.capture]="'environment'"
-              [disabled]="completionSaving()"
-              (change)="onCompletionFileSelected($event)"
-            />
-          </label>
-          <label class="inline-flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">
-            Choose from gallery
-            <input
-              type="file"
-              class="sr-only"
-              accept="image/*"
-              [disabled]="completionSaving()"
-              (change)="onCompletionFileSelected($event)"
-            />
-          </label>
-        } @else {
-          <label class="inline-flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">
-            <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2A1.5 1.5 0 0 0 4.5 20h15a1.5 1.5 0 0 0 1.5-1.5v-2M16.5 8.5 12 4m0 0L7.5 8.5M12 4v12" />
-            </svg>
-            Upload image
-            <input
-              type="file"
-              class="sr-only"
-              accept="image/*"
-              [disabled]="completionSaving()"
-              (change)="onCompletionFileSelected($event)"
-            />
-          </label>
-        }
-      </div>
-
-      <div class="mt-6 flex justify-end gap-2">
-        <button
-          type="button"
-          class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
-          [disabled]="completionSaving()"
-          (click)="cancelCompletionUpload()"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:opacity-60"
-          [disabled]="completionSaving() || !completionFile()"
-          (click)="confirmCompletionUpload()"
-        >
-          @if (completionSaving()) { Saving... } @else { Mark as Done }
         </button>
       </div>
     </div>
