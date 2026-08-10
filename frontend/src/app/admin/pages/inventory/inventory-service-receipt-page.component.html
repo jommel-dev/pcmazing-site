@@ -7,22 +7,48 @@
       <h2 class="mt-2 text-2xl font-bold text-slate-900">Sales Receipt</h2>
       <p class="mt-1 text-sm text-slate-500">Review the receipt, then print or save as PDF.</p>
     </div>
-    <div class="flex flex-wrap gap-2">
-      <button
-        type="button"
-        class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50"
-        (click)="backToJob()"
-      >
-        Back to job
-      </button>
-      <button
-        type="button"
-        class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:opacity-60"
-        [disabled]="loading() || !!error() || !item()"
-        (click)="printReceipt()"
-      >
-        Print receipt
-      </button>
+    <div class="flex flex-wrap items-end gap-3">
+      <label class="template-picker">
+        <span>Print template</span>
+        <select
+          class="template-select"
+          [ngModel]="selectedTemplateId()"
+          (ngModelChange)="onTemplateChange($event)"
+          [disabled]="loading() || !!error() || !item()"
+        >
+          <option [ngValue]="0">Built-in Job Order layout</option>
+          @for (template of activeTemplates(); track template.id) {
+            <option [ngValue]="template.id">
+              {{ template.name }}@if (template.isDefault) { (Default) }
+            </option>
+          }
+        </select>
+      </label>
+      <div class="flex flex-wrap gap-2">
+        <button
+          type="button"
+          class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50"
+          (click)="backToJob()"
+        >
+          Back to job
+        </button>
+        <button
+          type="button"
+          class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+          [disabled]="loading() || !!error() || !item()"
+          (click)="printReceipt()"
+        >
+          Print receipt
+        </button>
+        <button
+          type="button"
+          class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:opacity-60"
+          [disabled]="loading() || !!error() || !item()"
+          (click)="reprintReceipt()"
+        >
+          Re-print receipt
+        </button>
+      </div>
     </div>
   </div>
 
@@ -33,125 +59,201 @@
   } @else if (error()) {
     <div class="no-print rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{{ error() }}</div>
   } @else if (item(); as job) {
-    <div class="receipt-sheet mx-auto bg-white text-black shadow-sm">
-      <div class="receipt-meta">
-        <div class="receipt-meta-left">
-          <div>Printed: {{ printedAt() | date:'M/d/yyyy h:mm:ss a' }}</div>
-          <div>Store: 1</div>
-          <div>Workstation: 1</div>
-        </div>
-        <div class="receipt-meta-right">
-          <div><strong>Sales Receipt #{{ receiptNo() }}</strong></div>
-          <div>Date: {{ printedAt() | date:'M/d/yyyy' }}</div>
-          <div>Cashier: {{ cashierName() }}</div>
-          <div>Page 1</div>
-        </div>
-      </div>
-
-      <div class="receipt-brand">
-        <p class="receipt-reprinted">REPRINTED</p>
-        <img src="/images/logopcm.png" alt="PCmazing IT SERVICES" class="receipt-logo" />
-        <p class="receipt-company">PCmazing</p>
-        <p class="receipt-address">Mabini Extension, Cabanatuan City, 3100</p>
-      </div>
-
-      <div class="receipt-bill-to">
-        <p><strong>Bill To:</strong></p>
-        <p>{{ job.customerName }}</p>
-      </div>
-
-      <table class="receipt-table">
-        <thead>
-          <tr>
-            <th>Item Name</th>
-            <th>Item Description</th>
-            <th class="num">Qty</th>
-            <th class="num">Regular Price</th>
-            <th class="num">Discount</th>
-            <th class="num">Ext Price</th>
-          </tr>
-        </thead>
-        <tbody>
-          @for (line of lines(); track $index) {
-            <tr>
-              <td>{{ line.itemName }}</td>
-              <td>{{ line.description }}</td>
-              <td class="num">{{ line.qty | number:'1.0-2' }}</td>
-              <td class="num">{{ formatMoney(line.unitPrice) }}</td>
-              <td class="num">{{ formatDiscount(line) }}</td>
-              <td class="num">{{ formatMoney(line.extPrice) }}</td>
-            </tr>
+    @if (useCustomTemplate() && selectedTemplate(); as template) {
+      <div class="receipt-sheet receipt-sheet-template mx-auto bg-white text-black shadow-sm" [ngStyle]="templateSheetStyle()">
+        @for (element of templateElements(); track element.id) {
+          @if (!isHiddenElement(element)) {
+            <div class="template-print-element" [attr.data-type]="element.type" [ngStyle]="elementStyle(element)">
+              @switch (element.type) {
+                @case ('line') {
+                  <span class="template-line"></span>
+                }
+                @case ('image') {
+                  <img
+                    class="template-logo"
+                    [src]="fieldValue(element) || '/images/logopcm.png'"
+                    [alt]="element.label || 'Logo'"
+                  />
+                }
+                @case ('table') {
+                  <table class="template-line-items">
+                    <thead>
+                      <tr>
+                        <th>Item Name</th>
+                        <th>Item Description</th>
+                        <th class="num">Qty</th>
+                        <th class="num">Regular Price</th>
+                        <th class="num">Discount</th>
+                        <th class="num">Ext Price</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (line of lines(); track $index) {
+                        <tr>
+                          <td>{{ line.itemName }}</td>
+                          <td>{{ line.description }}</td>
+                          <td class="num">{{ line.qty | number:'1.0-2' }}</td>
+                          <td class="num">{{ formatMoney(line.unitPrice) }}</td>
+                          <td class="num">{{ formatDiscount(line) }}</td>
+                          <td class="num">{{ formatMoney(line.extPrice) }}</td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                }
+                @case ('field') {
+                  @if (element.fieldKey === 'barcode') {
+                    <div class="template-barcode-wrap">
+                      <div class="receipt-barcode" aria-hidden="true">
+                        @for (bar of barcodeBars(); track $index) {
+                          <span [style.width.px]="bar.width" [class.filled]="bar.filled"></span>
+                        }
+                      </div>
+                      <p class="barcode-label">{{ receiptNo() }}</p>
+                    </div>
+                  } @else if (element.fieldKey === 'signatureLine') {
+                    <span class="template-signature"></span>
+                  } @else {
+                    <span class="template-field-text" [class.pre-wrap]="element.fieldKey === 'warrantyPolicy'">
+                      {{ fieldValue(element) }}
+                    </span>
+                  }
+                }
+                @default {
+                  <span class="template-field-text">{{ fieldValue(element) }}</span>
+                }
+              }
+            </div>
           }
-        </tbody>
-      </table>
-
-      <div class="receipt-totals">
-        <div class="receipt-totals-left">
-          <div>Total Sales Discounts: {{ formatMoney(discountTotal()) }}</div>
-        </div>
-        <div class="receipt-totals-right">
-          <div class="totals-row">
-            <span>Subtotal</span>
-            <span>{{ formatMoney(subtotal()) }}</span>
-          </div>
-          <div class="totals-row totals-row-strong">
-            <span>RECEIPT TOTAL</span>
-            <span>{{ formatMoney(receiptTotal()) }}</span>
-          </div>
-        </div>
+        }
       </div>
-
-      <div class="receipt-warranty">
-        <p class="warranty-title">“PCmazing Warranty Policy”</p>
-        <ul>
-          <li>
-            <strong>Major PC Parts:</strong> <strong>1-Year Warranty</strong>,
-            <strong>5-Day Replacement</strong> (Factory Defects Only)
-          </li>
-          <li>
-            <strong>PC Accessories:</strong> <strong>5-Day Replacement</strong>,
-            <strong>1-Month Warranty</strong> (Factory Defects Only)
-          </li>
-          <li>
-            <strong>Original Receipt Required</strong> —
-            <strong>NO RECEIPT, NO WARRANTY</strong>
-          </li>
-          <li>
-            <strong>Monitor dead pixels are NOT covered</strong> under replacement/warranty.
-          </li>
-          <li>
-            Physical, liquid, electrical, accidental, or customer-caused damage
-            <strong>voids the warranty</strong>.
-          </li>
-        </ul>
-        <p class="warranty-ack">
-          <strong>
-            By purchasing this product, you acknowledge that you have read, understood, and accepted
-            the terms and conditions of this warranty policy.
-          </strong>
-        </p>
-      </div>
-
-      <div class="receipt-footer">
-        <p>This slip is not valid for input tax</p>
-        <p class="thanks">Thanks for shopping with us!</p>
-
-        <div class="receipt-barcode-wrap">
-          <div class="receipt-barcode" aria-hidden="true">
-            @for (bar of barcodeBars(); track $index) {
-              <span
-                [style.width.px]="bar.width"
-                [class.filled]="bar.filled"
-              ></span>
+    } @else {
+      <div class="receipt-sheet mx-auto bg-white text-black shadow-sm">
+        <div class="receipt-meta">
+          <div class="receipt-meta-left">
+            <div>Printed: {{ printedAt() | date:'M/d/yyyy h:mm:ss a' }}</div>
+            <div>Store: {{ printingSettings()?.storeCode || '1' }}</div>
+            <div>Workstation: {{ printingSettings()?.workstationNo || '1' }}</div>
+          </div>
+          <div class="receipt-meta-right">
+            <div><strong>Sales Receipt #{{ receiptNo() }}</strong></div>
+            <div>Date: {{ printedAt() | date:'M/d/yyyy' }}</div>
+            <div>Cashier: {{ cashierName() }}</div>
+            @if (printingSettings()?.showPageNumbers !== false) {
+              <div>Page 1</div>
             }
           </div>
-          <p class="barcode-label">{{ receiptNo() }}</p>
         </div>
 
-        <div class="receipt-signature">
-          <span></span>
+        <div class="receipt-brand">
+          @if (showReprinted()) {
+            <p class="receipt-reprinted">REPRINTED</p>
+          }
+          <img src="/images/logopcm.png" alt="PCmazing IT SERVICES" class="receipt-logo" />
+          <p class="receipt-company">{{ printingSettings()?.storeName || 'PCmazing' }}</p>
+          <p class="receipt-address">
+            {{ printingSettings()?.storeAddress || 'Mabini Extension, Cabanatuan City, 3100' }}
+          </p>
+        </div>
+
+        <div class="receipt-bill-to">
+          <p><strong>Bill To:</strong></p>
+          <p>{{ job.customerName }}</p>
+        </div>
+
+        <table class="receipt-table">
+          <thead>
+            <tr>
+              <th>Item Name</th>
+              <th>Item Description</th>
+              <th class="num">Qty</th>
+              <th class="num">Regular Price</th>
+              <th class="num">Discount</th>
+              <th class="num">Ext Price</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (line of lines(); track $index) {
+              <tr>
+                <td>{{ line.itemName }}</td>
+                <td>{{ line.description }}</td>
+                <td class="num">{{ line.qty | number:'1.0-2' }}</td>
+                <td class="num">{{ formatMoney(line.unitPrice) }}</td>
+                <td class="num">{{ formatDiscount(line) }}</td>
+                <td class="num">{{ formatMoney(line.extPrice) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+
+        <div class="receipt-totals">
+          <div class="receipt-totals-left">
+            <div>Total Sales Discounts: {{ formatMoney(discountTotal()) }}</div>
+          </div>
+          <div class="receipt-totals-right">
+            <div class="totals-row">
+              <span>Subtotal</span>
+              <span>{{ formatMoney(subtotal()) }}</span>
+            </div>
+            <div class="totals-row totals-row-strong">
+              <span>RECEIPT TOTAL</span>
+              <span>{{ formatMoney(receiptTotal()) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="receipt-warranty">
+          <p class="warranty-title">“PCmazing Warranty Policy”</p>
+          <ul>
+            <li>
+              <strong>Major PC Parts:</strong> <strong>1-Year Warranty</strong>,
+              <strong>5-Day Replacement</strong> (Factory Defects Only)
+            </li>
+            <li>
+              <strong>PC Accessories:</strong> <strong>5-Day Replacement</strong>,
+              <strong>1-Month Warranty</strong> (Factory Defects Only)
+            </li>
+            <li>
+              <strong>Original Receipt Required</strong> —
+              <strong>NO RECEIPT, NO WARRANTY</strong>
+            </li>
+            <li>
+              <strong>Monitor dead pixels are NOT covered</strong> under replacement/warranty.
+            </li>
+            <li>
+              Physical, liquid, electrical, accidental, or customer-caused damage
+              <strong>voids the warranty</strong>.
+            </li>
+          </ul>
+          <p class="warranty-ack">
+            <strong>
+              By purchasing this product, you acknowledge that you have read, understood, and accepted
+              the terms and conditions of this warranty policy.
+            </strong>
+          </p>
+        </div>
+
+        <div class="receipt-footer">
+          <p>This slip is not valid for input tax</p>
+          <p class="thanks">Thanks for shopping with us!</p>
+
+          <div class="receipt-barcode-wrap">
+            <div class="receipt-barcode" aria-hidden="true">
+              @for (bar of barcodeBars(); track $index) {
+                <span
+                  [style.width.px]="bar.width"
+                  [class.filled]="bar.filled"
+                ></span>
+              }
+            </div>
+            <p class="barcode-label">{{ receiptNo() }}</p>
+          </div>
+
+          <div class="receipt-signature">
+            <span></span>
+          </div>
         </div>
       </div>
-    </div>
+    }
   }
 </section>

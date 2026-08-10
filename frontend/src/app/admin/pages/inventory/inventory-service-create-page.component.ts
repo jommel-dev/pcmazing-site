@@ -888,6 +888,24 @@ export class InventoryServiceCreatePageComponent implements OnInit {
     }
   }
 
+  openReceipt(): void {
+    const id = this.serviceId();
+    if (!id) {
+      return;
+    }
+    void this.router.navigate(['/admin/job-order', id, 'receipt']);
+  }
+
+  reprintReceipt(): void {
+    const id = this.serviceId();
+    if (!id) {
+      return;
+    }
+    void this.router.navigate(['/admin/job-order', id, 'receipt'], {
+      queryParams: { reprint: '1', print: '1' },
+    });
+  }
+
   async markAsDone(): Promise<void> {
     const id = this.serviceId();
     if (!id || !this.isEditMode() || this.selectedStatus() === 'Done' || this.markingDone()) {

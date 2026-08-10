@@ -19,6 +19,10 @@ import { ServiceTypesController } from './inventory/service-types.controller';
 import { ServiceTypesService } from './inventory/service-types.service';
 import { EmployeeWorkspaceController } from './employee-workspace/employee-workspace.controller';
 import { EmployeeWorkspaceService } from './employee-workspace/employee-workspace.service';
+import { PrintingSettingsController } from './printing/printing-settings.controller';
+import { PrintingSettingsService } from './printing/printing-settings.service';
+import { PrintingTemplatesController } from './printing/printing-templates.controller';
+import { PrintingTemplatesService } from './printing/printing-templates.service';
 import { QuotationController } from './quotation/quotation.controller';
 import { QuotationService } from './quotation/quotation.service';
 import { RbacService } from './rbac/rbac.service';
@@ -55,6 +59,8 @@ import { ProjectsModule } from './projects/projects.module';
     ClientProspectsController,
     ProjectsController,
     EmployeeWorkspaceController,
+    PrintingSettingsController,
+    PrintingTemplatesController,
   ],
   providers: [
     DashboardService,
@@ -73,6 +79,8 @@ import { ProjectsModule } from './projects/projects.module';
     ClientProspectsService,
     CurrencyExchangeService,
     EmployeeWorkspaceService,
+    PrintingSettingsService,
+    PrintingTemplatesService,
   ],
 })
 export class AdminModule {}

@@ -42,6 +42,7 @@ import { ProjectViewPageComponent } from './pages/projects/project-view-page.com
 import { ProjectTasksPageComponent } from './pages/projects/project-tasks-page.component';
 import { KanbanHubPageComponent } from './pages/projects/kanban-hub-page.component';
 import { AdminModulePlaceholderPageComponent } from './pages/modules/admin-module-placeholder-page.component';
+import { PrintingGeneratorPageComponent } from './pages/printing/printing-generator-page.component';
 
 export const adminRoutes: Routes = [
   {
@@ -351,6 +352,13 @@ export const adminRoutes: Routes = [
         title: 'Organization & Team | PCMazing Admin',
         canActivate: [adminRoleGuard],
         data: { module: 'organization_team' },
+      },
+      {
+        path: 'modules/printing-generator',
+        component: PrintingGeneratorPageComponent,
+        title: 'Printing Generator | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'printing_generator' },
       },
       {
         path: 'modules/:moduleKey',
