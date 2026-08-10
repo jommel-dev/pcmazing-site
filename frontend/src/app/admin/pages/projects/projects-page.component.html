@@ -1,4 +1,5 @@
 <section>
+  @if (!formPage()) {
   <div class="flex flex-wrap items-end justify-between gap-3">
     <div>
       <p class="text-xs font-bold uppercase tracking-wide text-pcmazing-500">System Development</p>
@@ -7,10 +8,20 @@
         @if (isMyProjects()) {
           Projects where you are the project manager or a team member.
         } @else {
-          Projects created from signed contracts, with project managers and developer teams.
+          Projects with direct project setup, contract-style milestones, and assigned delivery teams.
         }
       </p>
     </div>
+
+    @if (!isMyProjects()) {
+      <button
+        type="button"
+        class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white"
+        routerLink="/admin/projects/new"
+      >
+        Create Project
+      </button>
+    }
   </div>
 
   <div class="mt-6">
@@ -32,7 +43,7 @@
       @if (isMyProjects()) {
         No assigned projects yet.
       } @else {
-        No projects yet. Open a signed contract in Lead Generation and click <strong>Create Project</strong>.
+        No projects yet. Click <strong>Create Project</strong> to add one directly from this module.
       }
     </div>
   } @else {
@@ -73,6 +84,450 @@
           }
         </tbody>
       </table>
+    </div>
+  }
+
+  }
+
+  @if (formPage()) {
+    <div>
+      <div
+        class="w-full"
+      >
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p class="text-xs font-bold uppercase tracking-wide text-pcmazing-500">{{ isUpdateMode() ? 'Project · Update' : 'New Project' }}</p>
+            <h3 class="mt-1 text-2xl font-bold text-slate-900">{{ isUpdateMode() ? 'Update project' : 'Add new project' }}</h3>
+            <p class="mt-1 text-sm text-slate-500">
+              {{ isUpdateMode() ? 'Update the client, signed contract, milestones, payment schedule, and delivery team.' : 'Create a project directly here using the same signed-contract-style fields for modules, milestones, and payment schedule.' }}
+            </p>
+          </div>
+
+          <a [routerLink]="cancelRoute()" class="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700">
+            Cancel
+          </a>
+        </div>
+
+        @if (createProjectError()) {
+          <div class="mt-4 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{{ createProjectError() }}</div>
+        }
+
+        @if (createProjectLoading()) {
+          <div class="mt-6 rounded-2xl border border-slate-200 bg-slate-50 px-6 py-10 text-center text-sm text-slate-500">Loading project assignees...</div>
+        } @else {
+          <form class="mt-6 space-y-6" [formGroup]="createForm" (ngSubmit)="submitCreateProject()">
+            <div class="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+              <div class="space-y-5">
+                <div class="rounded-2xl border border-slate-200 bg-white p-5">
+                  <p class="text-sm font-bold text-slate-900">Client Details</p>
+                  <p class="mt-1 text-xs text-slate-500">{{ isUpdateMode() ? 'Update the client record linked to this project.' : 'This project will create its own linked client record automatically.' }}</p>
+
+                  <div class="mt-4 grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label class="mb-1 block text-sm font-semibold">Client name</label>
+                      <input type="text" formControlName="clientName" class="w-full rounded-xl border px-4 py-2.5 text-sm" placeholder="Client or company contact" />
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-sm font-semibold">Company</label>
+                      <input type="text" formControlName="company" class="w-full rounded-xl border px-4 py-2.5 text-sm" placeholder="Company name" />
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-sm font-semibold">Email</label>
+                      <input type="email" formControlName="email" class="w-full rounded-xl border px-4 py-2.5 text-sm" placeholder="client@company.com" />
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-sm font-semibold">Phone</label>
+                      <input type="text" formControlName="phone" class="w-full rounded-xl border px-4 py-2.5 text-sm" placeholder="0917..." />
+                    </div>
+                  </div>
+
+                  <div class="mt-4">
+                    <label class="mb-1 block text-sm font-semibold">Address</label>
+                    <textarea formControlName="address" rows="2" class="w-full rounded-xl border px-4 py-2.5 text-sm" placeholder="Client address"></textarea>
+                  </div>
+
+                  <div class="mt-4">
+                    <label class="mb-1 block text-sm font-semibold">Internal notes</label>
+                    <textarea formControlName="notes" rows="3" class="w-full rounded-xl border px-4 py-2.5 text-sm" placeholder="Optional internal notes for this client/project record"></textarea>
+                  </div>
+                </div>
+
+                <div class="rounded-2xl border border-cyan-200 bg-cyan-50/50 p-5">
+                  <p class="text-sm font-bold text-cyan-900">Signed Contract Details</p>
+                  <p class="mt-1 text-xs text-cyan-800">These fields match the signed contract structure used for project setup.</p>
+
+                  <div class="mt-4 grid gap-4 sm:grid-cols-3">
+                    <div>
+                      <label class="mb-1 block text-sm font-semibold">Project name</label>
+                      <input type="text" formControlName="projectName" class="w-full rounded-xl border px-4 py-2.5 text-sm" placeholder="Inventory Management System" />
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-sm font-semibold">Project type</label>
+                      <input type="text" formControlName="projectType" class="w-full rounded-xl border px-4 py-2.5 text-sm" placeholder="Web Application" />
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-sm font-semibold">Signed date</label>
+                      <input type="date" formControlName="signedAt" class="w-full rounded-xl border px-4 py-2.5 text-sm" />
+                    </div>
+                  </div>
+
+                  <div class="mt-4">
+                    <label class="mb-1 block text-sm font-semibold">Contract remarks</label>
+                    <textarea formControlName="contractRemarks" rows="3" class="w-full rounded-xl border px-4 py-2.5 text-sm" placeholder="Contract remarks..."></textarea>
+                  </div>
+                </div>
+
+                <div formArrayName="modules" class="rounded-2xl border border-slate-200 bg-white p-5">
+                  <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p class="text-sm font-bold text-slate-900">Modules</p>
+                      <p class="mt-1 text-xs text-slate-500">Describe the contract modules included in the project.</p>
+                    </div>
+                    <button type="button" class="rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700" (click)="addModule()">
+                      Add Module
+                    </button>
+                  </div>
+
+                  <div class="mt-4 flex flex-wrap gap-2">
+                    @for (module of modulesControls(); track $index) {
+                      <button
+                        type="button"
+                        class="rounded-xl border px-3 py-2 text-sm font-semibold"
+                        [class.border-pcmazing-500]="activeModuleTab() === $index"
+                        [class.bg-pcmazing-50]="activeModuleTab() === $index"
+                        [class.text-pcmazing-700]="activeModuleTab() === $index"
+                        [class.border-slate-200]="activeModuleTab() !== $index"
+                        [class.bg-white]="activeModuleTab() !== $index"
+                        [class.text-slate-700]="activeModuleTab() !== $index"
+                        (click)="activeModuleTab.set($index)"
+                      >
+                        {{ moduleLabel($index) }}
+                      </button>
+                    }
+                  </div>
+
+                  <div class="mt-4">
+                    @for (module of modulesControls(); track $index) {
+                      @if (activeModuleTab() === $index) {
+                        <div class="rounded-2xl border border-slate-200 p-4" [formGroupName]="$index">
+                        <div class="flex flex-wrap items-start justify-between gap-3">
+                          <p class="text-sm font-bold text-slate-900">{{ moduleLabel($index) }}</p>
+                          <button type="button" class="text-xs font-bold text-red-600 disabled:opacity-40" [disabled]="modulesControls().length === 1" (click)="removeModule($index)">
+                            Remove
+                          </button>
+                        </div>
+
+                        <div class="mt-4 grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <label class="mb-1 block text-sm font-semibold">Module name</label>
+                            <input type="text" formControlName="name" class="w-full rounded-xl border px-4 py-2.5 text-sm" placeholder="Inventory Module" />
+                          </div>
+                          <div>
+                            <label class="mb-1 block text-sm font-semibold">Description</label>
+                            <input type="text" formControlName="description" class="w-full rounded-xl border px-4 py-2.5 text-sm" placeholder="Short summary" />
+                          </div>
+                        </div>
+
+                        <div class="mt-4 grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <label class="mb-1 block text-sm font-semibold">Features</label>
+                            <textarea formControlName="features" rows="4" class="w-full rounded-xl border px-4 py-2.5 text-sm" placeholder="Stocks, Purchase Order, Product History, CRUD"></textarea>
+                          </div>
+                          <div>
+                            <label class="mb-1 block text-sm font-semibold">Process flow</label>
+                            <textarea formControlName="processFlow" rows="4" class="w-full rounded-xl border px-4 py-2.5 text-sm" placeholder="- Add Item -> Fill Details -> Save"></textarea>
+                          </div>
+                        </div>
+                        </div>
+                      }
+                    }
+                  </div>
+                </div>
+
+                <div formArrayName="milestones" class="rounded-2xl border border-slate-200 bg-white p-5">
+                  <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p class="text-sm font-bold text-slate-900">Milestones</p>
+                      <p class="mt-1 text-xs text-slate-500">Create phases and link each milestone to one or more modules.</p>
+                    </div>
+                    <button type="button" class="rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700" (click)="addMilestone()">
+                      Add Milestone
+                    </button>
+                  </div>
+
+                  <div class="mt-4 flex flex-wrap gap-2">
+                    @for (milestone of milestonesControls(); track $index; let milestoneIndex = $index) {
+                      <button
+                        type="button"
+                        class="rounded-xl border px-3 py-2 text-sm font-semibold"
+                        [class.border-pcmazing-500]="activeMilestoneTab() === milestoneIndex"
+                        [class.bg-pcmazing-50]="activeMilestoneTab() === milestoneIndex"
+                        [class.text-pcmazing-700]="activeMilestoneTab() === milestoneIndex"
+                        [class.border-slate-200]="activeMilestoneTab() !== milestoneIndex"
+                        [class.bg-white]="activeMilestoneTab() !== milestoneIndex"
+                        [class.text-slate-700]="activeMilestoneTab() !== milestoneIndex"
+                        (click)="activeMilestoneTab.set(milestoneIndex)"
+                      >
+                        {{ milestoneLabel(milestoneIndex) }}
+                      </button>
+                    }
+                  </div>
+
+                  <div class="mt-4">
+                    @for (milestone of milestonesControls(); track $index; let milestoneIndex = $index) {
+                      @if (activeMilestoneTab() === milestoneIndex) {
+                        <div class="rounded-2xl border border-slate-200 p-4" [formGroupName]="milestoneIndex">
+                        <div class="flex flex-wrap items-start justify-between gap-3">
+                          <p class="text-sm font-bold text-slate-900">{{ milestoneLabel(milestoneIndex) }}</p>
+                          <button type="button" class="text-xs font-bold text-red-600 disabled:opacity-40" [disabled]="milestonesControls().length === 1" (click)="removeMilestone(milestoneIndex)">
+                            Remove
+                          </button>
+                        </div>
+
+                        <div class="mt-4 grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <label class="mb-1 block text-sm font-semibold">Milestone title</label>
+                            <input type="text" formControlName="title" class="w-full rounded-xl border px-4 py-2.5 text-sm" placeholder="Phase 1" />
+                          </div>
+                          <div>
+                            <label class="mb-1 block text-sm font-semibold">Target date</label>
+                            <input type="date" formControlName="dueDate" class="w-full rounded-xl border px-4 py-2.5 text-sm" />
+                          </div>
+                        </div>
+
+                        <div class="mt-4">
+                          <label class="mb-1 block text-sm font-semibold">Description</label>
+                          <textarea formControlName="description" rows="3" class="w-full rounded-xl border px-4 py-2.5 text-sm" placeholder="Deliverables or acceptance notes..."></textarea>
+                        </div>
+
+                        <div class="mt-4">
+                          <label class="mb-2 block text-sm font-semibold">Linked modules</label>
+                          @if (availableModuleIndexesForMilestone(milestoneIndex).length === 0) {
+                            <div class="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                              No available modules left for this milestone.
+                            </div>
+                          } @else {
+                            <div class="grid gap-2 sm:grid-cols-2">
+                            @for (moduleIndex of availableModuleIndexesForMilestone(milestoneIndex); track moduleIndex) {
+                              <label class="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700">
+                                <input type="checkbox" [checked]="isMilestoneModuleLinked(milestoneIndex, moduleIndex)" (change)="toggleMilestoneModuleLink(milestoneIndex, moduleIndex)" />
+                                {{ moduleLabel(moduleIndex) }}
+                              </label>
+                            }
+                            </div>
+                          }
+                        </div>
+                        </div>
+                      }
+                    }
+                  </div>
+                </div>
+
+                <div formArrayName="paymentSchedule" class="rounded-2xl border border-slate-200 bg-white p-5">
+                  <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p class="text-sm font-bold text-slate-900">Payment Schedule</p>
+                      <p class="mt-1 text-xs text-slate-500">Add payment terms and optionally connect them to milestones.</p>
+                    </div>
+                    <button type="button" class="rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700" (click)="addPaymentSchedule()">
+                      Add Payment
+                    </button>
+                  </div>
+
+                  <div class="mt-4 flex flex-wrap gap-2">
+                    @for (payment of paymentScheduleControls(); track $index) {
+                      <button
+                        type="button"
+                        class="rounded-xl border px-3 py-2 text-sm font-semibold"
+                        [class.border-pcmazing-500]="activePaymentTab() === $index"
+                        [class.bg-pcmazing-50]="activePaymentTab() === $index"
+                        [class.text-pcmazing-700]="activePaymentTab() === $index"
+                        [class.border-slate-200]="activePaymentTab() !== $index"
+                        [class.bg-white]="activePaymentTab() !== $index"
+                        [class.text-slate-700]="activePaymentTab() !== $index"
+                        (click)="activePaymentTab.set($index)"
+                      >
+                        {{ payment.get('label')?.value || ('Payment ' + ($index + 1)) }}
+                      </button>
+                    }
+                  </div>
+
+                  <div class="mt-4">
+                    @for (payment of paymentScheduleControls(); track $index) {
+                      @if (activePaymentTab() === $index) {
+                        <div class="rounded-2xl border border-slate-200 p-4" [formGroupName]="$index">
+                        <div class="flex flex-wrap items-start justify-between gap-3">
+                          <p class="text-sm font-bold text-slate-900">{{ payment.get('label')?.value || ('Payment ' + ($index + 1)) }}</p>
+                          <button type="button" class="text-xs font-bold text-red-600 disabled:opacity-40" [disabled]="paymentScheduleControls().length === 1" (click)="removePaymentSchedule($index)">
+                            Remove
+                          </button>
+                        </div>
+
+                        <div class="mt-4 grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <label class="mb-1 block text-sm font-semibold">Label</label>
+                            <input type="text" formControlName="label" class="w-full rounded-xl border px-4 py-2.5 text-sm" placeholder="Downpayment" />
+                          </div>
+                          <div>
+                            <label class="mb-1 block text-sm font-semibold">Amount</label>
+                            <input type="number" min="0" step="0.01" formControlName="amount" class="w-full rounded-xl border px-4 py-2.5 text-sm" placeholder="30000" />
+                          </div>
+                        </div>
+
+                        <div class="mt-4 grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <label class="mb-1 block text-sm font-semibold">Description</label>
+                            <input type="text" formControlName="description" class="w-full rounded-xl border px-4 py-2.5 text-sm" placeholder="Initial payment for start of development" />
+                          </div>
+                          <div>
+                            <label class="mb-1 block text-sm font-semibold">Due date</label>
+                            <input type="date" formControlName="dueDate" class="w-full rounded-xl border px-4 py-2.5 text-sm" />
+                          </div>
+                        </div>
+
+                        <div class="mt-4 grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <label class="mb-1 block text-sm font-semibold">Linked milestone</label>
+                            <select formControlName="connectedMilestoneId" class="w-full rounded-xl border px-4 py-2.5 text-sm">
+                              <option value="">No milestone linked</option>
+                              @for (milestone of milestonesControls(); track $index) {
+                                <option [value]="$index">{{ milestoneLabel($index) }}</option>
+                              }
+                            </select>
+                            <p class="mt-1 text-xs text-slate-500">{{ paymentMilestoneLabel($index) }}</p>
+                          </div>
+                          <div>
+                            <label class="mb-1 block text-sm font-semibold">Notes</label>
+                            <textarea formControlName="notes" rows="2" class="w-full rounded-xl border px-4 py-2.5 text-sm" placeholder="Invoice or banking notes..."></textarea>
+                          </div>
+                        </div>
+                        </div>
+                      }
+                    }
+                  </div>
+                </div>
+              </div>
+
+              <div class="space-y-5">
+                <div class="rounded-2xl border border-slate-200 bg-white p-5">
+                  <p class="text-sm font-bold text-slate-900">Project Assignment</p>
+                  <p class="mt-1 text-xs text-slate-500">Assign the people who will handle this project.</p>
+
+                  <div class="mt-4">
+                    <label class="mb-1 block text-sm font-semibold">Project manager</label>
+                    <input
+                      type="search"
+                      class="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm"
+                      placeholder="Type @username, name, role, or email"
+                      [ngModel]="managerSearch()"
+                      [ngModelOptions]="{ standalone: true }"
+                      (ngModelChange)="managerSearch.set($event)"
+                    />
+
+                    @if (selectedManager(); as manager) {
+                      <div class="mt-2">
+                        <button
+                          type="button"
+                          class="rounded-full bg-pcmazing-50 px-3 py-1.5 text-sm font-semibold text-pcmazing-700"
+                          title="Remove project manager"
+                          (click)="clearManager()"
+                        >
+                          {{ manager.fullName }} · @{{ manager.username }} ×
+                        </button>
+                      </div>
+                    }
+
+                    @if (managerSearch().trim()) {
+                      <div class="mt-2 max-h-56 space-y-2 overflow-y-auto rounded-xl border border-slate-200 p-3">
+                        @for (manager of filteredManagers(); track userKey(manager)) {
+                          <button
+                            type="button"
+                            class="flex w-full items-start justify-between rounded-xl border border-slate-200 px-3 py-2 text-left text-sm hover:bg-slate-50"
+                            (click)="selectManager(manager)"
+                          >
+                            <span>
+                              <span class="block font-semibold text-slate-900">{{ manager.fullName }}</span>
+                              <span class="block text-xs text-slate-500">@{{ manager.username }} · {{ manager.role }}{{ manager.email ? ' · ' + manager.email : '' }}</span>
+                            </span>
+                          </button>
+                        } @empty {
+                          <p class="px-2 py-3 text-center text-sm text-slate-500">No matching user.</p>
+                        }
+                      </div>
+                    }
+                  </div>
+
+                  <div class="mt-4">
+                    <label class="mb-1 block text-sm font-semibold">Developer team</label>
+                    <input
+                      type="search"
+                      class="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm"
+                      placeholder="Type @username, name, role, or email"
+                      [ngModel]="developerSearch()"
+                      [ngModelOptions]="{ standalone: true }"
+                      (ngModelChange)="developerSearch.set($event)"
+                    />
+
+                    @if (selectedDevelopers().length) {
+                      <div class="mt-2 flex flex-wrap gap-2">
+                        @for (developer of selectedDevelopers(); track userKey(developer)) {
+                          <button
+                            type="button"
+                            class="rounded-full bg-pcmazing-50 px-3 py-1.5 text-sm font-semibold text-pcmazing-700"
+                            title="Remove developer"
+                            (click)="clearDeveloper(developer)"
+                          >
+                            {{ developer.fullName }} · @{{ developer.username }} ×
+                          </button>
+                        }
+                      </div>
+                    }
+
+                    @if (developerSearch().trim()) {
+                      <div class="mt-2 max-h-56 space-y-2 overflow-y-auto rounded-xl border border-slate-200 p-3">
+                        @for (developer of filteredDevelopers(); track userKey(developer)) {
+                          <button
+                            type="button"
+                            class="flex w-full items-start justify-between rounded-xl border border-slate-200 px-3 py-2 text-left text-sm hover:bg-slate-50"
+                            (click)="toggleDeveloper(developer)"
+                          >
+                            <span>
+                              <span class="block font-semibold text-slate-900">{{ developer.fullName }}</span>
+                              <span class="block text-xs text-slate-500">@{{ developer.username }} · {{ developer.role }}{{ developer.email ? ' · ' + developer.email : '' }}</span>
+                            </span>
+                          </button>
+                        } @empty {
+                          <p class="px-2 py-3 text-center text-sm text-slate-500">No matching user.</p>
+                        }
+                      </div>
+                    }
+                  </div>
+                </div>
+
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                  <p class="text-sm font-bold text-slate-900">{{ isUpdateMode() ? 'Update Project' : 'Create Project' }}</p>
+                  <p class="mt-1 text-xs text-slate-500">
+                    {{ isUpdateMode() ? 'This will save the project, linked client, signed contract, and assignments.' : 'This will create the client link, save the signed-contract structure, and generate the project phases and module epics automatically.' }}
+                  </p>
+
+                  <div class="mt-4 flex justify-end gap-2">
+                    <a [routerLink]="cancelRoute()" class="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-700">
+                      Cancel
+                    </a>
+                    <button
+                      type="submit"
+                      class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+                      [disabled]="createProjectSaving()"
+                    >
+                      {{ createProjectSaving() ? (isUpdateMode() ? 'Updating...' : 'Creating...') : (isUpdateMode() ? 'Update Project' : 'Create Project') }}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </form>
+        }
+      </div>
     </div>
   }
 </section>

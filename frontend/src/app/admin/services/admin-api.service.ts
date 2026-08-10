@@ -129,13 +129,17 @@ export interface InventoryServiceItem {
   endedAt: string | null;
   durationMinutes: number | null;
   notes?: string | null;
+  laborDiscountType?: 'none' | 'senior' | 'pwd';
   parts?: Array<{
     materialId?: number;
     materialName?: string | null;
+    materialCode?: string | null;
+    description?: string | null;
     customItemName?: string;
     quantity: number;
     unitPrice?: number;
     labor?: number;
+    discountType?: 'none' | 'senior' | 'pwd';
   }>;
   updatedAt: string | null;
 }
@@ -152,9 +156,11 @@ export interface CreateInventoryServicePayload {
     quantity: number;
     unitPrice?: number;
     labor?: number;
+    discountType?: 'none' | 'senior' | 'pwd';
   }>;
   cost?: number;
   labor?: number;
+  laborDiscountType?: 'none' | 'senior' | 'pwd';
   status?: string;
   notes?: string;
   startedAt?: string;
@@ -635,11 +641,109 @@ export interface ProjectListItem {
 }
 
 export interface ProjectDetail extends ProjectListItem {
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  notes: string | null;
+  contract: {
+    id: number;
+    projectName: string;
+    projectType: string;
+    signedAt: string | null;
+    remarks: string | null;
+    modules: ProspectContractModule[];
+    milestones: ProspectContractMilestone[];
+    paymentSchedule: ProspectContractPaymentSchedule[];
+  } | null;
   teamMembers: ProjectUserSummary[];
 }
 
-export type ProjectTaskStatus = 'backlog' | 'todo' | 'in_progress' | 'in_review' | 'done';
+export interface ProjectWritePayload {
+  prospectId?: number;
+  clientName?: string;
+  company?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  notes?: string;
+  name?: string;
+  contract?: {
+    projectName: string;
+    projectType: string;
+    signedAt?: string;
+    remarks?: string;
+    modules: Array<{
+      name: string;
+      description?: string;
+      features?: string;
+      processFlow?: string;
+    }>;
+    milestones: Array<{
+      title: string;
+      description?: string;
+      dueDate?: string;
+      connectedModuleId?: string;
+    }>;
+    paymentSchedule: Array<{
+      label: string;
+      amount: number;
+      description?: string;
+      dueDate?: string;
+      notes?: string;
+      connectedMilestoneId?: string;
+    }>;
+  };
+  projectManager: ProjectUserRef;
+  teamMembers: ProjectUserRef[];
+}
+
+export type ProjectBoardStatus = 'epics' | ProjectTaskStatus;
+export type ProjectTaskStatus =
+  | 'backlog'
+  | 'todo'
+  | 'in_progress'
+  | 'in_review'
+  | 'testing'
+  | 'done';
 export type ProjectTaskPriority = 'low' | 'medium' | 'high' | 'urgent';
+export type ProjectTaskActivityActionType =
+  | 'created'
+  | 'edited'
+  | 'moved'
+  | 'deleted'
+  | 'comment_added'
+  | 'attachment_added'
+  | 'attachment_deleted';
+
+export interface ProjectTaskActivityActor {
+  userId: number | null;
+  source: 'pcmazing_admin_users' | 'tblusers' | null;
+  name: string | null;
+}
+
+export interface ProjectTaskActivityItem {
+  id: number;
+  projectId: number;
+  phaseId: number | null;
+  taskId: number | null;
+  taskTitle: string;
+  epicId: number | null;
+  epicTitle: string | null;
+  actionType: ProjectTaskActivityActionType;
+  actor: ProjectTaskActivityActor;
+  fromStatus: string | null;
+  toStatus: string | null;
+  details: string | null;
+  meta: Record<string, unknown> | null;
+  summary: string;
+  createdAt: string;
+}
+
+export interface ProjectTaskActivityList {
+  items: ProjectTaskActivityItem[];
+  meta: PaginationMeta;
+  selectedPhaseId: number | null;
+}
 
 export interface ProjectTaskItem {
   id: number;
@@ -707,14 +811,14 @@ export interface ProjectEpicItem {
   description: string | null;
   sortOrder: number;
   status: 'planned' | 'active' | 'completed';
-  boardStatus: ProjectTaskStatus;
+  boardStatus: ProjectBoardStatus;
   taskCount: number;
   doneTaskCount: number;
   tasks: ProjectTaskItem[];
 }
 
 export interface ProjectTaskBoard {
-  columns: Array<{ key: ProjectTaskStatus; label: string }>;
+  columns: Array<{ key: ProjectBoardStatus; label: string }>;
   phases: ProjectPhaseItem[];
   epics: ProjectEpicItem[];
   tasks: ProjectTaskItem[];
@@ -1409,14 +1513,25 @@ export class AdminApiService {
     );
   }
 
-  createProject(payload: {
-    prospectId: number;
-    name?: string;
-    projectManager: ProjectUserRef;
-    teamMembers: ProjectUserRef[];
-  }) {
+  createProject(payload: ProjectWritePayload) {
     return this.http.post<MessageResponse<ProjectDetail>>(
       `${APP_CONFIG.apiUrl}/admin/projects`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  updateProject(projectId: number, payload: ProjectWritePayload) {
+    return this.http.patch<MessageResponse<ProjectDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/projects/${projectId}`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  updateProjectAssignments(projectId: number, payload: { projectManager: ProjectUserRef; teamMembers: ProjectUserRef[] }) {
+    return this.http.patch<MessageResponse<ProjectDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/projects/${projectId}/assignments`,
       payload,
       { headers: this.headers() },
     );
@@ -1430,6 +1545,30 @@ export class AdminApiService {
 
     return this.http.get<ItemResponse<ProjectTaskBoard>>(
       `${APP_CONFIG.apiUrl}/admin/projects/${projectId}/tasks`,
+      { headers: this.headers(), params },
+    );
+  }
+
+  listProjectTaskActivity(
+    projectId: number,
+    options?: { phaseId?: number | null; taskId?: number | null; page?: number; limit?: number },
+  ) {
+    let params = new HttpParams();
+    if (options?.phaseId != null) {
+      params = params.set('phaseId', String(options.phaseId));
+    }
+    if (options?.taskId != null) {
+      params = params.set('taskId', String(options.taskId));
+    }
+    if (options?.page != null) {
+      params = params.set('page', String(options.page));
+    }
+    if (options?.limit != null) {
+      params = params.set('limit', String(options.limit));
+    }
+
+    return this.http.get<ItemResponse<ProjectTaskActivityList>>(
+      `${APP_CONFIG.apiUrl}/admin/projects/${projectId}/task-activity`,
       { headers: this.headers(), params },
     );
   }
@@ -1451,7 +1590,7 @@ export class AdminApiService {
   moveProjectEpic(
     projectId: number,
     epicId: number,
-    payload: { status: ProjectTaskStatus; sortOrder: number },
+    payload: { status: 'epics'; sortOrder: number },
   ) {
     return this.http.patch<MessageResponse<ProjectEpicItem>>(
       `${APP_CONFIG.apiUrl}/admin/projects/${projectId}/epics/${epicId}/move`,

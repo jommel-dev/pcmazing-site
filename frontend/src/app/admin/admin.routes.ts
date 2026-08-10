@@ -19,6 +19,7 @@ import { DemoRequestDetailPageComponent } from './pages/demo-requests/demo-reque
 import { InventoryPageComponent } from './pages/inventory/inventory-page.component';
 import { InventoryDetailPageComponent } from './pages/inventory/inventory-detail-page.component';
 import { InventoryServiceCreatePageComponent } from './pages/inventory/inventory-service-create-page.component';
+import { InventoryServiceReceiptPageComponent } from './pages/inventory/inventory-service-receipt-page.component';
 import { InventoryServicesPageComponent } from './pages/inventory/inventory-services-page.component';
 import { InventoryServiceTypesPageComponent } from './pages/inventory/inventory-service-types-page.component';
 import { PurchasePageComponent } from './pages/inventory/purchase-page.component';
@@ -170,6 +171,13 @@ export const adminRoutes: Routes = [
         data: { module: 'job_order' },
       },
       {
+        path: 'job-order/:id/receipt',
+        component: InventoryServiceReceiptPageComponent,
+        title: 'Sales Receipt | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'job_order' },
+      },
+      {
         path: 'job-order/:id',
         component: InventoryServiceCreatePageComponent,
         title: 'Edit Service | PCMazing Admin',
@@ -268,6 +276,13 @@ export const adminRoutes: Routes = [
         data: { module: 'projects' },
       },
       {
+        path: 'projects/new',
+        component: ProjectsPageComponent,
+        title: 'Create Project | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'projects' },
+      },
+      {
         path: 'kanban',
         component: KanbanHubPageComponent,
         title: 'Kanban | PCMazing Admin',
@@ -278,6 +293,13 @@ export const adminRoutes: Routes = [
         path: 'projects/:id/tasks',
         component: ProjectTasksPageComponent,
         title: 'Project Tasks | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'projects' },
+      },
+      {
+        path: 'projects/:id/edit',
+        component: ProjectsPageComponent,
+        title: 'Update Project | PCMazing Admin',
         canActivate: [adminRoleGuard],
         data: { module: 'projects' },
       },

@@ -16,7 +16,55 @@ layer(base);
 }
 
 @layer base {
+  html,
+  body {
+    height: 100%;
+    overflow-x: hidden;
+  }
+
+  app-root {
+    display: block;
+    min-height: 100%;
+  }
+
   body {
     @apply font-outfit bg-white text-slate-900;
+  }
+
+  body.admin-shell-active {
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 0;
+  }
+
+  html,
+  body {
+    width: 210mm;
+    height: 297mm;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  body.admin-shell-active {
+    overflow: visible !important;
+    height: auto !important;
+  }
+
+  .admin-print-hide {
+    display: none !important;
+  }
+
+  .admin-print-main {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 }

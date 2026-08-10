@@ -29,13 +29,17 @@ export interface InventoryServiceListItem {
   endedAt: string | null;
   durationMinutes: number | null;
   notes?: string | null;
+  laborDiscountType?: 'none' | 'senior' | 'pwd';
   parts?: Array<{
     materialId?: number;
     materialName?: string | null;
+    materialCode?: string | null;
+    description?: string | null;
     customItemName?: string;
     quantity: number;
     unitPrice?: number;
     labor?: number;
+    discountType?: 'none' | 'senior' | 'pwd';
   }>;
   updatedAt: string | null;
 }
@@ -333,12 +337,13 @@ export class InventoryServicesService {
           service_type,
           base_cost,
           labor,
+          labor_discount_type,
           status,
           notes,
           started_at,
           ended_at,
           created_by
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         RETURNING id`,
         [
           customerName,
@@ -348,6 +353,7 @@ export class InventoryServicesService {
           serviceType,
           dto.cost ?? 0,
           dto.labor ?? 0,
+          this.normalizeDiscountType(dto.laborDiscountType),
           dto.status?.trim() || 'Active',
           dto.notes?.trim() || null,
           startedAt ? startedAt.toISOString() : null,
@@ -376,9 +382,10 @@ export class InventoryServicesService {
              custom_item_name,
              quantity,
              unit_price,
-             labor
+             labor,
+             discount_type
            )
-           VALUES ($1, $2, $3, $4, $5, $6)`,
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
           [
             serviceId,
             part.materialId ?? null,
@@ -386,6 +393,7 @@ export class InventoryServicesService {
             part.quantity,
             part.unitPrice ?? 0,
             part.labor ?? 0,
+            this.normalizeDiscountType(part.discountType),
           ],
         );
       }
@@ -440,12 +448,13 @@ export class InventoryServicesService {
              service_type = $5,
              base_cost = $6,
              labor = $7,
-             status = $8,
-             notes = $9,
-             started_at = $10,
-             ended_at = $11,
+             labor_discount_type = $8,
+             status = $9,
+             notes = $10,
+             started_at = $11,
+             ended_at = $12,
              updated_at = NOW()
-         WHERE id = $12 AND deleted_at IS NULL`,
+         WHERE id = $13 AND deleted_at IS NULL`,
         [
           customerName,
           serviceName,
@@ -454,6 +463,7 @@ export class InventoryServicesService {
           serviceType,
           dto.cost ?? 0,
           dto.labor ?? 0,
+          this.normalizeDiscountType(dto.laborDiscountType),
           nextStatus,
           dto.notes?.trim() || null,
           startedAt ? startedAt.toISOString() : null,
@@ -477,9 +487,10 @@ export class InventoryServicesService {
              custom_item_name,
              quantity,
              unit_price,
-             labor
+             labor,
+             discount_type
            )
-           VALUES ($1, $2, $3, $4, $5, $6)`,
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
           [
             id,
             part.materialId ?? null,
@@ -487,6 +498,7 @@ export class InventoryServicesService {
             part.quantity,
             part.unitPrice ?? 0,
             part.labor ?? 0,
+            this.normalizeDiscountType(part.discountType),
           ],
         );
       }
@@ -669,6 +681,7 @@ export class InventoryServicesService {
       labor: string | null;
       status: string | null;
       notes: string | null;
+      labor_discount_type: string | null;
       image_url: string | null;
       started_at: string | null;
       ended_at: string | null;
@@ -689,6 +702,7 @@ export class InventoryServicesService {
         s.labor::text,
         s.status,
         s.notes,
+        s.labor_discount_type,
         s.image_url,
         s.started_at::text,
         s.ended_at::text,
@@ -735,14 +749,19 @@ export class InventoryServicesService {
     const partsResult = await this.databaseService.query<{
       material_id: number | null;
       material_name: string | null;
+      material_description: string | null;
+      material_code: string | null;
       custom_item_name: string | null;
       quantity: string;
       unit_price: string | null;
       labor: string | null;
+      discount_type: string | null;
     }>(
       `SELECT
          sp.material_id,
          m.material_name,
+         m.description AS material_description,
+         m.material_code,
          sp.custom_item_name,
          sp.quantity::text,
          (
@@ -751,7 +770,8 @@ export class InventoryServicesService {
              ELSE COALESCE(m.order_cost, m.unit_price, sp.unit_price, 0)
            END
          )::text AS unit_price,
-         COALESCE(sp.labor, 0)::text AS labor
+         COALESCE(sp.labor, 0)::text AS labor,
+         sp.discount_type
        FROM pcmazing_service_parts sp
        LEFT JOIN tblmaterials m ON m.id = sp.material_id
        WHERE sp.service_id = $1 AND sp.deleted_at IS NULL
@@ -775,6 +795,7 @@ export class InventoryServicesService {
       labor,
       status: row.status ?? 'Active',
       notes: row.notes,
+      laborDiscountType: this.normalizeDiscountType(row.labor_discount_type),
       imageUrl: row.image_url,
       totalCosting: partsCost,
       totalSales: cost + labor + partsLabor,
@@ -784,10 +805,13 @@ export class InventoryServicesService {
       parts: partsResult.rows.map((part) => ({
         materialId: part.material_id ?? undefined,
         materialName: part.material_name,
+        materialCode: part.material_code,
+        description: part.material_description,
         customItemName: part.custom_item_name ?? undefined,
         quantity: Number(part.quantity ?? 0),
         unitPrice: Number(part.unit_price ?? 0),
         labor: Number(part.labor ?? 0),
+        discountType: this.normalizeDiscountType(part.discount_type),
       })),
       updatedAt: row.updated_at,
     };
@@ -814,6 +838,19 @@ export class InventoryServicesService {
 
   private buildReferenceNo(id: number): string {
     return `SRV-${String(id).padStart(6, '0')}`;
+  }
+
+  private normalizeDiscountType(value: unknown): 'none' | 'senior' | 'pwd' {
+    const raw = String(value ?? '')
+      .trim()
+      .toLowerCase();
+    if (raw === 'senior' || raw === 'sc' || raw === 'senior_citizen') {
+      return 'senior';
+    }
+    if (raw === 'pwd' || raw === 'person_with_disability') {
+      return 'pwd';
+    }
+    return 'none';
   }
 
   private async assertPartsExist(

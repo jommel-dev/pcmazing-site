@@ -1,0 +1,222 @@
+.receipt-page {
+  padding-bottom: 1.5rem;
+}
+
+.receipt-sheet {
+  width: 100%;
+  max-width: 900px;
+  padding: 28px 32px 36px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 12px;
+  line-height: 1.35;
+  color: #111;
+}
+
+.receipt-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.receipt-meta-left,
+.receipt-meta-right {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.receipt-meta-right {
+  text-align: right;
+}
+
+.receipt-brand {
+  text-align: center;
+  margin: 0.5rem 0 1.25rem;
+}
+
+.receipt-reprinted {
+  margin: 0 0 0.35rem;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.receipt-logo {
+  display: inline-block;
+  height: 54px;
+  width: auto;
+  margin: 0 auto 0.35rem;
+}
+
+.receipt-company {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.receipt-address {
+  margin: 0.15rem 0 0;
+  font-size: 12px;
+}
+
+.receipt-bill-to {
+  margin-bottom: 1rem;
+}
+
+.receipt-bill-to p {
+  margin: 0;
+}
+
+.receipt-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 0.75rem;
+}
+
+.receipt-table th,
+.receipt-table td {
+  padding: 0.35rem 0.4rem;
+  vertical-align: top;
+  text-align: left;
+}
+
+.receipt-table thead th {
+  border-top: 1px solid #111;
+  border-bottom: 1px solid #111;
+  font-weight: 700;
+}
+
+.receipt-table tbody td {
+  border-bottom: 1px solid #d4d4d4;
+}
+
+.receipt-table .num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.receipt-totals {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  margin: 0.75rem 0 1.25rem;
+}
+
+.receipt-totals-right {
+  min-width: 220px;
+}
+
+.totals-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 0.15rem 0;
+}
+
+.totals-row-strong {
+  margin-top: 0.2rem;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.receipt-warranty {
+  text-align: center;
+  margin: 1.25rem auto 1rem;
+  max-width: 640px;
+}
+
+.warranty-title {
+  margin: 0 0 0.5rem;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.receipt-warranty ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.receipt-warranty li {
+  margin: 0.2rem 0;
+}
+
+.warranty-ack {
+  margin: 0.65rem 0 0;
+}
+
+.receipt-footer {
+  text-align: center;
+  margin-top: 1rem;
+}
+
+.receipt-footer .thanks {
+  margin-top: 0.35rem;
+  font-weight: 700;
+}
+
+.receipt-barcode-wrap {
+  margin: 1rem auto 0.75rem;
+  width: fit-content;
+}
+
+.receipt-barcode {
+  display: flex;
+  align-items: stretch;
+  height: 42px;
+  gap: 0;
+  background: #fff;
+}
+
+.receipt-barcode span {
+  display: inline-block;
+  height: 100%;
+  background: transparent;
+}
+
+.receipt-barcode span.filled {
+  background: #111;
+}
+
+.barcode-label {
+  margin: 0.25rem 0 0;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
+.receipt-signature {
+  margin-top: 1.5rem;
+  text-align: left;
+}
+
+.receipt-signature span {
+  display: inline-block;
+  width: 180px;
+  border-bottom: 1px solid #111;
+  height: 28px;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  .receipt-page {
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 210mm !important;
+    min-height: 297mm !important;
+  }
+
+  .receipt-sheet {
+    max-width: none;
+    width: 210mm;
+    min-height: 297mm;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0;
+  }
+}
