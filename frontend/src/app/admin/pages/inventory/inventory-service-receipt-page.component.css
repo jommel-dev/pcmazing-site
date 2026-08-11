@@ -2,6 +2,30 @@
   padding-bottom: 1.5rem;
 }
 
+.template-picker {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 240px;
+}
+
+.template-picker span {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.template-select {
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  background: #fff;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
 .receipt-sheet {
   width: 100%;
   max-width: 900px;
@@ -12,6 +36,86 @@
   font-size: 12px;
   line-height: 1.35;
   color: #111;
+}
+
+.receipt-sheet-template {
+  position: relative;
+  max-width: none;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.template-print-element {
+  position: absolute;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.template-print-element[data-type='line'] {
+  display: flex;
+  align-items: center;
+  padding: 0;
+}
+
+.template-line {
+  display: block;
+  width: 100%;
+  border-top: 1.5px solid #111;
+}
+
+.template-logo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.template-field-text {
+  display: block;
+  width: 100%;
+  height: 100%;
+  white-space: pre-line;
+}
+
+.template-field-text.pre-wrap {
+  white-space: pre-wrap;
+}
+
+.template-line-items {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: inherit;
+}
+
+.template-line-items th,
+.template-line-items td {
+  padding: 0.2rem 0.25rem;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid #d4d4d4;
+}
+
+.template-line-items thead th {
+  border-top: 1px solid #111;
+  border-bottom: 1px solid #111;
+  font-weight: 700;
+}
+
+.template-line-items .num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.template-barcode-wrap {
+  width: 100%;
+  text-align: center;
+}
+
+.template-signature {
+  display: inline-block;
+  width: 100%;
+  border-bottom: 1px solid #111;
+  height: 70%;
 }
 
 .receipt-meta {
@@ -205,18 +309,25 @@
   .receipt-page {
     padding: 0 !important;
     margin: 0 !important;
-    width: 210mm !important;
-    min-height: 297mm !important;
+    width: auto !important;
+    min-height: auto !important;
   }
 
   .receipt-sheet {
     max-width: none;
-    width: 210mm;
-    min-height: 297mm;
     margin: 0;
     border: 0;
     border-radius: 0;
     box-shadow: none;
     padding: 0;
+  }
+
+  .receipt-sheet:not(.receipt-sheet-template) {
+    width: 210mm;
+    min-height: 297mm;
+  }
+
+  .receipt-sheet-template {
+    overflow: visible;
   }
 }

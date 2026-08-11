@@ -178,6 +178,68 @@ export interface ServiceTypeItem {
   updatedAt: string | null;
 }
 
+export type PrintPaperSize = 'A4' | 'Letter' | 'Receipt80' | 'Receipt58';
+export type PrintDocumentType = 'sales_receipt' | 'quotation' | 'invoice' | 'custom';
+export type PrintElementType = 'text' | 'field' | 'image' | 'line' | 'table';
+
+export interface PrintLayoutElement {
+  id: string;
+  type: PrintElementType;
+  x: number;
+  y: number;
+  width?: number;
+  height?: number;
+  label?: string;
+  fieldKey?: string;
+  content?: string;
+  fontSize?: number;
+  fontWeight?: 'normal' | 'bold';
+  textAlign?: 'left' | 'center' | 'right';
+}
+
+export interface PrintLayout {
+  elements: PrintLayoutElement[];
+}
+
+export interface PrintingSettingsItem {
+  storeName: string;
+  storeAddress: string;
+  storePhone: string;
+  storeCode: string;
+  workstationNo: string;
+  paperSize: PrintPaperSize;
+  marginTopMm: number;
+  marginRightMm: number;
+  marginBottomMm: number;
+  marginLeftMm: number;
+  defaultTemplateId: number | null;
+  fontFamily: string;
+  showPageNumbers: boolean;
+  printerConnectionType: 'direct' | 'network' | 'bluetooth';
+  printerName: string;
+  printerHost: string;
+  printerPort: number;
+  printerBluetoothDeviceId: string;
+  printerBluetoothDeviceName: string;
+  printerAutoPrint: boolean;
+  printerLastTestedAt?: string | null;
+  printerLastTestStatus?: 'never' | 'ok' | 'failed';
+  printerLastTestMessage?: string;
+  updatedAt?: string | null;
+}
+
+export interface PrintingTemplateItem {
+  id: number;
+  name: string;
+  documentType: PrintDocumentType;
+  paperWidthMm: number;
+  paperHeightMm: number;
+  layout: PrintLayout;
+  isDefault: boolean;
+  isActive: boolean;
+  updatedAt?: string | null;
+}
+
 export interface InventoryTreeNode {
   id: number;
   name: string;
@@ -2027,6 +2089,115 @@ export class AdminApiService {
     return this.http.post<MessageResponse<EmployeeActivityItem>>(
       `${APP_CONFIG.apiUrl}/admin/employee-workspace/activities`,
       payload,
+      { headers: this.headers() },
+    );
+  }
+
+  getPrintingSettings() {
+    return this.http.get<ItemResponse<PrintingSettingsItem>>(
+      `${APP_CONFIG.apiUrl}/admin/printing/settings`,
+      { headers: this.headers() },
+    );
+  }
+
+  updatePrintingSettings(payload: Partial<PrintingSettingsItem>) {
+    return this.http.patch<ItemResponse<PrintingSettingsItem>>(
+      `${APP_CONFIG.apiUrl}/admin/printing/settings`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  testPrintingConnection(
+    payload: Partial<
+      Pick<
+        PrintingSettingsItem,
+        | 'printerConnectionType'
+        | 'printerName'
+        | 'printerHost'
+        | 'printerPort'
+        | 'printerBluetoothDeviceId'
+        | 'printerBluetoothDeviceName'
+      >
+    > = {},
+  ) {
+    return this.http.post<
+      ItemResponse<{
+        ok: boolean;
+        status: 'never' | 'ok' | 'failed';
+        message: string;
+        testedAt: string;
+        settings: PrintingSettingsItem;
+      }>
+    >(`${APP_CONFIG.apiUrl}/admin/printing/settings/test-connection`, payload, {
+      headers: this.headers(),
+    });
+  }
+
+  listPrintingTemplates(documentType?: string) {
+    let params = new HttpParams();
+    if (documentType?.trim()) {
+      params = params.set('documentType', documentType.trim());
+    }
+    return this.http.get<ItemResponse<PrintingTemplateItem[]>>(
+      `${APP_CONFIG.apiUrl}/admin/printing/templates`,
+      { headers: this.headers(), params },
+    );
+  }
+
+  getPrintingTemplate(id: number) {
+    return this.http.get<ItemResponse<PrintingTemplateItem>>(
+      `${APP_CONFIG.apiUrl}/admin/printing/templates/${id}`,
+      { headers: this.headers() },
+    );
+  }
+
+  createPrintingTemplate(payload: {
+    name: string;
+    documentType?: PrintDocumentType;
+    paperWidthMm?: number;
+    paperHeightMm?: number;
+    layout?: PrintLayout;
+    isDefault?: boolean;
+    isActive?: boolean;
+  }) {
+    return this.http.post<ItemResponse<PrintingTemplateItem>>(
+      `${APP_CONFIG.apiUrl}/admin/printing/templates`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  updatePrintingTemplate(
+    id: number,
+    payload: {
+      name?: string;
+      documentType?: PrintDocumentType;
+      paperWidthMm?: number;
+      paperHeightMm?: number;
+      layout?: PrintLayout;
+      isDefault?: boolean;
+      isActive?: boolean;
+    },
+  ) {
+    return this.http.patch<ItemResponse<PrintingTemplateItem>>(
+      `${APP_CONFIG.apiUrl}/admin/printing/templates/${id}`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  duplicatePrintingTemplate(id: number) {
+    return this.http.post<ItemResponse<PrintingTemplateItem>>(
+      `${APP_CONFIG.apiUrl}/admin/printing/templates/${id}/duplicate`,
+      {},
+      { headers: this.headers() },
+    );
+  }
+
+  deletePrintingTemplate(id: number) {
+    return this.http.delete<{ success: boolean; message: string }>(
+      `${APP_CONFIG.apiUrl}/admin/printing/templates/${id}`,
       { headers: this.headers() },
     );
   }

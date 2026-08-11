@@ -1,0 +1,427 @@
+<section class="printing-page">
+  <div class="page-header">
+    <div>
+      <h2 class="page-title">Printing Generator</h2>
+      <p class="page-subtitle">
+        Configure global print settings and design draggable receipt templates with dynamic fields.
+      </p>
+    </div>
+  </div>
+
+  @if (error()) {
+    <div class="alert alert-error">{{ error() }}</div>
+  }
+  @if (success()) {
+    <div class="alert alert-success">{{ success() }}</div>
+  }
+
+  @if (loading()) {
+    <div class="panel loading-panel">Loading printing workspace...</div>
+  } @else {
+    <div class="tab-bar">
+      <button type="button" class="tab-btn" [class.active]="activeTab() === 'settings'" (click)="setTab('settings')">
+        Printing Settings
+      </button>
+      <button type="button" class="tab-btn" [class.active]="activeTab() === 'templates'" (click)="setTab('templates')">
+        Receipt Templates
+      </button>
+    </div>
+
+    @if (activeTab() === 'settings') {
+      <form class="panel settings-panel" [formGroup]="settingsForm" (ngSubmit)="saveSettings()">
+        <div class="panel-heading">
+          <h3>Global printing settings</h3>
+          <p>Defaults used across receipts, quotations, and future printable documents.</p>
+        </div>
+
+        <div class="form-grid">
+          <label>
+            <span>Store name *</span>
+            <input type="text" formControlName="storeName" />
+          </label>
+          <label>
+            <span>Store phone</span>
+            <input type="text" formControlName="storePhone" />
+          </label>
+          <label class="span-2">
+            <span>Store address</span>
+            <textarea rows="2" formControlName="storeAddress"></textarea>
+          </label>
+          <label>
+            <span>Store code</span>
+            <input type="text" formControlName="storeCode" />
+          </label>
+          <label>
+            <span>Workstation no.</span>
+            <input type="text" formControlName="workstationNo" />
+          </label>
+          <label>
+            <span>Default paper size</span>
+            <select formControlName="paperSize" (change)="applyPaperPresetFromSettings()">
+              @for (preset of paperPresetOptions; track preset.key) {
+                <option [value]="preset.key">{{ preset.label }}</option>
+              }
+            </select>
+          </label>
+          <label>
+            <span>Font family</span>
+            <input type="text" formControlName="fontFamily" />
+          </label>
+          <label>
+            <span>Default template</span>
+            <select formControlName="defaultTemplateId">
+              <option value="">None</option>
+              @for (template of templates(); track template.id) {
+                <option [value]="template.id">{{ template.name }}</option>
+              }
+            </select>
+          </label>
+          <label class="checkbox-row span-2">
+            <input type="checkbox" formControlName="showPageNumbers" />
+            <span>Show page numbers on printouts</span>
+          </label>
+        </div>
+
+        <div class="subpanel">
+          <h4>Margins (mm)</h4>
+          <div class="form-grid four-col">
+            <label><span>Top</span><input type="number" min="0" step="0.5" formControlName="marginTopMm" /></label>
+            <label><span>Right</span><input type="number" min="0" step="0.5" formControlName="marginRightMm" /></label>
+            <label><span>Bottom</span><input type="number" min="0" step="0.5" formControlName="marginBottomMm" /></label>
+            <label><span>Left</span><input type="number" min="0" step="0.5" formControlName="marginLeftMm" /></label>
+          </div>
+        </div>
+
+        <div class="subpanel">
+          <h4>Printer connection</h4>
+          <p class="subpanel-hint">
+            Choose how this workstation sends receipts to a printer. Network tests run from the server;
+            Bluetooth pairing runs in this browser.
+          </p>
+
+          <div class="connection-type-grid">
+            <label class="connection-card">
+              <input type="radio" formControlName="printerConnectionType" value="direct" />
+              <span class="connection-card-title">Direct / System</span>
+              <span class="connection-card-text">Use the browser print dialog or a preferred local printer name.</span>
+            </label>
+            <label class="connection-card">
+              <input type="radio" formControlName="printerConnectionType" value="network" />
+              <span class="connection-card-title">Network</span>
+              <span class="connection-card-text">Connect over LAN/Wi-Fi using printer IP/host and port (default 9100).</span>
+            </label>
+            <label class="connection-card">
+              <input type="radio" formControlName="printerConnectionType" value="bluetooth" />
+              <span class="connection-card-title">Bluetooth</span>
+              <span class="connection-card-text">Pair a Bluetooth receipt printer from this browser (Chrome/Edge).</span>
+            </label>
+          </div>
+
+          <div class="form-grid">
+            <label>
+              <span>Printer display name</span>
+              <input type="text" formControlName="printerName" placeholder="e.g. Front counter Epson" />
+            </label>
+            <label class="checkbox-row">
+              <input type="checkbox" formControlName="printerAutoPrint" />
+              <span>Auto-open print when marking job Done</span>
+            </label>
+
+            @if (settingsForm.controls.printerConnectionType.value === 'network') {
+              <label>
+                <span>Printer host / IP *</span>
+                <input type="text" formControlName="printerHost" placeholder="e.g. 192.168.1.50" />
+              </label>
+              <label>
+                <span>Port</span>
+                <input type="number" min="1" max="65535" formControlName="printerPort" />
+              </label>
+            }
+
+            @if (settingsForm.controls.printerConnectionType.value === 'bluetooth') {
+              <div class="span-2 bluetooth-box">
+                <div>
+                  <p class="bluetooth-title">
+                    @if (settingsForm.controls.printerBluetoothDeviceName.value) {
+                      Paired: {{ settingsForm.controls.printerBluetoothDeviceName.value }}
+                    } @else {
+                      No Bluetooth printer paired yet
+                    }
+                  </p>
+                  @if (settingsForm.controls.printerBluetoothDeviceId.value) {
+                    <p class="bluetooth-id">ID: {{ settingsForm.controls.printerBluetoothDeviceId.value }}</p>
+                  }
+                  @if (!bluetoothSupported) {
+                    <p class="bluetooth-warn">
+                      Web Bluetooth is unavailable here. Open this page in Chrome or Edge on HTTPS/localhost.
+                    </p>
+                  }
+                </div>
+                <div class="bluetooth-actions">
+                  <button
+                    type="button"
+                    class="btn-secondary btn-sm"
+                    [disabled]="!bluetoothSupported || pairingBluetooth()"
+                    (click)="pairBluetoothPrinter()"
+                  >
+                    @if (pairingBluetooth()) { Pairing... } @else { Pair Bluetooth printer }
+                  </button>
+                  <button
+                    type="button"
+                    class="btn-danger btn-sm"
+                    [disabled]="!settingsForm.controls.printerBluetoothDeviceId.value"
+                    (click)="clearBluetoothPrinter()"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+            }
+          </div>
+
+          <div class="printer-test-row">
+            <button
+              type="button"
+              class="btn-secondary"
+              [disabled]="testingPrinter() || savingSettings()"
+              (click)="testPrinterConnection()"
+            >
+              @if (testingPrinter()) { Testing... } @else { Test connection }
+            </button>
+            <div class="printer-test-status" [attr.data-status]="printerLastTestStatus()">
+              @if (printerLastTestStatus() === 'never') {
+                <span>Not tested yet</span>
+              } @else {
+                <strong>{{ printerLastTestStatus() === 'ok' ? 'Connected' : 'Failed' }}</strong>
+                <span>{{ printerLastTestMessage() }}</span>
+              }
+            </div>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button type="submit" class="btn-primary" [disabled]="savingSettings()">
+            @if (savingSettings()) { Saving... } @else { Save settings }
+          </button>
+        </div>
+      </form>
+    } @else {
+      <div class="templates-layout">
+        <aside class="panel templates-list">
+          <div class="panel-heading compact">
+            <h3>Templates</h3>
+            <button type="button" class="btn-secondary btn-sm" (click)="startNewTemplate()">New</button>
+          </div>
+          <div class="template-items">
+            @for (template of templates(); track template.id) {
+              <button
+                type="button"
+                class="template-item"
+                [class.active]="selectedTemplateId() === template.id"
+                (click)="selectTemplate(template.id)"
+              >
+                <span class="template-name">{{ template.name }}</span>
+                <span class="template-meta">
+                  {{ template.documentType }}
+                  @if (template.isDefault) { · Default }
+                </span>
+              </button>
+            }
+          </div>
+        </aside>
+
+        <section class="panel editor-panel">
+          <form [formGroup]="templateForm" class="editor-toolbar" (ngSubmit)="saveTemplate()">
+            <label>
+              <span>Name</span>
+              <input type="text" formControlName="name" />
+            </label>
+            <label>
+              <span>Document</span>
+              <select formControlName="documentType" (change)="onDocumentTypeChange()">
+                <option value="sales_receipt">Sales receipt</option>
+                <option value="quotation">Quotation</option>
+                <option value="invoice">Invoice</option>
+                <option value="custom">Custom</option>
+              </select>
+            </label>
+            <label>
+              <span>Width (mm)</span>
+              <input type="number" min="40" step="1" formControlName="paperWidthMm" />
+            </label>
+            <label>
+              <span>Height (mm)</span>
+              <input type="number" min="40" step="1" formControlName="paperHeightMm" />
+            </label>
+            <label class="checkbox-row">
+              <input type="checkbox" formControlName="isDefault" />
+              <span>Default</span>
+            </label>
+            <label class="checkbox-row">
+              <input type="checkbox" formControlName="isActive" />
+              <span>Active</span>
+            </label>
+            <div class="toolbar-actions">
+              <button type="submit" class="btn-primary btn-sm" [disabled]="savingTemplate()">
+                @if (savingTemplate()) { Saving... } @else { Save template }
+              </button>
+              <button type="button" class="btn-secondary btn-sm" [disabled]="!selectedTemplateId()" (click)="duplicateTemplate()">
+                Duplicate
+              </button>
+              <button type="button" class="btn-danger btn-sm" [disabled]="!selectedTemplateId()" (click)="deleteTemplate()">
+                Delete
+              </button>
+            </div>
+          </form>
+
+          <div class="editor-body">
+            <aside class="toolbox">
+              <h4>Add objects</h4>
+              <button type="button" class="tool-btn" (click)="loadJobOrderReceiptFormat()">
+                Load Job Order format
+              </button>
+              <button type="button" class="tool-btn" (click)="addElement('text')">Static text</button>
+              <button type="button" class="tool-btn" (click)="addElement('line')">Line</button>
+              <button type="button" class="tool-btn" (click)="addElement('image')">Logo / image</button>
+              <button type="button" class="tool-btn" (click)="addElement('table', 'lineItems')">Line items table</button>
+
+              <h4 class="toolbox-subtitle">Dynamic fields</h4>
+              @for (field of availableFields(); track field.key) {
+                <button type="button" class="tool-btn tool-btn-field" (click)="addElement('field', field.key)">
+                  {{ field.label }}
+                </button>
+              }
+            </aside>
+
+            <div class="canvas-wrap">
+              <app-printing-template-canvas
+                [elements]="draftElements()"
+                [paperWidthMm]="templateForm.controls.paperWidthMm.value"
+                [paperHeightMm]="templateForm.controls.paperHeightMm.value"
+                [marginTopMm]="settingsForm.controls.marginTopMm.value"
+                [marginRightMm]="settingsForm.controls.marginRightMm.value"
+                [marginBottomMm]="settingsForm.controls.marginBottomMm.value"
+                [marginLeftMm]="settingsForm.controls.marginLeftMm.value"
+                [selectedElementId]="selectedElementId()"
+                (elementsChange)="draftElements.set($event)"
+                (elementSelect)="selectedElementId.set($event)"
+                (canvasBackgroundClick)="selectedElementId.set(null)"
+              />
+            </div>
+
+            <aside class="properties">
+              <h4>Properties</h4>
+              @if (selectedElement(); as element) {
+                <label>
+                  <span>Label</span>
+                  <input
+                    type="text"
+                    [value]="element.label || ''"
+                    (input)="updateSelectedElement({ label: $any($event.target).value })"
+                  />
+                </label>
+                @if (element.type === 'text') {
+                  <label>
+                    <span>Content</span>
+                    <textarea
+                      rows="3"
+                      [value]="element.content || ''"
+                      (input)="updateSelectedElement({ content: $any($event.target).value })"
+                    ></textarea>
+                  </label>
+                }
+                @if (element.type === 'field') {
+                  <label>
+                    <span>Field key</span>
+                    <select
+                      [value]="element.fieldKey || ''"
+                      (change)="updateSelectedElement({ fieldKey: $any($event.target).value })"
+                    >
+                      @for (field of availableFields(); track field.key) {
+                        <option [value]="field.key">{{ field.label }}</option>
+                      }
+                    </select>
+                  </label>
+                }
+                <div class="prop-grid">
+                  <label>
+                    <span>X (mm)</span>
+                    <input
+                      type="number"
+                      step="0.5"
+                      [value]="element.x"
+                      (input)="updateSelectedElement({ x: +$any($event.target).value })"
+                    />
+                  </label>
+                  <label>
+                    <span>Y (mm)</span>
+                    <input
+                      type="number"
+                      step="0.5"
+                      [value]="element.y"
+                      (input)="updateSelectedElement({ y: +$any($event.target).value })"
+                    />
+                  </label>
+                  <label>
+                    <span>Width</span>
+                    <input
+                      type="number"
+                      step="0.5"
+                      [value]="element.width || 0"
+                      (input)="updateSelectedElement({ width: +$any($event.target).value })"
+                    />
+                  </label>
+                  <label>
+                    <span>Height</span>
+                    <input
+                      type="number"
+                      step="0.5"
+                      [value]="element.height || 0"
+                      (input)="updateSelectedElement({ height: +$any($event.target).value })"
+                    />
+                  </label>
+                </div>
+                <label>
+                  <span>Font size</span>
+                  <input
+                    type="number"
+                    min="6"
+                    max="72"
+                    [value]="element.fontSize || 11"
+                    (input)="updateSelectedElement({ fontSize: +$any($event.target).value })"
+                  />
+                </label>
+                <label>
+                  <span>Align</span>
+                  <select
+                    [value]="element.textAlign || 'left'"
+                    (change)="updateSelectedElement({ textAlign: $any($event.target).value })"
+                  >
+                    <option value="left">Left</option>
+                    <option value="center">Center</option>
+                    <option value="right">Right</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Weight</span>
+                  <select
+                    [value]="element.fontWeight || 'normal'"
+                    (change)="updateSelectedElement({ fontWeight: $any($event.target).value })"
+                  >
+                    <option value="normal">Normal</option>
+                    <option value="bold">Bold</option>
+                  </select>
+                </label>
+                <button type="button" class="btn-danger btn-sm full-width" (click)="removeSelectedElement()">
+                  Remove object
+                </button>
+              } @else {
+                <p class="empty-hint">Select an object on the canvas to edit position, size, and content.</p>
+              }
+            </aside>
+          </div>
+        </section>
+      </div>
+    }
+  }
+</section>
