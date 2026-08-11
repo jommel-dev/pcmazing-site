@@ -1,9 +1,16 @@
-import { DatePipe, DecimalPipe } from '@angular/common';
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { DatePipe, DecimalPipe, NgStyle } from '@angular/common';
+import { ChangeDetectorRef, Component, OnInit, computed, inject, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { AdminAuthService } from '../../services/admin-auth.service';
-import { AdminApiService, InventoryServiceItem } from '../../services/admin-api.service';
+import {
+  AdminApiService,
+  InventoryServiceItem,
+  PrintingSettingsItem,
+  PrintingTemplateItem,
+} from '../../services/admin-api.service';
+import { PrintLayoutElement } from '../printing/printing.types';
 import {
   applyPhSpecialDiscount,
   normalizePhDiscountType,
@@ -20,9 +27,12 @@ type ReceiptLine = {
   discountAmount: number;
 };
 
+const TEMPLATE_STORAGE_KEY = 'pcmazing.receipt.selectedTemplateId';
+const BUILTIN_TEMPLATE_VALUE = 0;
+
 @Component({
   selector: 'app-inventory-service-receipt-page',
-  imports: [RouterLink, DatePipe, DecimalPipe],
+  imports: [RouterLink, DatePipe, DecimalPipe, FormsModule, NgStyle],
   templateUrl: './inventory-service-receipt-page.component.html',
   styleUrl: './inventory-service-receipt-page.component.css',
 })
@@ -31,12 +41,18 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
   private readonly router = inject(Router);
   private readonly adminApi = inject(AdminApiService);
   private readonly adminAuth = inject(AdminAuthService);
+  private readonly changeDetector = inject(ChangeDetectorRef);
 
   readonly loading = signal(true);
   readonly error = signal('');
   readonly item = signal<InventoryServiceItem | null>(null);
   readonly printedAt = signal(new Date());
   readonly autoPrint = signal(false);
+  readonly autoReprint = signal(false);
+  readonly showReprinted = signal(false);
+  readonly templates = signal<PrintingTemplateItem[]>([]);
+  readonly printingSettings = signal<PrintingSettingsItem | null>(null);
+  readonly selectedTemplateId = signal<number>(BUILTIN_TEMPLATE_VALUE);
 
   readonly cashierName = computed(
     () => this.adminAuth.getStoredUser()?.fullName || this.adminAuth.getStoredUser()?.username || 'Cashier',
@@ -73,9 +89,7 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
         part.materialCode ||
         'Item'
       ).trim();
-      const description = isCustom
-        ? ''
-        : String(part.description ?? '').trim();
+      const description = isCustom ? '' : String(part.description ?? '').trim();
 
       const amountGross = qty * unitPrice;
       const amountDiscount = applyPhSpecialDiscount(amountGross, discountType);
@@ -148,8 +162,71 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
 
   readonly barcodeBars = computed(() => this.buildBarcodeBars(this.receiptNo()));
 
+  readonly selectedTemplate = computed(() => {
+    const id = this.selectedTemplateId();
+    if (!id) {
+      return null;
+    }
+    return this.templates().find((template) => template.id === id) ?? null;
+  });
+
+  readonly useCustomTemplate = computed(() => !!this.selectedTemplate());
+
+  readonly templateElements = computed(
+    () => this.selectedTemplate()?.layout?.elements ?? [],
+  );
+
+  readonly activeTemplates = computed(() =>
+    this.templates().filter((template) => template.isActive !== false),
+  );
+
+  readonly fieldValues = computed<Record<string, string>>(() => {
+    const job = this.item();
+    const settings = this.printingSettings();
+    const printed = this.printedAt();
+    const receiptNo = this.receiptNo();
+    const cashier = this.cashierName();
+
+    const printedAtLabel = printed.toLocaleString('en-US', {
+      month: 'numeric',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+    });
+    const printedDateLabel = printed.toLocaleDateString('en-US');
+
+    return {
+      reprintedLabel: this.showReprinted() ? 'REPRINTED' : '',
+      printedAt: `Printed: ${printedAtLabel}`,
+      printedDate: `Date: ${printedDateLabel}`,
+      storeCode: `Store: ${settings?.storeCode || '1'}`,
+      workstationNo: `Workstation: ${settings?.workstationNo || '1'}`,
+      pageNumber: settings?.showPageNumbers === false ? '' : 'Page 1',
+      storeLogo: '/images/logopcm.png',
+      storeName: settings?.storeName || 'PCmazing',
+      storeAddress:
+        settings?.storeAddress || 'Mabini Extension, Cabanatuan City, 3100',
+      receiptNo: `Sales Receipt #${receiptNo}`,
+      cashierName: `Cashier: ${cashier}`,
+      customerName: job?.customerName || '',
+      discountTotal: `Total Sales Discounts: ${this.formatMoney(this.discountTotal())}`,
+      subtotal: `Subtotal  ${this.formatMoney(this.subtotal())}`,
+      receiptTotal: `RECEIPT TOTAL  ${this.formatMoney(this.receiptTotal())}`,
+      warrantyPolicy: this.warrantyPolicyText(),
+      footerNote: 'This slip is not valid for input tax',
+      thanksMessage: 'Thanks for shopping with us!',
+      barcode: receiptNo,
+      signatureLine: '',
+      lineItems: 'Line items',
+    };
+  });
+
   ngOnInit(): void {
     this.autoPrint.set(this.route.snapshot.queryParamMap.get('print') === '1');
+    this.autoReprint.set(this.route.snapshot.queryParamMap.get('reprint') === '1');
     void this.loadReceipt();
   }
 
@@ -165,13 +242,31 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
     this.error.set('');
 
     try {
-      const response = await firstValueFrom(this.adminApi.getInventoryService(id));
-      this.item.set(response.data);
+      const [serviceResponse, templatesResult, settingsResult] = await Promise.all([
+        firstValueFrom(this.adminApi.getInventoryService(id)),
+        firstValueFrom(this.adminApi.listPrintingTemplates('sales_receipt')).catch(() => null),
+        firstValueFrom(this.adminApi.getPrintingSettings()).catch(() => null),
+      ]);
+
+      this.item.set(serviceResponse.data);
       this.printedAt.set(new Date());
+
+      const templates = (templatesResult?.data ?? []).filter(
+        (template) => template.documentType === 'sales_receipt' || !template.documentType,
+      );
+      this.templates.set(templates);
+      this.printingSettings.set(settingsResult?.data ?? null);
+      this.selectedTemplateId.set(this.resolveInitialTemplateId(templates, settingsResult?.data));
 
       if (this.autoPrint()) {
         queueMicrotask(() => {
-          setTimeout(() => this.printReceipt(), 350);
+          setTimeout(() => {
+            if (this.autoReprint()) {
+              this.reprintReceipt();
+            } else {
+              this.printReceipt();
+            }
+          }, 350);
         });
       }
     } catch {
@@ -181,9 +276,29 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
     }
   }
 
+  onTemplateChange(rawValue: string | number): void {
+    const nextId = Number(rawValue);
+    this.selectedTemplateId.set(Number.isFinite(nextId) ? nextId : BUILTIN_TEMPLATE_VALUE);
+    try {
+      sessionStorage.setItem(TEMPLATE_STORAGE_KEY, String(this.selectedTemplateId()));
+    } catch {
+      // ignore storage errors
+    }
+  }
+
   printReceipt(): void {
+    this.openPrintDialog(false);
+  }
+
+  reprintReceipt(): void {
+    this.openPrintDialog(true);
+  }
+
+  private openPrintDialog(reprinted: boolean): void {
+    this.showReprinted.set(reprinted);
     this.printedAt.set(new Date());
-    window.print();
+    this.changeDetector.detectChanges();
+    setTimeout(() => window.print(), 0);
   }
 
   backToJob(): void {
@@ -211,6 +326,102 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
       line.discountType === 'senior' ? 'SC' : line.discountType === 'pwd' ? 'PWD' : '';
     const amount = this.formatMoney(line.discountAmount);
     return label ? `${label} ${amount}` : amount;
+  }
+
+  templateSheetStyle(): Record<string, string> {
+    const template = this.selectedTemplate();
+    const settings = this.printingSettings();
+    const widthMm = template?.paperWidthMm || 210;
+    const heightMm = template?.paperHeightMm || 297;
+    return {
+      width: `${widthMm}mm`,
+      minHeight: `${heightMm}mm`,
+      fontFamily: settings?.fontFamily || `'Times New Roman', Times, serif`,
+    };
+  }
+
+  elementStyle(element: PrintLayoutElement): Record<string, string> {
+    const width = element.width ?? (element.type === 'line' ? 40 : 30);
+    const height = element.height ?? (element.type === 'line' ? 2 : 8);
+    return {
+      left: `${element.x}mm`,
+      top: `${element.y}mm`,
+      width: `${width}mm`,
+      height: `${height}mm`,
+      fontSize: `${element.fontSize || 11}pt`,
+      fontWeight: element.fontWeight || 'normal',
+      textAlign: element.textAlign || 'left',
+    };
+  }
+
+  fieldValue(element: PrintLayoutElement): string {
+    if (element.type === 'text') {
+      return element.content || element.label || '';
+    }
+    if (element.fieldKey === 'reprintedLabel' && !this.showReprinted()) {
+      return '';
+    }
+    return this.fieldValues()[element.fieldKey || ''] ?? element.content ?? element.label ?? '';
+  }
+
+  isHiddenElement(element: PrintLayoutElement): boolean {
+    if (element.fieldKey === 'reprintedLabel' && !this.showReprinted()) {
+      return true;
+    }
+    if (element.fieldKey === 'pageNumber' && this.printingSettings()?.showPageNumbers === false) {
+      return true;
+    }
+    return false;
+  }
+
+  private resolveInitialTemplateId(
+    templates: PrintingTemplateItem[],
+    settings: PrintingSettingsItem | null | undefined,
+  ): number {
+    let stored: number | null = null;
+    try {
+      const raw = sessionStorage.getItem(TEMPLATE_STORAGE_KEY);
+      if (raw != null) {
+        stored = Number(raw);
+      }
+    } catch {
+      stored = null;
+    }
+
+    if (stored === BUILTIN_TEMPLATE_VALUE) {
+      return BUILTIN_TEMPLATE_VALUE;
+    }
+
+    if (stored && templates.some((template) => template.id === stored && template.isActive !== false)) {
+      return stored;
+    }
+
+    if (
+      settings?.defaultTemplateId &&
+      templates.some((template) => template.id === settings.defaultTemplateId && template.isActive !== false)
+    ) {
+      return settings.defaultTemplateId;
+    }
+
+    const defaultTemplate = templates.find((template) => template.isDefault && template.isActive !== false);
+    if (defaultTemplate) {
+      return defaultTemplate.id;
+    }
+
+    const firstActive = templates.find((template) => template.isActive !== false);
+    return firstActive?.id ?? BUILTIN_TEMPLATE_VALUE;
+  }
+
+  private warrantyPolicyText(): string {
+    return [
+      '“PCmazing Warranty Policy”',
+      'Major PC Parts: 1-Year Warranty, 5-Day Replacement (Factory Defects Only)',
+      'PC Accessories: 5-Day Replacement, 1-Month Warranty (Factory Defects Only)',
+      'Original Receipt Required — NO RECEIPT, NO WARRANTY',
+      'Monitor dead pixels are NOT covered under replacement/warranty.',
+      'Physical, liquid, electrical, accidental, or customer-caused damage voids the warranty.',
+      'By purchasing this product, you acknowledge that you have read, understood, and accepted the terms and conditions of this warranty policy.',
+    ].join('\n');
   }
 
   private buildBarcodeBars(value: string): Array<{ width: number; filled: boolean }> {

@@ -174,8 +174,8 @@ export const ADMIN_MODULES: AdminModuleItem[] = [
     key: 'printing_generator',
     label: 'Printing Generator',
     route: '/admin/modules/printing-generator',
-    description: 'Design printable documents with pdf-lib and dynamic field mapping.',
-    status: 'coming_soon',
+    description: 'Design printable documents with dynamic, draggable receipt templates.',
+    status: 'active',
   },
 ];
 
