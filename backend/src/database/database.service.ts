@@ -25,6 +25,13 @@ export class DatabaseService implements OnModuleDestroy {
     this.pool = new Pool(config.poolConfig);
     this.migrationPool = new Pool(config.migrationPoolConfig);
 
+    this.pool.on('error', (err) => {
+      console.error('Database pool: idle client error', err.message);
+    });
+    this.migrationPool.on('error', (err) => {
+      console.error('Migration pool: idle client error', err.message);
+    });
+
     console.log('Database connection mode:', this.mode);
     console.log('Database schema:', this.schema);
     console.log('Migration pool uses direct URL:', Boolean(configService.get('DATABASE_DIRECT_URL')));

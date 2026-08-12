@@ -22,6 +22,9 @@
       <button type="button" class="tab-btn" [class.active]="activeTab() === 'settings'" (click)="setTab('settings')">
         Printing Settings
       </button>
+      <button type="button" class="tab-btn" [class.active]="activeTab() === 'content'" (click)="setTab('content')">
+        Receipt Content
+      </button>
       <button type="button" class="tab-btn" [class.active]="activeTab() === 'templates'" (click)="setTab('templates')">
         Receipt Templates
       </button>
@@ -205,6 +208,38 @@
           </button>
         </div>
       </form>
+    } @else if (activeTab() === 'content') {
+      <form class="panel settings-panel" [formGroup]="contentForm" (ngSubmit)="saveContent()">
+        <div class="panel-heading">
+          <h3>Receipt content</h3>
+          <p>
+            Edit the text blocks used on receipts for warranty policy, footer note, and thank-you message.
+            These values are used by both built-in and custom receipt templates.
+          </p>
+        </div>
+
+        <div class="form-grid">
+          <label class="span-2">
+            <span>Warranty policy</span>
+            <textarea rows="10" formControlName="warrantyPolicy"></textarea>
+            <span class="field-hint">Use separate lines for each bullet or paragraph.</span>
+          </label>
+          <label class="span-2">
+            <span>Footer note</span>
+            <input type="text" formControlName="footerNote" />
+          </label>
+          <label class="span-2">
+            <span>Thank-you message</span>
+            <input type="text" formControlName="thanksMessage" />
+          </label>
+        </div>
+
+        <div class="actions">
+          <button type="submit" class="btn-primary" [disabled]="savingContent()">
+            @if (savingContent()) { Saving... } @else { Save content }
+          </button>
+        </div>
+      </form>
     } @else {
       <div class="templates-layout">
         <aside class="panel templates-list">
@@ -303,7 +338,7 @@
                 [marginBottomMm]="settingsForm.controls.marginBottomMm.value"
                 [marginLeftMm]="settingsForm.controls.marginLeftMm.value"
                 [selectedElementId]="selectedElementId()"
-                (elementsChange)="draftElements.set($event)"
+                (elementsChange)="onCanvasElementsChange($event)"
                 (elementSelect)="selectedElementId.set($event)"
                 (canvasBackgroundClick)="selectedElementId.set(null)"
               />

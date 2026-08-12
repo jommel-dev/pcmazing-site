@@ -8,7 +8,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { sampleForField } from './printing-fields.data';
-import { CANVAS_SCALE, PrintLayoutElement } from './printing.types';
+import { CANVAS_SCALE, PrintLayoutElement, roundMm } from './printing.types';
 
 type DragState = {
   elementId: string;
@@ -68,8 +68,15 @@ type DragState = {
               {{ element.content || element.label || 'Text' }}
             }
             @default {
-              <span class="field-label">{{ element.label || element.fieldKey }}</span>
-              <span class="field-value">{{ previewValue(element) }}</span>
+              @if (element.fieldKey === 'barcode') {
+                <div class="barcode-preview" [style.align-items]="barcodeAlignItems(element)">
+                  <span class="barcode-bars" aria-hidden="true"></span>
+                  <span class="barcode-sample">{{ previewValue(element) }}</span>
+                </div>
+              } @else {
+                <span class="field-label">{{ element.label || element.fieldKey }}</span>
+                <span class="field-value">{{ previewValue(element) }}</span>
+              }
             }
           }
         </div>
@@ -153,6 +160,33 @@ type DragState = {
         font-weight: 700;
         color: #334155;
       }
+
+      .barcode-preview {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        height: 100%;
+        justify-content: center;
+        gap: 2px;
+      }
+
+      .barcode-bars {
+        display: inline-flex;
+        width: 72%;
+        max-width: 100%;
+        height: 55%;
+        min-height: 10px;
+        background: repeating-linear-gradient(
+          90deg,
+          #111 0 2px,
+          transparent 2px 4px
+        );
+      }
+
+      .barcode-sample {
+        font-size: 0.72em;
+        color: #64748b;
+      }
     `,
   ],
 })
@@ -204,6 +238,17 @@ export class PrintingTemplateCanvasComponent {
     return sampleForField(element.fieldKey);
   }
 
+  barcodeAlignItems(element: PrintLayoutElement): string {
+    const align = element.textAlign || 'center';
+    if (align === 'right') {
+      return 'flex-end';
+    }
+    if (align === 'center') {
+      return 'center';
+    }
+    return 'flex-start';
+  }
+
   onCanvasBackgroundClick(event: MouseEvent): void {
     if (event.target === this.canvasRoot()?.nativeElement) {
       this.canvasBackgroundClick.emit();
@@ -241,8 +286,8 @@ export class PrintingTemplateCanvasComponent {
       }
       return {
         ...element,
-        x: Math.max(0, Math.min(maxX, drag.originX + deltaX)),
-        y: Math.max(0, Math.min(maxY, drag.originY + deltaY)),
+        x: roundMm(Math.max(0, Math.min(maxX, drag.originX + deltaX))),
+        y: roundMm(Math.max(0, Math.min(maxY, drag.originY + deltaY))),
       };
     });
 

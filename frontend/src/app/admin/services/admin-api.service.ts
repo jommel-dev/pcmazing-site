@@ -130,6 +130,7 @@ export interface InventoryServiceItem {
   durationMinutes: number | null;
   notes?: string | null;
   laborDiscountType?: 'none' | 'senior' | 'pwd';
+  customDiscount?: number;
   parts?: Array<{
     materialId?: number;
     materialName?: string | null;
@@ -161,10 +162,65 @@ export interface CreateInventoryServicePayload {
   cost?: number;
   labor?: number;
   laborDiscountType?: 'none' | 'senior' | 'pwd';
+  customDiscount?: number;
   status?: string;
   notes?: string;
   startedAt?: string;
   endedAt?: string;
+}
+
+export interface SalesOrderSummary {
+  totalSales: number;
+  totalDiscount: number;
+  itemCount: number;
+  orderCount: number;
+}
+
+export interface SalesOrderItem {
+  id: number;
+  materialId: number;
+  materialName: string | null;
+  materialCode: string | null;
+  description: string | null;
+  quantity: number;
+  unitPrice: number;
+  discountType: 'none' | 'senior' | 'pwd';
+}
+
+export interface SalesOrderListItem {
+  id: number;
+  referenceNo: string | null;
+  customerName: string;
+  customerPhone: string | null;
+  notes: string | null;
+  customDiscount: number;
+  subtotal: number;
+  discountTotal: number;
+  totalAmount: number;
+  isVoid: boolean;
+  voidedAt: string | null;
+  saleDate: string | null;
+  itemCount: number;
+  itemsSummary: string[];
+  updatedAt: string | null;
+}
+
+export interface SalesOrderDetail extends SalesOrderListItem {
+  items: SalesOrderItem[];
+}
+
+export interface CreateSalesOrderPayload {
+  customerName: string;
+  customerPhone?: string;
+  notes?: string;
+  customDiscount?: number;
+  saleDate?: string;
+  items: Array<{
+    materialId: number;
+    quantity: number;
+    unitPrice?: number;
+    discountType?: 'none' | 'senior' | 'pwd';
+  }>;
 }
 
 export interface ServiceTypeItem {
@@ -225,6 +281,9 @@ export interface PrintingSettingsItem {
   printerLastTestedAt?: string | null;
   printerLastTestStatus?: 'never' | 'ok' | 'failed';
   printerLastTestMessage?: string;
+  warrantyPolicy?: string;
+  footerNote?: string;
+  thanksMessage?: string;
   updatedAt?: string | null;
 }
 
@@ -1178,6 +1237,43 @@ export class AdminApiService {
     return this.http.post<ItemResponse<InventoryServiceItem>>(
       `${APP_CONFIG.apiUrl}/admin/inventory/services/${id}/image`,
       formData,
+      { headers: this.headers() },
+    );
+  }
+
+  listSalesOrders(page = 1, limit = 20, search = '', voidFilter = '') {
+    let params = this.listParams(page, limit, search);
+    if (voidFilter.trim()) {
+      params = params.set('void', voidFilter.trim());
+    }
+
+    return this.http.get<
+      ListResponse<SalesOrderListItem> & { summary: SalesOrderSummary }
+    >(`${APP_CONFIG.apiUrl}/admin/inventory/sales-orders`, {
+      headers: this.headers(),
+      params,
+    });
+  }
+
+  createSalesOrder(payload: CreateSalesOrderPayload) {
+    return this.http.post<ItemResponse<SalesOrderDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/sales-orders`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  getSalesOrder(id: number) {
+    return this.http.get<ItemResponse<SalesOrderDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/sales-orders/${id}`,
+      { headers: this.headers() },
+    );
+  }
+
+  voidSalesOrder(id: number) {
+    return this.http.patch<ItemResponse<SalesOrderDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/sales-orders/${id}/void`,
+      {},
       { headers: this.headers() },
     );
   }

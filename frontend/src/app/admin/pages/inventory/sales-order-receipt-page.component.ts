@@ -6,9 +6,9 @@ import { firstValueFrom } from 'rxjs';
 import { AdminAuthService } from '../../services/admin-auth.service';
 import {
   AdminApiService,
-  InventoryServiceItem,
   PrintingSettingsItem,
   PrintingTemplateItem,
+  SalesOrderDetail,
 } from '../../services/admin-api.service';
 import { PrintLayoutElement } from '../printing/printing.types';
 import {
@@ -33,16 +33,16 @@ type ReceiptLine = {
   isCustomDiscount?: boolean;
 };
 
-const TEMPLATE_STORAGE_KEY = 'pcmazing.receipt.selectedTemplateId';
+const TEMPLATE_STORAGE_KEY = 'pcmazing.salesReceipt.selectedTemplateId';
 const BUILTIN_TEMPLATE_VALUE = 0;
 
 @Component({
-  selector: 'app-inventory-service-receipt-page',
+  selector: 'app-sales-order-receipt-page',
   imports: [RouterLink, DatePipe, DecimalPipe, FormsModule, NgStyle],
-  templateUrl: './inventory-service-receipt-page.component.html',
-  styleUrl: './inventory-service-receipt-page.component.css',
+  templateUrl: './sales-order-receipt-page.component.html',
+  styleUrl: './sales-order-receipt-page.component.css',
 })
-export class InventoryServiceReceiptPageComponent implements OnInit {
+export class SalesOrderReceiptPageComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly adminApi = inject(AdminApiService);
@@ -51,7 +51,7 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
 
   readonly loading = signal(true);
   readonly error = signal('');
-  readonly item = signal<InventoryServiceItem | null>(null);
+  readonly order = signal<SalesOrderDetail | null>(null);
   readonly printedAt = signal(new Date());
   readonly autoPrint = signal(false);
   readonly autoReprint = signal(false);
@@ -65,7 +65,7 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
   );
 
   readonly receiptNo = computed(() => {
-    const current = this.item();
+    const current = this.order();
     if (!current) {
       return '';
     }
@@ -78,78 +78,26 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
   });
 
   readonly lines = computed<ReceiptLine[]>(() => {
-    const current = this.item();
+    const current = this.order();
     if (!current) {
       return [];
     }
 
     const rows: ReceiptLine[] = [];
-    for (const part of current.parts ?? []) {
-      const qty = Number(part.quantity) || 0;
-      const unitPrice = Number(part.unitPrice) || 0;
-      const discountType = normalizePhDiscountType(part.discountType);
-      const isCustom = !part.materialId && !!part.customItemName?.trim();
-      const itemName = (
-        part.materialName ||
-        part.customItemName ||
-        part.materialCode ||
-        'Item'
-      ).trim();
-      const description = isCustom ? '' : String(part.description ?? '').trim();
-
+    for (const item of current.items ?? []) {
+      const qty = Number(item.quantity) || 0;
+      const unitPrice = Number(item.unitPrice) || 0;
+      const discountType = normalizePhDiscountType(item.discountType);
       const amountGross = qty * unitPrice;
       const amountDiscount = applyPhSpecialDiscount(amountGross, discountType);
       rows.push({
-        itemName,
-        description,
+        itemName: item.materialName || item.materialCode || 'Item',
+        description: String(item.description ?? '').trim(),
         qty,
         unitPrice,
         discountType,
         extPrice: amountGross,
         discountAmount: amountDiscount.discountAmount,
-      });
-
-      const labor = Number(part.labor) || 0;
-      if (labor > 0) {
-        const laborDiscount = applyPhSpecialDiscount(labor, discountType);
-        rows.push({
-          itemName: `${itemName} Labor`,
-          description: isCustom ? 'Custom item labor' : description,
-          qty: 1,
-          unitPrice: labor,
-          discountType,
-          extPrice: labor,
-          discountAmount: laborDiscount.discountAmount,
-        });
-      }
-    }
-
-    const serviceLabor = Number(current.labor) || 0;
-    if (serviceLabor > 0) {
-      const laborDiscount = applyPhSpecialDiscount(
-        serviceLabor,
-        normalizePhDiscountType(current.laborDiscountType),
-      );
-      rows.push({
-        itemName: current.type || 'Service Labor',
-        description: '',
-        qty: 1,
-        unitPrice: serviceLabor,
-        discountType: normalizePhDiscountType(current.laborDiscountType),
-        extPrice: serviceLabor,
-        discountAmount: laborDiscount.discountAmount,
-      });
-    }
-
-    if (rows.length === 0) {
-      rows.push({
-        itemName: current.type || 'Service',
-        description: '',
-        qty: 1,
-        unitPrice: Number(current.totalSales) || 0,
-        discountType: 'none',
-        extPrice: Number(current.totalSales) || 0,
-        discountAmount: 0,
       });
     }
 
@@ -170,16 +118,9 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
     return rows;
   });
 
-  readonly subtotal = computed(() =>
-    this.lines().reduce((sum, line) => sum + line.extPrice, 0),
-  );
-
-  readonly discountTotal = computed(() =>
-    this.lines().reduce((sum, line) => sum + line.discountAmount, 0),
-  );
-
+  readonly subtotal = computed(() => this.lines().reduce((sum, line) => sum + line.extPrice, 0));
+  readonly discountTotal = computed(() => this.lines().reduce((sum, line) => sum + line.discountAmount, 0));
   readonly receiptTotal = computed(() => this.subtotal() - this.discountTotal());
-
   readonly barcodeBars = computed(() => this.buildBarcodeBars(this.receiptNo()));
 
   readonly selectedTemplate = computed(() => {
@@ -191,22 +132,15 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
   });
 
   readonly useCustomTemplate = computed(() => !!this.selectedTemplate());
-
-  readonly templateElements = computed(
-    () => this.selectedTemplate()?.layout?.elements ?? [],
-  );
-
-  readonly activeTemplates = computed(() =>
-    this.templates().filter((template) => template.isActive !== false),
-  );
+  readonly templateElements = computed(() => this.selectedTemplate()?.layout?.elements ?? []);
+  readonly activeTemplates = computed(() => this.templates().filter((template) => template.isActive !== false));
 
   readonly fieldValues = computed<Record<string, string>>(() => {
-    const job = this.item();
+    const current = this.order();
     const settings = this.printingSettings();
     const printed = this.printedAt();
     const receiptNo = this.receiptNo();
     const cashier = this.cashierName();
-
     const printedAtLabel = printed.toLocaleString('en-US', {
       month: 'numeric',
       day: 'numeric',
@@ -217,9 +151,10 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
       hour12: true,
     });
     const printedDateLabel = printed.toLocaleDateString('en-US');
+    const voidLabel = current?.isVoid ? 'VOID' : '';
 
     return {
-      reprintedLabel: this.showReprinted() ? 'REPRINTED' : '',
+      reprintedLabel: this.showReprinted() ? 'REPRINTED' : voidLabel,
       printedAt: `Printed: ${printedAtLabel}`,
       printedDate: `Date: ${printedDateLabel}`,
       storeCode: `Store: ${settings?.storeCode || '1'}`,
@@ -227,12 +162,12 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
       pageNumber: settings?.showPageNumbers === false ? '' : 'Page 1',
       storeLogo: '/images/logopcm.png',
       storeName: settings?.storeName || 'PCmazing',
-      storeAddress:
-        settings?.storeAddress || 'Mabini Extension, Cabanatuan City, 3100',
+      storeAddress: settings?.storeAddress || 'Mabini Extension, Cabanatuan City, 3100',
       receiptNo: `Sales Receipt #${receiptNo}`,
       cashierName: `Cashier: ${cashier}`,
-      customerName: job?.customerName || '',
-      jobNotes: String(job?.notes ?? '').trim(),
+      customerName: current?.customerName || '',
+      customerPhone: current?.customerPhone || '',
+      jobNotes: String(current?.notes ?? '').trim(),
       discountTotal: `Total Sales Discounts: ${this.formatMoney(this.discountTotal())}`,
       subtotal: `Subtotal  ${this.formatMoney(this.subtotal())}`,
       receiptTotal: `RECEIPT TOTAL  ${this.formatMoney(this.receiptTotal())}`,
@@ -254,7 +189,7 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
   async loadReceipt(): Promise<void> {
     const id = Number(this.route.snapshot.paramMap.get('id'));
     if (!Number.isFinite(id) || id <= 0) {
-      this.error.set('Invalid job order.');
+      this.error.set('Invalid sales order.');
       this.loading.set(false);
       return;
     }
@@ -263,13 +198,13 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
     this.error.set('');
 
     try {
-      const [serviceResponse, templatesResult, settingsResult] = await Promise.all([
-        firstValueFrom(this.adminApi.getInventoryService(id)),
+      const [orderResponse, templatesResult, settingsResult] = await Promise.all([
+        firstValueFrom(this.adminApi.getSalesOrder(id)),
         firstValueFrom(this.adminApi.listPrintingTemplates('sales_receipt')).catch(() => null),
         firstValueFrom(this.adminApi.getPrintingSettings()).catch(() => null),
       ]);
 
-      this.item.set(serviceResponse.data);
+      this.order.set(orderResponse.data);
       this.printedAt.set(new Date());
 
       const templates = (templatesResult?.data ?? []).filter(
@@ -291,7 +226,7 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
         });
       }
     } catch {
-      this.error.set('Unable to load job order receipt.');
+      this.error.set('Unable to load sales order receipt.');
     } finally {
       this.loading.set(false);
     }
@@ -322,13 +257,13 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
     setTimeout(() => window.print(), 0);
   }
 
-  backToJob(): void {
-    const id = this.item()?.id;
+  backToOrder(): void {
+    const id = this.order()?.id;
     if (id) {
-      void this.router.navigate(['/admin/job-order', id]);
+      void this.router.navigate(['/admin/sales-order', id]);
       return;
     }
-    void this.router.navigate(['/admin/job-order']);
+    void this.router.navigate(['/admin/sales-order']);
   }
 
   formatMoney(value: number): string {
@@ -342,13 +277,10 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
     if (line.discountAmount <= 0) {
       return '—';
     }
-
     if (line.isCustomDiscount) {
       return this.formatMoney(line.discountAmount);
     }
-
-    const label =
-      line.discountType === 'senior' ? 'SC' : line.discountType === 'pwd' ? 'PWD' : '';
+    const label = line.discountType === 'senior' ? 'SC' : line.discountType === 'pwd' ? 'PWD' : '';
     const amount = this.formatMoney(line.discountAmount);
     return label ? `${label} ${amount}` : amount;
   }
@@ -356,11 +288,9 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
   templateSheetStyle(): Record<string, string> {
     const template = this.selectedTemplate();
     const settings = this.printingSettings();
-    const widthMm = template?.paperWidthMm || 210;
-    const heightMm = template?.paperHeightMm || 297;
     return {
-      width: `${widthMm}mm`,
-      minHeight: `${heightMm}mm`,
+      width: `${template?.paperWidthMm || 210}mm`,
+      minHeight: `${template?.paperHeightMm || 297}mm`,
       fontFamily: settings?.fontFamily || `'Times New Roman', Times, serif`,
     };
   }
@@ -381,36 +311,31 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
 
   barcodeWrapStyle(element: PrintLayoutElement): Record<string, string> {
     const align = element.textAlign || 'center';
-    const alignItems =
-      align === 'right' ? 'flex-end' : align === 'center' ? 'center' : 'flex-start';
-
-    return {
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems,
-      width: '100%',
-      height: '100%',
-    };
+    const alignItems = align === 'right' ? 'flex-end' : align === 'center' ? 'center' : 'flex-start';
+    return { display: 'flex', flexDirection: 'column', alignItems, width: '100%', height: '100%' };
   }
 
   fieldValue(element: PrintLayoutElement): string {
     if (element.type === 'text') {
       return element.content || element.label || '';
     }
-    if (element.fieldKey === 'reprintedLabel' && !this.showReprinted()) {
+    if (element.fieldKey === 'reprintedLabel' && !this.showReprinted() && !this.order()?.isVoid) {
       return '';
     }
     return this.fieldValues()[element.fieldKey || ''] ?? element.content ?? element.label ?? '';
   }
 
   isHiddenElement(element: PrintLayoutElement): boolean {
-    if (element.fieldKey === 'reprintedLabel' && !this.showReprinted()) {
+    if (element.fieldKey === 'reprintedLabel' && !this.showReprinted() && !this.order()?.isVoid) {
       return true;
     }
     if (element.fieldKey === 'pageNumber' && this.printingSettings()?.showPageNumbers === false) {
       return true;
     }
     if (element.fieldKey === 'jobNotes' && !this.fieldValues()['jobNotes']) {
+      return true;
+    }
+    if (element.fieldKey === 'customerPhone' && !this.fieldValues()['customerPhone']) {
       return true;
     }
     return false;
@@ -437,40 +362,33 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
     if (stored === BUILTIN_TEMPLATE_VALUE) {
       return BUILTIN_TEMPLATE_VALUE;
     }
-
     if (stored && templates.some((template) => template.id === stored && template.isActive !== false)) {
       return stored;
     }
-
     if (
       settings?.defaultTemplateId &&
       templates.some((template) => template.id === settings.defaultTemplateId && template.isActive !== false)
     ) {
       return settings.defaultTemplateId;
     }
-
     const defaultTemplate = templates.find((template) => template.isDefault && template.isActive !== false);
     if (defaultTemplate) {
       return defaultTemplate.id;
     }
-
     const firstActive = templates.find((template) => template.isActive !== false);
     return firstActive?.id ?? BUILTIN_TEMPLATE_VALUE;
   }
 
   warrantyPolicyText(): string {
-    const value = this.printingSettings()?.warrantyPolicy?.trim();
-    return value || DEFAULT_WARRANTY_POLICY;
+    return this.printingSettings()?.warrantyPolicy?.trim() || DEFAULT_WARRANTY_POLICY;
   }
 
   footerNoteText(): string {
-    const value = this.printingSettings()?.footerNote?.trim();
-    return value || DEFAULT_FOOTER_NOTE;
+    return this.printingSettings()?.footerNote?.trim() || DEFAULT_FOOTER_NOTE;
   }
 
   thanksMessageText(): string {
-    const value = this.printingSettings()?.thanksMessage?.trim();
-    return value || DEFAULT_THANKS_MESSAGE;
+    return this.printingSettings()?.thanksMessage?.trim() || DEFAULT_THANKS_MESSAGE;
   }
 
   private buildBarcodeBars(value: string): Array<{ width: number; filled: boolean }> {
@@ -481,7 +399,6 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
       { width: 2, filled: true },
       { width: 1, filled: false },
     ];
-
     for (const char of digits) {
       const n = Number(char);
       bars.push(
@@ -491,7 +408,6 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
         { width: 1, filled: false },
       );
     }
-
     bars.push({ width: 2, filled: true }, { width: 1, filled: false }, { width: 3, filled: true });
     return bars;
   }
