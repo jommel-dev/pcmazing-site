@@ -18,6 +18,9 @@ import { DemoRequestsPageComponent } from './pages/demo-requests/demo-requests-p
 import { DemoRequestDetailPageComponent } from './pages/demo-requests/demo-request-detail-page.component';
 import { InventoryPageComponent } from './pages/inventory/inventory-page.component';
 import { InventoryDetailPageComponent } from './pages/inventory/inventory-detail-page.component';
+import { SalesOrderCreatePageComponent } from './pages/inventory/sales-order-create-page.component';
+import { SalesOrderReceiptPageComponent } from './pages/inventory/sales-order-receipt-page.component';
+import { SalesOrdersPageComponent } from './pages/inventory/sales-orders-page.component';
 import { InventoryServiceCreatePageComponent } from './pages/inventory/inventory-service-create-page.component';
 import { InventoryServiceReceiptPageComponent } from './pages/inventory/inventory-service-receipt-page.component';
 import { InventoryServicesPageComponent } from './pages/inventory/inventory-services-page.component';
@@ -156,6 +159,34 @@ export const adminRoutes: Routes = [
         title: 'Service Types | PCMazing Admin',
         canActivate: [adminRoleGuard],
         data: { module: 'inventory', inventoryWrite: true },
+      },
+      {
+        path: 'sales-order',
+        component: SalesOrdersPageComponent,
+        title: 'Sales Order | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'sales_order' },
+      },
+      {
+        path: 'sales-order/new',
+        component: SalesOrderCreatePageComponent,
+        title: 'New Sales Order | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'sales_order' },
+      },
+      {
+        path: 'sales-order/:id/receipt',
+        component: SalesOrderReceiptPageComponent,
+        title: 'Sales Receipt | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'sales_order' },
+      },
+      {
+        path: 'sales-order/:id',
+        component: SalesOrderCreatePageComponent,
+        title: 'Sales Order | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'sales_order' },
       },
       {
         path: 'job-order',

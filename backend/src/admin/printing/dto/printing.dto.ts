@@ -14,7 +14,7 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 
 export class UpdatePrintingSettingsDto {
   @IsOptional()
@@ -119,6 +119,21 @@ export class UpdatePrintingSettingsDto {
   @IsOptional()
   @IsBoolean()
   printerAutoPrint?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(8000)
+  warrantyPolicy?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  footerNote?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  thanksMessage?: string;
 }
 
 export class TestPrinterConnectionDto {
@@ -154,6 +169,16 @@ export class TestPrinterConnectionDto {
   printerBluetoothDeviceName?: string;
 }
 
+function roundMm(value: unknown, decimals = 2): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return 0;
+  }
+
+  const factor = 10 ** decimals;
+  return Math.round(numeric * factor) / factor;
+}
+
 class PrintLayoutElementDto {
   @IsString()
   @MinLength(1)
@@ -164,23 +189,31 @@ class PrintLayoutElementDto {
   @IsIn(['text', 'field', 'image', 'line', 'table'])
   type!: 'text' | 'field' | 'image' | 'line' | 'table';
 
+  @Type(() => Number)
+  @Transform(({ value }) => roundMm(value))
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   @Max(1000)
   x!: number;
 
+  @Type(() => Number)
+  @Transform(({ value }) => roundMm(value))
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   @Max(1000)
   y!: number;
 
   @IsOptional()
+  @Type(() => Number)
+  @Transform(({ value }) => roundMm(value))
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(1)
   @Max(1000)
   width?: number;
 
   @IsOptional()
+  @Type(() => Number)
+  @Transform(({ value }) => roundMm(value))
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(1)
   @Max(1000)
@@ -202,6 +235,8 @@ class PrintLayoutElementDto {
   content?: string;
 
   @IsOptional()
+  @Type(() => Number)
+  @Transform(({ value }) => roundMm(value, 1))
   @IsNumber({ maxDecimalPlaces: 1 })
   @Min(6)
   @Max(72)

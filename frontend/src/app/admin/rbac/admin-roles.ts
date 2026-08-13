@@ -22,6 +22,7 @@ export type AdminModuleKey =
   | 'contact_inquiries'
   | 'customer_reviews'
   | 'demo_requests'
+  | 'sales_order'
   | 'job_order'
   | 'quotation'
   | 'inventory'
@@ -159,6 +160,7 @@ export function getAllowedModuleKeys(role?: string | null): Set<AdminModuleKey> 
       'sales_dashboard',
       'contact_inquiries',
       'customer_reviews',
+      'sales_order',
       'job_order',
       'quotation',
       'inventory',

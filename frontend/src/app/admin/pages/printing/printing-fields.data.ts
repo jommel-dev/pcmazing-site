@@ -81,9 +81,21 @@ export const PRINT_FIELD_DEFINITIONS: PrintFieldDefinition[] = [
     documentTypes: ['sales_receipt', 'quotation', 'invoice', 'custom'],
   },
   {
+    key: 'customerPhone',
+    label: 'Customer phone',
+    sample: '0917 123 4567',
+    documentTypes: ['sales_receipt', 'custom'],
+  },
+  {
+    key: 'jobNotes',
+    label: 'Job order notes',
+    sample: 'Customer requested rush repair. Call before pickup.',
+    documentTypes: ['sales_receipt', 'custom'],
+  },
+  {
     key: 'lineItems',
     label: 'Line items table',
-    sample: 'Item Name · Description · Qty · Regular Price · Discount · Ext Price',
+    sample: 'Item Name · Description · Qty · Price · Discount · Ext Price',
     documentTypes: ['sales_receipt', 'quotation', 'invoice', 'custom'],
   },
   {
