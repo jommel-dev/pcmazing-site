@@ -74,6 +74,14 @@ export const ADMIN_MODULES: AdminModuleItem[] = [
     status: 'active',
   },
   {
+    key: 'sales_order',
+    label: 'Sales Order',
+    route: '/admin/sales-order',
+    description: 'Record item sales and automatically adjust inventory stock.',
+    status: 'active',
+    referenceMenu: 'sales_order_materials',
+  },
+  {
     key: 'job_order',
     label: 'Job Order',
     route: '/admin/job-order',
@@ -191,7 +199,7 @@ export const ADMIN_NAV_SECTIONS: AdminNavSection[] = [
     key: 'sales_operations',
     title: 'Sales Operations',
     items: ADMIN_MODULES.filter((item) =>
-      ['job_order', 'quotation', 'inventory', 'customers'].includes(item.key),
+      ['sales_order', 'job_order', 'quotation', 'inventory', 'customers'].includes(item.key),
     ),
   },
   {
@@ -244,7 +252,7 @@ export function filterNavSectionsForRole(
         key: 'sales_operations',
         title: 'Sales Operations',
         items: ADMIN_MODULES.filter((item) =>
-          ['job_order', 'quotation', 'inventory', 'customers'].includes(item.key),
+          ['sales_order', 'job_order', 'quotation', 'inventory', 'customers'].includes(item.key),
         ),
       },
       {
@@ -295,7 +303,7 @@ export function filterNavSectionsForRole(
   );
   const salesOps = ADMIN_MODULES.filter(
     (item) =>
-      ['job_order', 'quotation', 'inventory'].includes(item.key) && allowed.has(item.key),
+      ['sales_order', 'job_order', 'quotation', 'inventory'].includes(item.key) && allowed.has(item.key),
   );
   if (salesHome.length) {
     sections.push({ key: 'sales_home', title: 'Sales', items: salesHome });

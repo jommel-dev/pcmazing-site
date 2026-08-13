@@ -162,6 +162,13 @@
   color: #64748b;
 }
 
+.field-hint {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
 .connection-type-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

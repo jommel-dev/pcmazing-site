@@ -50,15 +50,15 @@ class CreateServicePartDto {
 }
 
 export class CreateServiceDto {
+  @IsOptional()
   @IsString()
-  @MinLength(1)
   @MaxLength(180)
-  customerName!: string;
+  customerName?: string;
 
+  @IsOptional()
   @IsString()
-  @MinLength(1)
   @MaxLength(180)
-  serviceName!: string;
+  serviceName?: string;
 
   @IsOptional()
   @IsInt()
@@ -70,10 +70,10 @@ export class CreateServiceDto {
   @IsIn(['tblusers', 'pcmazing_admin_users'])
   personInChargeSource?: 'tblusers' | 'pcmazing_admin_users';
 
+  @IsOptional()
   @IsString()
-  @MinLength(1)
   @MaxLength(120)
-  type!: string;
+  type?: string;
 
   @IsOptional()
   @IsArray()
@@ -98,6 +98,12 @@ export class CreateServiceDto {
   @IsString()
   @IsIn(['none', 'senior', 'pwd'])
   laborDiscountType?: 'none' | 'senior' | 'pwd';
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(999999999.99)
+  customDiscount?: number;
 
   @IsOptional()
   @IsString()

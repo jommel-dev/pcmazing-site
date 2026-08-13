@@ -14,9 +14,17 @@ import {
   PrintingTemplate,
   createElementId,
   jobOrderSalesReceiptLayout,
+  roundMm,
+  sanitizeLayoutElement,
+  sanitizeLayoutElements,
 } from './printing.types';
+import {
+  DEFAULT_FOOTER_NOTE,
+  DEFAULT_THANKS_MESSAGE,
+  DEFAULT_WARRANTY_POLICY,
+} from './printing-receipt-content.defaults';
 
-type TabKey = 'settings' | 'templates';
+type TabKey = 'settings' | 'content' | 'templates';
 
 type BluetoothNavigator = Navigator & {
   bluetooth?: {
@@ -41,6 +49,7 @@ export class PrintingGeneratorPageComponent implements OnInit {
   readonly activeTab = signal<TabKey>('settings');
   readonly loading = signal(true);
   readonly savingSettings = signal(false);
+  readonly savingContent = signal(false);
   readonly testingPrinter = signal(false);
   readonly pairingBluetooth = signal(false);
   readonly savingTemplate = signal(false);
@@ -75,6 +84,12 @@ export class PrintingGeneratorPageComponent implements OnInit {
     printerBluetoothDeviceId: [''],
     printerBluetoothDeviceName: [''],
     printerAutoPrint: [false],
+  });
+
+  readonly contentForm = this.formBuilder.nonNullable.group({
+    warrantyPolicy: [DEFAULT_WARRANTY_POLICY, [Validators.maxLength(8000)]],
+    footerNote: [DEFAULT_FOOTER_NOTE, [Validators.maxLength(500)]],
+    thanksMessage: [DEFAULT_THANKS_MESSAGE, [Validators.maxLength(500)]],
   });
 
   readonly templateForm = this.formBuilder.nonNullable.group({
@@ -143,6 +158,11 @@ export class PrintingGeneratorPageComponent implements OnInit {
         printerBluetoothDeviceName: settings.printerBluetoothDeviceName || '',
         printerAutoPrint: settings.printerAutoPrint ?? false,
       });
+      this.contentForm.patchValue({
+        warrantyPolicy: settings.warrantyPolicy || DEFAULT_WARRANTY_POLICY,
+        footerNote: settings.footerNote || DEFAULT_FOOTER_NOTE,
+        thanksMessage: settings.thanksMessage || DEFAULT_THANKS_MESSAGE,
+      });
       this.applyPrinterTestState(settings);
 
       this.templates.set(templatesResponse.data);
@@ -154,9 +174,12 @@ export class PrintingGeneratorPageComponent implements OnInit {
       } else {
         this.startNewTemplate();
       }
-    } catch {
+    } catch (err: unknown) {
       this.error.set(
-        'Unable to load printing settings. Apply migrations 042_printing.sql and 043_printing_printer_connection.sql.',
+        this.readError(
+          err,
+          'Unable to load printing settings. Apply migrations 042_printing.sql and 043_printing_printer_connection.sql.',
+        ),
       );
     } finally {
       this.loading.set(false);
@@ -233,6 +256,33 @@ export class PrintingGeneratorPageComponent implements OnInit {
       this.error.set(this.readError(err, 'Unable to save printing settings.'));
     } finally {
       this.savingSettings.set(false);
+    }
+  }
+
+  async saveContent(): Promise<void> {
+    this.clearMessages();
+    if (this.contentForm.invalid) {
+      this.contentForm.markAllAsTouched();
+      this.error.set('Please check the receipt content fields.');
+      return;
+    }
+
+    this.savingContent.set(true);
+    const value = this.contentForm.getRawValue();
+
+    try {
+      await firstValueFrom(
+        this.adminApi.updatePrintingSettings({
+          warrantyPolicy: value.warrantyPolicy,
+          footerNote: value.footerNote.trim(),
+          thanksMessage: value.thanksMessage.trim(),
+        }),
+      );
+      this.success.set('Receipt content saved.');
+    } catch (err: unknown) {
+      this.error.set(this.readError(err, 'Unable to save receipt content.'));
+    } finally {
+      this.savingContent.set(false);
     }
   }
 
@@ -339,7 +389,7 @@ export class PrintingGeneratorPageComponent implements OnInit {
       isDefault: template.isDefault,
       isActive: template.isActive,
     });
-    this.draftElements.set(structuredClone(template.layout.elements));
+    this.draftElements.set(sanitizeLayoutElements(structuredClone(template.layout.elements)));
     this.clearMessages();
   }
 
@@ -354,7 +404,7 @@ export class PrintingGeneratorPageComponent implements OnInit {
       isDefault: true,
       isActive: true,
     });
-    this.draftElements.set(jobOrderSalesReceiptLayout().elements);
+    this.draftElements.set(sanitizeLayoutElements(jobOrderSalesReceiptLayout().elements));
     this.clearMessages();
   }
 
@@ -367,7 +417,7 @@ export class PrintingGeneratorPageComponent implements OnInit {
     if (!this.templateForm.controls.name.value.trim()) {
       this.templateForm.controls.name.setValue('Job Order Sales Receipt');
     }
-    this.draftElements.set(jobOrderSalesReceiptLayout().elements);
+    this.draftElements.set(sanitizeLayoutElements(jobOrderSalesReceiptLayout().elements));
     this.selectedElementId.set(null);
     this.success.set('Loaded the current Job Order sales receipt layout.');
   }
@@ -377,6 +427,10 @@ export class PrintingGeneratorPageComponent implements OnInit {
       paperWidthMm: PAPER_SIZE_PRESETS.A4.widthMm,
       paperHeightMm: PAPER_SIZE_PRESETS.A4.heightMm,
     });
+  }
+
+  onCanvasElementsChange(elements: PrintLayoutElement[]): void {
+    this.draftElements.set(sanitizeLayoutElements(elements));
   }
 
   addElement(type: PrintLayoutElement['type'], fieldKey?: string): void {
@@ -399,7 +453,7 @@ export class PrintingGeneratorPageComponent implements OnInit {
       textAlign: 'left',
     };
 
-    this.draftElements.update((elements) => [...elements, element]);
+    this.draftElements.update((elements) => [...elements, sanitizeLayoutElement(element)]);
     this.selectedElementId.set(element.id);
   }
 
@@ -409,9 +463,26 @@ export class PrintingGeneratorPageComponent implements OnInit {
       return;
     }
 
+    const sanitizedPatch = { ...patch };
+    if ('x' in patch) {
+      sanitizedPatch.x = roundMm(patch.x);
+    }
+    if ('y' in patch) {
+      sanitizedPatch.y = roundMm(patch.y);
+    }
+    if ('width' in patch) {
+      sanitizedPatch.width = roundMm(patch.width);
+    }
+    if ('height' in patch) {
+      sanitizedPatch.height = roundMm(patch.height);
+    }
+    if ('fontSize' in patch) {
+      sanitizedPatch.fontSize = roundMm(patch.fontSize, 1);
+    }
+
     this.draftElements.update((elements) =>
       elements.map((element) =>
-        element.id === selectedId ? { ...element, ...patch } : element,
+        element.id === selectedId ? { ...element, ...sanitizedPatch } : element,
       ),
     );
   }
@@ -443,7 +514,7 @@ export class PrintingGeneratorPageComponent implements OnInit {
       documentType: value.documentType,
       paperWidthMm: Number(value.paperWidthMm),
       paperHeightMm: Number(value.paperHeightMm),
-      layout: { elements: this.draftElements() },
+      layout: { elements: sanitizeLayoutElements(this.draftElements()) },
       isDefault: value.isDefault,
       isActive: value.isActive,
     };

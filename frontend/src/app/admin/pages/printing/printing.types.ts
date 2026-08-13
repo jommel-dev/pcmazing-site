@@ -23,6 +23,31 @@ export interface PrintLayout {
   elements: PrintLayoutElement[];
 }
 
+export function roundMm(value: unknown, decimals = 2): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return 0;
+  }
+
+  const factor = 10 ** decimals;
+  return Math.round(numeric * factor) / factor;
+}
+
+export function sanitizeLayoutElement(element: PrintLayoutElement): PrintLayoutElement {
+  return {
+    ...element,
+    x: roundMm(element.x),
+    y: roundMm(element.y),
+    width: element.width == null ? element.width : roundMm(element.width),
+    height: element.height == null ? element.height : roundMm(element.height),
+    fontSize: element.fontSize == null ? element.fontSize : roundMm(element.fontSize, 1),
+  };
+}
+
+export function sanitizeLayoutElements(elements: PrintLayoutElement[]): PrintLayoutElement[] {
+  return elements.map((element) => sanitizeLayoutElement(element));
+}
+
 export interface PrintingSettings {
   storeName: string;
   storeAddress: string;
@@ -47,6 +72,9 @@ export interface PrintingSettings {
   printerLastTestedAt?: string | null;
   printerLastTestStatus?: PrinterTestStatus;
   printerLastTestMessage?: string;
+  warrantyPolicy?: string;
+  footerNote?: string;
+  thanksMessage?: string;
   updatedAt?: string | null;
 }
 

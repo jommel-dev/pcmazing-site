@@ -60,6 +60,16 @@ const PAPER_PRESETS: Record<string, { width: number; height: number }> = {
   Receipt58: { width: 58, height: 200 },
 };
 
+function roundMm(value: unknown, decimals = 2): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return 0;
+  }
+
+  const factor = 10 ** decimals;
+  return Math.round(numeric * factor) / factor;
+}
+
 @Injectable()
 export class PrintingTemplatesService {
   constructor(private readonly databaseService: DatabaseService) {}
@@ -338,14 +348,14 @@ export class PrintingTemplatesService {
       elements: elements.map((element) => ({
         id: String(element.id),
         type: element.type,
-        x: Number(element.x) || 0,
-        y: Number(element.y) || 0,
-        width: element.width == null ? undefined : Number(element.width),
-        height: element.height == null ? undefined : Number(element.height),
+        x: roundMm(element.x),
+        y: roundMm(element.y),
+        width: element.width == null ? undefined : roundMm(element.width),
+        height: element.height == null ? undefined : roundMm(element.height),
         label: element.label?.trim() || undefined,
         fieldKey: element.fieldKey?.trim() || undefined,
         content: element.content?.trim() || undefined,
-        fontSize: element.fontSize == null ? undefined : Number(element.fontSize),
+        fontSize: element.fontSize == null ? undefined : roundMm(element.fontSize, 1),
         fontWeight: element.fontWeight ?? 'normal',
         textAlign: element.textAlign ?? 'left',
       })),

@@ -8,6 +8,7 @@ import {
   AdminApiService,
   AdminUser,
   CreateInventoryServicePayload,
+  InventoryServiceItem,
   MaterialItem,
   ServiceTypeItem,
 } from '../../services/admin-api.service';
@@ -42,6 +43,7 @@ export class InventoryServiceCreatePageComponent implements OnInit {
   readonly saving = signal(false);
   readonly error = signal('');
   readonly formError = signal('');
+  readonly formSuccess = signal('');
   readonly users = signal<AdminUser[]>([]);
   readonly materials = signal<MaterialItem[]>([]);
   readonly serviceTypes = signal<ServiceTypeItem[]>([]);
@@ -65,14 +67,15 @@ export class InventoryServiceCreatePageComponent implements OnInit {
   private persistedImageUrl: string | null = null;
 
   readonly form = this.formBuilder.nonNullable.group({
-    customerName: ['', [Validators.required, Validators.maxLength(180)]],
-    serviceName: ['', [Validators.required, Validators.maxLength(180)]],
+    customerName: ['', [Validators.maxLength(180)]],
+    serviceName: ['', [Validators.maxLength(180)]],
     personInChargeUserId: [''],
-    type: ['', [Validators.required, Validators.maxLength(120)]],
+    type: ['', [Validators.maxLength(120)]],
     cost: [0, [Validators.min(0)]],
     labor: [0, [Validators.min(0)]],
     laborDiscountType: ['none' as PhDiscountType],
-    status: ['Active', [Validators.required, Validators.maxLength(60)]],
+    customDiscount: [0, [Validators.min(0)]],
+    status: ['Active', [Validators.maxLength(60)]],
     startedAt: [''],
     endedAt: [''],
     notes: ['', [Validators.maxLength(2000)]],
@@ -86,6 +89,7 @@ export class InventoryServiceCreatePageComponent implements OnInit {
     this.adminApi.resolveServiceImageUrl(this.imageUrl()),
   );
   readonly statusSelectClass = computed(() => this.statusPillClass(this.selectedStatus()));
+  readonly isDoneStatus = computed(() => this.normalizeJobStatus(this.selectedStatus()) === 'Done');
 
   ngOnInit(): void {
     this.isMobileDevice.set(this.detectMobileDevice());
@@ -197,6 +201,7 @@ export class InventoryServiceCreatePageComponent implements OnInit {
           cost: item.cost ?? 0,
           labor: item.labor ?? 0,
           laborDiscountType: normalizePhDiscountType(item.laborDiscountType),
+          customDiscount: item.customDiscount ?? 0,
           status: normalizedStatus,
           startedAt: item.startedAt ?? '',
           endedAt: item.endedAt ?? '',
@@ -233,8 +238,8 @@ export class InventoryServiceCreatePageComponent implements OnInit {
             this.customPartsArray.push(
               this.formBuilder.nonNullable.group({
                 customItemName: [part.customItemName],
-                quantity: [part.quantity || 1, [Validators.required, Validators.min(0.01)]],
-                unitPrice: [part.unitPrice ?? 0, [Validators.required, Validators.min(0)]],
+                quantity: [part.quantity || 1, [Validators.min(0)]],
+                unitPrice: [part.unitPrice ?? 0, [Validators.min(0)]],
                 labor: [part.labor ?? 0, [Validators.min(0)]],
                 discountType: [normalizePhDiscountType(part.discountType)],
               }),
@@ -262,6 +267,9 @@ export class InventoryServiceCreatePageComponent implements OnInit {
   }
 
   addPart(): void {
+    if (this.isDoneStatus()) {
+      return;
+    }
     this.addPartRow();
   }
 
@@ -275,7 +283,7 @@ export class InventoryServiceCreatePageComponent implements OnInit {
     this.partsArray.push(
       this.formBuilder.nonNullable.group({
         materialId: [materialId],
-        quantity: [quantity, [Validators.required, Validators.min(0.01)]],
+        quantity: [quantity, [Validators.min(0)]],
         unitPrice: [unitPrice, [Validators.min(0)]],
         discountType: [discountType],
       }),
@@ -285,6 +293,9 @@ export class InventoryServiceCreatePageComponent implements OnInit {
   }
 
   removePart(index: number): void {
+    if (this.isDoneStatus()) {
+      return;
+    }
     this.partsArray.removeAt(index);
     this.partQueries.update((items) => items.filter((_, itemIndex) => itemIndex !== index));
     this.materialSearchResults.update((current) => {
@@ -311,11 +322,14 @@ export class InventoryServiceCreatePageComponent implements OnInit {
   }
 
   addCustomPart(): void {
+    if (this.isDoneStatus()) {
+      return;
+    }
     this.customPartsArray.push(
       this.formBuilder.nonNullable.group({
         customItemName: [''],
-        quantity: [1, [Validators.required, Validators.min(0.01)]],
-        unitPrice: [0, [Validators.required, Validators.min(0)]],
+        quantity: [1, [Validators.min(0)]],
+        unitPrice: [0, [Validators.min(0)]],
         labor: [0, [Validators.min(0)]],
         discountType: ['none' as PhDiscountType],
       }),
@@ -324,6 +338,9 @@ export class InventoryServiceCreatePageComponent implements OnInit {
   }
 
   removeCustomPart(index: number): void {
+    if (this.isDoneStatus()) {
+      return;
+    }
     this.customPartsArray.removeAt(index);
     this.syncCostWithParts();
   }
@@ -389,6 +406,9 @@ export class InventoryServiceCreatePageComponent implements OnInit {
   }
 
   openPartSearch(index: number): void {
+    if (this.isDoneStatus()) {
+      return;
+    }
     if (this.partSearchCloseTimer) {
       clearTimeout(this.partSearchCloseTimer);
       this.partSearchCloseTimer = null;
@@ -408,6 +428,9 @@ export class InventoryServiceCreatePageComponent implements OnInit {
   }
 
   onPartQueryInput(index: number, value: string): void {
+    if (this.isDoneStatus()) {
+      return;
+    }
     this.partQueries.update((items) => {
       const next = [...items];
       next[index] = value;
@@ -461,6 +484,9 @@ export class InventoryServiceCreatePageComponent implements OnInit {
   }
 
   selectPartMaterial(index: number, item: MaterialItem): void {
+    if (this.isDoneStatus()) {
+      return;
+    }
     const group = this.partsArray.at(index);
     if (!group) {
       return;
@@ -495,6 +521,9 @@ export class InventoryServiceCreatePageComponent implements OnInit {
   }
 
   clearPartMaterial(index: number): void {
+    if (this.isDoneStatus()) {
+      return;
+    }
     const group = this.partsArray.at(index);
     if (!group) {
       return;
@@ -696,7 +725,17 @@ export class InventoryServiceCreatePageComponent implements OnInit {
   }
 
   totalCustomerPayment(): number {
-    return this.partsNetSubtotal() + this.serviceLaborNet();
+    const customDiscount = Number(this.form.controls.customDiscount.value) || 0;
+    return Math.max(0, this.partsNetSubtotal() + this.serviceLaborNet() - customDiscount);
+  }
+
+  customDiscountAmount(): number {
+    return Number(this.form.controls.customDiscount.value) || 0;
+  }
+
+  discountLabel(value: string | null | undefined): string {
+    const match = this.discountOptions.find((option) => option.value === value);
+    return match?.label ?? 'No discount';
   }
 
   syncCostWithParts(): void {
@@ -706,11 +745,6 @@ export class InventoryServiceCreatePageComponent implements OnInit {
   private buildPayload(
     statusOverride?: string,
   ): { payload: CreateInventoryServicePayload } | { error: string } {
-    if (this.form.invalid) {
-      this.form.markAllAsTouched();
-      return { error: 'Please fill in the required fields.' };
-    }
-
     const value = this.form.getRawValue();
     const [personIdRaw, personSourceRaw] = value.personInChargeUserId.split('|');
     const personInChargeUserId = Number(personIdRaw);
@@ -774,6 +808,7 @@ export class InventoryServiceCreatePageComponent implements OnInit {
         cost: Number(value.cost) || 0,
         labor: Number(value.labor) || 0,
         laborDiscountType: normalizePhDiscountType(value.laborDiscountType),
+        customDiscount: Number(value.customDiscount) || 0,
         status,
         startedAt: startedAt ? startedAt.toISOString() : undefined,
         endedAt: endedAt ? endedAt.toISOString() : undefined,
@@ -784,6 +819,7 @@ export class InventoryServiceCreatePageComponent implements OnInit {
 
   async submit(): Promise<void> {
     this.formError.set('');
+    this.formSuccess.set('');
 
     const built = this.buildPayload();
     if ('error' in built) {
@@ -792,14 +828,22 @@ export class InventoryServiceCreatePageComponent implements OnInit {
     }
 
     this.saving.set(true);
+    const wasCreate = !this.isEditMode();
 
     try {
-      await firstValueFrom(
-        this.isEditMode() && this.serviceId()
-          ? this.adminApi.updateInventoryService(this.serviceId()!, built.payload)
-          : this.adminApi.createInventoryService(built.payload),
+      const response = await firstValueFrom(
+        wasCreate
+          ? this.adminApi.createInventoryService(built.payload)
+          : this.adminApi.updateInventoryService(this.serviceId()!, built.payload),
       );
-      await this.router.navigate(['/admin/job-order']);
+
+      this.applySavedService(response.data);
+
+      if (wasCreate) {
+        await this.router.navigate(['/admin/job-order', response.data.id], { replaceUrl: true });
+      }
+
+      this.formSuccess.set(wasCreate ? 'Job order created.' : 'Job order updated.');
     } catch (err: unknown) {
       const httpErr = err as { error?: { message?: string | string[] } };
       const msg = httpErr?.error?.message;
@@ -808,6 +852,17 @@ export class InventoryServiceCreatePageComponent implements OnInit {
     } finally {
       this.saving.set(false);
     }
+  }
+
+  private applySavedService(item: InventoryServiceItem): void {
+    this.serviceId.set(item.id);
+    this.referenceNo.set(item.referenceNo ?? null);
+    this.persistedImageUrl = item.imageUrl ?? null;
+    this.imageUrl.set(item.imageUrl ?? null);
+    const normalizedStatus = this.normalizeJobStatus(item.status);
+    this.loadedStatus.set(normalizedStatus);
+    this.selectedStatus.set(normalizedStatus);
+    this.form.controls.status.setValue(normalizedStatus, { emitEvent: false });
   }
 
   requestDelete(): void {

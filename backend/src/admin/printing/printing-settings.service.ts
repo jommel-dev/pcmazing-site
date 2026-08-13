@@ -35,6 +35,9 @@ export interface PrintingSettingsItem {
   printerLastTestedAt: string | null;
   printerLastTestStatus: PrinterTestStatus;
   printerLastTestMessage: string;
+  warrantyPolicy: string;
+  footerNote: string;
+  thanksMessage: string;
   updatedAt: string | null;
 }
 
@@ -70,6 +73,9 @@ type SettingsRow = {
   printer_last_tested_at: string | null;
   printer_last_test_status: string | null;
   printer_last_test_message: string | null;
+  warranty_policy: string | null;
+  footer_note: string | null;
+  thanks_message: string | null;
   updated_at: string | null;
 };
 
@@ -133,6 +139,9 @@ export class PrintingSettingsService {
          printer_last_tested_at::text,
          printer_last_test_status,
          printer_last_test_message,
+         warranty_policy,
+         footer_note,
+         thanks_message,
          updated_at::text
        FROM pcmazing_printing_settings
        WHERE id = 1
@@ -198,6 +207,9 @@ export class PrintingSettingsService {
            printer_bluetooth_device_id = COALESCE($19, printer_bluetooth_device_id),
            printer_bluetooth_device_name = COALESCE($20, printer_bluetooth_device_name),
            printer_auto_print = COALESCE($21, printer_auto_print),
+           warranty_policy = COALESCE($22, warranty_policy),
+           footer_note = COALESCE($23, footer_note),
+           thanks_message = COALESCE($24, thanks_message),
            updated_at = NOW()
        WHERE id = 1`,
       [
@@ -222,6 +234,9 @@ export class PrintingSettingsService {
         dto.printerBluetoothDeviceId?.trim() ?? null,
         dto.printerBluetoothDeviceName?.trim() ?? null,
         dto.printerAutoPrint ?? null,
+        dto.warrantyPolicy ?? null,
+        dto.footerNote?.trim() ?? null,
+        dto.thanksMessage?.trim() ?? null,
       ],
     );
 
@@ -362,6 +377,9 @@ export class PrintingSettingsService {
       printerLastTestStatus: (row.printer_last_test_status ||
         'never') as PrinterTestStatus,
       printerLastTestMessage: row.printer_last_test_message ?? '',
+      warrantyPolicy: row.warranty_policy ?? '',
+      footerNote: row.footer_note ?? '',
+      thanksMessage: row.thanks_message ?? '',
       updatedAt: row.updated_at,
     };
   }

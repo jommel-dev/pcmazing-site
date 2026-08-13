@@ -9,6 +9,22 @@ import { CreateServiceDto } from './dto/create-service.dto';
 import { JOB_ORDER_STATUSES, UpdateServiceStatusDto } from './dto/update-service-status.dto';
 import { deleteServiceImageFile, saveServiceImageFile } from './service-image.util';
 
+/** Internal costing for job-order parts (uses purchase/order cost). */
+const PART_COST_UNIT_PRICE_SQL = `
+  CASE
+    WHEN sp.material_id IS NULL THEN COALESCE(sp.unit_price, 0)
+    ELSE COALESCE(m.order_cost, m.unit_price, sp.unit_price, 0)
+  END
+`;
+
+/** Customer-facing unit price for receipts and job-order line display (uses sell price). */
+const PART_SALE_UNIT_PRICE_SQL = `
+  CASE
+    WHEN sp.material_id IS NULL THEN COALESCE(sp.unit_price, 0)
+    ELSE COALESCE(NULLIF(sp.unit_price, 0), NULLIF(m.sell_price, 0), NULLIF(m.unit_price, 0), 0)
+  END
+`;
+
 export interface InventoryServiceListItem {
   id: number;
   referenceNo: string | null;
@@ -30,6 +46,7 @@ export interface InventoryServiceListItem {
   durationMinutes: number | null;
   notes?: string | null;
   laborDiscountType?: 'none' | 'senior' | 'pwd';
+  customDiscount?: number;
   parts?: Array<{
     materialId?: number;
     materialName?: string | null;
@@ -132,10 +149,7 @@ export class InventoryServicesService {
        LEFT JOIN LATERAL (
          SELECT COALESCE(
            SUM(
-             sp.quantity * CASE
-               WHEN sp.material_id IS NULL THEN COALESCE(sp.unit_price, 0)
-               ELSE COALESCE(m.order_cost, m.unit_price, sp.unit_price, 0)
-             END
+             sp.quantity * ${PART_COST_UNIT_PRICE_SQL}
            ),
            0
          ) AS parts_cost,
@@ -221,10 +235,7 @@ export class InventoryServicesService {
            ) AS parts_used,
            COALESCE(
              SUM(
-               sp.quantity * CASE
-                 WHEN sp.material_id IS NULL THEN COALESCE(sp.unit_price, 0)
-                 ELSE COALESCE(m.order_cost, m.unit_price, sp.unit_price, 0)
-               END
+               sp.quantity * ${PART_COST_UNIT_PRICE_SQL}
              ),
              0
            ) AS parts_cost,
@@ -302,9 +313,9 @@ export class InventoryServicesService {
       throw new ServiceUnavailableException('Service catalog table is not available in this database.');
     }
 
-    const customerName = dto.customerName.trim();
-    const serviceName = dto.serviceName.trim();
-    const serviceType = dto.type.trim();
+    const customerName = dto.customerName?.trim() || '';
+    const serviceName = dto.serviceName?.trim() || '';
+    const serviceType = dto.type?.trim() || '';
     const source = dto.personInChargeSource ?? 'tblusers';
     const startedAt = dto.startedAt ? new Date(dto.startedAt) : null;
     const endedAt = dto.endedAt ? new Date(dto.endedAt) : null;
@@ -338,12 +349,13 @@ export class InventoryServicesService {
           base_cost,
           labor,
           labor_discount_type,
+          custom_discount,
           status,
           notes,
           started_at,
           ended_at,
           created_by
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
         RETURNING id`,
         [
           customerName,
@@ -354,6 +366,7 @@ export class InventoryServicesService {
           dto.cost ?? 0,
           dto.labor ?? 0,
           this.normalizeDiscountType(dto.laborDiscountType),
+          dto.customDiscount ?? 0,
           dto.status?.trim() || 'Active',
           dto.notes?.trim() || null,
           startedAt ? startedAt.toISOString() : null,
@@ -411,9 +424,9 @@ export class InventoryServicesService {
 
     const existing = await this.getById(id);
 
-    const customerName = dto.customerName.trim();
-    const serviceName = dto.serviceName.trim();
-    const serviceType = dto.type.trim();
+    const customerName = dto.customerName?.trim() || '';
+    const serviceName = dto.serviceName?.trim() || '';
+    const serviceType = dto.type?.trim() || '';
     const nextStatus = dto.status?.trim() || 'Active';
     const source = dto.personInChargeSource ?? 'tblusers';
     const startedAt = dto.startedAt ? new Date(dto.startedAt) : null;
@@ -449,12 +462,13 @@ export class InventoryServicesService {
              base_cost = $6,
              labor = $7,
              labor_discount_type = $8,
-             status = $9,
-             notes = $10,
-             started_at = $11,
-             ended_at = $12,
+             custom_discount = $9,
+             status = $10,
+             notes = $11,
+             started_at = $12,
+             ended_at = $13,
              updated_at = NOW()
-         WHERE id = $13 AND deleted_at IS NULL`,
+         WHERE id = $14 AND deleted_at IS NULL`,
         [
           customerName,
           serviceName,
@@ -464,6 +478,7 @@ export class InventoryServicesService {
           dto.cost ?? 0,
           dto.labor ?? 0,
           this.normalizeDiscountType(dto.laborDiscountType),
+          dto.customDiscount ?? 0,
           nextStatus,
           dto.notes?.trim() || null,
           startedAt ? startedAt.toISOString() : null,
@@ -682,6 +697,7 @@ export class InventoryServicesService {
       status: string | null;
       notes: string | null;
       labor_discount_type: string | null;
+      custom_discount: string | null;
       image_url: string | null;
       started_at: string | null;
       ended_at: string | null;
@@ -703,6 +719,7 @@ export class InventoryServicesService {
         s.status,
         s.notes,
         s.labor_discount_type,
+        s.custom_discount::text,
         s.image_url,
         s.started_at::text,
         s.ended_at::text,
@@ -717,10 +734,7 @@ export class InventoryServicesService {
            ) AS parts_used,
            COALESCE(
              SUM(
-               sp.quantity * CASE
-                 WHEN sp.material_id IS NULL THEN COALESCE(sp.unit_price, 0)
-                 ELSE COALESCE(m.order_cost, m.unit_price, sp.unit_price, 0)
-               END
+               sp.quantity * ${PART_COST_UNIT_PRICE_SQL}
              ),
              0
            ) AS parts_cost,
@@ -765,10 +779,7 @@ export class InventoryServicesService {
          sp.custom_item_name,
          sp.quantity::text,
          (
-           CASE
-             WHEN sp.material_id IS NULL THEN COALESCE(sp.unit_price, 0)
-             ELSE COALESCE(m.order_cost, m.unit_price, sp.unit_price, 0)
-           END
+           ${PART_SALE_UNIT_PRICE_SQL}
          )::text AS unit_price,
          COALESCE(sp.labor, 0)::text AS labor,
          sp.discount_type
@@ -796,6 +807,7 @@ export class InventoryServicesService {
       status: row.status ?? 'Active',
       notes: row.notes,
       laborDiscountType: this.normalizeDiscountType(row.labor_discount_type),
+      customDiscount: Number(row.custom_discount ?? 0),
       imageUrl: row.image_url,
       totalCosting: partsCost,
       totalSales: cost + labor + partsLabor,

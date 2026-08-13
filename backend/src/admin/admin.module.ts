@@ -15,6 +15,8 @@ import { InventoryServicesService } from './inventory/inventory-services.service
 import { InventoryService } from './inventory/inventory.service';
 import { PurchaseController } from './inventory/purchase.controller';
 import { PurchaseService } from './inventory/purchase.service';
+import { SalesOrdersController } from './inventory/sales-orders.controller';
+import { SalesOrdersService } from './inventory/sales-orders.service';
 import { ServiceTypesController } from './inventory/service-types.controller';
 import { ServiceTypesService } from './inventory/service-types.service';
 import { EmployeeWorkspaceController } from './employee-workspace/employee-workspace.controller';
@@ -49,6 +51,7 @@ import { ProjectsModule } from './projects/projects.module';
     DemoRequestsController,
     InventoryController,
     InventoryServicesController,
+    SalesOrdersController,
     ServiceTypesController,
     PurchaseController,
     QuotationController,
@@ -69,6 +72,7 @@ import { ProjectsModule } from './projects/projects.module';
     DemoRequestsService,
     InventoryService,
     InventoryServicesService,
+    SalesOrdersService,
     ServiceTypesService,
     PurchaseService,
     QuotationService,
