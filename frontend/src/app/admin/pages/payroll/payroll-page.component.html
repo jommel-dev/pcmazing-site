@@ -3,9 +3,9 @@
     <div>
       <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Payroll</h2>
       <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
-        Attendance, enrolled employees, and period pay estimates. Configure salary fields in
+        Attendance, enrolled employees, overtime approvals, and period pay estimates. Configure salary fields in
         <a routerLink="/admin/users" class="font-semibold text-pcmazing-500 hover:underline">User Management</a>.
-        Generate a cutoff in Period pay to publish payslips to employee portals.
+        Semi-monthly Amount is a daily rate: 9h+ = full day, 4–4.5h+ (under 9h) = half day. Overtime over 9 hours needs employee request + admin approval.
       </p>
     </div>
     <button
@@ -25,11 +25,11 @@
     }
   </div>
 
-  <div class="mb-6 flex flex-wrap gap-2">
+  <div class="mb-6 flex gap-2 overflow-x-auto pb-1">
     @for (tab of tabs; track tab.key) {
       <button
         type="button"
-        class="rounded-xl px-4 py-2 text-sm font-bold transition"
+        class="shrink-0 rounded-xl px-4 py-2 text-sm font-bold transition"
         [class.bg-pcmazing-500]="activeTab() === tab.key"
         [class.text-white]="activeTab() === tab.key"
         [class.border]="activeTab() !== tab.key"
@@ -98,7 +98,7 @@
         No punches for {{ workDate() || 'today' }}.
       </div>
     } @else {
-      <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div class="table-scroll overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <table class="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
           <thead class="bg-slate-50 dark:bg-slate-950">
             <tr>
@@ -108,6 +108,7 @@
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Time out</th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Selfies</th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Hours</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">OT</th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Status</th>
             </tr>
           </thead>
@@ -151,6 +152,16 @@
                 </td>
                 <td class="px-4 py-3 text-slate-700 dark:text-slate-200">{{ formatHours(item.hoursWorked) }}</td>
                 <td class="px-4 py-3">
+                  @if ((item.overtimeHours ?? 0) > 0) {
+                    <p class="font-medium text-slate-900 dark:text-white">{{ formatHours(item.overtimeHours) }}</p>
+                    <span class="mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-bold" [class]="overtimeStatusClass(item.overtimeStatus)">
+                      {{ overtimeStatusLabel(item.overtimeStatus) }}
+                    </span>
+                  } @else {
+                    <span class="text-slate-400">—</span>
+                  }
+                </td>
+                <td class="px-4 py-3">
                   <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
                     {{ attendanceStatusLabel(item.status) }}
                   </span>
@@ -191,14 +202,17 @@
         No payroll-enabled employees yet. Enable payroll on a user first.
       </div>
     } @else {
-      <div class="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div class="table-scroll overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <table class="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
           <thead class="bg-slate-50 dark:bg-slate-950">
             <tr>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Employee</th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Department</th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Salary type</th>
-              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Amount</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">
+                Amount
+                <span class="block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Daily rate if semi-monthly</span>
+              </th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Today</th>
             </tr>
           </thead>
@@ -297,7 +311,7 @@
       <p class="mb-4 text-sm text-slate-500">
         Period {{ meta.dateFrom }} → {{ meta.dateTo }} ({{ meta.periodDays }} day{{ meta.periodDays === 1 ? '' : 's' }}).
         Compute previews the cutoff; Generate payslips publishes it to employee portals.
-        Estimates: weekly uses hours; monthly/semi-monthly use completed days; cutoff prorates amount over the selected date range.
+        Semi-monthly = Amount × paid day units (9h+ full, 4–&lt;9h half). Approved overtime (past 9h, employee-requested) pays at 1.25× hourly; pending OT is excluded until approved.
       </p>
     }
 
@@ -306,14 +320,16 @@
         No payroll employees in this period.
       </div>
     } @else {
-      <div class="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div class="table-scroll overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <table class="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
           <thead class="bg-slate-50 dark:bg-slate-950">
             <tr>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Employee</th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Type</th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Days</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Paid units</th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Hours</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">OT</th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Est. pay</th>
             </tr>
           </thead>
@@ -331,13 +347,142 @@
                 <td class="px-4 py-3 text-slate-700 dark:text-slate-200">
                   {{ item.daysCompleted }}/{{ item.daysPresent }}
                 </td>
+                <td class="px-4 py-3 text-slate-700 dark:text-slate-200">
+                  {{ (item.paidDayUnits ?? item.daysCompleted).toFixed(1) }}
+                </td>
                 <td class="px-4 py-3 text-slate-700 dark:text-slate-200">{{ formatHours(item.totalHours) }}</td>
+                <td class="px-4 py-3 text-slate-700 dark:text-slate-200">
+                  <p>{{ formatHours(item.approvedOvertimeHours) }} approved</p>
+                  @if (item.pendingOvertimeHours > 0) {
+                    <p class="text-xs text-amber-600">{{ formatHours(item.pendingOvertimeHours) }} pending</p>
+                  }
+                </td>
                 <td class="px-4 py-3 font-semibold text-slate-900 dark:text-white">{{ formatMoney(item.estimatedPay) }}</td>
               </tr>
             }
           </tbody>
         </table>
       </div>
+    }
+  } @else if (activeTab() === 'overtime') {
+    <form class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end" (ngSubmit)="applyOvertimeFilter()">
+      <div class="w-full sm:max-w-xs">
+        <label class="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">Status</label>
+        <select
+          class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+          [ngModel]="overtimeStatus()"
+          (ngModelChange)="overtimeStatus.set($event)"
+          name="overtimeStatus"
+        >
+          <option value="pending">Pending approval</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+        </select>
+      </div>
+      <button type="submit" class="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white dark:bg-slate-100 dark:text-slate-900">
+        Filter
+      </button>
+    </form>
+
+    <p class="mb-4 text-sm text-slate-500">
+      Hours beyond 9 per completed day appear here after the employee requests approval. Only approved overtime is included in Period pay (1.25× hourly).
+    </p>
+
+    @if (overtimeItems().length === 0) {
+      <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900">
+        No {{ overtimeStatus() }} overtime requests.
+      </div>
+    } @else {
+      <div class="table-scroll overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <table class="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
+          <thead class="bg-slate-50 dark:bg-slate-950">
+            <tr>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Employee</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Work date</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Shift</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">OT hours</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Status</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+            @for (item of overtimeItems(); track item.id) {
+              <tr>
+                <td class="px-4 py-3">
+                  <p class="font-semibold text-slate-900 dark:text-white">{{ item.fullName }}</p>
+                  <p class="text-xs text-slate-500">@{{ item.username }} · {{ item.employeeCode || 'No code' }}</p>
+                </td>
+                <td class="px-4 py-3 text-slate-700 dark:text-slate-200">{{ item.workDate }}</td>
+                <td class="px-4 py-3 text-slate-700 dark:text-slate-200">
+                  {{ formatPunch(item.timeIn) }} → {{ formatPunch(item.timeOut) }}
+                  <p class="text-xs text-slate-500">{{ formatHours(item.hoursWorked) }} total</p>
+                </td>
+                <td class="px-4 py-3 font-medium text-slate-900 dark:text-white">{{ formatHours(item.overtimeHours) }}</td>
+                <td class="px-4 py-3">
+                  <span class="rounded-full px-2.5 py-1 text-xs font-bold" [class]="overtimeStatusClass(item.overtimeStatus)">
+                    {{ overtimeStatusLabel(item.overtimeStatus) }}
+                  </span>
+                </td>
+                <td class="px-4 py-3">
+                  @if (item.overtimeStatus === 'pending') {
+                    <div class="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        class="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                        [disabled]="reviewingOvertimeId() != null"
+                        (click)="reviewOvertime(item, 'approved')"
+                      >
+                        @if (reviewingOvertimeId() === item.id) { Saving... } @else { Approve }
+                      </button>
+                      <button
+                        type="button"
+                        class="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                        [disabled]="reviewingOvertimeId() != null"
+                        (click)="reviewOvertime(item, 'rejected')"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  } @else {
+                    <div class="flex flex-wrap gap-2">
+                      @if (item.overtimeStatus !== 'approved') {
+                        <button
+                          type="button"
+                          class="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                          [disabled]="reviewingOvertimeId() != null"
+                          (click)="reviewOvertime(item, 'approved')"
+                        >
+                          Approve
+                        </button>
+                      }
+                      @if (item.overtimeStatus !== 'rejected') {
+                        <button
+                          type="button"
+                          class="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                          [disabled]="reviewingOvertimeId() != null"
+                          (click)="reviewOvertime(item, 'rejected')"
+                        >
+                          Reject
+                        </button>
+                      }
+                    </div>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      @if (overtimeMeta(); as pagination) {
+        <div class="mt-4 flex items-center justify-between text-sm text-slate-500">
+          <span>Page {{ pagination.page }} of {{ pagination.totalPages }} · {{ pagination.total }} total</span>
+          <div class="flex gap-2">
+            <button type="button" class="rounded-lg border px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page <= 1" (click)="goToOvertimePage(pagination.page - 1)">Previous</button>
+            <button type="button" class="rounded-lg border px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page >= pagination.totalPages" (click)="goToOvertimePage(pagination.page + 1)">Next</button>
+          </div>
+        </div>
+      }
     }
   }
 

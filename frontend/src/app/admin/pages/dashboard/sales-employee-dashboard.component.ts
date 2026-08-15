@@ -6,6 +6,7 @@ import {
   AdminApiService,
   EmployeeActivityItem,
   EmployeeDayOffItem,
+  EmployeePayslipDetail,
   EmployeeTodoItem,
   EmployeeWorkspaceDashboard,
 } from '../../services/admin-api.service';
@@ -28,8 +29,19 @@ export class SalesEmployeeDashboardComponent implements OnInit {
   readonly todoTitle = signal('');
   readonly dayOffReason = signal('');
   readonly saving = signal(false);
+  readonly requestingOvertimeId = signal<number | null>(null);
+  readonly overtimeMessage = signal('');
+  readonly openingPayslipId = signal<string | null>(null);
+  readonly payslipDetail = signal<EmployeePayslipDetail | null>(null);
+  readonly payslipDetailOpen = signal(false);
+  readonly payslipDetailLoading = signal(false);
+  readonly downloadingPayslip = signal(false);
 
   readonly calendarDays = computed(() => this.buildCalendar(this.month(), this.dashboard()));
+
+  readonly overtimeEligibleDays = computed(() =>
+    (this.dashboard()?.attendanceDays ?? []).filter((day) => day.canRequestOvertime),
+  );
 
   readonly selectedDayTodos = computed(() => {
     const date = this.selectedDate();
@@ -65,6 +77,81 @@ export class SalesEmployeeDashboardComponent implements OnInit {
       this.error.set('Unable to load your employee dashboard.');
     } finally {
       this.loading.set(false);
+    }
+  }
+
+  async requestOvertime(attendanceId: number | null | undefined): Promise<void> {
+    if (attendanceId == null || this.requestingOvertimeId() != null) {
+      return;
+    }
+
+    this.requestingOvertimeId.set(attendanceId);
+    this.overtimeMessage.set('');
+    this.error.set('');
+    try {
+      const response = await firstValueFrom(this.adminApi.requestEmployeeOvertime(attendanceId));
+      this.overtimeMessage.set(response.data.message || response.message || 'Overtime request submitted.');
+      await this.load();
+    } catch {
+      this.error.set('Unable to submit overtime request. Please try again.');
+    } finally {
+      this.requestingOvertimeId.set(null);
+    }
+  }
+
+  async viewPayslipPdf(payslipId: string): Promise<void> {
+    if (this.openingPayslipId() != null) {
+      return;
+    }
+
+    this.openingPayslipId.set(payslipId);
+    this.payslipDetailLoading.set(true);
+    this.payslipDetailOpen.set(true);
+    this.payslipDetail.set(null);
+    this.error.set('');
+    try {
+      const response = await firstValueFrom(this.adminApi.getEmployeePayslipDetail(payslipId));
+      this.payslipDetail.set(response.data);
+    } catch {
+      this.error.set('Unable to load payslip details.');
+      this.payslipDetailOpen.set(false);
+    } finally {
+      this.payslipDetailLoading.set(false);
+      this.openingPayslipId.set(null);
+    }
+  }
+
+  closePayslipDetail(): void {
+    this.payslipDetailOpen.set(false);
+    this.payslipDetail.set(null);
+  }
+
+  async downloadPayslipPdf(payslipId: string): Promise<void> {
+    if (this.downloadingPayslip()) {
+      return;
+    }
+
+    this.downloadingPayslip.set(true);
+    this.error.set('');
+    try {
+      const blob = await firstValueFrom(this.adminApi.downloadEmployeePayslipPdf(payslipId, true));
+      const detail = this.payslipDetail();
+      const filename = detail
+        ? `payslip-${detail.dateFrom}_${detail.dateTo}.pdf`
+        : `payslip-${payslipId}.pdf`;
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = filename;
+      anchor.rel = 'noopener';
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
+      this.error.set('Unable to download payslip PDF.');
+    } finally {
+      this.downloadingPayslip.set(false);
     }
   }
 
@@ -211,6 +298,8 @@ export class SalesEmployeeDashboardComponent implements OnInit {
         return 'Day off';
       case 'day_off_removed':
         return 'Day off removed';
+      case 'overtime_requested':
+        return 'Overtime request';
       case 'todo_created':
         return 'To-do added';
       case 'todo_completed':

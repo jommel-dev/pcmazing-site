@@ -39,6 +39,32 @@ ALTER TABLE pcmazing_attendance
   ADD COLUMN IF NOT EXISTS time_in_selfie_url VARCHAR(500),
   ADD COLUMN IF NOT EXISTS time_out_selfie_url VARCHAR(500);
 
+ALTER TABLE pcmazing_attendance
+  ADD COLUMN IF NOT EXISTS overtime_hours NUMERIC(10, 2) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS overtime_status VARCHAR(20) NOT NULL DEFAULT 'none',
+  ADD COLUMN IF NOT EXISTS overtime_reviewed_by BIGINT,
+  ADD COLUMN IF NOT EXISTS overtime_reviewed_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS overtime_review_note VARCHAR(255);
+
+CREATE INDEX IF NOT EXISTS idx_pcmazing_attendance_overtime_status
+  ON pcmazing_attendance (overtime_status, work_date DESC);
+
+-- Recalculate OT using 9-hour full day. Eligible OT stays 'none' until employee requests approval.
+UPDATE pcmazing_attendance
+SET overtime_hours = CASE
+      WHEN EXTRACT(EPOCH FROM (time_out - time_in)) / 3600.0 > 9
+        THEN ROUND((EXTRACT(EPOCH FROM (time_out - time_in)) / 3600.0 - 9)::numeric, 2)
+      ELSE 0
+    END,
+    overtime_status = CASE
+      WHEN EXTRACT(EPOCH FROM (time_out - time_in)) / 3600.0 <= 9 THEN 'none'
+      WHEN overtime_status IN ('pending', 'approved', 'rejected') THEN overtime_status
+      ELSE 'none'
+    END,
+    updated_at = NOW()
+WHERE time_in IS NOT NULL
+  AND time_out IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS pcmazing_payroll_runs (
   id BIGSERIAL PRIMARY KEY,
   date_from DATE NOT NULL,

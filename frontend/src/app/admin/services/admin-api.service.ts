@@ -448,6 +448,8 @@ export interface AdminUser {
   payrollEnabled?: boolean;
 }
 
+export type PayrollOvertimeStatus = 'none' | 'pending' | 'approved' | 'rejected';
+
 export interface PayrollAttendanceItem {
   id: number;
   userId: number;
@@ -463,6 +465,26 @@ export interface PayrollAttendanceItem {
   department: string | null;
   timeInSelfieUrl?: string | null;
   timeOutSelfieUrl?: string | null;
+  overtimeHours?: number;
+  overtimeStatus?: PayrollOvertimeStatus;
+}
+
+export interface PayrollOvertimeItem {
+  id: number;
+  userId: number;
+  userSource: 'pcmazing_admin_users' | 'tblusers';
+  username: string;
+  fullName: string;
+  workDate: string;
+  timeIn: string | null;
+  timeOut: string | null;
+  hoursWorked: number | null;
+  overtimeHours: number;
+  overtimeStatus: PayrollOvertimeStatus;
+  employeeCode: string | null;
+  department: string | null;
+  overtimeReviewedAt: string | null;
+  overtimeReviewNote: string | null;
 }
 
 export interface EmployeeDayOffItem {
@@ -502,6 +524,44 @@ export interface EmployeePayslipItem {
   payrollEnabled: boolean;
 }
 
+export interface EmployeePayslipDetail {
+  id: string;
+  label: string;
+  dateFrom: string;
+  dateTo: string;
+  generatedAt: string;
+  employee: {
+    fullName: string;
+    positionTitle: string | null;
+    username: string;
+    employeeCode: string | null;
+    department: string | null;
+  };
+  days: Array<{
+    workDate: string;
+    timeInLabel: string;
+    timeOutLabel: string;
+    hoursWorked: number;
+    dayType: string;
+    paidUnits: number;
+    dayPay: number;
+    overtimeHours: number;
+    overtimeStatus: string;
+    overtimePay: number;
+  }>;
+  totals: {
+    daysPresent: number;
+    daysCompleted: number;
+    paidDayUnits: number;
+    totalHours: number;
+    approvedOvertimeHours: number;
+    pendingOvertimeHours: number;
+    basePay: number;
+    overtimePay: number;
+    estimatedPay: number;
+  };
+}
+
 export interface EmployeeWorkspaceDashboard {
   workDate: string;
   month: string;
@@ -510,6 +570,10 @@ export interface EmployeeWorkspaceDashboard {
     timeOut: string | null;
     hoursWorked: number | null;
     status: string;
+    overtimeHours?: number;
+    overtimeStatus?: PayrollOvertimeStatus;
+    canRequestOvertime?: boolean;
+    attendanceId?: number | null;
   };
   monthSummary: {
     totalHours: number;
@@ -517,11 +581,21 @@ export interface EmployeeWorkspaceDashboard {
     daysCompleted: number;
     dayOffCount: number;
   };
+  overtimeNotice?: {
+    eligibleCount: number;
+    pendingCount: number;
+    message: string | null;
+  };
   attendanceDays: Array<{
+    id?: number;
     workDate: string;
     timeIn: string | null;
     timeOut: string | null;
     hoursWorked: number | null;
+    dayPayLabel?: string;
+    overtimeHours?: number;
+    overtimeStatus?: PayrollOvertimeStatus;
+    canRequestOvertime?: boolean;
   }>;
   dayOffs: EmployeeDayOffItem[];
   todos: EmployeeTodoItem[];
@@ -566,7 +640,10 @@ export interface PayrollPeriodItem {
   salaryAmount: number | null;
   daysPresent: number;
   daysCompleted: number;
+  paidDayUnits?: number;
   totalHours: number;
+  approvedOvertimeHours: number;
+  pendingOvertimeHours: number;
   estimatedPay: number;
 }
 
@@ -577,6 +654,8 @@ export interface PayrollPeriodMeta {
   totals: {
     employees: number;
     totalHours: number;
+    approvedOvertimeHours?: number;
+    pendingOvertimeHours?: number;
     estimatedPay: number;
   };
 }
@@ -591,6 +670,8 @@ export interface PayrollGenerateResult {
   totals: {
     employees: number;
     totalHours: number;
+    approvedOvertimeHours?: number;
+    pendingOvertimeHours?: number;
     estimatedPay: number;
   };
   replaced: boolean;
@@ -1638,6 +1719,32 @@ export class AdminApiService {
     );
   }
 
+  listPayrollOvertime(status: PayrollOvertimeStatus | 'pending' = 'pending', page = 1, limit = 50) {
+    let params = this.listParams(page, limit, '');
+    params = params.set('status', status);
+
+    return this.http.get<ListResponse<PayrollOvertimeItem> & { status: PayrollOvertimeStatus }>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/overtime`,
+      { headers: this.headers(), params },
+    );
+  }
+
+  reviewPayrollOvertime(id: number, status: 'approved' | 'rejected', note = '') {
+    return this.http.patch<
+      ItemResponse<{
+        id: number;
+        overtimeHours: number;
+        overtimeStatus: PayrollOvertimeStatus;
+        overtimeReviewedAt: string | null;
+        overtimeReviewNote: string | null;
+      }>
+    >(
+      `${APP_CONFIG.apiUrl}/admin/payroll/overtime/${id}`,
+      { status, ...(note.trim() ? { note: note.trim() } : {}) },
+      { headers: this.headers() },
+    );
+  }
+
   listProjects() {
     return this.http.get<ItemResponse<{ items: ProjectListItem[] }>>(
       `${APP_CONFIG.apiUrl}/admin/projects`,
@@ -2137,6 +2244,41 @@ export class AdminApiService {
     return this.http.get<ItemResponse<EmployeeWorkspaceDashboard>>(
       `${APP_CONFIG.apiUrl}/admin/employee-workspace/dashboard`,
       { headers: this.headers(), params },
+    );
+  }
+
+  requestEmployeeOvertime(attendanceId: number) {
+    return this.http.post<
+      ItemResponse<{
+        id: number;
+        workDate: string;
+        overtimeHours: number;
+        overtimeStatus: PayrollOvertimeStatus;
+        message: string;
+      }> & { message?: string }
+    >(
+      `${APP_CONFIG.apiUrl}/admin/employee-workspace/overtime/${attendanceId}/request`,
+      {},
+      { headers: this.headers() },
+    );
+  }
+
+  downloadEmployeePayslipPdf(payslipId: string | number, download = false) {
+    let params = new HttpParams();
+    if (download) {
+      params = params.set('download', '1');
+    }
+    return this.http.get(`${APP_CONFIG.apiUrl}/admin/employee-workspace/payslips/${payslipId}/pdf`, {
+      headers: this.headers(),
+      params,
+      responseType: 'blob',
+    });
+  }
+
+  getEmployeePayslipDetail(payslipId: string | number) {
+    return this.http.get<ItemResponse<EmployeePayslipDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/employee-workspace/payslips/${payslipId}`,
+      { headers: this.headers() },
     );
   }
 
