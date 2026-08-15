@@ -10,6 +10,44 @@
       <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">{{ error() }}</div>
     }
 
+    @if (overtimeMessage()) {
+      <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
+        {{ overtimeMessage() }}
+      </div>
+    }
+
+    @if (data.overtimeNotice?.message; as overtimeNoticeMessage) {
+      <div class="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 dark:border-amber-900 dark:bg-amber-950/40">
+        <p class="text-sm font-bold text-amber-900 dark:text-amber-100">Overtime notice</p>
+        <p class="mt-1 text-sm text-amber-800 dark:text-amber-200">{{ overtimeNoticeMessage }}</p>
+        @if (overtimeEligibleDays().length > 0) {
+          <ul class="mt-3 space-y-2">
+            @for (day of overtimeEligibleDays(); track day.workDate) {
+              <li class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-100 bg-white/70 px-3 py-2 dark:border-amber-900/60 dark:bg-slate-950/40">
+                <div>
+                  <p class="text-sm font-semibold text-slate-900 dark:text-white">{{ day.workDate }}</p>
+                  <p class="text-xs text-slate-500 dark:text-slate-400">
+                    {{ formatHours(day.hoursWorked) }} worked · {{ formatHours(day.overtimeHours) }} OT
+                    @if (day.dayPayLabel) {
+                      · {{ day.dayPayLabel }}
+                    }
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  class="rounded-lg bg-pcmazing-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-pcmazing-600 disabled:opacity-50"
+                  [disabled]="requestingOvertimeId() != null || !day.id"
+                  (click)="requestOvertime(day.id)"
+                >
+                  @if (requestingOvertimeId() === day.id) { Requesting... } @else { Request approval }
+                </button>
+              </li>
+            }
+          </ul>
+        }
+      </div>
+    }
+
     <div class="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
       <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 dark:border-slate-700 dark:bg-slate-900">
         <p class="text-[10px] font-bold uppercase tracking-wide text-pcmazing-500 sm:text-xs dark:text-pcmazing-400">Working hours</p>
@@ -163,12 +201,20 @@
                     {{ formatMoney(slip.estimatedPay) }}
                   </p>
                 </div>
-                <div class="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500 dark:text-slate-400">
+                <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 text-[11px] text-slate-500 dark:text-slate-400">
                   <span>{{ slip.daysCompleted }} day(s) completed</span>
                   <span>{{ formatHours(slip.totalHours) }}</span>
                   @if (!slip.payrollEnabled) {
                     <span class="font-semibold text-amber-600 dark:text-amber-400">Payroll not enabled</span>
                   }
+                  <button
+                    type="button"
+                    class="ml-auto rounded-lg bg-pcmazing-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-pcmazing-600 disabled:opacity-50"
+                    [disabled]="openingPayslipId() != null"
+                    (click)="viewPayslipPdf(slip.id)"
+                  >
+                    @if (openingPayslipId() === slip.id) { Opening... } @else { View details }
+                  </button>
                 </div>
               </li>
             } @empty {
@@ -222,7 +268,40 @@
         @if (selectedAttendance(); as punch) {
           <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
             In {{ formatPunch(punch.timeIn) }} · Out {{ formatPunch(punch.timeOut) }} · {{ formatHours(punch.hoursWorked) }}
+            @if (punch.dayPayLabel) {
+              · {{ punch.dayPayLabel }}
+            }
           </p>
+          @if ((punch.overtimeHours ?? 0) > 0) {
+            <div class="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+              <p class="font-bold">Overtime: {{ formatHours(punch.overtimeHours) }}</p>
+              @if (punch.canRequestOvertime) {
+                <p class="mt-1">You worked more than 9 hours. Request approval so overtime can be paid.</p>
+                <button
+                  type="button"
+                  class="mt-2 rounded-lg bg-pcmazing-500 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50"
+                  [disabled]="requestingOvertimeId() != null || !punch.id"
+                  (click)="requestOvertime(punch.id)"
+                >
+                  @if (requestingOvertimeId() === punch.id) { Requesting... } @else { Request OT approval }
+                </button>
+              } @else if (punch.overtimeStatus === 'pending') {
+                <p class="mt-1">OT request pending admin approval.</p>
+              } @else if (punch.overtimeStatus === 'approved') {
+                <p class="mt-1">OT approved.</p>
+              } @else if (punch.overtimeStatus === 'rejected') {
+                <p class="mt-1">OT was rejected. You can request again if needed.</p>
+                <button
+                  type="button"
+                  class="mt-2 rounded-lg bg-pcmazing-500 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-50"
+                  [disabled]="requestingOvertimeId() != null || !punch.id"
+                  (click)="requestOvertime(punch.id)"
+                >
+                  Request again
+                </button>
+              }
+            </div>
+          }
         } @else {
           <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">No attendance punch for this date.</p>
         }
@@ -248,6 +327,119 @@
               (click)="saveDayOff()"
             >
               Plot day off
+            </button>
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+  @if (payslipDetailOpen()) {
+    <div
+      class="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/60 sm:items-center sm:p-4 dark:bg-black/70"
+      (click)="closePayslipDetail()"
+    >
+      <div
+        class="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-slate-200 bg-white shadow-xl sm:rounded-3xl dark:border-slate-700 dark:bg-slate-900"
+        (click)="$event.stopPropagation()"
+      >
+        <div class="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 dark:border-slate-800">
+          <div class="min-w-0">
+            <p class="text-[10px] font-bold uppercase tracking-wide text-pcmazing-500">Payslip</p>
+            <h3 class="mt-1 text-base font-bold text-slate-900 dark:text-white">
+              @if (payslipDetail(); as detail) {
+                {{ detail.label }}
+              } @else {
+                Loading details...
+              }
+            </h3>
+          </div>
+          <button
+            type="button"
+            class="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-bold text-slate-700 dark:border-slate-600 dark:text-slate-200"
+            (click)="closePayslipDetail()"
+          >
+            Close
+          </button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto px-5 py-4">
+          @if (payslipDetailLoading()) {
+            <p class="py-10 text-center text-sm text-slate-500">Loading payslip details...</p>
+          } @else if (payslipDetail(); as detail) {
+            <div class="space-y-1 text-sm text-slate-700 dark:text-slate-200">
+              <p><span class="font-semibold text-slate-900 dark:text-white">Employee:</span> {{ detail.employee.fullName }}</p>
+              <p><span class="font-semibold text-slate-900 dark:text-white">Position:</span> {{ detail.employee.positionTitle || '—' }}</p>
+              <p>
+                <span class="font-semibold text-slate-900 dark:text-white">Payroll Period:</span>
+                {{ detail.dateFrom }} - {{ detail.dateTo }}
+              </p>
+            </div>
+
+            <div class="mt-5">
+              <h4 class="text-sm font-bold text-slate-900 dark:text-white">Compensation Summary</h4>
+              <ul class="mt-3 space-y-2">
+                @for (day of detail.days; track day.workDate) {
+                  <li class="rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-3 dark:border-slate-800 dark:bg-slate-950/50">
+                    <div class="flex items-start justify-between gap-2">
+                      <div class="min-w-0">
+                        <p class="text-sm font-semibold text-slate-900 dark:text-white">{{ day.workDate }}</p>
+                        <p class="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                          {{ day.timeInLabel }}-{{ day.timeOutLabel }} · {{ formatHours(day.hoursWorked) }} · {{ day.dayType }}
+                        </p>
+                      </div>
+                      <p class="shrink-0 text-sm font-bold text-slate-900 dark:text-white">{{ formatMoney(day.dayPay) }}</p>
+                    </div>
+                    @if (day.overtimeHours > 0) {
+                      <p class="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
+                        OT {{ formatHours(day.overtimeHours) }} ({{ day.overtimeStatus }})
+                        @if (day.overtimePay > 0) {
+                          · {{ formatMoney(day.overtimePay) }}
+                        }
+                      </p>
+                    }
+                  </li>
+                } @empty {
+                  <li class="text-sm text-slate-500">No attendance punches in this period.</li>
+                }
+              </ul>
+            </div>
+
+            <div class="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-700 dark:bg-slate-950/60">
+              <h4 class="text-sm font-bold text-slate-900 dark:text-white">Summary</h4>
+              <div class="mt-3 space-y-1.5 text-sm text-slate-600 dark:text-slate-300">
+                <p>Days present / completed: {{ detail.totals.daysPresent }} / {{ detail.totals.daysCompleted }}</p>
+                <p>Paid day units: {{ detail.totals.paidDayUnits.toFixed(2) }}</p>
+                <p>Total hours: {{ formatHours(detail.totals.totalHours) }}</p>
+                <p>Approved overtime: {{ formatHours(detail.totals.approvedOvertimeHours) }}</p>
+                @if (detail.totals.pendingOvertimeHours > 0) {
+                  <p class="text-amber-700 dark:text-amber-300">
+                    Pending overtime: {{ formatHours(detail.totals.pendingOvertimeHours) }}
+                  </p>
+                }
+                <p>Base pay: {{ formatMoney(detail.totals.basePay) }}</p>
+                <p>Overtime pay: {{ formatMoney(detail.totals.overtimePay) }}</p>
+                <p class="pt-2 text-base font-bold text-pcmazing-500">
+                  Net estimated pay: {{ formatMoney(detail.totals.estimatedPay) }}
+                </p>
+              </div>
+            </div>
+
+            <p class="mt-4 text-[11px] leading-relaxed text-slate-400">
+              This payslip is system-generated by PCmazing Payroll and for employee reference only.
+            </p>
+          }
+        </div>
+
+        @if (payslipDetail(); as detail) {
+          <div class="border-t border-slate-100 px-5 py-4 dark:border-slate-800">
+            <button
+              type="button"
+              class="w-full rounded-xl bg-pcmazing-500 px-4 py-3 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:opacity-50"
+              [disabled]="downloadingPayslip()"
+              (click)="downloadPayslipPdf(detail.id)"
+            >
+              @if (downloadingPayslip()) { Downloading... } @else { Download PDF }
             </button>
           </div>
         }

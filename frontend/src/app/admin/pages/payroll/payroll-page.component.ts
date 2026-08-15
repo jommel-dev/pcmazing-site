@@ -9,11 +9,13 @@ import {
   PayrollAttendanceItem,
   PayrollEmployeeItem,
   PayrollOverview,
+  PayrollOvertimeItem,
+  PayrollOvertimeStatus,
   PayrollPeriodItem,
   PayrollPeriodMeta,
 } from '../../services/admin-api.service';
 
-type PayrollTab = 'overview' | 'attendance' | 'employees' | 'period';
+type PayrollTab = 'overview' | 'attendance' | 'employees' | 'period' | 'overtime';
 
 @Component({
   selector: 'app-payroll-page',
@@ -30,6 +32,7 @@ export class PayrollPageComponent implements OnInit {
     { key: 'attendance', label: 'Attendance' },
     { key: 'employees', label: 'Employees' },
     { key: 'period', label: 'Period pay' },
+    { key: 'overtime', label: 'Overtime' },
   ];
 
   readonly activeTab = signal<PayrollTab>('overview');
@@ -52,6 +55,12 @@ export class PayrollPageComponent implements OnInit {
   readonly dateTo = signal('');
   readonly generating = signal(false);
   readonly generateMessage = signal('');
+
+  readonly overtimeItems = signal<PayrollOvertimeItem[]>([]);
+  readonly overtimeMeta = signal<PaginationMeta | null>(null);
+  readonly overtimeStatus = signal<PayrollOvertimeStatus>('pending');
+  readonly overtimePage = signal(1);
+  readonly reviewingOvertimeId = signal<number | null>(null);
 
   readonly timeClockUrl = `${APP_CONFIG.publicSiteUrl.replace(/\/$/, '')}/time-clock`;
 
@@ -85,6 +94,9 @@ export class PayrollPageComponent implements OnInit {
           break;
         case 'period':
           await this.loadPeriod();
+          break;
+        case 'overtime':
+          await this.loadOvertime();
           break;
       }
     } catch {
@@ -124,6 +136,15 @@ export class PayrollPageComponent implements OnInit {
     this.periodMeta.set(response.meta);
     this.dateFrom.set(response.meta.dateFrom);
     this.dateTo.set(response.meta.dateTo);
+  }
+
+  private async loadOvertime(): Promise<void> {
+    const response = await firstValueFrom(
+      this.adminApi.listPayrollOvertime(this.overtimeStatus(), this.overtimePage(), 50),
+    );
+    this.overtimeItems.set(response.data);
+    this.overtimeMeta.set(response.meta);
+    this.overtimeStatus.set(response.status);
   }
 
   async applyAttendanceFilter(): Promise<void> {
@@ -173,6 +194,48 @@ export class PayrollPageComponent implements OnInit {
       this.error.set('Unable to load period summary.');
     } finally {
       this.loading.set(false);
+    }
+  }
+
+  async applyOvertimeFilter(): Promise<void> {
+    this.overtimePage.set(1);
+    this.loading.set(true);
+    this.error.set('');
+    try {
+      await this.loadOvertime();
+    } catch {
+      this.error.set('Unable to load overtime requests.');
+    } finally {
+      this.loading.set(false);
+    }
+  }
+
+  async goToOvertimePage(nextPage: number): Promise<void> {
+    this.overtimePage.set(nextPage);
+    this.loading.set(true);
+    try {
+      await this.loadOvertime();
+    } catch {
+      this.error.set('Unable to load overtime requests.');
+    } finally {
+      this.loading.set(false);
+    }
+  }
+
+  async reviewOvertime(item: PayrollOvertimeItem, status: 'approved' | 'rejected'): Promise<void> {
+    if (this.reviewingOvertimeId() != null) {
+      return;
+    }
+
+    this.reviewingOvertimeId.set(item.id);
+    this.error.set('');
+    try {
+      await firstValueFrom(this.adminApi.reviewPayrollOvertime(item.id, status));
+      await this.loadOvertime();
+    } catch {
+      this.error.set(`Unable to ${status === 'approved' ? 'approve' : 'reject'} overtime.`);
+    } finally {
+      this.reviewingOvertimeId.set(null);
     }
   }
 
@@ -321,6 +384,32 @@ export class PayrollPageComponent implements OnInit {
         return 'Done';
       default:
         return 'Incomplete';
+    }
+  }
+
+  overtimeStatusLabel(value: PayrollOvertimeStatus | undefined): string {
+    switch (value) {
+      case 'pending':
+        return 'Pending';
+      case 'approved':
+        return 'Approved';
+      case 'rejected':
+        return 'Rejected';
+      default:
+        return '—';
+    }
+  }
+
+  overtimeStatusClass(value: PayrollOvertimeStatus | undefined): string {
+    switch (value) {
+      case 'pending':
+        return 'bg-amber-50 text-amber-700';
+      case 'approved':
+        return 'bg-emerald-50 text-emerald-700';
+      case 'rejected':
+        return 'bg-red-50 text-red-700';
+      default:
+        return 'bg-slate-100 text-slate-600';
     }
   }
 

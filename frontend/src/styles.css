@@ -37,6 +37,16 @@ layer(base);
   }
 }
 
+@layer components {
+  /* Mobile-friendly horizontal scroll for wide data tables/lists */
+  .table-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+}
+
 @media print {
   @page {
     size: A4;

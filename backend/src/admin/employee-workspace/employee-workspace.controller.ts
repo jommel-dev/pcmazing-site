@@ -10,6 +10,7 @@ import {
   Put,
   Query,
   Req,
+  StreamableFile,
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
@@ -48,6 +49,41 @@ export class EmployeeWorkspaceController {
     const { userId, source } = this.actor(req);
     const data = await this.workspaceService.getDashboard(userId, source, month);
     return { success: true, data };
+  }
+
+  @Get('payslips/:id')
+  async payslipDetail(
+    @Req() req: Request & { user?: AdminJwtPayload },
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    const { userId, source } = this.actor(req);
+    const data = await this.workspaceService.getPayslipDetail(userId, source, id);
+    return { success: true, data };
+  }
+
+  @Get('payslips/:id/pdf')
+  async payslipPdf(
+    @Req() req: Request & { user?: AdminJwtPayload },
+    @Param('id', ParseIntPipe) id: number,
+    @Query('download') download?: string,
+  ) {
+    const { userId, source } = this.actor(req);
+    const { filename, buffer } = await this.workspaceService.getPayslipPdf(userId, source, id);
+    const forceDownload = download === '1' || download === 'true';
+    return new StreamableFile(buffer, {
+      type: 'application/pdf',
+      disposition: `${forceDownload ? 'attachment' : 'inline'}; filename="${filename}"`,
+    });
+  }
+
+  @Post('overtime/:id/request')
+  async requestOvertime(
+    @Req() req: Request & { user?: AdminJwtPayload },
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    const { userId, source } = this.actor(req);
+    const data = await this.workspaceService.requestOvertime(userId, source, id);
+    return { success: true, message: data.message, data };
   }
 
   @Put('day-offs')

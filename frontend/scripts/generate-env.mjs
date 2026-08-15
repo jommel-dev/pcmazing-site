@@ -11,7 +11,7 @@ config({ path: resolve(root, '.env') });
 const apiUrl =
   process.env.API_URL?.trim() ||
   process.env.NG_APP_API_URL?.trim() ||
-  'http://localhost:3001';
+  'http://localhost:3000';
 
 const publicSiteUrl =
   process.env.PUBLIC_SITE_URL?.trim() ||

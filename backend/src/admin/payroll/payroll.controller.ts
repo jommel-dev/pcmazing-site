@@ -1,8 +1,9 @@
-import { Body, Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { AdminJwtPayload, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../rbac/roles.decorator';
 import { RolesGuard } from '../rbac/roles.guard';
+import { ReviewOvertimeDto } from './dto/review-overtime.dto';
 import { PayrollService } from './payroll.service';
 
 @Controller('admin/payroll')
@@ -75,5 +76,40 @@ export class PayrollController {
       meta: result.meta,
       workDate: result.workDate,
     }));
+  }
+
+  @Get('overtime')
+  @Roles('admin')
+  listOvertime(
+    @Query('status') status?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.payrollService.listOvertime(status, page, limit).then((result) => ({
+      success: true,
+      data: result.items,
+      meta: result.meta,
+      status: result.status,
+    }));
+  }
+
+  @Patch('overtime/:id')
+  @Roles('admin')
+  reviewOvertime(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: ReviewOvertimeDto,
+    @Req() req: Request & { user?: AdminJwtPayload },
+  ) {
+    const reviewedBy =
+      req.user?.sub != null && Number.isFinite(Number(req.user.sub))
+        ? Number(req.user.sub)
+        : undefined;
+
+    return this.payrollService
+      .reviewOvertime(id, body.status, body.note, reviewedBy)
+      .then((data) => ({
+        success: true,
+        data,
+      }));
   }
 }
