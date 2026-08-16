@@ -52,6 +52,18 @@ export class AuthController {
     };
   }
 
+  @Post('refresh')
+  @UseGuards(JwtAuthGuard)
+  async refresh(@Req() request: Request & { user: AdminJwtPayload }) {
+    const result = await this.authService.refreshSession(request.user.sub, request.user.source);
+
+    return {
+      success: true,
+      message: 'Session extended.',
+      data: result,
+    };
+  }
+
   @Get('me')
   @UseGuards(JwtAuthGuard)
   async me(@Req() request: Request & { user: AdminJwtPayload }) {

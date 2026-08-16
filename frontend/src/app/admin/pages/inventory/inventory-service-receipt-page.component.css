@@ -45,10 +45,25 @@
   box-sizing: border-box;
 }
 
+.template-flow-body {
+  position: absolute;
+  box-sizing: border-box;
+}
+
+.template-flow-footer {
+  position: relative;
+  width: 100%;
+  margin-top: 2mm;
+}
+
 .template-print-element {
   position: absolute;
   overflow: hidden;
   box-sizing: border-box;
+}
+
+.template-print-element[data-type='table'] {
+  overflow: visible;
 }
 
 .template-print-element[data-type='line'] {
@@ -173,8 +188,27 @@
   margin-bottom: 1rem;
 }
 
+.receipt-bill-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  width: 100%;
+  gap: 2.5rem;
+}
+
+.receipt-bill-contact {
+  margin-left: auto;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.template-print-element .receipt-bill-row {
+  height: 100%;
+  align-items: center;
+}
+
 .receipt-bill-to p {
-  margin: 0;
+  margin: 0.15rem 0 0;
 }
 
 .receipt-table {
@@ -198,6 +232,13 @@
 
 .receipt-table tbody td {
   border-bottom: 1px solid #d4d4d4;
+}
+
+.receipt-table .remarks-row td,
+.template-line-items .remarks-row td {
+  border-bottom: 0;
+  padding-top: 0.7rem;
+  white-space: pre-line;
 }
 
 .receipt-table .num {
@@ -281,7 +322,7 @@
 
 .receipt-signature {
   margin-top: 1.5rem;
-  text-align: left;
+  text-align: center;
 }
 
 .receipt-signature span {

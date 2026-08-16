@@ -109,10 +109,23 @@ export interface InventoryServiceFilterOption {
   count: number;
 }
 
+export interface JobOrderCustomerSuggestion {
+  name: string;
+  email: string | null;
+  contact: string | null;
+  address: string | null;
+}
+
 export interface InventoryServiceItem {
   id: number;
   referenceNo: string | null;
   customerName: string;
+  customerEmail?: string | null;
+  customerContact?: string | null;
+  customerAddress?: string | null;
+  deviceBrand?: string | null;
+  deviceModel?: string | null;
+  deviceSerial?: string | null;
   serviceName: string;
   personInChargeUserId: number | null;
   personInChargeSource: 'tblusers' | 'pcmazing_admin_users';
@@ -131,38 +144,56 @@ export interface InventoryServiceItem {
   notes?: string | null;
   laborDiscountType?: 'none' | 'senior' | 'pwd';
   customDiscount?: number;
+  downpayment?: number;
+  paymentMethod?: string | null;
   parts?: Array<{
     materialId?: number;
+    serviceTypeId?: number;
     materialName?: string | null;
     materialCode?: string | null;
     description?: string | null;
     customItemName?: string;
+    brandName?: string | null;
     quantity: number;
     unitPrice?: number;
     labor?: number;
     discountType?: 'none' | 'senior' | 'pwd';
+    discountAmount?: number;
   }>;
   updatedAt: string | null;
 }
 
 export interface CreateInventoryServicePayload {
   customerName: string;
+  customerEmail?: string;
+  customerContact?: string;
+  customerAddress?: string;
+  deviceBrand?: string;
+  deviceModel?: string;
+  deviceSerial?: string;
   serviceName: string;
   personInChargeUserId?: number;
   personInChargeSource?: 'tblusers' | 'pcmazing_admin_users';
   type: string;
   parts?: Array<{
     materialId?: number;
+    serviceTypeId?: number;
     customItemName?: string;
+    brandName?: string;
     quantity: number;
     unitPrice?: number;
     labor?: number;
     discountType?: 'none' | 'senior' | 'pwd';
+    discountAmount?: number;
+    createCatalogService?: boolean;
+    createInventoryMaterial?: boolean;
   }>;
   cost?: number;
   labor?: number;
   laborDiscountType?: 'none' | 'senior' | 'pwd';
   customDiscount?: number;
+  downpayment?: number;
+  paymentMethod?: string;
   status?: string;
   notes?: string;
   startedAt?: string;
@@ -1273,6 +1304,17 @@ export class AdminApiService {
     });
   }
 
+  searchJobOrderCustomers(search = '') {
+    let params = new HttpParams();
+    if (search.trim()) {
+      params = params.set('search', search.trim());
+    }
+    return this.http.get<ItemResponse<JobOrderCustomerSuggestion[]>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/services/customer-names`,
+      { headers: this.headers(), params },
+    );
+  }
+
   createInventoryService(payload: CreateInventoryServicePayload) {
     return this.http.post<ItemResponse<InventoryServiceItem>>(
       `${APP_CONFIG.apiUrl}/admin/inventory/services`,
@@ -1296,10 +1338,13 @@ export class AdminApiService {
     );
   }
 
-  updateInventoryServiceStatus(id: number, status: string) {
+  updateInventoryServiceStatus(id: number, status: string, paymentMethod?: string) {
     return this.http.patch<ItemResponse<InventoryServiceItem>>(
       `${APP_CONFIG.apiUrl}/admin/inventory/services/${id}/status`,
-      { status },
+      {
+        status,
+        ...(paymentMethod ? { paymentMethod } : {}),
+      },
       { headers: this.headers() },
     );
   }

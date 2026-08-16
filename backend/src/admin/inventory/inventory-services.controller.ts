@@ -57,6 +57,18 @@ export class InventoryServicesController {
       }));
   }
 
+  @Get('customer-names')
+  searchCustomers(
+    @Req() request: Request & { user?: AdminJwtPayload },
+    @Query('search') search?: string,
+  ) {
+    this.assertNotSales(request.user?.role);
+    return this.inventoryServicesService.searchCustomers(search).then((customers) => ({
+      success: true,
+      data: customers,
+    }));
+  }
+
   @Post()
   create(
     @Body() dto: CreateServiceDto,

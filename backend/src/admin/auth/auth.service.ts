@@ -117,10 +117,15 @@ export class AuthService {
     };
 
     const accessToken = this.jwtService.sign(payload, {
-      expiresIn: (this.configService.get<string>('JWT_EXPIRES_IN') ?? '8h') as `${number}${'s' | 'm' | 'h' | 'd'}` | number,
+      expiresIn: (this.configService.get<string>('JWT_EXPIRES_IN') ?? '30m') as `${number}${'s' | 'm' | 'h' | 'd'}` | number,
     });
 
     return { accessToken, user };
+  }
+
+  async refreshSession(userId: number, source: AdminAuthUser['source']): Promise<{ accessToken: string; user: AdminAuthUser }> {
+    const user = await this.getProfile(userId, source);
+    return this.issueSession(user);
   }
 
   async getProfile(userId: number, source: AdminAuthUser['source']): Promise<AdminAuthUser> {

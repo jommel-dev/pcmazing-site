@@ -1,7 +1,9 @@
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsDateString,
+  IsEmail,
   IsIn,
   IsInt,
   IsNumber,
@@ -13,7 +15,7 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 
 class CreateServicePartDto {
   @IsOptional()
@@ -22,9 +24,29 @@ class CreateServicePartDto {
   materialId!: number;
 
   @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  serviceTypeId?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  createCatalogService?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  createInventoryMaterial?: boolean;
+
+  @IsOptional()
   @IsString()
   @MaxLength(180)
   customItemName?: string;
+
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() || undefined : value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  brandName?: string;
 
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0.01)
@@ -47,6 +69,13 @@ class CreateServicePartDto {
   @IsString()
   @IsIn(['none', 'senior', 'pwd'])
   discountType?: 'none' | 'senior' | 'pwd';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(999999999.99)
+  discountAmount?: number;
 }
 
 export class CreateServiceDto {
@@ -54,6 +83,24 @@ export class CreateServiceDto {
   @IsString()
   @MaxLength(180)
   customerName?: string;
+
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() || undefined : value))
+  @IsOptional()
+  @IsEmail()
+  @MaxLength(180)
+  customerEmail?: string;
+
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() || undefined : value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  customerContact?: string;
+
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() || undefined : value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  customerAddress?: string;
 
   @IsOptional()
   @IsString()
@@ -72,12 +119,12 @@ export class CreateServiceDto {
 
   @IsOptional()
   @IsString()
-  @MaxLength(120)
+  @MaxLength(500)
   type?: string;
 
   @IsOptional()
   @IsArray()
-  @ArrayMaxSize(30)
+  @ArrayMaxSize(80)
   @ValidateNested({ each: true })
   @Type(() => CreateServicePartDto)
   parts?: CreateServicePartDto[];
@@ -100,10 +147,24 @@ export class CreateServiceDto {
   laborDiscountType?: 'none' | 'senior' | 'pwd';
 
   @IsOptional()
+  @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   @Max(999999999.99)
   customDiscount?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(999999999.99)
+  downpayment?: number;
+
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() || undefined : value))
+  @IsOptional()
+  @IsString()
+  @IsIn(['Cash', 'Gcash', 'Bank Transfer'])
+  paymentMethod?: 'Cash' | 'Gcash' | 'Bank Transfer';
 
   @IsOptional()
   @IsString()
@@ -122,4 +183,22 @@ export class CreateServiceDto {
   @IsOptional()
   @IsDateString()
   endedAt?: string;
+
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() || undefined : value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  deviceBrand?: string;
+
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() || undefined : value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(180)
+  deviceModel?: string;
+
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() || undefined : value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  deviceSerial?: string;
 }
