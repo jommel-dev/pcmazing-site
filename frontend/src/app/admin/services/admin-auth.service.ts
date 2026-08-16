@@ -1,5 +1,6 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
 import { APP_CONFIG } from '../../core/config/app-config';
 
 export interface AdminAuthUser {
@@ -21,10 +22,20 @@ interface ApiResponse<T> {
 const STAFF_GATE_KEY = 'pcmazing-staff-gate-token';
 const ACCESS_TOKEN_KEY = 'pcmazing-admin-access-token';
 const ADMIN_USER_KEY = 'pcmazing-admin-user';
+const SESSION_REFRESH_WHEN_REMAINING_MS = 15 * 60 * 1000;
+const SESSION_REFRESH_THROTTLE_MS = 20 * 1000;
 
 @Injectable({ providedIn: 'root' })
 export class AdminAuthService {
   private readonly http = inject(HttpClient);
+  private keepaliveStarted = false;
+  private expiryTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastRefreshAt = 0;
+  private refreshInFlight: Promise<void> | null = null;
+
+  constructor() {
+    this.startSessionKeepalive();
+  }
 
   getStaffGateToken(): string {
     return sessionStorage.getItem(STAFF_GATE_KEY)?.trim() ?? '';
@@ -40,7 +51,7 @@ export class AdminAuthService {
       return false;
     }
 
-    const payload = this.decodeStaffGatePayload(token);
+    const payload = this.decodeJwtPayload(token);
     if (!payload || payload.type !== 'staff_gate') {
       this.clearStaffGateAccess();
       return false;
@@ -63,11 +74,13 @@ export class AdminAuthService {
   }
 
   getAccessToken(): string {
-    return sessionStorage.getItem(ACCESS_TOKEN_KEY) ?? localStorage.getItem(ACCESS_TOKEN_KEY) ?? '';
+    this.promoteSessionToSharedStorage();
+    return localStorage.getItem(ACCESS_TOKEN_KEY) ?? sessionStorage.getItem(ACCESS_TOKEN_KEY) ?? '';
   }
 
   getStoredUser(): AdminAuthUser | null {
-    const raw = sessionStorage.getItem(ADMIN_USER_KEY) ?? localStorage.getItem(ADMIN_USER_KEY);
+    this.promoteSessionToSharedStorage();
+    const raw = localStorage.getItem(ADMIN_USER_KEY) ?? sessionStorage.getItem(ADMIN_USER_KEY);
     if (!raw) {
       return null;
     }
@@ -80,7 +93,11 @@ export class AdminAuthService {
   }
 
   isAuthenticated(): boolean {
-    return Boolean(this.getAccessToken());
+    if (!this.isAccessTokenValid()) {
+      this.clearLoginSession();
+      return false;
+    }
+    return true;
   }
 
   verifyStaffPasscode(passcode: string) {
@@ -102,6 +119,14 @@ export class AdminAuthService {
     return this.http.post<ApiResponse<{ accessToken: string; user: AdminAuthUser }>>(
       `${APP_CONFIG.apiUrl}/auth/portal-login`,
       { username, password },
+    );
+  }
+
+  refreshSession() {
+    return this.http.post<ApiResponse<{ accessToken: string; user: AdminAuthUser }>>(
+      `${APP_CONFIG.apiUrl}/auth/refresh`,
+      {},
+      { headers: this.buildAuthHeaders() },
     );
   }
 
@@ -146,28 +171,58 @@ export class AdminAuthService {
     return Boolean(localStorage.getItem(ACCESS_TOKEN_KEY));
   }
 
-  saveSession(accessToken: string, user: AdminAuthUser, rememberMe: boolean): void {
-    const storage = rememberMe ? localStorage : sessionStorage;
-    const other = rememberMe ? sessionStorage : localStorage;
-
-    other.removeItem(ACCESS_TOKEN_KEY);
-    other.removeItem(ADMIN_USER_KEY);
-
-    storage.setItem(ACCESS_TOKEN_KEY, accessToken);
-    storage.setItem(ADMIN_USER_KEY, JSON.stringify(user));
+  saveSession(accessToken: string, user: AdminAuthUser, _rememberMe = false): void {
+    // Always persist in localStorage so other tabs can reuse the same session.
+    localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+    localStorage.setItem(ADMIN_USER_KEY, JSON.stringify(user));
+    sessionStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+    sessionStorage.setItem(ADMIN_USER_KEY, JSON.stringify(user));
+    this.scheduleExpiryWatch();
   }
 
-  updateStoredUser(user: AdminAuthUser, rememberMe: boolean): void {
-    const storage = rememberMe ? localStorage : sessionStorage;
-    storage.setItem(ADMIN_USER_KEY, JSON.stringify(user));
+  updateStoredUser(user: AdminAuthUser, _rememberMe = false): void {
+    const raw = JSON.stringify(user);
+    localStorage.setItem(ADMIN_USER_KEY, raw);
+    sessionStorage.setItem(ADMIN_USER_KEY, raw);
   }
 
   logout(): void {
+    this.clearLoginSession();
+    this.clearStaffGateAccess();
+  }
+
+  private clearLoginSession(): void {
     sessionStorage.removeItem(ACCESS_TOKEN_KEY);
     sessionStorage.removeItem(ADMIN_USER_KEY);
     localStorage.removeItem(ACCESS_TOKEN_KEY);
     localStorage.removeItem(ADMIN_USER_KEY);
-    this.clearStaffGateAccess();
+    this.clearExpiryWatch();
+  }
+
+  /** Copy a tab-only session into localStorage so other tabs can see it. */
+  private promoteSessionToSharedStorage(): void {
+    const sessionToken = sessionStorage.getItem(ACCESS_TOKEN_KEY);
+    const sessionUser = sessionStorage.getItem(ADMIN_USER_KEY);
+    if (sessionToken && !localStorage.getItem(ACCESS_TOKEN_KEY)) {
+      localStorage.setItem(ACCESS_TOKEN_KEY, sessionToken);
+    }
+    if (sessionUser && !localStorage.getItem(ADMIN_USER_KEY)) {
+      localStorage.setItem(ADMIN_USER_KEY, sessionUser);
+    }
+  }
+
+  onAuthStorageChange(callback: () => void): () => void {
+    if (typeof window === 'undefined') {
+      return () => undefined;
+    }
+
+    const handler = (event: StorageEvent) => {
+      if (event.key === ACCESS_TOKEN_KEY || event.key === ADMIN_USER_KEY) {
+        callback();
+      }
+    };
+    window.addEventListener('storage', handler);
+    return () => window.removeEventListener('storage', handler);
   }
 
   buildAuthHeaders(): HttpHeaders {
@@ -198,7 +253,7 @@ export class AdminAuthService {
     return /staff access verification/i.test(message);
   }
 
-  private decodeStaffGatePayload(token: string): { type?: string; exp?: number } | null {
+  private decodeJwtPayload(token: string): { type?: string; exp?: number } | null {
     const parts = token.split('.');
     if (parts.length !== 3) {
       return null;
@@ -210,6 +265,97 @@ export class AdminAuthService {
       return JSON.parse(atob(padded)) as { type?: string; exp?: number };
     } catch {
       return null;
+    }
+  }
+
+  private isAccessTokenValid(): boolean {
+    const token = this.getAccessToken();
+    if (!token) {
+      return false;
+    }
+
+    const remaining = this.getAccessTokenRemainingMs(token);
+    return remaining > 0;
+  }
+
+  private getAccessTokenRemainingMs(token = this.getAccessToken()): number {
+    const payload = this.decodeJwtPayload(token);
+    if (!payload || typeof payload.exp !== 'number') {
+      return token ? Number.POSITIVE_INFINITY : 0;
+    }
+    return payload.exp * 1000 - Date.now();
+  }
+
+  private startSessionKeepalive(): void {
+    if (this.keepaliveStarted || typeof window === 'undefined') {
+      return;
+    }
+
+    this.keepaliveStarted = true;
+    const bump = () => {
+      void this.extendSessionIfNeeded();
+    };
+    window.addEventListener('click', bump, true);
+    window.addEventListener('keydown', bump, true);
+    window.addEventListener('touchstart', bump, true);
+    window.addEventListener('mousemove', bump, true);
+    this.scheduleExpiryWatch();
+  }
+
+  private async extendSessionIfNeeded(): Promise<void> {
+    if (!this.getAccessToken()) {
+      return;
+    }
+
+    const remaining = this.getAccessTokenRemainingMs();
+    if (remaining <= 0) {
+      this.clearLoginSession();
+      return;
+    }
+
+    if (remaining > SESSION_REFRESH_WHEN_REMAINING_MS) {
+      return;
+    }
+
+    if (this.refreshInFlight || Date.now() - this.lastRefreshAt < SESSION_REFRESH_THROTTLE_MS) {
+      return;
+    }
+
+    this.refreshInFlight = firstValueFrom(this.refreshSession())
+      .then((response) => {
+        this.saveSession(response.data.accessToken, response.data.user);
+        this.lastRefreshAt = Date.now();
+      })
+      .catch(() => {
+        if (this.getAccessTokenRemainingMs() <= 0) {
+          this.clearLoginSession();
+        }
+      })
+      .finally(() => {
+        this.refreshInFlight = null;
+      });
+
+    await this.refreshInFlight;
+  }
+
+  private scheduleExpiryWatch(): void {
+    this.clearExpiryWatch();
+    const remaining = this.getAccessTokenRemainingMs();
+    if (!Number.isFinite(remaining) || remaining <= 0) {
+      return;
+    }
+
+    this.expiryTimer = setTimeout(() => {
+      if (this.getAccessTokenRemainingMs() <= 0) {
+        this.clearLoginSession();
+      }
+    }, remaining + 250);
+  }
+
+  private clearExpiryWatch(): void {
+    if (this.expiryTimer) {
+      clearTimeout(this.expiryTimer);
+      this.expiryTimer = null;
     }
   }
 }

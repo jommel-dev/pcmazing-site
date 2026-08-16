@@ -53,13 +53,13 @@ export const PRINT_FIELD_DEFINITIONS: PrintFieldDefinition[] = [
   {
     key: 'storeName',
     label: 'Store name',
-    sample: 'PCmazing',
+    sample: 'PCmazing Information Technology Services',
     documentTypes: ['sales_receipt', 'quotation', 'invoice', 'custom'],
   },
   {
     key: 'storeAddress',
     label: 'Store address',
-    sample: 'Mabini Extension, Cabanatuan City, 3100',
+    sample: '10 Nori St. Purok 3, Mabini Extension, Cabanatuan City',
     documentTypes: ['sales_receipt', 'quotation', 'invoice', 'custom'],
   },
   {
@@ -81,15 +81,39 @@ export const PRINT_FIELD_DEFINITIONS: PrintFieldDefinition[] = [
     documentTypes: ['sales_receipt', 'quotation', 'invoice', 'custom'],
   },
   {
+    key: 'billToLine',
+    label: 'Bill To and Contact',
+    sample: 'Bill To: Maria Santos         Contact: 0917 123 4567',
+    documentTypes: ['sales_receipt', 'custom'],
+  },
+  {
+    key: 'addressLine',
+    label: 'Address line',
+    sample: 'Address: Mabini Extension, Cabanatuan City',
+    documentTypes: ['sales_receipt', 'custom'],
+  },
+  {
     key: 'customerPhone',
     label: 'Customer phone',
     sample: '0917 123 4567',
     documentTypes: ['sales_receipt', 'custom'],
   },
   {
+    key: 'customerEmail',
+    label: 'Customer email',
+    sample: 'customer@email.com',
+    documentTypes: ['sales_receipt', 'quotation', 'invoice', 'custom'],
+  },
+  {
+    key: 'customerAddress',
+    label: 'Customer address',
+    sample: 'Mabini Extension, Cabanatuan City',
+    documentTypes: ['sales_receipt', 'quotation', 'invoice', 'custom'],
+  },
+  {
     key: 'jobNotes',
     label: 'Job order notes',
-    sample: 'Customer requested rush repair. Call before pickup.',
+    sample: 'Remarks:\nIssue: Slow boot. Fix: SSD upgrade.',
     documentTypes: ['sales_receipt', 'custom'],
   },
   {
@@ -115,6 +139,30 @@ export const PRINT_FIELD_DEFINITIONS: PrintFieldDefinition[] = [
     label: 'Receipt total',
     sample: 'RECEIPT TOTAL  P1,100.00',
     documentTypes: ['sales_receipt', 'invoice', 'custom'],
+  },
+  {
+    key: 'downpaymentLine',
+    label: 'Downpayment',
+    sample: 'Downpayment  P500.00',
+    documentTypes: ['sales_receipt', 'custom'],
+  },
+  {
+    key: 'amountPaidLine',
+    label: 'Amount paid',
+    sample: 'Amount paid  P500.00',
+    documentTypes: ['sales_receipt', 'custom'],
+  },
+  {
+    key: 'balanceDueLine',
+    label: 'Balance due',
+    sample: 'Balance due  P0.00',
+    documentTypes: ['sales_receipt', 'custom'],
+  },
+  {
+    key: 'paymentMethodLine',
+    label: 'Payment method',
+    sample: 'Payment method  Gcash',
+    documentTypes: ['sales_receipt', 'custom'],
   },
   {
     key: 'warrantyPolicy',

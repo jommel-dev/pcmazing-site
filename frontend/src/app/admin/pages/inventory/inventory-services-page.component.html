@@ -9,7 +9,7 @@
       routerLink="/admin/job-order/new"
       class="shrink-0 rounded-xl bg-pcmazing-500 px-4 py-2.5 text-center text-sm font-bold text-white hover:bg-pcmazing-600 sm:w-auto"
     >
-      Add Service
+      Add Job
     </a>
   </div>
 
@@ -131,9 +131,6 @@
           <table class="w-full min-w-[980px] text-[11px] leading-snug">
             <thead class="bg-slate-50">
               <tr>
-                @if (columnVisible('image')) {
-                  <th class="px-2 py-2 text-left font-bold whitespace-nowrap text-slate-600">Image</th>
-                }
                 <th class="px-2 py-2 text-left font-bold whitespace-nowrap text-slate-600">
                   <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('referenceNo')">
                     Ref No{{ sortIndicator('referenceNo') }}
@@ -149,7 +146,7 @@
                 @if (columnVisible('serviceName')) {
                   <th class="max-w-[180px] px-2 py-2 text-left font-bold text-slate-600 sm:max-w-[220px]">
                     <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('serviceName')">
-                      Service Name{{ sortIndicator('serviceName') }}
+                      Job Order Description{{ sortIndicator('serviceName') }}
                     </button>
                   </th>
                 }
@@ -216,45 +213,19 @@
             <tbody class="divide-y divide-slate-100">
               @for (item of items(); track item.id) {
                 <tr class="hover:bg-slate-50">
-                  @if (columnVisible('image')) {
-                    <td class="px-2 py-2" (click)="$event.stopPropagation()">
-                      <label
-                        class="group relative inline-flex size-8 cursor-pointer items-center justify-center overflow-hidden rounded-md border border-dashed border-slate-300 bg-slate-50 text-[9px] font-bold text-slate-400 transition hover:border-pcmazing-400 hover:bg-pcmazing-50 hover:text-pcmazing-600"
-                        [class.pointer-events-none]="imageUploadingId() === item.id"
-                        [class.opacity-60]="imageUploadingId() === item.id"
-                        [attr.title]="serviceImageUrl(item) ? 'Replace completion image' : 'Upload completion image'"
-                        [attr.aria-label]="(serviceImageUrl(item) ? 'Replace' : 'Upload') + ' completion image for ' + (item.referenceNo || item.serviceName)"
-                      >
-                        @if (imageUploadingId() === item.id) {
-                          <span class="size-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-pcmazing-500"></span>
-                        } @else if (serviceImageUrl(item); as imageUrl) {
-                          <img [src]="imageUrl" [alt]="imageAlt(item)" class="size-full object-cover" />
-                          <span class="absolute inset-0 flex items-center justify-center bg-slate-900/45 text-[8px] font-bold tracking-wide text-white uppercase opacity-0 transition group-hover:opacity-100">
-                            Edit
-                          </span>
-                        } @else {
-                          <span class="leading-none">Add</span>
-                        }
-                        <input
-                          type="file"
-                          class="sr-only"
-                          accept="image/*"
-                          [disabled]="imageUploadingId() === item.id"
-                          (change)="onTableImageSelected(item, $event)"
-                        />
-                      </label>
-                    </td>
-                  }
                   <td class="px-2 py-2 font-medium whitespace-nowrap text-slate-700">
                     <a [routerLink]="['/admin/job-order', item.id]" class="hover:text-pcmazing-600 hover:underline">
                       {{ item.referenceNo || 'Pending' }}
                     </a>
                   </td>
                   @if (columnVisible('customer')) {
-                    <td class="max-w-[180px] truncate px-2 py-2 text-slate-700 sm:max-w-[220px]" [title]="item.customerName">
-                      <a [routerLink]="['/admin/job-order', item.id]" class="hover:text-pcmazing-600 hover:underline">
+                    <td class="max-w-[180px] px-2 py-2 text-slate-700 sm:max-w-[220px]" [title]="item.customerName">
+                      <a [routerLink]="['/admin/job-order', item.id]" class="block truncate hover:text-pcmazing-600 hover:underline">
                         {{ item.customerName }}
                       </a>
+                      @if (item.customerContact) {
+                        <div class="truncate text-xs text-slate-500">{{ item.customerContact }}</div>
+                      }
                     </td>
                   }
                   @if (columnVisible('serviceName')) {
@@ -307,18 +278,32 @@
                     </select>
                   </td>
                   <td class="px-2 py-2 text-right" (click)="$event.stopPropagation()">
-                    <button
-                      type="button"
-                      class="inline-flex size-7 items-center justify-center rounded-lg text-red-600 hover:bg-red-50"
-                      title="Delete"
-                      aria-label="Delete job order"
-                      (click)="requestDelete(item, $event)"
-                    >
-                      <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m2 0v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7h12Z" />
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M10 11v6M14 11v6" />
-                      </svg>
-                    </button>
+                    <div class="inline-flex items-center justify-end gap-1">
+                      <button
+                        type="button"
+                        class="inline-flex size-7 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 hover:text-pcmazing-600"
+                        title="Print"
+                        aria-label="Print job order"
+                        (click)="printJob(item, $event)"
+                      >
+                        <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M6 9V4h12v5M6 14H5a2 2 0 0 1-2-2v-1a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v1a2 2 0 0 1-2 2h-1" />
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M6 14h12v6H6v-6Z" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        class="inline-flex size-7 items-center justify-center rounded-lg text-red-600 hover:bg-red-50"
+                        title="Delete"
+                        aria-label="Delete job order"
+                        (click)="requestDelete(item, $event)"
+                      >
+                        <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m2 0v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7h12Z" />
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M10 11v6M14 11v6" />
+                        </svg>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               }
@@ -498,6 +483,132 @@
           (click)="confirmStatusChange()"
         >
           Yes
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+@if (pendingSettlement(); as settlementItem) {
+  <div
+    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4"
+    (click)="cancelSettlement()"
+  >
+    <div
+      class="max-h-[90vh] w-full max-w-lg overflow-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-xl"
+      (click)="$event.stopPropagation()"
+    >
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <h3 class="text-lg font-bold text-slate-900">Settlement</h3>
+          <p class="mt-1 text-sm text-slate-500">
+            Collect the remaining balance to settle this job, then print the receipt.
+          </p>
+        </div>
+        <button
+          type="button"
+          class="rounded-lg px-2 py-1 text-sm font-semibold text-slate-500 hover:bg-slate-100"
+          [disabled]="statusUpdatingId() !== null"
+          (click)="cancelSettlement()"
+        >
+          Close
+        </button>
+      </div>
+
+      <div class="mt-4 space-y-3 text-sm text-slate-600">
+        <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <p class="font-semibold text-slate-800">{{ settlementItem.customerName || 'No customer name' }}</p>
+          <p class="mt-1 text-slate-500">{{ settlementItem.referenceNo || settlementItem.serviceName }}</p>
+        </div>
+
+        @if (settlementError()) {
+          <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {{ settlementError() }}
+          </div>
+        }
+
+        @if (settlementLoading()) {
+          <p class="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-center text-sm text-slate-500">
+            Loading settlement totals...
+          </p>
+        } @else {
+          <div class="flex items-center justify-between">
+            <span>Total to pay</span>
+            <span class="font-medium text-slate-800">₱{{ settlementTotalToPay() | number:'1.2-2' }}</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span>Downpayment</span>
+            <span class="font-medium text-slate-800">₱{{ settlementDownpayment() | number:'1.2-2' }}</span>
+          </div>
+          <div class="flex items-center justify-between border-t border-slate-200 pt-2 text-base font-bold text-slate-900">
+            <span>Balance due</span>
+            <span>₱{{ settlementBalanceDue() | number:'1.2-2' }}</span>
+          </div>
+          <div>
+            <p class="mb-2 font-medium text-slate-700">Payment method</p>
+            <div class="grid grid-cols-3 gap-2">
+              @for (method of settlementPaymentMethods; track method) {
+                <button
+                  type="button"
+                  class="rounded-xl border px-3 py-2.5 text-sm font-bold"
+                  [class.border-pcmazing-500]="settlementPaymentMethod() === method"
+                  [class.bg-pcmazing-50]="settlementPaymentMethod() === method"
+                  [class.text-pcmazing-700]="settlementPaymentMethod() === method"
+                  [class.border-slate-200]="settlementPaymentMethod() !== method"
+                  [class.bg-white]="settlementPaymentMethod() !== method"
+                  [class.text-slate-700]="settlementPaymentMethod() !== method"
+                  [disabled]="statusUpdatingId() !== null"
+                  (click)="selectSettlementPaymentMethod(method)"
+                >
+                  {{ method }}
+                </button>
+              }
+            </div>
+          </div>
+          <div class="flex items-center justify-between gap-4">
+            <label class="font-medium text-slate-700" for="list-settlement-received">Amount received</label>
+            <div class="flex items-center gap-1">
+              <span class="text-slate-500">₱</span>
+              <input
+                id="list-settlement-received"
+                type="number"
+                min="0"
+                step="0.01"
+                class="w-32 rounded-lg border border-slate-200 px-3 py-2 text-right text-sm font-medium text-slate-800 focus:border-pcmazing-500 focus:outline-none read-only:bg-slate-100"
+                [value]="settlementAmountReceived()"
+                [readOnly]="statusUpdatingId() !== null"
+                (input)="onSettlementAmountInput($any($event.target).value)"
+                placeholder="0.00"
+              />
+            </div>
+          </div>
+          <div class="flex items-center justify-between font-semibold text-slate-800">
+            <span>Change</span>
+            <span>₱{{ settlementChangeAmount() | number:'1.2-2' }}</span>
+          </div>
+        }
+      </div>
+
+      <div class="mt-6 flex justify-end gap-2">
+        <button
+          type="button"
+          class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+          [disabled]="statusUpdatingId() !== null"
+          (click)="cancelSettlement()"
+        >
+          Back
+        </button>
+        <button
+          type="button"
+          class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:opacity-60"
+          [disabled]="statusUpdatingId() !== null || settlementLoading() || !canConfirmSettlement()"
+          (click)="confirmSettlement()"
+        >
+          @if (statusUpdatingId() !== null) {
+            Settling...
+          } @else {
+            Confirm Settlement & Print
+          }
         </button>
       </div>
     </div>

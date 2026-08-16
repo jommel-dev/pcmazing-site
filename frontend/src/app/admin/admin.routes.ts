@@ -63,7 +63,7 @@ export const adminRoutes: Routes = [
     path: 'login',
     component: AdminLoginPageComponent,
     title: 'Admin Login | PCMazing',
-    canActivate: [staffGateGuard, adminGuestGuard],
+    canActivate: [adminGuestGuard, staffGateGuard],
   },
   {
     path: '',
@@ -198,7 +198,7 @@ export const adminRoutes: Routes = [
       {
         path: 'job-order/new',
         component: InventoryServiceCreatePageComponent,
-        title: 'Add Service | PCMazing Admin',
+        title: 'Add Job | PCMazing Admin',
         canActivate: [adminRoleGuard],
         data: { module: 'job_order' },
       },
@@ -212,7 +212,7 @@ export const adminRoutes: Routes = [
       {
         path: 'job-order/:id',
         component: InventoryServiceCreatePageComponent,
-        title: 'Edit Service | PCMazing Admin',
+        title: 'Edit Job Order | PCMazing Admin',
         canActivate: [adminRoleGuard],
         data: { module: 'job_order' },
       },

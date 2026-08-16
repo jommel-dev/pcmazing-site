@@ -13,6 +13,7 @@ export const userRoutes: Routes = [
     path: 'portal',
     component: PortalHubPageComponent,
     title: 'PCmazing Apps',
+    canActivate: [portalGuestGuard],
   },
   {
     path: 'login',

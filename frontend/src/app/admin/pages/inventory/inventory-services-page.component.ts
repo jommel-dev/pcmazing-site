@@ -1,5 +1,5 @@
 import { Component, inject, OnDestroy, OnInit, signal } from '@angular/core';
-import { NgClass } from '@angular/common';
+import { DecimalPipe, NgClass } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
@@ -13,7 +13,6 @@ import {
 import { formatInventoryMoney } from './inventory-stock.util';
 
 type ServiceColumnKey =
-  | 'image'
   | 'customer'
   | 'serviceName'
   | 'personInCharge'
@@ -44,9 +43,11 @@ type ActionToast = {
   message: string;
 };
 
+const SETTLEMENT_PAYMENT_METHODS = ['Cash', 'Gcash', 'Bank Transfer'] as const;
+
 @Component({
   selector: 'app-inventory-services-page',
-  imports: [FormsModule, RouterLink, NgClass],
+  imports: [FormsModule, RouterLink, NgClass, DecimalPipe],
   templateUrl: './inventory-services-page.component.html',
   styles: [
     `
@@ -114,9 +115,8 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
   readonly selectedType = signal('');
   readonly selectedStatus = signal('');
   readonly columnOptions: Array<{ key: ServiceColumnKey; label: string }> = [
-    { key: 'image', label: 'Image' },
     { key: 'customer', label: 'Customer' },
-    { key: 'serviceName', label: 'Service Name' },
+    { key: 'serviceName', label: 'Job Order Description' },
     { key: 'personInCharge', label: 'Person In Charge' },
     { key: 'type', label: 'Type' },
     { key: 'partsUsed', label: 'Parts Used' },
@@ -127,7 +127,6 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
     { key: 'totalSales', label: 'T.Sales' },
   ];
   readonly visibleColumns = signal<Record<ServiceColumnKey, boolean>>({
-    image: true,
     customer: true,
     serviceName: true,
     personInCharge: true,
@@ -145,7 +144,6 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
   readonly pendingDelete = signal<InventoryServiceItem | null>(null);
   readonly deleting = signal(false);
   readonly statusUpdatingId = signal<number | null>(null);
-  readonly imageUploadingId = signal<number | null>(null);
   readonly toast = signal<ActionToast | null>(null);
   readonly toastVisible = signal(false);
   readonly toastLeaving = signal(false);
@@ -153,6 +151,13 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
     item: InventoryServiceItem;
     nextStatus: string;
   } | null>(null);
+  readonly pendingSettlement = signal<InventoryServiceItem | null>(null);
+  readonly settlementJob = signal<InventoryServiceItem | null>(null);
+  readonly settlementLoading = signal(false);
+  readonly settlementAmountReceived = signal(0);
+  readonly settlementPaymentMethod = signal('');
+  readonly settlementError = signal('');
+  readonly settlementPaymentMethods = SETTLEMENT_PAYMENT_METHODS;
 
   ngOnInit(): void {
     void this.loadServices();
@@ -300,62 +305,6 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
     return `${typeLabel} · ${statusLabel} (${count} services)`;
   }
 
-  imageAlt(item: InventoryServiceItem): string {
-    return item.serviceName || 'Service image';
-  }
-
-  serviceImageUrl(item: InventoryServiceItem): string | null {
-    return this.adminApi.resolveServiceImageUrl(item.imageUrl);
-  }
-
-  async onTableImageSelected(item: InventoryServiceItem, event: Event): Promise<void> {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0] ?? null;
-    input.value = '';
-
-    if (!file) {
-      return;
-    }
-
-    if (!file.type.startsWith('image/')) {
-      this.showToast('error', 'Please choose an image file.');
-      return;
-    }
-
-    if (file.size > 2 * 1024 * 1024) {
-      this.showToast('error', 'Image must be 2MB or smaller.');
-      return;
-    }
-
-    this.imageUploadingId.set(item.id);
-
-    try {
-      const response = await firstValueFrom(
-        this.adminApi.uploadInventoryServiceImage(item.id, file),
-      );
-      this.items.update((rows) =>
-        rows.map((row) =>
-          row.id === item.id
-            ? {
-                ...row,
-                ...response.data,
-                status: this.normalizeJobStatus(response.data.status ?? row.status),
-                imageUrl: response.data.imageUrl ?? null,
-              }
-            : row,
-        ),
-      );
-      this.showToast('success', 'Completion image uploaded.');
-    } catch (err: unknown) {
-      const httpErr = err as { error?: { message?: string | string[] } };
-      const msg = httpErr?.error?.message;
-      const detail = Array.isArray(msg) ? msg.join(', ') : msg || 'Unknown error';
-      this.showToast('error', `Unable to upload image: ${detail}`);
-    } finally {
-      this.imageUploadingId.set(null);
-    }
-  }
-
   partsUsedLabel(item: InventoryServiceItem): string {
     return item.partsUsed.length ? item.partsUsed.join(', ') : 'No parts linked';
   }
@@ -406,6 +355,11 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
       return;
     }
 
+    if (nextStatus === 'Done') {
+      void this.openSettlement(item);
+      return;
+    }
+
     this.pendingStatusChange.set({ item, nextStatus });
   }
 
@@ -426,12 +380,124 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
     await this.applyStatusChange(pending.item, pending.nextStatus);
   }
 
-  private async applyStatusChange(item: InventoryServiceItem, status: string): Promise<void> {
+  private settlementSource(): InventoryServiceItem | null {
+    return this.settlementJob() ?? this.pendingSettlement();
+  }
+
+  settlementTotalToPay(): number {
+    const item = this.settlementSource();
+    if (!item) {
+      return 0;
+    }
+
+    const parts = item.parts ?? [];
+    if (parts.length) {
+      const lines = parts.reduce((sum, part) => {
+        const isService = Number(part.serviceTypeId) > 0;
+        const qty = Number(part.quantity) || 0;
+        const unitPrice = Number(part.unitPrice) || 0;
+        const labor = Number(part.labor) || 0;
+        const gross = isService ? (labor > 0 ? labor : (qty || 1) * unitPrice) : qty * unitPrice;
+        return sum + Math.max(0, gross - (Number(part.discountAmount) || 0));
+      }, 0);
+      return Math.max(0, lines - (Number(item.customDiscount) || 0));
+    }
+
+    return Math.max(0, (Number(item.totalSales) || 0) - (Number(item.customDiscount) || 0));
+  }
+
+  settlementDownpayment(): number {
+    return Math.max(0, Number(this.settlementSource()?.downpayment) || 0);
+  }
+
+  settlementBalanceDue(): number {
+    return Math.max(0, this.settlementTotalToPay() - this.settlementDownpayment());
+  }
+
+  settlementChangeAmount(): number {
+    return Math.max(0, this.settlementAmountReceived() - this.settlementBalanceDue());
+  }
+
+  canConfirmSettlement(): boolean {
+    return (
+      this.settlementAmountReceived() + 0.005 >= this.settlementBalanceDue() &&
+      SETTLEMENT_PAYMENT_METHODS.includes(
+        this.settlementPaymentMethod() as (typeof SETTLEMENT_PAYMENT_METHODS)[number],
+      )
+    );
+  }
+
+  onSettlementAmountInput(rawValue: string): void {
+    const parsed = Number(rawValue);
+    this.settlementAmountReceived.set(Number.isFinite(parsed) ? Math.max(0, parsed) : 0);
+    this.settlementError.set('');
+  }
+
+  selectSettlementPaymentMethod(method: string): void {
+    this.settlementPaymentMethod.set(method);
+    this.settlementError.set('');
+  }
+
+  private async openSettlement(item: InventoryServiceItem): Promise<void> {
+    this.settlementError.set('');
+    this.settlementPaymentMethod.set(item.paymentMethod || '');
+    this.pendingSettlement.set(item);
+    this.settlementJob.set(null);
+    this.settlementLoading.set(true);
+
+    try {
+      const response = await firstValueFrom(this.adminApi.getInventoryService(item.id));
+      this.settlementJob.set(response.data);
+      this.settlementPaymentMethod.set(response.data.paymentMethod || '');
+      this.settlementAmountReceived.set(Number(this.settlementBalanceDue().toFixed(2)));
+    } catch {
+      this.settlementJob.set(item);
+      this.settlementAmountReceived.set(Number(this.settlementBalanceDue().toFixed(2)));
+      this.settlementError.set('Unable to load full job totals. You can still settle using the listed amount.');
+    } finally {
+      this.settlementLoading.set(false);
+    }
+  }
+
+  cancelSettlement(): void {
+    if (this.statusUpdatingId() !== null) {
+      return;
+    }
+    this.pendingSettlement.set(null);
+    this.settlementJob.set(null);
+    this.settlementError.set('');
+    this.settlementPaymentMethod.set('');
+  }
+
+  async confirmSettlement(): Promise<void> {
+    const item = this.pendingSettlement();
+    if (!item) {
+      return;
+    }
+
+    if (!this.settlementPaymentMethod()) {
+      this.settlementError.set('Please select a payment method.');
+      return;
+    }
+
+    if (!this.canConfirmSettlement()) {
+      this.settlementError.set('Amount received must cover the remaining balance.');
+      return;
+    }
+
+    await this.applyStatusChange(item, 'Done', this.settlementPaymentMethod());
+  }
+
+  private async applyStatusChange(
+    item: InventoryServiceItem,
+    status: string,
+    paymentMethod?: string,
+  ): Promise<void> {
     this.statusUpdatingId.set(item.id);
 
     try {
       const response = await firstValueFrom(
-        this.adminApi.updateInventoryServiceStatus(item.id, status),
+        this.adminApi.updateInventoryServiceStatus(item.id, status, paymentMethod),
       );
       const nextStatus = this.normalizeJobStatus(response.data.status);
       this.applyLocalStatusUpdate({
@@ -446,8 +512,13 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
         'success',
         clearedImage
           ? `Status updated to ${nextStatus}. Completion image removed.`
-          : `Status updated to ${nextStatus}.`,
+          : nextStatus === 'Done'
+            ? 'Job settled.'
+            : `Status updated to ${nextStatus}.`,
       );
+
+      this.pendingSettlement.set(null);
+      this.settlementJob.set(null);
 
       if (nextStatus === 'Done') {
         await this.router.navigate(['/admin/job-order', item.id, 'receipt'], {
@@ -458,7 +529,9 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
       const httpErr = err as { error?: { message?: string | string[] } };
       const msg = httpErr?.error?.message;
       const detail = Array.isArray(msg) ? msg.join(', ') : msg || 'Unknown error';
-      this.showToast('error', `Unable to update status: ${detail}`);
+      const message = `Unable to update status: ${detail}`;
+      this.settlementError.set(message);
+      this.showToast('error', message);
     } finally {
       this.statusUpdatingId.set(null);
     }
@@ -475,6 +548,15 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
     this.items.update((rows) =>
       rows.map((row) => (row.id === normalized.id ? { ...row, ...normalized } : row)),
     );
+  }
+
+  printJob(item: InventoryServiceItem, event?: Event): void {
+    event?.stopPropagation();
+    event?.preventDefault();
+    const reprinted = this.normalizeJobStatus(item.status) === 'Done';
+    void this.router.navigate(['/admin/job-order', item.id, 'receipt'], {
+      queryParams: reprinted ? { reprint: '1', print: '1' } : { print: '1' },
+    });
   }
 
   requestDelete(item: InventoryServiceItem, event?: Event): void {

@@ -1,44 +1,42 @@
-import { DecimalPipe, NgClass } from '@angular/common';
-import { Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
+import { DecimalPipe } from '@angular/common';
+import { Component, computed, DestroyRef, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
+import { AdminAuthService } from '../../services/admin-auth.service';
 import {
   AdminApiService,
   AdminUser,
   CreateInventoryServicePayload,
   InventoryServiceItem,
+  JobOrderCustomerSuggestion,
   MaterialItem,
   ServiceTypeItem,
 } from '../../services/admin-api.service';
 import {
+  applyLineDiscount,
   applyPhSpecialDiscount,
   normalizePhDiscountType,
-  type PhDiscountType,
 } from './ph-discount.util';
 
 const DEFAULT_STATUSES = ['Active', 'Pending', 'Cancelled', 'Done'];
-const DISCOUNT_OPTIONS: Array<{ value: PhDiscountType; label: string }> = [
-  { value: 'none', label: 'No discount' },
-  { value: 'senior', label: 'Senior Citizen (20%)' },
-  { value: 'pwd', label: 'PWD (20%)' },
-];
+const SETTLEMENT_PAYMENT_METHODS = ['Cash', 'Gcash', 'Bank Transfer'] as const;
 
 @Component({
   selector: 'app-inventory-service-create-page',
-  imports: [ReactiveFormsModule, RouterLink, DecimalPipe, NgClass],
+  imports: [ReactiveFormsModule, RouterLink, DecimalPipe],
   templateUrl: './inventory-service-create-page.component.html',
 })
-export class InventoryServiceCreatePageComponent implements OnInit {
+export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
   private readonly adminApi = inject(AdminApiService);
+  private readonly adminAuth = inject(AdminAuthService);
   private readonly formBuilder = inject(FormBuilder);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly statuses = DEFAULT_STATUSES;
-  readonly discountOptions = DISCOUNT_OPTIONS;
   readonly loading = signal(true);
   readonly saving = signal(false);
   readonly error = signal('');
@@ -47,48 +45,70 @@ export class InventoryServiceCreatePageComponent implements OnInit {
   readonly users = signal<AdminUser[]>([]);
   readonly materials = signal<MaterialItem[]>([]);
   readonly serviceTypes = signal<ServiceTypeItem[]>([]);
-  readonly partQueries = signal<string[]>([]);
-  readonly materialSearchResults = signal<Record<number, MaterialItem[]>>({});
-  readonly openPartSearchIndex = signal<number | null>(null);
+  readonly partQuery = signal('');
+  readonly materialSearchResults = signal<MaterialItem[]>([]);
+  readonly openPartSearch = signal(false);
   readonly partSearchLoading = signal(false);
-  private materialSearchTimers = new Map<number, ReturnType<typeof setTimeout>>();
+  private materialSearchTimer: ReturnType<typeof setTimeout> | null = null;
   private partSearchCloseTimer: ReturnType<typeof setTimeout> | null = null;
+  readonly customerQuery = signal('');
+  readonly customerSearchResults = signal<JobOrderCustomerSuggestion[]>([]);
+  readonly openCustomerSearch = signal(false);
+  readonly customerSearchLoading = signal(false);
+  private customerSearchTimer: ReturnType<typeof setTimeout> | null = null;
+  private customerSearchCloseTimer: ReturnType<typeof setTimeout> | null = null;
+  readonly serviceQuery = signal('');
+  readonly openServiceSearch = signal(false);
+  private serviceSearchCloseTimer: ReturnType<typeof setTimeout> | null = null;
+  readonly pendingPaymentReview = signal(false);
+  readonly pendingSettlement = signal(false);
+  readonly settlementAmountReceived = signal(0);
+  readonly settlementPaymentMethod = signal('');
+  readonly settlementError = signal('');
+  readonly settlementPaymentMethods = SETTLEMENT_PAYMENT_METHODS;
   readonly serviceId = signal<number | null>(null);
   readonly isEditMode = computed(() => this.serviceId() !== null);
   readonly pendingDelete = signal(false);
   readonly deleting = signal(false);
   readonly referenceNo = signal<string | null>(null);
   readonly imageUrl = signal<string | null>(null);
-  readonly completionUploading = signal(false);
+  readonly laptopImageUploading = signal(false);
+  readonly pendingLaptopFile = signal<File | null>(null);
+  readonly pendingLaptopPreview = signal<string | null>(null);
   readonly isMobileDevice = signal(false);
-  readonly selectedStatus = signal<string>('Active');
-  readonly loadedStatus = signal<string>('Active');
+  readonly selectedStatus = signal<string>('Pending');
+  readonly loadedStatus = signal<string>('Pending');
   readonly markingDone = signal(false);
   private persistedImageUrl: string | null = null;
+  private pendingLaptopObjectUrl: string | null = null;
 
   readonly form = this.formBuilder.nonNullable.group({
     customerName: ['', [Validators.maxLength(180)]],
+    customerEmail: ['', [Validators.email, Validators.maxLength(180)]],
+    customerContact: ['', [Validators.maxLength(60)]],
+    customerAddress: ['', [Validators.maxLength(2000)]],
+    deviceBrand: ['', [Validators.maxLength(120)]],
+    deviceModel: ['', [Validators.maxLength(180)]],
+    deviceSerial: ['', [Validators.maxLength(120)]],
     serviceName: ['', [Validators.maxLength(180)]],
     personInChargeUserId: [''],
-    type: ['', [Validators.maxLength(120)]],
     cost: [0, [Validators.min(0)]],
-    labor: [0, [Validators.min(0)]],
-    laborDiscountType: ['none' as PhDiscountType],
     customDiscount: [0, [Validators.min(0)]],
-    status: ['Active', [Validators.maxLength(60)]],
+    downpayment: [0, [Validators.min(0)]],
+    paymentMethod: [''],
+    status: ['Pending', [Validators.maxLength(60)]],
     startedAt: [''],
     endedAt: [''],
     notes: ['', [Validators.maxLength(2000)]],
+    services: this.formBuilder.array([]),
     parts: this.formBuilder.array([]),
-    customParts: this.formBuilder.array([]),
   });
 
+  readonly totalSelectedServices = computed(() => this.servicesArray.controls.length);
   readonly totalSelectedParts = computed(() => this.partsArray.controls.length);
-  readonly totalCustomParts = computed(() => this.customPartsArray.controls.length);
-  readonly completionImageSrc = computed(() =>
-    this.adminApi.resolveServiceImageUrl(this.imageUrl()),
+  readonly laptopImageSrc = computed(() =>
+    this.pendingLaptopPreview() || this.adminApi.resolveServiceImageUrl(this.imageUrl()),
   );
-  readonly statusSelectClass = computed(() => this.statusPillClass(this.selectedStatus()));
   readonly isDoneStatus = computed(() => this.normalizeJobStatus(this.selectedStatus()) === 'Done');
 
   ngOnInit(): void {
@@ -96,15 +116,13 @@ export class InventoryServiceCreatePageComponent implements OnInit {
     this.form.controls.status.valueChanges
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((status) => {
-        const nextStatus = this.normalizeJobStatus(status);
-        this.selectedStatus.set(nextStatus);
-        if (this.normalizeJobStatus(this.loadedStatus()) === 'Done' && nextStatus !== 'Done') {
-          this.imageUrl.set(null);
-        } else if (nextStatus === 'Done') {
-          this.imageUrl.set(this.persistedImageUrl);
-        }
+        this.selectedStatus.set(this.normalizeJobStatus(status));
       });
     void this.initialize();
+  }
+
+  ngOnDestroy(): void {
+    this.revokePendingLaptopPreview();
   }
 
   private detectMobileDevice(): boolean {
@@ -121,30 +139,15 @@ export class InventoryServiceCreatePageComponent implements OnInit {
   normalizeJobStatus(status: string | null | undefined): string {
     const value = String(status ?? '').trim().toLowerCase();
     const match = this.statuses.find((option) => option.toLowerCase() === value);
-    return match ?? 'Active';
+    return match ?? 'Pending';
   }
 
-  statusPillClass(status: string | null | undefined): string {
-    switch (this.normalizeJobStatus(status).toLowerCase()) {
-      case 'done':
-        return 'bg-blue-50 text-blue-700 ring-1 ring-blue-200 border-blue-200';
-      case 'active':
-        return 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 border-emerald-200';
-      case 'pending':
-        return 'bg-amber-50 text-amber-700 ring-1 ring-amber-200 border-amber-200';
-      case 'cancelled':
-        return 'bg-red-50 text-red-700 ring-1 ring-red-200 border-red-200';
-      default:
-        return 'bg-slate-100 text-slate-700 ring-1 ring-slate-200 border-slate-200';
-    }
+  get servicesArray(): FormArray {
+    return this.form.controls.services;
   }
 
   get partsArray(): FormArray {
     return this.form.controls.parts;
-  }
-
-  get customPartsArray(): FormArray {
-    return this.form.controls.customParts;
   }
 
   async initialize(): Promise<void> {
@@ -192,26 +195,43 @@ export class InventoryServiceCreatePageComponent implements OnInit {
         this.selectedStatus.set(normalizedStatus);
         this.form.patchValue({
           customerName: item.customerName,
+          customerEmail: item.customerEmail ?? '',
+          customerContact: item.customerContact ?? '',
+          customerAddress: item.customerAddress ?? '',
+          deviceBrand: item.deviceBrand ?? '',
+          deviceModel: item.deviceModel ?? '',
+          deviceSerial: item.deviceSerial ?? '',
           serviceName: item.serviceName,
           personInChargeUserId:
             item.personInChargeUserId && item.personInChargeSource
               ? `${item.personInChargeUserId}|${item.personInChargeSource}`
               : '',
-          type: item.type,
           cost: item.cost ?? 0,
-          labor: item.labor ?? 0,
-          laborDiscountType: normalizePhDiscountType(item.laborDiscountType),
           customDiscount: item.customDiscount ?? 0,
+          downpayment: item.downpayment ?? 0,
+          paymentMethod: item.paymentMethod ?? '',
           status: normalizedStatus,
           startedAt: item.startedAt ?? '',
           endedAt: item.endedAt ?? '',
           notes: item.notes ?? '',
         });
+        this.customerQuery.set(item.customerName ?? '');
         this.partsArray.clear();
-        this.customPartsArray.clear();
-        this.partQueries.set([]);
+        this.servicesArray.clear();
+        this.partQuery.set('');
+        this.serviceQuery.set('');
         for (const part of item.parts ?? []) {
-          if (part.materialId) {
+          if (part.serviceTypeId) {
+            const amount = this.resolveServiceLineAmount(part);
+            this.addServiceRow(
+              String(part.serviceTypeId),
+              part.customItemName ||
+                types.find((type) => Number(type.id) === Number(part.serviceTypeId))?.name ||
+                'Service',
+              amount,
+              this.initialDiscountAmount(amount, part.discountAmount, part.discountType),
+            );
+          } else if (part.materialId) {
             const materialId = Number(part.materialId);
             if (
               Number.isFinite(materialId) &&
@@ -231,23 +251,41 @@ export class InventoryServiceCreatePageComponent implements OnInit {
               part.unitPrice ?? this.resolveMaterialUnitPrice(
                 this.materials().find((entry) => Number(entry.id) === materialId),
               ),
+              this.initialDiscountAmount(
+                (part.quantity || 1) * (part.unitPrice ?? 0),
+                part.discountAmount,
+                part.discountType,
+              ),
               part.materialName ?? '',
-              normalizePhDiscountType(part.discountType),
+              false,
+              part.brandName ??
+                this.materials().find((entry) => Number(entry.id) === materialId)?.brandName ??
+                '',
             );
           } else if (part.customItemName) {
-            this.customPartsArray.push(
-              this.formBuilder.nonNullable.group({
-                customItemName: [part.customItemName],
-                quantity: [part.quantity || 1, [Validators.min(0)]],
-                unitPrice: [part.unitPrice ?? 0, [Validators.min(0)]],
-                labor: [part.labor ?? 0, [Validators.min(0)]],
-                discountType: [normalizePhDiscountType(part.discountType)],
-              }),
+            const amount = this.resolveServiceLineAmount(part);
+            this.addServiceRow(
+              '',
+              part.customItemName,
+              amount,
+              this.initialDiscountAmount(amount, part.discountAmount, part.discountType),
+              true,
             );
           }
         }
+        if (this.servicesArray.length === 0 && item.type?.trim()) {
+          const typeName = item.type.trim();
+          const match = types.find((type) => type.name.toLowerCase() === typeName.toLowerCase());
+          this.addServiceRow(
+            match ? String(match.id) : '',
+            typeName,
+            item.labor ?? 0,
+            this.initialDiscountAmount(item.labor ?? 0, undefined, item.laborDiscountType),
+          );
+        }
       } else {
         this.serviceTypes.set(types);
+        this.assignLoggedInPerson();
       }
       this.syncCostWithParts();
     } catch {
@@ -257,38 +295,405 @@ export class InventoryServiceCreatePageComponent implements OnInit {
     }
   }
 
-  onServiceTypeChange(): void {
-    const typeName = this.form.controls.type.value;
-    const match = this.serviceTypes().find((type) => type.name === typeName);
-    if (!match) {
+  private assignLoggedInPerson(): void {
+    const currentUser = this.adminAuth.getStoredUser();
+    if (!currentUser?.id) {
       return;
     }
-    this.form.controls.labor.setValue(Number(match.laborPrice) || 0);
+
+    const alreadyListed = this.users().some(
+      (user) => Number(user.id) === Number(currentUser.id) && user.source === currentUser.source,
+    );
+    if (!alreadyListed) {
+      this.users.update((list) => [
+        {
+          id: currentUser.id,
+          username: currentUser.username,
+          fullName: currentUser.fullName,
+          email: currentUser.email,
+          role: currentUser.role,
+          profileImageUrl: currentUser.profileImageUrl ?? null,
+          isActive: true,
+          source: currentUser.source,
+          readOnly: false,
+          createdAt: '',
+          updatedAt: '',
+        },
+        ...list,
+      ]);
+    }
+
+    this.form.controls.personInChargeUserId.setValue(`${currentUser.id}|${currentUser.source}`);
   }
 
-  addPart(): void {
+  addServiceFromCatalog(type: ServiceTypeItem): void {
     if (this.isDoneStatus()) {
       return;
     }
-    this.addPartRow();
+    const selectedIds = this.selectedServiceTypeIds();
+    if (selectedIds.has(Number(type.id))) {
+      this.serviceQuery.set('');
+      this.openServiceSearch.set(false);
+      return;
+    }
+    this.addServiceRow(String(type.id), type.name, Number(type.laborPrice) || 0);
+    this.serviceQuery.set('');
+    this.openServiceSearch.set(false);
+    this.syncCostWithParts();
+  }
+
+  addTypedService(): void {
+    if (this.isDoneStatus()) {
+      return;
+    }
+    const name = this.serviceQuery().trim();
+    if (!name || !this.canCreateNewService()) {
+      const exact = this.exactCatalogMatch();
+      if (exact) {
+        this.addServiceFromCatalog(exact);
+      }
+      return;
+    }
+    this.addServiceRow('', name, 0, 0, true);
+    this.serviceQuery.set('');
+    this.openServiceSearch.set(false);
+    this.syncCostWithParts();
+  }
+
+  canCreateNewService(): boolean {
+    const name = this.serviceQuery().trim();
+    if (!name) {
+      return false;
+    }
+    if (this.selectedServiceNames().has(name.toLowerCase())) {
+      return false;
+    }
+    return !this.serviceTypes().some((type) => type.name.toLowerCase() === name.toLowerCase());
+  }
+
+  exactCatalogMatch(): ServiceTypeItem | null {
+    const name = this.serviceQuery().trim().toLowerCase();
+    if (!name) {
+      return null;
+    }
+    const selectedIds = this.selectedServiceTypeIds();
+    return (
+      this.serviceTypes().find(
+        (type) => type.name.toLowerCase() === name && !selectedIds.has(Number(type.id)),
+      ) ?? null
+    );
+  }
+
+  isNewService(index: number): boolean {
+    const group = this.servicesArray.at(index);
+    if (!group) {
+      return false;
+    }
+    return Boolean((group.getRawValue() as { isNew?: boolean }).isNew);
+  }
+
+  onServiceSearchKeydown(event: Event): void {
+    const keyboard = event as KeyboardEvent;
+    if (keyboard.key !== 'Enter') {
+      return;
+    }
+    keyboard.preventDefault();
+    this.addTypedService();
+  }
+
+  private addServiceRow(
+    serviceTypeId = '',
+    name = '',
+    labor = 0,
+    discountAmount = 0,
+    isNew = false,
+  ): void {
+    this.servicesArray.push(
+      this.formBuilder.nonNullable.group({
+        serviceTypeId: [serviceTypeId],
+        name: [name],
+        labor: [labor, [Validators.min(0)]],
+        discountAmount: [discountAmount, [Validators.min(0)]],
+        isNew: [isNew],
+      }),
+    );
+  }
+
+  removeService(index: number): void {
+    if (this.isDoneStatus()) {
+      return;
+    }
+    this.servicesArray.removeAt(index);
+    this.syncCostWithParts();
+  }
+
+  selectedServiceTypeIds(): Set<number> {
+    return new Set(
+      this.servicesArray.controls
+        .map((control) => Number((control.getRawValue() as { serviceTypeId: string }).serviceTypeId))
+        .filter((id) => Number.isFinite(id) && id > 0),
+    );
+  }
+
+  selectedServiceNames(): Set<string> {
+    return new Set(
+      this.servicesArray.controls
+        .map((control) =>
+          String((control.getRawValue() as { name?: string }).name ?? '')
+            .trim()
+            .toLowerCase(),
+        )
+        .filter(Boolean),
+    );
+  }
+
+  filteredServiceTypes(): ServiceTypeItem[] {
+    const query = this.serviceQuery().trim().toLowerCase();
+    const selectedIds = this.selectedServiceTypeIds();
+    return this.serviceTypes()
+      .filter((type) => {
+        if (selectedIds.has(Number(type.id))) {
+          return false;
+        }
+        if (this.selectedServiceNames().has(type.name.toLowerCase())) {
+          return false;
+        }
+        if (!query) {
+          return true;
+        }
+        return (
+          type.name.toLowerCase().includes(query) ||
+          (type.description ?? '').toLowerCase().includes(query)
+        );
+      })
+      .slice(0, 25);
+  }
+
+  openCatalogServiceSearch(): void {
+    if (this.isDoneStatus()) {
+      return;
+    }
+    if (this.serviceSearchCloseTimer) {
+      clearTimeout(this.serviceSearchCloseTimer);
+      this.serviceSearchCloseTimer = null;
+    }
+    this.openServiceSearch.set(true);
+  }
+
+  scheduleCloseServiceSearch(): void {
+    if (this.serviceSearchCloseTimer) {
+      clearTimeout(this.serviceSearchCloseTimer);
+    }
+    this.serviceSearchCloseTimer = setTimeout(() => {
+      this.openServiceSearch.set(false);
+      this.serviceSearchCloseTimer = null;
+    }, 150);
+  }
+
+  onServiceQueryInput(value: string): void {
+    if (this.isDoneStatus()) {
+      return;
+    }
+    this.serviceQuery.set(value);
+    this.openServiceSearch.set(true);
+  }
+
+  onServiceSuggestionPointerDown(event: Event, type: ServiceTypeItem): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.addServiceFromCatalog(type);
+  }
+
+  openCustomerLookup(): void {
+    if (this.isDoneStatus()) {
+      return;
+    }
+    if (this.customerSearchCloseTimer) {
+      clearTimeout(this.customerSearchCloseTimer);
+      this.customerSearchCloseTimer = null;
+    }
+    this.openCustomerSearch.set(true);
+    void this.searchCustomers(this.customerQuery());
+  }
+
+  scheduleCloseCustomerSearch(): void {
+    if (this.customerSearchCloseTimer) {
+      clearTimeout(this.customerSearchCloseTimer);
+    }
+    this.customerSearchCloseTimer = setTimeout(() => {
+      this.openCustomerSearch.set(false);
+      this.customerSearchCloseTimer = null;
+    }, 150);
+  }
+
+  onCustomerQueryInput(value: string): void {
+    if (this.isDoneStatus()) {
+      return;
+    }
+    this.customerQuery.set(value);
+    this.form.controls.customerName.setValue(value);
+    this.openCustomerSearch.set(true);
+    if (this.customerSearchTimer) {
+      clearTimeout(this.customerSearchTimer);
+    }
+    this.customerSearchTimer = setTimeout(() => {
+      void this.searchCustomers(value);
+    }, 250);
+  }
+
+  private async searchCustomers(value: string): Promise<void> {
+    this.customerSearchLoading.set(true);
+    try {
+      const response = await firstValueFrom(this.adminApi.searchJobOrderCustomers(value));
+      this.customerSearchResults.set(response.data ?? []);
+    } catch {
+      this.customerSearchResults.set([]);
+    } finally {
+      this.customerSearchLoading.set(false);
+    }
+  }
+
+  selectCustomer(customer: JobOrderCustomerSuggestion): void {
+    this.customerQuery.set(customer.name);
+    this.form.patchValue({
+      customerName: customer.name,
+      customerEmail: customer.email ?? '',
+      customerContact: customer.contact ?? '',
+      customerAddress: customer.address ?? '',
+    });
+    this.openCustomerSearch.set(false);
+  }
+
+  onCustomerSuggestionPointerDown(event: Event, customer: JobOrderCustomerSuggestion): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.selectCustomer(customer);
+  }
+
+  addPartFromCatalog(item: MaterialItem): void {
+    if (this.isDoneStatus()) {
+      return;
+    }
+    if (this.selectedMaterialIds().has(Number(item.id))) {
+      this.partQuery.set('');
+      this.openPartSearch.set(false);
+      return;
+    }
+    const unitPrice = this.resolveMaterialUnitPrice(item);
+    this.addPartRow(String(item.id), 1, unitPrice, 0, item.materialName, false, item.brandName ?? '');
+    this.partQuery.set('');
+    this.openPartSearch.set(false);
+    this.syncCostWithParts();
+  }
+
+  addTypedPart(): void {
+    if (this.isDoneStatus()) {
+      return;
+    }
+    const name = this.partQuery().trim();
+    if (!name || !this.canCreateNewPart()) {
+      const exact = this.exactMaterialMatch();
+      if (exact) {
+        this.addPartFromCatalog(exact);
+      }
+      return;
+    }
+    this.addPartRow('', 1, 0, 0, name, true);
+    this.partQuery.set('');
+    this.openPartSearch.set(false);
+    this.syncCostWithParts();
+  }
+
+  canCreateNewPart(): boolean {
+    const name = this.partQuery().trim();
+    if (!name) {
+      return false;
+    }
+    if (this.selectedPartNames().has(name.toLowerCase())) {
+      return false;
+    }
+    return !this.materials().some((item) => item.materialName.toLowerCase() === name.toLowerCase());
+  }
+
+  exactMaterialMatch(): MaterialItem | null {
+    const name = this.partQuery().trim().toLowerCase();
+    if (!name) {
+      return null;
+    }
+    const selectedIds = this.selectedMaterialIds();
+    return (
+      this.materials().find(
+        (item) => item.materialName.toLowerCase() === name && !selectedIds.has(Number(item.id)),
+      ) ?? null
+    );
+  }
+
+  onPartSearchKeydown(event: Event): void {
+    const keyboard = event as KeyboardEvent;
+    if (keyboard.key !== 'Enter') {
+      return;
+    }
+    keyboard.preventDefault();
+    this.addTypedPart();
+  }
+
+  isNewPart(index: number): boolean {
+    const group = this.partsArray.at(index);
+    if (!group) {
+      return false;
+    }
+    return Boolean((group.getRawValue() as { isNew?: boolean }).isNew);
+  }
+
+  partNameAt(index: number): string {
+    const group = this.partsArray.at(index);
+    if (!group) {
+      return 'Unknown material';
+    }
+    const value = group.getRawValue() as { materialId?: string; customName?: string };
+    const customName = String(value.customName ?? '').trim();
+    if (customName) {
+      return customName;
+    }
+    return this.materialName(String(value.materialId ?? ''));
+  }
+
+  partBrandAt(index: number): string {
+    const group = this.partsArray.at(index);
+    if (!group) {
+      return '';
+    }
+    return String((group.getRawValue() as { brandName?: string }).brandName ?? '').trim();
+  }
+
+  selectedPartNames(): Set<string> {
+    return new Set(
+      this.partsArray.controls
+        .map((_, index) => this.partNameAt(index).trim().toLowerCase())
+        .filter((name) => name && name !== 'unknown material'),
+    );
   }
 
   private addPartRow(
     materialId = '',
     quantity = 1,
     unitPrice = 0,
-    label = '',
-    discountType: PhDiscountType = 'none',
+    discountAmount = 0,
+    customName = '',
+    isNew = false,
+    brandName = '',
   ): void {
     this.partsArray.push(
       this.formBuilder.nonNullable.group({
         materialId: [materialId],
+        customName: [customName],
+        brandName: [String(brandName ?? '').trim()],
         quantity: [quantity, [Validators.min(0)]],
         unitPrice: [unitPrice, [Validators.min(0)]],
-        discountType: [discountType],
+        discountAmount: [discountAmount, [Validators.min(0)]],
+        isNew: [isNew],
       }),
     );
-    this.partQueries.update((items) => [...items, label]);
     this.syncCostWithParts();
   }
 
@@ -297,51 +702,6 @@ export class InventoryServiceCreatePageComponent implements OnInit {
       return;
     }
     this.partsArray.removeAt(index);
-    this.partQueries.update((items) => items.filter((_, itemIndex) => itemIndex !== index));
-    this.materialSearchResults.update((current) => {
-      const next: Record<number, MaterialItem[]> = {};
-      for (const [key, value] of Object.entries(current)) {
-        const oldIndex = Number(key);
-        if (oldIndex < index) {
-          next[oldIndex] = value;
-        } else if (oldIndex > index) {
-          next[oldIndex - 1] = value;
-        }
-      }
-      return next;
-    });
-    if (this.openPartSearchIndex() === index) {
-      this.openPartSearchIndex.set(null);
-    } else {
-      const openIndex = this.openPartSearchIndex();
-      if (openIndex != null && openIndex > index) {
-        this.openPartSearchIndex.set(openIndex - 1);
-      }
-    }
-    this.syncCostWithParts();
-  }
-
-  addCustomPart(): void {
-    if (this.isDoneStatus()) {
-      return;
-    }
-    this.customPartsArray.push(
-      this.formBuilder.nonNullable.group({
-        customItemName: [''],
-        quantity: [1, [Validators.min(0)]],
-        unitPrice: [0, [Validators.min(0)]],
-        labor: [0, [Validators.min(0)]],
-        discountType: ['none' as PhDiscountType],
-      }),
-    );
-    this.syncCostWithParts();
-  }
-
-  removeCustomPart(index: number): void {
-    if (this.isDoneStatus()) {
-      return;
-    }
-    this.customPartsArray.removeAt(index);
     this.syncCostWithParts();
   }
 
@@ -379,7 +739,6 @@ export class InventoryServiceCreatePageComponent implements OnInit {
     if (!item) {
       return 0;
     }
-    // Customer-facing unit price: prefer sell/SRP, then fall back to other price fields.
     const candidates = [item.sellPrice, item.unitPrice, item.orderCost];
     for (const value of candidates) {
       if (value != null && Number.isFinite(Number(value)) && Number(value) > 0) {
@@ -389,23 +748,15 @@ export class InventoryServiceCreatePageComponent implements OnInit {
     return 0;
   }
 
-  partQuery(index: number): string {
-    return this.partQueries()[index] ?? '';
-  }
-
-  selectedMaterialIds(exceptIndex?: number): Set<number> {
+  selectedMaterialIds(): Set<number> {
     return new Set(
       this.partsArray.controls
-        .map((control, controlIndex) =>
-          controlIndex === exceptIndex
-            ? null
-            : Number((control.getRawValue() as { materialId: string }).materialId),
-        )
-        .filter((id): id is number => typeof id === 'number' && Number.isFinite(id) && id > 0),
+        .map((control) => Number((control.getRawValue() as { materialId: string }).materialId))
+        .filter((id) => Number.isFinite(id) && id > 0),
     );
   }
 
-  openPartSearch(index: number): void {
+  openPartLookup(): void {
     if (this.isDoneStatus()) {
       return;
     }
@@ -413,8 +764,8 @@ export class InventoryServiceCreatePageComponent implements OnInit {
       clearTimeout(this.partSearchCloseTimer);
       this.partSearchCloseTimer = null;
     }
-    this.openPartSearchIndex.set(index);
-    void this.searchMaterialsForPart(index, this.partQuery(index));
+    this.openPartSearch.set(true);
+    void this.searchMaterials(this.partQuery());
   }
 
   scheduleClosePartSearch(): void {
@@ -422,60 +773,36 @@ export class InventoryServiceCreatePageComponent implements OnInit {
       clearTimeout(this.partSearchCloseTimer);
     }
     this.partSearchCloseTimer = setTimeout(() => {
-      this.openPartSearchIndex.set(null);
+      this.openPartSearch.set(false);
       this.partSearchCloseTimer = null;
     }, 150);
   }
 
-  onPartQueryInput(index: number, value: string): void {
+  onPartQueryInput(value: string): void {
     if (this.isDoneStatus()) {
       return;
     }
-    this.partQueries.update((items) => {
-      const next = [...items];
-      next[index] = value;
-      return next;
-    });
-
-    const group = this.partsArray.at(index);
-    if (group) {
-      const { materialId } = group.getRawValue() as { materialId: string };
-      if (materialId) {
-        const selectedName = this.materialName(materialId);
-        if (value.trim() !== selectedName) {
-          group.patchValue({ materialId: '', unitPrice: 0 }, { emitEvent: false });
-          this.syncCostWithParts();
-        }
-      }
-    }
-
-    this.openPartSearchIndex.set(index);
-    this.scheduleMaterialSearch(index, value);
+    this.partQuery.set(value);
+    this.openPartSearch.set(true);
+    this.scheduleMaterialSearch(value);
   }
 
-  private scheduleMaterialSearch(index: number, value: string): void {
-    const existing = this.materialSearchTimers.get(index);
-    if (existing) {
-      clearTimeout(existing);
+  private scheduleMaterialSearch(value: string): void {
+    if (this.materialSearchTimer) {
+      clearTimeout(this.materialSearchTimer);
     }
-
-    const timer = setTimeout(() => {
-      void this.searchMaterialsForPart(index, value);
+    this.materialSearchTimer = setTimeout(() => {
+      void this.searchMaterials(value);
     }, 250);
-    this.materialSearchTimers.set(index, timer);
   }
 
-  private async searchMaterialsForPart(index: number, value: string): Promise<void> {
-    const query = value.trim();
+  private async searchMaterials(value: string): Promise<void> {
     this.partSearchLoading.set(true);
     try {
-      const response = await firstValueFrom(this.adminApi.listMaterials(1, 100, query));
+      const response = await firstValueFrom(this.adminApi.listMaterials(1, 100, value.trim()));
       const results = response.data.map((item) => this.normalizeMaterial(item));
       this.upsertMaterials(results);
-      this.materialSearchResults.update((current) => ({
-        ...current,
-        [index]: results,
-      }));
+      this.materialSearchResults.set(results);
     } catch {
       // Keep existing local materials if search fails.
     } finally {
@@ -483,85 +810,23 @@ export class InventoryServiceCreatePageComponent implements OnInit {
     }
   }
 
-  selectPartMaterial(index: number, item: MaterialItem): void {
-    if (this.isDoneStatus()) {
-      return;
-    }
-    const group = this.partsArray.at(index);
-    if (!group) {
-      return;
-    }
-
-    if (this.partSearchCloseTimer) {
-      clearTimeout(this.partSearchCloseTimer);
-      this.partSearchCloseTimer = null;
-    }
-
-    const unitPrice = this.resolveMaterialUnitPrice(item);
-    group.patchValue(
-      {
-        materialId: String(item.id),
-        unitPrice,
-      },
-      { emitEvent: false },
-    );
-    this.partQueries.update((items) => {
-      const next = [...items];
-      next[index] = item.materialName;
-      return next;
-    });
-    this.openPartSearchIndex.set(null);
-    this.syncCostWithParts();
-  }
-
-  onPartSuggestionPointerDown(event: Event, index: number, item: MaterialItem): void {
+  onPartSuggestionPointerDown(event: Event, item: MaterialItem): void {
     event.preventDefault();
     event.stopPropagation();
-    this.selectPartMaterial(index, item);
+    this.addPartFromCatalog(item);
   }
 
-  clearPartMaterial(index: number): void {
-    if (this.isDoneStatus()) {
-      return;
-    }
-    const group = this.partsArray.at(index);
-    if (!group) {
-      return;
-    }
-    group.patchValue({ materialId: '', unitPrice: 0 }, { emitEvent: false });
-    this.partQueries.update((items) => {
-      const next = [...items];
-      next[index] = '';
-      return next;
-    });
-    this.openPartSearch(index);
-    this.syncCostWithParts();
-  }
-
-  filteredMaterials(index: number): MaterialItem[] {
-    const query = this.partQuery(index).trim().toLowerCase();
-    const currentId = Number(
-      (this.partsArray.at(index)?.getRawValue() as { materialId: string })?.materialId,
-    );
-    const selectedIds = this.selectedMaterialIds(index);
-    const searched = this.materialSearchResults()[index];
-    const source =
-      searched ??
-      this.materials().filter(
-        (item) =>
-          Number(item.id) === currentId ||
-          !query ||
-          item.materialName.toLowerCase().includes(query) ||
-          (item.materialCode ?? '').toLowerCase().includes(query),
-      );
-
+  filteredMaterials(): MaterialItem[] {
+    const query = this.partQuery().trim().toLowerCase();
+    const selectedIds = this.selectedMaterialIds();
+    const selectedNames = this.selectedPartNames();
+    const source = this.materialSearchResults().length ? this.materialSearchResults() : this.materials();
     return source
       .filter((item) => {
-        const id = Number(item.id);
-        if (selectedIds.has(id)) {
+        if (selectedIds.has(Number(item.id))) {
           return false;
         }
-        if (Number.isFinite(currentId) && currentId > 0 && id === currentId) {
+        if (selectedNames.has(item.materialName.toLowerCase())) {
           return false;
         }
         if (!query) {
@@ -595,117 +860,86 @@ export class InventoryServiceCreatePageComponent implements OnInit {
     return (Number(quantity) || 0) * (Number(unitPrice) || 0);
   }
 
-  partDiscountType(index: number): PhDiscountType {
+  partDiscountAmount(index: number): number {
+    return applyLineDiscount(this.partSubtotal(index), this.partDiscountInput(index)).discountAmount;
+  }
+
+  partDiscountInput(index: number): number {
     const group = this.partsArray.at(index);
     if (!group) {
-      return 'none';
+      return 0;
     }
-    return normalizePhDiscountType(
-      (group.getRawValue() as { discountType?: string }).discountType,
-    );
+    return Number((group.getRawValue() as { discountAmount?: number | string }).discountAmount) || 0;
   }
 
   partNetAmount(index: number): number {
-    return applyPhSpecialDiscount(this.partSubtotal(index), this.partDiscountType(index)).net;
+    return applyLineDiscount(this.partSubtotal(index), this.partDiscountInput(index)).net;
   }
 
-  partDiscountAmount(index: number): number {
-    return applyPhSpecialDiscount(this.partSubtotal(index), this.partDiscountType(index))
-      .discountAmount;
-  }
-
-  customPartSubtotal(index: number): number {
-    const group = this.customPartsArray.at(index);
+  serviceAmount(index: number): number {
+    const group = this.servicesArray.at(index);
     if (!group) {
       return 0;
     }
-
-    const { quantity, unitPrice } = group.getRawValue() as { quantity: number | string; unitPrice: number | string };
-    return (Number(quantity) || 0) * (Number(unitPrice) || 0);
+    return Number((group.getRawValue() as { labor: number | string }).labor) || 0;
   }
 
-  customPartLabor(index: number): number {
-    const group = this.customPartsArray.at(index);
+  serviceDiscountInput(index: number): number {
+    const group = this.servicesArray.at(index);
     if (!group) {
       return 0;
     }
-
-    const { labor } = group.getRawValue() as { labor: number | string };
-    return Number(labor) || 0;
+    return Number((group.getRawValue() as { discountAmount?: number | string }).discountAmount) || 0;
   }
 
-  customPartGross(index: number): number {
-    return this.customPartSubtotal(index) + this.customPartLabor(index);
+  serviceNetAmount(index: number): number {
+    return applyLineDiscount(this.serviceAmount(index), this.serviceDiscountInput(index)).net;
   }
 
-  customPartDiscountType(index: number): PhDiscountType {
-    const group = this.customPartsArray.at(index);
-    if (!group) {
-      return 'none';
-    }
-    return normalizePhDiscountType(
-      (group.getRawValue() as { discountType?: string }).discountType,
-    );
-  }
-
-  customPartNetAmount(index: number): number {
-    return applyPhSpecialDiscount(this.customPartGross(index), this.customPartDiscountType(index))
-      .net;
-  }
-
-  customPartDiscountAmount(index: number): number {
-    return applyPhSpecialDiscount(this.customPartGross(index), this.customPartDiscountType(index))
+  serviceDiscountAmount(index: number): number {
+    return applyLineDiscount(this.serviceAmount(index), this.serviceDiscountInput(index))
       .discountAmount;
   }
 
-  customLaborTotal(): number {
-    return this.customPartsArray.controls.reduce(
-      (total, _, index) => total + this.customPartLabor(index),
-      0,
-    );
+  serviceNameAt(index: number): string {
+    const group = this.servicesArray.at(index);
+    if (!group) {
+      return 'Service';
+    }
+    return String((group.getRawValue() as { name?: string }).name ?? '').trim() || 'Service';
   }
 
   totalLabor(): number {
-    return (Number(this.form.controls.labor.value) || 0) + this.customLaborTotal();
-  }
-
-  laborDiscountType(): PhDiscountType {
-    return normalizePhDiscountType(this.form.controls.laborDiscountType.value);
+    return this.serviceLaborGross();
   }
 
   serviceLaborGross(): number {
-    return Number(this.form.controls.labor.value) || 0;
+    return this.servicesArray.controls.reduce(
+      (total, _, index) => total + this.serviceAmount(index),
+      0,
+    );
   }
 
   serviceLaborNet(): number {
-    return applyPhSpecialDiscount(this.serviceLaborGross(), this.laborDiscountType()).net;
+    return this.servicesArray.controls.reduce(
+      (total, _, index) => total + this.serviceNetAmount(index),
+      0,
+    );
   }
 
   serviceLaborDiscountAmount(): number {
-    return applyPhSpecialDiscount(this.serviceLaborGross(), this.laborDiscountType())
-      .discountAmount;
+    return this.servicesArray.controls.reduce(
+      (total, _, index) => total + this.serviceDiscountAmount(index),
+      0,
+    );
   }
 
   partsSubtotal(): number {
-    const inventoryTotal = this.partsArray.controls.reduce((total, _, index) => total + this.partSubtotal(index), 0);
-    const customTotal = this.customPartsArray.controls.reduce(
-      (total, _, index) => total + this.customPartSubtotal(index),
-      0,
-    );
-
-    return inventoryTotal + customTotal;
+    return this.partsArray.controls.reduce((total, _, index) => total + this.partSubtotal(index), 0);
   }
 
   partsNetSubtotal(): number {
-    const inventoryTotal = this.partsArray.controls.reduce(
-      (total, _, index) => total + this.partNetAmount(index),
-      0,
-    );
-    const customTotal = this.customPartsArray.controls.reduce(
-      (total, _, index) => total + this.customPartNetAmount(index),
-      0,
-    );
-    return inventoryTotal + customTotal;
+    return this.partsArray.controls.reduce((total, _, index) => total + this.partNetAmount(index), 0);
   }
 
   totalDiscountAmount(): number {
@@ -713,11 +947,7 @@ export class InventoryServiceCreatePageComponent implements OnInit {
       (total, _, index) => total + this.partDiscountAmount(index),
       0,
     );
-    const customDiscount = this.customPartsArray.controls.reduce(
-      (total, _, index) => total + this.customPartDiscountAmount(index),
-      0,
-    );
-    return inventoryDiscount + customDiscount + this.serviceLaborDiscountAmount();
+    return inventoryDiscount + this.serviceLaborDiscountAmount();
   }
 
   totalLaborNet(): number {
@@ -733,9 +963,71 @@ export class InventoryServiceCreatePageComponent implements OnInit {
     return Number(this.form.controls.customDiscount.value) || 0;
   }
 
-  discountLabel(value: string | null | undefined): string {
-    const match = this.discountOptions.find((option) => option.value === value);
-    return match?.label ?? 'No discount';
+  downpaymentAmount(): number {
+    return Math.max(0, Number(this.form.controls.downpayment.value) || 0);
+  }
+
+  balanceDueAmount(): number {
+    return Math.max(0, this.totalCustomerPayment() - this.downpaymentAmount());
+  }
+
+  settlementChangeAmount(): number {
+    return Math.max(0, this.settlementAmountReceived() - this.balanceDueAmount());
+  }
+
+  canConfirmSettlement(): boolean {
+    return (
+      this.settlementAmountReceived() + 0.005 >= this.balanceDueAmount() &&
+      SETTLEMENT_PAYMENT_METHODS.includes(
+        this.settlementPaymentMethod() as (typeof SETTLEMENT_PAYMENT_METHODS)[number],
+      )
+    );
+  }
+
+  onSettlementAmountInput(rawValue: string): void {
+    const parsed = Number(rawValue);
+    this.settlementAmountReceived.set(Number.isFinite(parsed) ? Math.max(0, parsed) : 0);
+    this.settlementError.set('');
+  }
+
+  selectSettlementPaymentMethod(method: string): void {
+    this.settlementPaymentMethod.set(method);
+    this.settlementError.set('');
+  }
+
+  private resolveServiceLineAmount(part: {
+    quantity?: number | null;
+    unitPrice?: number | null;
+    labor?: number | null;
+  }): number {
+    const labor = Number(part.labor) || 0;
+    if (labor > 0) {
+      return labor;
+    }
+    return (Number(part.quantity) || 1) * (Number(part.unitPrice) || 0);
+  }
+
+  private initialDiscountAmount(
+    gross: number,
+    storedAmount?: number | null,
+    discountType?: string | null,
+  ): number {
+    const custom = Number(storedAmount) || 0;
+    if (custom > 0) {
+      return applyLineDiscount(gross, custom).discountAmount;
+    }
+    return applyPhSpecialDiscount(gross, normalizePhDiscountType(discountType)).discountAmount;
+  }
+
+  hasBilledLines(): boolean {
+    const hasService = this.servicesArray.controls.some((control) =>
+      Boolean(String((control.getRawValue() as { name?: string }).name ?? '').trim()),
+    );
+    const hasPart = this.partsArray.controls.some((control) => {
+      const value = control.getRawValue() as { materialId?: string; customName?: string };
+      return Boolean(value.materialId) || Boolean(String(value.customName ?? '').trim());
+    });
+    return hasService || hasPart;
   }
 
   syncCostWithParts(): void {
@@ -757,43 +1049,82 @@ export class InventoryServiceCreatePageComponent implements OnInit {
       return { error: 'End date/time must be later than the start date/time.' };
     }
 
+    if (this.form.controls.customerEmail.invalid) {
+      return { error: 'Please enter a valid customer email.' };
+    }
+
     const rawParts = value.parts as Array<{
       materialId: string;
+      customName?: string;
+      brandName?: string;
       quantity: number | string;
       unitPrice: number | string;
-      discountType?: string;
+      discountAmount?: number | string;
+      isNew?: boolean;
     }>;
     const inventoryParts = rawParts
-      .map((part) => ({
-        materialId: Number(part.materialId),
-        quantity: Number(part.quantity) || 0,
-        unitPrice: Number(part.unitPrice) || 0,
-        discountType: normalizePhDiscountType(part.discountType),
-      }))
-      .filter((part) => Number.isFinite(part.materialId) && part.materialId > 0 && part.quantity > 0);
+      .map((part) => {
+        const materialId = Number(part.materialId);
+        const hasCatalogId = Number.isFinite(materialId) && materialId > 0;
+        const customName = String(part.customName ?? '').trim();
+        const brandName = String(part.brandName ?? '').trim();
+        return {
+          materialId: hasCatalogId ? materialId : undefined,
+          customItemName: customName || undefined,
+          brandName: brandName || undefined,
+          quantity: Number(part.quantity) || 0,
+          unitPrice: Number(part.unitPrice) || 0,
+          discountType: 'none' as const,
+          discountAmount: Math.max(0, Number(part.discountAmount) || 0),
+          createInventoryMaterial: Boolean(part.isNew) || (!hasCatalogId && Boolean(customName)),
+        };
+      })
+      .filter(
+        (part) =>
+          part.quantity > 0 &&
+          (Boolean(part.materialId) || Boolean(part.customItemName)),
+      );
 
-    const rawCustomParts = value.customParts as Array<{
-      customItemName: string;
-      quantity: number | string;
-      unitPrice: number | string;
+    const rawServices = value.services as Array<{
+      serviceTypeId: string;
+      name: string;
       labor: number | string;
-      discountType?: string;
+      discountAmount?: number | string;
+      isNew?: boolean;
     }>;
-    const customParts = rawCustomParts
-      .map((part) => ({
-        customItemName: part.customItemName.trim(),
-        quantity: Number(part.quantity) || 0,
-        unitPrice: Number(part.unitPrice) || 0,
-        labor: Number(part.labor) || 0,
-        discountType: normalizePhDiscountType(part.discountType),
-      }))
-      .filter((part) => part.customItemName && part.quantity > 0);
+    const serviceParts = rawServices
+      .map((service) => {
+        const serviceTypeId = Number(service.serviceTypeId);
+        const hasCatalogId = Number.isFinite(serviceTypeId) && serviceTypeId > 0;
+        return {
+          serviceTypeId: hasCatalogId ? serviceTypeId : undefined,
+          customItemName: service.name.trim(),
+          quantity: 1,
+          unitPrice: 0,
+          labor: Number(service.labor) || 0,
+          discountType: 'none' as const,
+          discountAmount: Math.max(0, Number(service.discountAmount) || 0),
+          createCatalogService: Boolean(service.isNew) || !hasCatalogId,
+        };
+      })
+      .filter((service) => service.customItemName);
 
-    const status = this.normalizeJobStatus(statusOverride ?? value.status) || 'Active';
+    const status = statusOverride
+      ? this.normalizeJobStatus(statusOverride)
+      : this.isEditMode()
+        ? this.normalizeJobStatus(this.loadedStatus())
+        : 'Pending';
+    const serviceTypeLabel = serviceParts.map((service) => service.customItemName).join(', ');
 
     return {
       payload: {
         customerName: value.customerName.trim(),
+        customerEmail: value.customerEmail.trim() || undefined,
+        customerContact: value.customerContact.trim() || undefined,
+        customerAddress: value.customerAddress.trim() || undefined,
+        deviceBrand: value.deviceBrand.trim() || undefined,
+        deviceModel: value.deviceModel.trim() || undefined,
+        deviceSerial: value.deviceSerial.trim() || undefined,
         serviceName: value.serviceName.trim(),
         personInChargeUserId:
           Number.isFinite(personInChargeUserId) && personInChargeUserId > 0
@@ -803,18 +1134,44 @@ export class InventoryServiceCreatePageComponent implements OnInit {
           Number.isFinite(personInChargeUserId) && personInChargeUserId > 0
             ? personInChargeSource
             : undefined,
-        type: value.type.trim(),
-        parts: [...inventoryParts, ...customParts],
+        type: serviceTypeLabel,
+        parts: [...serviceParts, ...inventoryParts],
         cost: Number(value.cost) || 0,
-        labor: Number(value.labor) || 0,
-        laborDiscountType: normalizePhDiscountType(value.laborDiscountType),
+        labor: 0,
+        laborDiscountType: 'none',
         customDiscount: Number(value.customDiscount) || 0,
+        downpayment: Math.max(0, Number(value.downpayment) || 0),
+        paymentMethod: value.paymentMethod.trim() || undefined,
         status,
         startedAt: startedAt ? startedAt.toISOString() : undefined,
         endedAt: endedAt ? endedAt.toISOString() : undefined,
         notes: value.notes.trim() || undefined,
       },
     };
+  }
+
+  requestSubmit(): void {
+    this.formError.set('');
+    this.formSuccess.set('');
+
+    const built = this.buildPayload();
+    if ('error' in built) {
+      this.formError.set(built.error);
+      return;
+    }
+
+    this.pendingPaymentReview.set(true);
+  }
+
+  cancelPaymentReview(): void {
+    if (this.saving()) {
+      return;
+    }
+    this.pendingPaymentReview.set(false);
+  }
+
+  async confirmSubmit(): Promise<void> {
+    await this.submit();
   }
 
   async submit(): Promise<void> {
@@ -837,10 +1194,30 @@ export class InventoryServiceCreatePageComponent implements OnInit {
           : this.adminApi.updateInventoryService(this.serviceId()!, built.payload),
       );
 
-      this.applySavedService(response.data);
+      let saved = response.data;
+      if (wasCreate && this.pendingLaptopFile()) {
+        try {
+          const uploaded = await firstValueFrom(
+            this.adminApi.uploadInventoryServiceImage(saved.id, this.pendingLaptopFile()!),
+          );
+          this.revokePendingLaptopPreview();
+          saved = uploaded.data;
+        } catch {
+          this.applySavedService(saved);
+          this.pendingPaymentReview.set(false);
+          await this.router.navigate(['/admin/job-order', saved.id], { replaceUrl: true });
+          this.formError.set(
+            'Job order created, but the laptop photo could not be uploaded. You can add it from this form.',
+          );
+          return;
+        }
+      }
+
+      this.applySavedService(saved);
+      this.pendingPaymentReview.set(false);
 
       if (wasCreate) {
-        await this.router.navigate(['/admin/job-order', response.data.id], { replaceUrl: true });
+        await this.router.navigate(['/admin/job-order', saved.id], { replaceUrl: true });
       }
 
       this.formSuccess.set(wasCreate ? 'Job order created.' : 'Job order updated.');
@@ -863,6 +1240,96 @@ export class InventoryServiceCreatePageComponent implements OnInit {
     this.loadedStatus.set(normalizedStatus);
     this.selectedStatus.set(normalizedStatus);
     this.form.controls.status.setValue(normalizedStatus, { emitEvent: false });
+    this.form.patchValue({
+      deviceBrand: item.deviceBrand ?? '',
+      deviceModel: item.deviceModel ?? '',
+      deviceSerial: item.deviceSerial ?? '',
+      downpayment: item.downpayment ?? 0,
+      paymentMethod: item.paymentMethod ?? '',
+    });
+    this.syncSavedCatalogServices(item);
+    this.syncSavedInventoryParts(item);
+  }
+
+  private syncSavedCatalogServices(item: InventoryServiceItem): void {
+    const byName = new Map(
+      (item.parts ?? [])
+        .filter((part) => Number(part.serviceTypeId) > 0 && part.customItemName?.trim())
+        .map((part) => [part.customItemName!.trim().toLowerCase(), part]),
+    );
+
+    this.servicesArray.controls.forEach((control) => {
+      const value = control.getRawValue() as { name: string; serviceTypeId: string };
+      const match = byName.get(value.name.trim().toLowerCase());
+      if (!match?.serviceTypeId) {
+        return;
+      }
+
+      control.patchValue({
+        serviceTypeId: String(match.serviceTypeId),
+        isNew: false,
+      });
+
+      if (!this.serviceTypes().some((type) => Number(type.id) === Number(match.serviceTypeId))) {
+        this.serviceTypes.update((list) => [
+          ...list,
+          {
+            id: Number(match.serviceTypeId),
+            name: match.customItemName || value.name,
+            description: null,
+            laborPrice: Number(match.unitPrice) || Number(match.labor) || 0,
+            usageCount: 0,
+            totalLaborCollected: 0,
+            isActive: true,
+            updatedAt: null,
+          },
+        ]);
+      }
+    });
+  }
+
+  private syncSavedInventoryParts(item: InventoryServiceItem): void {
+    const byName = new Map(
+      (item.parts ?? [])
+        .filter((part) => Number(part.materialId) > 0)
+        .map((part) => [
+          (part.customItemName || part.materialName || '').trim().toLowerCase(),
+          part,
+        ]),
+    );
+
+    this.partsArray.controls.forEach((control) => {
+      const value = control.getRawValue() as { customName?: string; materialId?: string; brandName?: string };
+      if (Number(value.materialId) > 0) {
+        return;
+      }
+      const match = byName.get(String(value.customName ?? '').trim().toLowerCase());
+      if (!match?.materialId) {
+        return;
+      }
+
+      control.patchValue({
+        materialId: String(match.materialId),
+        isNew: false,
+        brandName: String(value.brandName ?? match.brandName ?? '').trim(),
+      });
+
+      this.upsertMaterials([
+        {
+          id: Number(match.materialId),
+          materialName: match.materialName || value.customName || 'Part',
+          materialCode: match.materialCode ?? null,
+          brandName: String(value.brandName ?? match.brandName ?? '').trim() || null,
+          productTypeName: 'Non-Inventory',
+          unit: 'PCS',
+          unitPrice: Number(match.unitPrice) || 0,
+          orderCost: 0,
+          sellPrice: Number(match.unitPrice) || 0,
+          onHandStock: 0,
+          reorderLevel: 0,
+        },
+      ]);
+    });
   }
 
   requestDelete(): void {
@@ -901,13 +1368,12 @@ export class InventoryServiceCreatePageComponent implements OnInit {
     }
   }
 
-  async onCompletionImageSelected(event: Event): Promise<void> {
+  async onLaptopImageSelected(event: Event): Promise<void> {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0] ?? null;
     input.value = '';
 
-    const id = this.serviceId();
-    if (!file || !id) {
+    if (!file) {
       return;
     }
 
@@ -921,26 +1387,46 @@ export class InventoryServiceCreatePageComponent implements OnInit {
       return;
     }
 
-    this.completionUploading.set(true);
+    const id = this.serviceId();
     this.formError.set('');
+
+    if (!id) {
+      this.setPendingLaptopFile(file);
+      return;
+    }
+
+    this.laptopImageUploading.set(true);
 
     try {
       const response = await firstValueFrom(this.adminApi.uploadInventoryServiceImage(id, file));
+      this.revokePendingLaptopPreview();
       this.persistedImageUrl = response.data.imageUrl ?? null;
       this.imageUrl.set(response.data.imageUrl ?? null);
-      this.loadedStatus.set('Done');
-      if (this.selectedStatus() !== 'Done') {
-        this.form.controls.status.setValue('Done');
-        this.selectedStatus.set('Done');
-      }
     } catch (err: unknown) {
       const httpErr = err as { error?: { message?: string | string[] } };
       const msg = httpErr?.error?.message;
       const detail = Array.isArray(msg) ? msg.join(', ') : msg || 'Unknown error';
-      this.formError.set(`Unable to upload completion image: ${detail}`);
+      this.formError.set(`Unable to upload laptop photo: ${detail}`);
     } finally {
-      this.completionUploading.set(false);
+      this.laptopImageUploading.set(false);
     }
+  }
+
+  private setPendingLaptopFile(file: File): void {
+    this.revokePendingLaptopPreview();
+    this.pendingLaptopFile.set(file);
+    const objectUrl = URL.createObjectURL(file);
+    this.pendingLaptopObjectUrl = objectUrl;
+    this.pendingLaptopPreview.set(objectUrl);
+  }
+
+  private revokePendingLaptopPreview(): void {
+    if (this.pendingLaptopObjectUrl) {
+      URL.revokeObjectURL(this.pendingLaptopObjectUrl);
+      this.pendingLaptopObjectUrl = null;
+    }
+    this.pendingLaptopFile.set(null);
+    this.pendingLaptopPreview.set(null);
   }
 
   openReceipt(): void {
@@ -959,6 +1445,41 @@ export class InventoryServiceCreatePageComponent implements OnInit {
     void this.router.navigate(['/admin/job-order', id, 'receipt'], {
       queryParams: { reprint: '1', print: '1' },
     });
+  }
+
+  requestMarkAsDone(): void {
+    if (!this.isEditMode() || this.selectedStatus() === 'Done' || this.markingDone()) {
+      return;
+    }
+
+    this.formError.set('');
+    this.settlementError.set('');
+    this.settlementAmountReceived.set(Number(this.balanceDueAmount().toFixed(2)));
+    this.settlementPaymentMethod.set(this.form.controls.paymentMethod.value || '');
+    this.pendingSettlement.set(true);
+  }
+
+  cancelSettlement(): void {
+    if (this.markingDone()) {
+      return;
+    }
+    this.pendingSettlement.set(false);
+    this.settlementError.set('');
+  }
+
+  async confirmSettlement(): Promise<void> {
+    if (!this.settlementPaymentMethod()) {
+      this.settlementError.set('Please select a payment method.');
+      return;
+    }
+
+    if (!this.canConfirmSettlement()) {
+      this.settlementError.set('Amount received must cover the remaining balance.');
+      return;
+    }
+
+    this.form.controls.paymentMethod.setValue(this.settlementPaymentMethod());
+    await this.markAsDone();
   }
 
   async markAsDone(): Promise<void> {
@@ -986,6 +1507,7 @@ export class InventoryServiceCreatePageComponent implements OnInit {
       this.loadedStatus.set('Done');
       this.persistedImageUrl = response.data.imageUrl ?? this.persistedImageUrl;
       this.imageUrl.set(this.persistedImageUrl);
+      this.pendingSettlement.set(false);
       await this.router.navigate(['/admin/job-order', id, 'receipt'], {
         queryParams: { print: '1' },
       });
@@ -993,7 +1515,9 @@ export class InventoryServiceCreatePageComponent implements OnInit {
       const httpErr = err as { error?: { message?: string | string[] } };
       const msg = httpErr?.error?.message;
       const detail = Array.isArray(msg) ? msg.join(', ') : msg || 'Unknown error';
-      this.formError.set(`Unable to mark job as Done: ${detail}`);
+      const message = `Unable to settle job: ${detail}`;
+      this.settlementError.set(message);
+      this.formError.set(message);
     } finally {
       this.markingDone.set(false);
     }

@@ -1,4 +1,4 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
@@ -10,9 +10,10 @@ import { AdminAuthService } from '../../admin/services/admin-auth.service';
   imports: [FormsModule, RouterLink],
   templateUrl: './portal-login-page.component.html',
 })
-export class PortalLoginPageComponent {
+export class PortalLoginPageComponent implements OnInit, OnDestroy {
   private readonly adminAuth = inject(AdminAuthService);
   private readonly router = inject(Router);
+  private stopAuthWatch: (() => void) | null = null;
 
   readonly username = signal('');
   readonly password = signal('');
@@ -20,6 +21,22 @@ export class PortalLoginPageComponent {
   readonly showPassword = signal(false);
   readonly loading = signal(false);
   readonly error = signal('');
+
+  ngOnInit(): void {
+    this.redirectIfAuthenticated();
+    this.stopAuthWatch = this.adminAuth.onAuthStorageChange(() => this.redirectIfAuthenticated());
+  }
+
+  ngOnDestroy(): void {
+    this.stopAuthWatch?.();
+  }
+
+  private redirectIfAuthenticated(): void {
+    if (!this.adminAuth.isAuthenticated()) {
+      return;
+    }
+    void this.router.navigateByUrl(getRoleHomeRoute(this.adminAuth.getStoredUser()?.role));
+  }
 
   async submit(): Promise<void> {
     if (this.loading()) {

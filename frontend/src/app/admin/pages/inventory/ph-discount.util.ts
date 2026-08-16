@@ -61,6 +61,20 @@ export function applyPhSpecialDiscount(
   };
 }
 
+export function applyLineDiscount(grossInput: number, discountInput: number): {
+  gross: number;
+  discountAmount: number;
+  net: number;
+} {
+  const gross = Math.max(0, Number(grossInput) || 0);
+  const discountAmount = Math.min(gross, Math.max(0, Number(discountInput) || 0));
+  return {
+    gross,
+    discountAmount,
+    net: Math.max(0, gross - discountAmount),
+  };
+}
+
 export function phDiscountLabel(type: PhDiscountType): string {
   switch (type) {
     case 'senior':
