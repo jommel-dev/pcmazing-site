@@ -1,10 +1,17 @@
-import { Component, input } from '@angular/core';
+import { Component, input, output } from '@angular/core';
 import { DashboardKpi } from '../../data/dashboard.types';
 
 @Component({
   selector: 'app-dashboard-kpi-card',
   template: `
-    <article class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <button
+      type="button"
+      class="w-full rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:border-pcmazing-400 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-pcmazing-400 dark:border-slate-800 dark:bg-slate-900"
+      [class.border-pcmazing-500]="active()"
+      [class.ring-2]="active()"
+      [class.ring-pcmazing-400]="active()"
+      (click)="opened.emit(kpi().key)"
+    >
       <p class="text-sm font-medium text-slate-500 dark:text-slate-400">{{ kpi().label }}</p>
       <p class="mt-2 text-3xl font-bold tracking-tight text-slate-900 dark:text-white">{{ displayValue() }}</p>
       <span
@@ -20,11 +27,14 @@ import { DashboardKpi } from '../../data/dashboard.types';
       >
         {{ kpi().changeLabel }}
       </span>
-    </article>
+      <p class="mt-3 text-xs font-semibold text-pcmazing-600 dark:text-pcmazing-400">View details</p>
+    </button>
   `,
 })
 export class DashboardKpiCardComponent {
   readonly kpi = input.required<DashboardKpi>();
+  readonly active = input(false);
+  readonly opened = output<string>();
 
   displayValue(): string {
     const item = this.kpi();

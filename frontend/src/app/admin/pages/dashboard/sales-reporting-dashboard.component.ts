@@ -3,13 +3,25 @@ import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { DashboardChartComponent } from '../../components/dashboard-chart/dashboard-chart.component';
+import { DashboardDetailsPanelComponent } from '../../components/dashboard-details-panel/dashboard-details-panel.component';
 import { DashboardKpiCardComponent } from '../../components/dashboard-kpi-card/dashboard-kpi-card.component';
-import { DashboardOverview, DashboardPeriod } from '../../data/dashboard.types';
+import {
+  DashboardDetailMetric,
+  DashboardDetails,
+  DashboardOverview,
+  DashboardPeriod,
+} from '../../data/dashboard.types';
 import { AdminApiService } from '../../services/admin-api.service';
 
 @Component({
   selector: 'app-sales-reporting-dashboard',
-  imports: [DatePipe, FormsModule, DashboardKpiCardComponent, DashboardChartComponent],
+  imports: [
+    DatePipe,
+    FormsModule,
+    DashboardKpiCardComponent,
+    DashboardChartComponent,
+    DashboardDetailsPanelComponent,
+  ],
   templateUrl: './sales-reporting-dashboard.component.html',
 })
 export class SalesReportingDashboardComponent implements OnInit {
@@ -18,6 +30,10 @@ export class SalesReportingDashboardComponent implements OnInit {
   readonly loading = signal(true);
   readonly overview = signal<DashboardOverview | null>(null);
   readonly error = signal('');
+  readonly selectedMetric = signal<DashboardDetailMetric | null>(null);
+  readonly details = signal<DashboardDetails | null>(null);
+  readonly detailsLoading = signal(false);
+  readonly detailsError = signal('');
 
   readonly selectedPeriod = signal<DashboardPeriod>('daily');
   readonly customStartDate = signal('');
@@ -110,6 +126,45 @@ export class SalesReportingDashboardComponent implements OnInit {
     void this.loadOverview();
   }
 
+  openDetails(metric: string): void {
+    const next = metric as DashboardDetailMetric;
+    if (this.selectedMetric() === next) {
+      this.closeDetails();
+      return;
+    }
+
+    this.selectedMetric.set(next);
+    void this.loadDetails(next);
+  }
+
+  closeDetails(): void {
+    this.selectedMetric.set(null);
+    this.details.set(null);
+    this.detailsError.set('');
+  }
+
+  private async loadDetails(metric: DashboardDetailMetric): Promise<void> {
+    this.detailsLoading.set(true);
+    this.detailsError.set('');
+
+    try {
+      const response = await firstValueFrom(
+        this.adminApi.getDashboardDetails({
+          metric,
+          period: this.selectedPeriod(),
+          startDate: this.selectedPeriod() === 'custom' ? this.customStartDate() : undefined,
+          endDate: this.selectedPeriod() === 'custom' ? this.customEndDate() : undefined,
+        }),
+      );
+      this.details.set(response.data);
+    } catch {
+      this.details.set(null);
+      this.detailsError.set('Unable to load card details.');
+    } finally {
+      this.detailsLoading.set(false);
+    }
+  }
+
   private initializeCustomDates(): void {
     const today = new Date();
     const weekAgo = new Date(today);
@@ -140,6 +195,9 @@ export class SalesReportingDashboardComponent implements OnInit {
       );
 
       this.overview.set(response.data);
+      if (this.selectedMetric()) {
+        void this.loadDetails(this.selectedMetric()!);
+      }
     } catch {
       this.error.set('Unable to load sales reporting.');
     } finally {

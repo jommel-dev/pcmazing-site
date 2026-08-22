@@ -4,6 +4,10 @@ export interface AdminUserPayrollProfile {
   positionTitle: string | null;
   salaryType: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
   monthlySalary: number | null;
+  fixedMonthlySalary: number | null;
+  payoutMethod: 'cash' | 'online';
+  bankDetails: string | null;
+  qrImageUrl: string | null;
   payrollEnabled: boolean;
 }
 
@@ -24,6 +28,10 @@ export interface AdminUserRecord {
   positionTitle?: string | null;
   salaryType?: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
   monthlySalary?: number | null;
+  fixedMonthlySalary?: number | null;
+  payoutMethod?: 'cash' | 'online';
+  bankDetails?: string | null;
+  qrImageUrl?: string | null;
   payrollEnabled?: boolean;
 }
 

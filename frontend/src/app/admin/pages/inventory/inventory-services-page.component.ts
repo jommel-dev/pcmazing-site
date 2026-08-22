@@ -35,7 +35,10 @@ type ServiceSortKey =
   | 'labor'
   | 'totalCosting'
   | 'totalSales'
-  | 'status';
+  | 'status'
+  | 'createdAt';
+
+type DatePeriod = 'daily' | 'weekly' | 'monthly' | 'custom';
 
 type ActionToast = {
   id: number;
@@ -105,7 +108,7 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
   readonly page = signal(1);
   readonly pageSize = signal(25);
   readonly pageSizeOptions = [10, 25, 50] as const;
-  readonly sortBy = signal<ServiceSortKey>('referenceNo');
+  readonly sortBy = signal<ServiceSortKey>('createdAt');
   readonly sortDir = signal<'asc' | 'desc'>('desc');
   readonly items = signal<InventoryServiceItem[]>([]);
   readonly meta = signal<PaginationMeta | null>(null);
@@ -114,6 +117,15 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
   readonly statuses = signal<InventoryServiceFilterOption[]>([]);
   readonly selectedType = signal('');
   readonly selectedStatus = signal('');
+  readonly startDate = signal('');
+  readonly endDate = signal('');
+  readonly selectedPeriod = signal<DatePeriod>('daily');
+  readonly periodOptions: Array<{ value: DatePeriod; label: string }> = [
+    { value: 'daily', label: 'Daily' },
+    { value: 'weekly', label: 'Weekly' },
+    { value: 'monthly', label: 'Monthly' },
+    { value: 'custom', label: 'Custom' },
+  ];
   readonly columnOptions: Array<{ key: ServiceColumnKey; label: string }> = [
     { key: 'customer', label: 'Customer' },
     { key: 'serviceName', label: 'Job Order Description' },
@@ -151,6 +163,8 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
     item: InventoryServiceItem;
     nextStatus: string;
   } | null>(null);
+  readonly cancelReason = signal('');
+  readonly cancelReasonError = signal('');
   readonly pendingSettlement = signal<InventoryServiceItem | null>(null);
   readonly settlementJob = signal<InventoryServiceItem | null>(null);
   readonly settlementLoading = signal(false);
@@ -160,6 +174,7 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
   readonly settlementPaymentMethods = SETTLEMENT_PAYMENT_METHODS;
 
   ngOnInit(): void {
+    this.applyPresetPeriod('daily');
     void this.loadServices();
   }
 
@@ -220,6 +235,8 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
           this.selectedStatus(),
           this.sortBy(),
           this.sortDir(),
+          this.startDate(),
+          this.endDate(),
         ),
       );
       this.items.set(response.data.map((item) => this.withNormalizedStatus(item)));
@@ -269,6 +286,60 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
     await this.loadServices();
   }
 
+  async selectPeriod(period: DatePeriod): Promise<void> {
+    this.selectedPeriod.set(period);
+    if (period === 'custom') {
+      if (!this.startDate() || !this.endDate()) {
+        this.applyPresetPeriod('daily');
+      }
+      return;
+    }
+
+    this.applyPresetPeriod(period);
+    this.page.set(1);
+    await this.loadServices();
+  }
+
+  async applyCustomRange(): Promise<void> {
+    const start = this.startDate();
+    const end = this.endDate();
+    if (!start || !end) {
+      this.error.set('Select both start and end dates for the custom range.');
+      return;
+    }
+    if (start > end) {
+      this.startDate.set(end);
+      this.endDate.set(start);
+    }
+    this.page.set(1);
+    await this.loadServices();
+  }
+
+  private applyPresetPeriod(period: Exclude<DatePeriod, 'custom'>): void {
+    const now = new Date();
+    const end = this.toInputDate(now);
+    let start = now;
+
+    if (period === 'weekly') {
+      const day = now.getDay();
+      const diff = day === 0 ? -6 : 1 - day;
+      start = new Date(now);
+      start.setDate(now.getDate() + diff);
+    } else if (period === 'monthly') {
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+    }
+
+    this.startDate.set(this.toInputDate(start));
+    this.endDate.set(end);
+  }
+
+  private toInputDate(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
   async goToPage(nextPage: number): Promise<void> {
     this.page.set(nextPage);
     await this.loadServices();
@@ -285,7 +356,7 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
       this.sortDir.set(this.sortDir() === 'asc' ? 'desc' : 'asc');
     } else {
       this.sortBy.set(key);
-      this.sortDir.set('asc');
+      this.sortDir.set(key === 'createdAt' ? 'desc' : 'asc');
     }
     this.page.set(1);
     await this.loadServices();
@@ -302,7 +373,9 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
     const count = this.summary()?.itemCount ?? this.meta()?.total ?? 0;
     const typeLabel = this.selectedType() || 'All Types';
     const statusLabel = this.selectedStatus() || 'All Statuses';
-    return `${typeLabel} · ${statusLabel} (${count} services)`;
+    const periodLabel =
+      this.periodOptions.find((option) => option.value === this.selectedPeriod())?.label ?? 'Daily';
+    return `${typeLabel} · ${statusLabel} · ${periodLabel} (${count} jobs)`;
   }
 
   partsUsedLabel(item: InventoryServiceItem): string {
@@ -360,6 +433,8 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
       return;
     }
 
+    this.cancelReason.set('');
+    this.cancelReasonError.set('');
     this.pendingStatusChange.set({ item, nextStatus });
   }
 
@@ -368,6 +443,8 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
       return;
     }
     this.pendingStatusChange.set(null);
+    this.cancelReason.set('');
+    this.cancelReasonError.set('');
   }
 
   async confirmStatusChange(): Promise<void> {
@@ -376,8 +453,16 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
       return;
     }
 
+    const reason = this.cancelReason().trim();
+    if (pending.nextStatus === 'Cancelled' && reason.length < 3) {
+      this.cancelReasonError.set('Please enter a cancellation reason.');
+      return;
+    }
+
     this.pendingStatusChange.set(null);
-    await this.applyStatusChange(pending.item, pending.nextStatus);
+    this.cancelReasonError.set('');
+    await this.applyStatusChange(pending.item, pending.nextStatus, undefined, reason);
+    this.cancelReason.set('');
   }
 
   private settlementSource(): InventoryServiceItem | null {
@@ -492,12 +577,13 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
     item: InventoryServiceItem,
     status: string,
     paymentMethod?: string,
+    cancelReason?: string,
   ): Promise<void> {
     this.statusUpdatingId.set(item.id);
 
     try {
       const response = await firstValueFrom(
-        this.adminApi.updateInventoryServiceStatus(item.id, status, paymentMethod),
+        this.adminApi.updateInventoryServiceStatus(item.id, status, paymentMethod, cancelReason),
       );
       const nextStatus = this.normalizeJobStatus(response.data.status);
       this.applyLocalStatusUpdate({
@@ -553,6 +639,9 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
   printJob(item: InventoryServiceItem, event?: Event): void {
     event?.stopPropagation();
     event?.preventDefault();
+    if (this.normalizeJobStatus(item.status) === 'Cancelled') {
+      return;
+    }
     const reprinted = this.normalizeJobStatus(item.status) === 'Done';
     void this.router.navigate(['/admin/job-order', item.id, 'receipt'], {
       queryParams: reprinted ? { reprint: '1', print: '1' } : { print: '1' },

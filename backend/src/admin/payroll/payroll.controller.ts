@@ -3,6 +3,7 @@ import type { Request } from 'express';
 import { AdminJwtPayload, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../rbac/roles.decorator';
 import { RolesGuard } from '../rbac/roles.guard';
+import { GeneratePayslipsDto } from './dto/generate-payslips.dto';
 import { ReviewOvertimeDto } from './dto/review-overtime.dto';
 import { PayrollService } from './payroll.service';
 
@@ -47,7 +48,7 @@ export class PayrollController {
   @Post('period/generate')
   @Roles('admin')
   generatePeriod(
-    @Body() body: { dateFrom?: string; dateTo?: string },
+    @Body() body: GeneratePayslipsDto,
     @Req() req: Request & { user?: AdminJwtPayload },
   ) {
     const generatedBy =
@@ -56,7 +57,7 @@ export class PayrollController {
         : undefined;
 
     return this.payrollService
-      .generatePayslips(body?.dateFrom, body?.dateTo, generatedBy)
+      .generatePayslips(body?.dateFrom, body?.dateTo, generatedBy, body?.employees)
       .then((data) => ({
         success: true,
         data,

@@ -2,7 +2,10 @@ import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../rbac/roles.decorator';
 import { RolesGuard } from '../rbac/roles.guard';
-import { DashboardOverviewQueryDto } from './dto/dashboard-overview-query.dto';
+import {
+  DashboardDetailsQueryDto,
+  DashboardOverviewQueryDto,
+} from './dto/dashboard-overview-query.dto';
 import { DashboardService } from './dashboard.service';
 
 @Controller('admin/dashboard')
@@ -14,6 +17,17 @@ export class DashboardController {
   @Roles('admin', 'sales')
   async getOverview(@Query() query: DashboardOverviewQueryDto) {
     const data = await this.dashboardService.getOverview(query);
+
+    return {
+      success: true,
+      data,
+    };
+  }
+
+  @Get('details')
+  @Roles('admin', 'sales')
+  async getDetails(@Query() query: DashboardDetailsQueryDto) {
+    const data = await this.dashboardService.getDetails(query);
 
     return {
       success: true,

@@ -26,13 +26,19 @@ export class SalesOrdersController {
     @Query('limit') limit?: string,
     @Query('search') search?: string,
     @Query('void') voidFilter?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
   ) {
-    return this.salesOrdersService.list(page, limit, search, voidFilter).then((result) => ({
-      success: true,
-      data: result.items,
-      meta: result.meta,
-      summary: result.summary,
-    }));
+    return this.salesOrdersService
+      .list(page, limit, search, voidFilter, sortBy, sortDir, startDate, endDate)
+      .then((result) => ({
+        success: true,
+        data: result.items,
+        meta: result.meta,
+        summary: result.summary,
+      }));
   }
 
   @Post()

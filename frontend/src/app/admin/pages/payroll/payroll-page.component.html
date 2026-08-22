@@ -208,11 +208,16 @@
             <tr>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Employee</th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Department</th>
-              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Salary type</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Pay schedule</th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">
                 Amount
-                <span class="block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Daily rate if semi-monthly</span>
+                <span class="block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Fixed monthly skips daily rate</span>
               </th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">
+                Total amount
+                <span class="block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Based on pay schedule</span>
+              </th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Payout</th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Today</th>
             </tr>
           </thead>
@@ -228,7 +233,19 @@
                 </td>
                 <td class="px-4 py-3 text-slate-600 dark:text-slate-300">{{ item.department || '—' }}</td>
                 <td class="px-4 py-3 text-slate-700 dark:text-slate-200">{{ salaryTypeLabel(item.salaryType) }}</td>
-                <td class="px-4 py-3 font-medium text-slate-900 dark:text-white">{{ formatMoney(item.monthlySalary) }}</td>
+                <td class="px-4 py-3 font-medium text-slate-900 dark:text-white">
+                  @if (item.fixedMonthlySalary) {
+                    {{ formatMoney(item.fixedMonthlySalary) }}
+                    <span class="block text-xs font-medium text-emerald-600">Fixed monthly</span>
+                  } @else {
+                    {{ formatMoney(item.monthlySalary) }}
+                  }
+                </td>
+                <td class="px-4 py-3 font-semibold text-slate-900 dark:text-white">
+                  {{ formatMoney(scheduledPayAmount(item)) }}
+                  <span class="block text-xs font-medium text-slate-500">{{ scheduledPayLabel(item) }}</span>
+                </td>
+                <td class="px-4 py-3 text-slate-700 dark:text-slate-200">{{ payoutMethodLabel(item.payoutMethod) }}</td>
                 <td class="px-4 py-3">
                   <span class="rounded-full px-2.5 py-1 text-xs font-bold" [class]="todayStatusClass(item.todayStatus)">
                     {{ todayStatusLabel(item.todayStatus) }}
@@ -309,9 +326,10 @@
         </div>
       </div>
       <p class="mb-4 text-sm text-slate-500">
-        Period {{ meta.dateFrom }} → {{ meta.dateTo }} ({{ meta.periodDays }} day{{ meta.periodDays === 1 ? '' : 's' }}).
-        Compute previews the cutoff; Generate payslips publishes it to employee portals.
-        Semi-monthly = Amount × paid day units (9h+ full, 4–&lt;9h half). Approved overtime (past 9h, employee-requested) pays at 1.25× hourly; pending OT is excluded until approved.
+        Reference dates {{ meta.dateFrom }} → {{ meta.dateTo }}.
+        Each employee defaults to the pay schedule on their profile. Change the payslip period per employee before generating.
+        Compute previews attendance and pay for those periods; Generate payslips publishes them to employee portals.
+        Approved overtime (past 9h, employee-requested) pays at 1.25× hourly; pending OT is excluded until approved.
       </p>
     }
 
@@ -326,6 +344,7 @@
             <tr>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Employee</th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Type</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Payslip period</th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Days</th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Paid units</th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Hours</th>
@@ -342,7 +361,24 @@
                 </td>
                 <td class="px-4 py-3 text-slate-600 dark:text-slate-300">
                   {{ salaryTypeLabel(item.salaryType) }}
-                  <p class="text-xs text-slate-500">{{ formatMoney(item.salaryAmount) }}</p>
+                  @if (item.fixedMonthlySalary) {
+                    <p class="text-xs font-medium text-emerald-600">Fixed monthly {{ formatMoney(item.fixedMonthlySalary) }}</p>
+                  } @else {
+                    <p class="text-xs text-slate-500">{{ formatMoney(item.salaryAmount) }}</p>
+                  }
+                </td>
+                <td class="px-4 py-3">
+                  <select
+                    class="w-full min-w-[9.5rem] rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    [ngModel]="payslipPeriodFor(item)"
+                    (ngModelChange)="setPayslipPeriod(item, $event)"
+                    [name]="'payslipPeriod-' + item.userSource + '-' + item.userId"
+                  >
+                    @for (option of payslipPeriodOptions; track option.value) {
+                      <option [ngValue]="option.value">{{ option.label }}</option>
+                    }
+                  </select>
+                  <p class="mt-1 text-[11px] text-slate-500">{{ payslipRangeLabel(item) }}</p>
                 </td>
                 <td class="px-4 py-3 text-slate-700 dark:text-slate-200">
                   {{ item.daysCompleted }}/{{ item.daysPresent }}
@@ -357,7 +393,7 @@
                     <p class="text-xs text-amber-600">{{ formatHours(item.pendingOvertimeHours) }} pending</p>
                   }
                 </td>
-                <td class="px-4 py-3 font-semibold text-slate-900 dark:text-white">{{ formatMoney(item.estimatedPay) }}</td>
+                <td class="px-4 py-3 font-semibold text-slate-900 dark:text-white">{{ formatMoney(selectedPeriodPay(item)) }}</td>
               </tr>
             }
           </tbody>

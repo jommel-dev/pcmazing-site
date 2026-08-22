@@ -75,6 +75,7 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
   readonly laptopImageUploading = signal(false);
   readonly pendingLaptopFile = signal<File | null>(null);
   readonly pendingLaptopPreview = signal<string | null>(null);
+  readonly laptopImageFailed = signal(false);
   readonly isMobileDevice = signal(false);
   readonly selectedStatus = signal<string>('Pending');
   readonly loadedStatus = signal<string>('Pending');
@@ -106,9 +107,12 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
 
   readonly totalSelectedServices = computed(() => this.servicesArray.controls.length);
   readonly totalSelectedParts = computed(() => this.partsArray.controls.length);
-  readonly laptopImageSrc = computed(() =>
-    this.pendingLaptopPreview() || this.adminApi.resolveServiceImageUrl(this.imageUrl()),
-  );
+  readonly laptopImageSrc = computed(() => {
+    if (this.laptopImageFailed()) {
+      return null;
+    }
+    return this.pendingLaptopPreview() || this.adminApi.resolveServiceImageUrl(this.imageUrl());
+  });
   readonly isDoneStatus = computed(() => this.normalizeJobStatus(this.selectedStatus()) === 'Done');
 
   ngOnInit(): void {
@@ -190,6 +194,7 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
         this.referenceNo.set(item.referenceNo ?? null);
         this.persistedImageUrl = item.imageUrl ?? null;
         this.imageUrl.set(item.imageUrl ?? null);
+        this.laptopImageFailed.set(false);
         const normalizedStatus = this.normalizeJobStatus(item.status);
         this.loadedStatus.set(normalizedStatus);
         this.selectedStatus.set(normalizedStatus);
@@ -1205,7 +1210,7 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
         } catch {
           this.applySavedService(saved);
           this.pendingPaymentReview.set(false);
-          await this.router.navigate(['/admin/job-order', saved.id], { replaceUrl: true });
+          await this.router.navigate(['/admin/job-order', saved.id, 'edit'], { replaceUrl: true });
           this.formError.set(
             'Job order created, but the laptop photo could not be uploaded. You can add it from this form.',
           );
@@ -1402,6 +1407,7 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
       this.revokePendingLaptopPreview();
       this.persistedImageUrl = response.data.imageUrl ?? null;
       this.imageUrl.set(response.data.imageUrl ?? null);
+      this.laptopImageFailed.set(false);
     } catch (err: unknown) {
       const httpErr = err as { error?: { message?: string | string[] } };
       const msg = httpErr?.error?.message;
@@ -1417,6 +1423,7 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
     this.pendingLaptopFile.set(file);
     const objectUrl = URL.createObjectURL(file);
     this.pendingLaptopObjectUrl = objectUrl;
+    this.laptopImageFailed.set(false);
     this.pendingLaptopPreview.set(objectUrl);
   }
 
@@ -1429,9 +1436,13 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
     this.pendingLaptopPreview.set(null);
   }
 
+  onLaptopImageError(): void {
+    this.laptopImageFailed.set(true);
+  }
+
   openReceipt(): void {
     const id = this.serviceId();
-    if (!id) {
+    if (!id || this.normalizeJobStatus(this.selectedStatus()) === 'Cancelled') {
       return;
     }
     void this.router.navigate(['/admin/job-order', id, 'receipt']);
@@ -1439,7 +1450,7 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
 
   reprintReceipt(): void {
     const id = this.serviceId();
-    if (!id) {
+    if (!id || this.normalizeJobStatus(this.selectedStatus()) === 'Cancelled') {
       return;
     }
     void this.router.navigate(['/admin/job-order', id, 'receipt'], {

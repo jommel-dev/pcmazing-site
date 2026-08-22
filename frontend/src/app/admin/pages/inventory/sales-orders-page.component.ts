@@ -11,6 +11,9 @@ import {
 } from '../../services/admin-api.service';
 import { formatInventoryMoney } from './inventory-stock.util';
 
+type DatePeriod = 'daily' | 'weekly' | 'monthly' | 'custom';
+type SalesSortKey = 'referenceNo' | 'customer' | 'items' | 'total' | 'saleDate' | 'status';
+
 @Component({
   selector: 'app-sales-orders-page',
   imports: [FormsModule, RouterLink, NgClass],
@@ -31,11 +34,23 @@ export class SalesOrdersPageComponent implements OnInit, OnDestroy {
   readonly meta = signal<PaginationMeta | null>(null);
   readonly summary = signal<SalesOrderSummary | null>(null);
   readonly voidFilter = signal<'all' | 'active' | 'void'>('all');
+  readonly startDate = signal('');
+  readonly endDate = signal('');
+  readonly selectedPeriod = signal<DatePeriod>('daily');
+  readonly periodOptions: Array<{ value: DatePeriod; label: string }> = [
+    { value: 'daily', label: 'Daily' },
+    { value: 'weekly', label: 'Weekly' },
+    { value: 'monthly', label: 'Monthly' },
+    { value: 'custom', label: 'Custom' },
+  ];
+  readonly sortBy = signal<SalesSortKey>('saleDate');
+  readonly sortDir = signal<'asc' | 'desc'>('desc');
   readonly pendingVoid = signal<SalesOrderListItem | null>(null);
   readonly voiding = signal(false);
   readonly formatMoney = formatInventoryMoney;
 
   ngOnInit(): void {
+    this.applyPresetPeriod('daily');
     void this.loadOrders();
   }
 
@@ -56,6 +71,10 @@ export class SalesOrdersPageComponent implements OnInit, OnDestroy {
           this.pageSize(),
           this.search(),
           this.voidFilter() === 'all' ? '' : this.voidFilter(),
+          this.sortBy(),
+          this.sortDir(),
+          this.startDate(),
+          this.endDate(),
         ),
       );
       this.items.set(response.data);
@@ -83,6 +102,53 @@ export class SalesOrdersPageComponent implements OnInit, OnDestroy {
     this.voidFilter.set(value);
     this.page.set(1);
     void this.loadOrders();
+  }
+
+  async selectPeriod(period: DatePeriod): Promise<void> {
+    this.selectedPeriod.set(period);
+    if (period === 'custom') {
+      if (!this.startDate() || !this.endDate()) {
+        this.applyPresetPeriod('daily');
+      }
+      return;
+    }
+
+    this.applyPresetPeriod(period);
+    this.page.set(1);
+    await this.loadOrders();
+  }
+
+  async applyCustomRange(): Promise<void> {
+    const start = this.startDate();
+    const end = this.endDate();
+    if (!start || !end) {
+      this.error.set('Select both start and end dates for the custom range.');
+      return;
+    }
+    if (start > end) {
+      this.startDate.set(end);
+      this.endDate.set(start);
+    }
+    this.page.set(1);
+    await this.loadOrders();
+  }
+
+  async toggleSort(key: SalesSortKey): Promise<void> {
+    if (this.sortBy() === key) {
+      this.sortDir.set(this.sortDir() === 'asc' ? 'desc' : 'asc');
+    } else {
+      this.sortBy.set(key);
+      this.sortDir.set(key === 'saleDate' ? 'desc' : 'asc');
+    }
+    this.page.set(1);
+    await this.loadOrders();
+  }
+
+  sortIndicator(key: SalesSortKey): string {
+    if (this.sortBy() !== key) {
+      return '';
+    }
+    return this.sortDir() === 'asc' ? ' ↑' : ' ↓';
   }
 
   changePage(nextPage: number): void {
@@ -137,5 +203,30 @@ export class SalesOrdersPageComponent implements OnInit, OnDestroy {
       return '—';
     }
     return new Date(value).toLocaleString();
+  }
+
+  private applyPresetPeriod(period: Exclude<DatePeriod, 'custom'>): void {
+    const now = new Date();
+    const end = this.toInputDate(now);
+    let start = now;
+
+    if (period === 'weekly') {
+      const day = now.getDay();
+      const diff = day === 0 ? -6 : 1 - day;
+      start = new Date(now);
+      start.setDate(now.getDate() + diff);
+    } else if (period === 'monthly') {
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+    }
+
+    this.startDate.set(this.toInputDate(start));
+    this.endDate.set(end);
+  }
+
+  private toInputDate(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   }
 }

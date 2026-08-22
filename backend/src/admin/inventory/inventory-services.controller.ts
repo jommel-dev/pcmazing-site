@@ -44,10 +44,12 @@ export class InventoryServicesController {
     @Query('status') status?: string,
     @Query('sortBy') sortBy?: string,
     @Query('sortDir') sortDir?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
   ) {
     this.assertNotSales(request.user?.role);
     return this.inventoryServicesService
-      .list(page, limit, search, type, status, sortBy, sortDir)
+      .list(page, limit, search, type, status, sortBy, sortDir, startDate, endDate)
       .then((result) => ({
         success: true,
         data: result.items,
@@ -101,7 +103,7 @@ export class InventoryServicesController {
     @Req() request: Request & { user?: AdminJwtPayload },
   ) {
     this.assertNotSales(request.user?.role);
-    return this.inventoryServicesService.update(id, dto).then((item) => ({
+    return this.inventoryServicesService.update(id, dto, request.user?.sub).then((item) => ({
       success: true,
       message: 'Service updated.',
       data: item,
@@ -115,7 +117,7 @@ export class InventoryServicesController {
     @Req() request: Request & { user?: AdminJwtPayload },
   ) {
     this.assertNotSales(request.user?.role);
-    return this.inventoryServicesService.updateStatus(id, dto).then((item) => ({
+    return this.inventoryServicesService.updateStatus(id, dto, request.user?.sub).then((item) => ({
       success: true,
       message: 'Service status updated.',
       data: item,
@@ -128,7 +130,7 @@ export class InventoryServicesController {
     @Req() request: Request & { user?: AdminJwtPayload },
   ) {
     this.assertNotSales(request.user?.role);
-    return this.inventoryServicesService.softDelete(id).then(() => ({
+    return this.inventoryServicesService.softDelete(id, request.user?.sub).then(() => ({
       success: true,
       message: 'Service deleted.',
     }));

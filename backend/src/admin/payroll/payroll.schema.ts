@@ -35,6 +35,12 @@ CREATE INDEX IF NOT EXISTS idx_pcmazing_attendance_work_date
 ALTER TABLE pcmazing_user_payroll
   ADD COLUMN IF NOT EXISTS salary_type VARCHAR(30) NOT NULL DEFAULT 'monthly';
 
+ALTER TABLE pcmazing_user_payroll
+  ADD COLUMN IF NOT EXISTS fixed_monthly_salary NUMERIC(12, 2),
+  ADD COLUMN IF NOT EXISTS payout_method VARCHAR(20) NOT NULL DEFAULT 'cash',
+  ADD COLUMN IF NOT EXISTS bank_details TEXT,
+  ADD COLUMN IF NOT EXISTS qr_image_url VARCHAR(500);
+
 ALTER TABLE pcmazing_attendance
   ADD COLUMN IF NOT EXISTS time_in_selfie_url VARCHAR(500),
   ADD COLUMN IF NOT EXISTS time_out_selfie_url VARCHAR(500);

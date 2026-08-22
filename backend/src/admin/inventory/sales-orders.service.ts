@@ -56,7 +56,16 @@ export interface SalesOrderSummary {
 export class SalesOrdersService {
   constructor(private readonly databaseService: DatabaseService) {}
 
-  async list(pageRaw?: string, limitRaw?: string, search?: string, voidFilter?: string) {
+  async list(
+    pageRaw?: string,
+    limitRaw?: string,
+    search?: string,
+    voidFilter?: string,
+    sortByRaw?: string,
+    sortDirRaw?: string,
+    startDateRaw?: string,
+    endDateRaw?: string,
+  ) {
     if (!(await tableExists(this.databaseService, 'pcmazing_sales_orders'))) {
       throw new ServiceUnavailableException(
         'Sales orders table is not available. Apply migration 047_sales_orders.sql.',
@@ -83,7 +92,19 @@ export class SalesOrdersService {
       conditions.push('o.is_void = FALSE');
     }
 
+    const startDate = this.parseDateBound(startDateRaw, false);
+    const endDate = this.parseDateBound(endDateRaw, true);
+    if (startDate) {
+      params.push(startDate);
+      conditions.push(`COALESCE(o.sale_date, o.created_at) >= $${params.length}::timestamptz`);
+    }
+    if (endDate) {
+      params.push(endDate);
+      conditions.push(`COALESCE(o.sale_date, o.created_at) <= $${params.length}::timestamptz`);
+    }
+
     const whereClause = `WHERE ${conditions.join(' AND ')}`;
+    const orderBy = this.buildListOrderBy(sortByRaw, sortDirRaw);
 
     const countResult = await this.databaseService.query<{ count: string }>(
       `SELECT COUNT(*)::text AS count
@@ -159,7 +180,7 @@ export class SalesOrdersService {
          WHERE i.sales_order_id = o.id AND i.deleted_at IS NULL
        ) items ON TRUE
        ${whereClause}
-       ORDER BY o.sale_date DESC, o.id DESC
+       ${orderBy}
        LIMIT $${limitIndex} OFFSET $${offsetIndex}`,
       [...params, limit, offset],
     );
@@ -555,6 +576,34 @@ export class SalesOrdersService {
 
   private buildReferenceNo(id: number): string {
     return `SO-${String(id).padStart(6, '0')}`;
+  }
+
+  private buildListOrderBy(sortByRaw?: string, sortDirRaw?: string): string {
+    const direction = String(sortDirRaw ?? '').trim().toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+    const sortBy = String(sortByRaw ?? '').trim();
+    const sortMap: Record<string, string> = {
+      referenceNo: 'o.reference_no',
+      customer: 'o.customer_name',
+      items: 'COALESCE(items.item_count, 0)',
+      total: 'o.total_amount',
+      saleDate: 'COALESCE(o.sale_date, o.created_at)',
+      createdAt: 'COALESCE(o.sale_date, o.created_at)',
+      status: 'o.is_void',
+    };
+    const column = sortMap[sortBy] ?? 'COALESCE(o.sale_date, o.created_at)';
+    return `ORDER BY ${column} ${direction} NULLS LAST, o.id DESC`;
+  }
+
+  private parseDateBound(value?: string, endOfDay = false): string | null {
+    const raw = String(value ?? '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      return null;
+    }
+    const parsed = new Date(`${raw}T${endOfDay ? '23:59:59.999' : '00:00:00'}`);
+    if (Number.isNaN(parsed.getTime())) {
+      return null;
+    }
+    return parsed.toISOString();
   }
 
   private mapListRow(row: {

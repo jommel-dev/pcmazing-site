@@ -1,0 +1,288 @@
+<section>
+  <a routerLink="/admin/job-order" class="text-sm font-bold text-pcmazing-500 hover:text-pcmazing-600">
+    ← Back to job orders
+  </a>
+
+  @if (loading()) {
+    <div class="mt-6 rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500">
+      Loading job order...
+    </div>
+  } @else if (error()) {
+    <div class="mt-6 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{{ error() }}</div>
+  } @else if (item(); as job) {
+    <div class="mt-4 mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div>
+        <div class="flex flex-wrap items-center gap-2">
+          <h2 class="text-2xl font-bold text-slate-900">{{ job.referenceNo || ('Job #' + job.id) }}</h2>
+          <span class="rounded-full px-2.5 py-1 text-[10px] font-bold uppercase" [class]="statusClass(job.status)">
+            {{ job.status || 'Pending' }}
+          </span>
+        </div>
+        <p class="mt-1 text-sm text-slate-500">View-only job order details.</p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        @if (!isCancelled()) {
+        <button
+          type="button"
+          class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50"
+          (click)="printReceipt()"
+        >
+          Receipt
+        </button>
+        }
+        <button
+          type="button"
+          class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600"
+          (click)="editJob()"
+        >
+          Edit
+        </button>
+      </div>
+    </div>
+
+    <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div class="space-y-6">
+        <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h3 class="text-sm font-bold text-slate-900">Customer</h3>
+          <div class="mt-4 grid gap-4 sm:grid-cols-2">
+            <div class="sm:col-span-2">
+              <p class="text-xs font-semibold tracking-wide text-slate-400 uppercase">Name</p>
+              <p class="mt-1 text-sm font-semibold text-slate-900">{{ displayValue(job.customerName) }}</p>
+            </div>
+            <div>
+              <p class="text-xs font-semibold tracking-wide text-slate-400 uppercase">Email</p>
+              <p class="mt-1 text-sm text-slate-800">{{ displayValue(job.customerEmail) }}</p>
+            </div>
+            <div>
+              <p class="text-xs font-semibold tracking-wide text-slate-400 uppercase">Contact</p>
+              <p class="mt-1 text-sm text-slate-800">{{ displayValue(job.customerContact) }}</p>
+            </div>
+            <div class="sm:col-span-2">
+              <p class="text-xs font-semibold tracking-wide text-slate-400 uppercase">Address</p>
+              <p class="mt-1 whitespace-pre-wrap text-sm text-slate-800">{{ displayValue(job.customerAddress) }}</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h3 class="text-sm font-bold text-slate-900">Laptop details</h3>
+          <div class="mt-4 grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
+            <div class="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+              @if (laptopImageSrc(); as imageSrc) {
+                <img
+                  [src]="imageSrc"
+                  alt="Laptop photo"
+                  class="max-h-56 min-h-40 w-full bg-slate-100 object-contain"
+                  (error)="onLaptopImageError()"
+                />
+              } @else {
+                <div class="flex min-h-40 flex-col items-center justify-center gap-2 px-4 py-8 text-center">
+                  <svg class="h-24 w-32 text-slate-300" viewBox="0 0 160 128" fill="none" aria-hidden="true">
+                    <rect x="30" y="28" width="100" height="65" rx="4" fill="#cbd5e1" />
+                    <rect x="35" y="33" width="90" height="50" rx="2" fill="#1e293b" />
+                    <rect x="40" y="38" width="80" height="40" rx="1" fill="#334155" />
+                    <rect x="22" y="93" width="116" height="10" rx="3" fill="#94a3b8" />
+                    <rect x="70" y="96" width="20" height="4" rx="2" fill="#64748b" />
+                  </svg>
+                  <p class="text-xs font-medium text-slate-500">No laptop photo</p>
+                </div>
+              }
+            </div>
+            <div class="grid gap-4 sm:grid-cols-2">
+              <div>
+                <p class="text-xs font-semibold tracking-wide text-slate-400 uppercase">Brand</p>
+                <p class="mt-1 text-sm text-slate-800">{{ displayValue(job.deviceBrand) }}</p>
+              </div>
+              <div>
+                <p class="text-xs font-semibold tracking-wide text-slate-400 uppercase">Model</p>
+                <p class="mt-1 text-sm text-slate-800">{{ displayValue(job.deviceModel) }}</p>
+              </div>
+              <div class="sm:col-span-2">
+                <p class="text-xs font-semibold tracking-wide text-slate-400 uppercase">Serial</p>
+                <p class="mt-1 text-sm text-slate-800">{{ displayValue(job.deviceSerial) }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h3 class="text-sm font-bold text-slate-900">Job details</h3>
+          <div class="mt-4 grid gap-4 sm:grid-cols-2">
+            <div>
+              <p class="text-xs font-semibold tracking-wide text-slate-400 uppercase">Service name</p>
+              <p class="mt-1 text-sm font-semibold text-slate-900">{{ displayValue(job.serviceName) }}</p>
+            </div>
+            <div>
+              <p class="text-xs font-semibold tracking-wide text-slate-400 uppercase">Person in charge</p>
+              <p class="mt-1 text-sm text-slate-800">{{ displayValue(job.personInChargeName) }}</p>
+            </div>
+            <div>
+              <p class="text-xs font-semibold tracking-wide text-slate-400 uppercase">Started</p>
+              <p class="mt-1 text-sm text-slate-800">
+                @if (job.startedAt) {
+                  {{ job.startedAt | date: 'medium' }}
+                } @else {
+                  —
+                }
+              </p>
+            </div>
+            <div>
+              <p class="text-xs font-semibold tracking-wide text-slate-400 uppercase">Ended</p>
+              <p class="mt-1 text-sm text-slate-800">
+                @if (job.endedAt) {
+                  {{ job.endedAt | date: 'medium' }}
+                } @else {
+                  —
+                }
+              </p>
+            </div>
+            @if ((job.status || '').trim().toLowerCase() === 'cancelled' && job.cancelReason) {
+              <div class="sm:col-span-2 rounded-xl border border-red-100 bg-red-50 px-4 py-3">
+                <p class="text-xs font-semibold tracking-wide text-red-500 uppercase">Cancellation reason</p>
+                <p class="mt-1 whitespace-pre-wrap text-sm text-red-800">{{ job.cancelReason }}</p>
+              </div>
+            }
+            <div class="sm:col-span-2">
+              <p class="text-xs font-semibold tracking-wide text-slate-400 uppercase">Notes</p>
+              <p class="mt-1 whitespace-pre-wrap text-sm text-slate-800">{{ displayValue(job.notes) }}</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h3 class="text-sm font-bold text-slate-900">Status history</h3>
+          @if (!job.statusHistory?.length) {
+            <p class="mt-4 text-sm text-slate-500">No status changes recorded yet.</p>
+          } @else {
+            <ol class="mt-4 space-y-3">
+              @for (entry of job.statusHistory; track entry.id) {
+                <li class="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    <p class="text-sm font-semibold text-slate-900">
+                      @if (entry.fromStatus) {
+                        {{ entry.fromStatus }} → {{ entry.toStatus }}
+                      } @else {
+                        {{ entry.toStatus }}
+                      }
+                    </p>
+                    <p class="text-xs text-slate-500">{{ entry.createdAt | date: 'medium' }}</p>
+                  </div>
+                  @if (entry.changedByName) {
+                    <p class="mt-1 text-xs text-slate-500">Updated by {{ entry.changedByName }}</p>
+                  }
+                  @if (entry.reason) {
+                    <p class="mt-1 whitespace-pre-wrap text-xs text-slate-600">{{ entry.reason }}</p>
+                  }
+                </li>
+              }
+            </ol>
+          }
+        </div>
+
+        <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h3 class="text-sm font-bold text-slate-900">Services</h3>
+          @if (serviceLines().length === 0) {
+            <p class="mt-4 text-sm text-slate-500">No services billed.</p>
+          } @else {
+            <div class="mt-4 divide-y divide-slate-100">
+              @for (line of serviceLines(); track $index) {
+                <div class="flex items-start justify-between gap-3 py-3">
+                  <div>
+                    <p class="text-sm font-semibold text-slate-900">{{ lineLabel(line) }}</p>
+                    @if ((line.discountAmount || 0) > 0) {
+                      <p class="text-xs text-emerald-700">
+                        Discount {{ line.discountAmount | currency: 'PHP':'symbol-narrow':'1.2-2' }}
+                      </p>
+                    }
+                  </div>
+                  <p class="text-sm font-semibold text-slate-900">{{ lineNet(line) | currency: 'PHP':'symbol-narrow':'1.2-2' }}</p>
+                </div>
+              }
+            </div>
+          }
+        </div>
+
+        <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h3 class="text-sm font-bold text-slate-900">Parts</h3>
+          @if (partLines().length === 0) {
+            <p class="mt-4 text-sm text-slate-500">No parts billed.</p>
+          } @else {
+            <div class="mt-4 overflow-x-auto">
+              <table class="min-w-full text-sm">
+                <thead class="text-left text-xs font-bold tracking-wide text-slate-400 uppercase">
+                  <tr>
+                    <th class="pb-2">Item</th>
+                    <th class="pb-2">Qty</th>
+                    <th class="pb-2">Price</th>
+                    <th class="pb-2 text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  @for (line of partLines(); track $index) {
+                    <tr>
+                      <td class="py-2 font-medium text-slate-900">
+                        {{ lineLabel(line) }}
+                        @if (line.brandName) {
+                          <div class="text-xs font-normal text-slate-500">{{ line.brandName }}</div>
+                        }
+                      </td>
+                      <td class="py-2 text-slate-700">{{ line.quantity }}</td>
+                      <td class="py-2 text-slate-700">{{ (line.unitPrice || 0) | currency: 'PHP':'symbol-narrow':'1.2-2' }}</td>
+                      <td class="py-2 text-right font-semibold text-slate-900">
+                        {{ lineNet(line) | currency: 'PHP':'symbol-narrow':'1.2-2' }}
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        </div>
+      </div>
+
+      <aside class="h-fit rounded-2xl border border-slate-200 bg-white p-6 shadow-sm xl:sticky xl:top-6">
+        <h3 class="text-sm font-bold text-slate-900">Payment</h3>
+        <div class="mt-4 space-y-2 text-sm text-slate-600">
+          <div class="flex items-center justify-between">
+            <span>Services</span>
+            <span class="font-medium text-slate-800">{{ servicesTotal() | currency: 'PHP':'symbol-narrow':'1.2-2' }}</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span>Parts</span>
+            <span class="font-medium text-slate-800">{{ partsTotal() | currency: 'PHP':'symbol-narrow':'1.2-2' }}</span>
+          </div>
+          @if (lineDiscountTotal() > 0) {
+            <div class="flex items-center justify-between text-emerald-700">
+              <span>Line discounts</span>
+              <span class="font-medium">-{{ lineDiscountTotal() | currency: 'PHP':'symbol-narrow':'1.2-2' }}</span>
+            </div>
+          }
+          @if (customDiscount() > 0) {
+            <div class="flex items-center justify-between text-emerald-700">
+              <span>Custom discount</span>
+              <span class="font-medium">-{{ customDiscount() | currency: 'PHP':'symbol-narrow':'1.2-2' }}</span>
+            </div>
+          }
+          <div class="flex items-center justify-between">
+            <span>Downpayment</span>
+            <span class="font-medium text-slate-800">{{ downpayment() | currency: 'PHP':'symbol-narrow':'1.2-2' }}</span>
+          </div>
+          @if (job.paymentMethod) {
+            <div class="flex items-center justify-between">
+              <span>Payment method</span>
+              <span class="font-medium text-slate-800">{{ job.paymentMethod }}</span>
+            </div>
+          }
+          <div class="flex items-center justify-between border-t border-slate-200 pt-2 text-base font-bold text-slate-900">
+            <span>Total to pay</span>
+            <span>{{ totalToPay() | currency: 'PHP':'symbol-narrow':'1.2-2' }}</span>
+          </div>
+          <div class="flex items-center justify-between font-semibold text-slate-700">
+            <span>Balance due</span>
+            <span>{{ balanceDue() | currency: 'PHP':'symbol-narrow':'1.2-2' }}</span>
+          </div>
+        </div>
+      </aside>
+    </div>
+  }
+</section>
