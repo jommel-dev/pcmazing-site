@@ -62,6 +62,7 @@ export interface InventoryServiceListItem {
   endedAt: string | null;
   durationMinutes: number | null;
   notes?: string | null;
+  cancelReason?: string | null;
   laborDiscountType?: 'none' | 'senior' | 'pwd';
   customDiscount?: number;
   downpayment?: number;
@@ -81,6 +82,17 @@ export interface InventoryServiceListItem {
     discountAmount?: number;
   }>;
   updatedAt: string | null;
+  statusHistory?: JobOrderStatusHistoryItem[];
+}
+
+export interface JobOrderStatusHistoryItem {
+  id: number;
+  fromStatus: string | null;
+  toStatus: string;
+  reason: string | null;
+  changedBy: number | null;
+  changedByName: string | null;
+  createdAt: string;
 }
 
 export interface InventoryServiceSummary {
@@ -108,6 +120,8 @@ export class InventoryServicesService {
     status?: string,
     sortByRaw?: string,
     sortDirRaw?: string,
+    startDateRaw?: string,
+    endDateRaw?: string,
   ) {
     if (!(await tableExists(this.databaseService, 'pcmazing_services'))) {
       throw new ServiceUnavailableException('Service catalog table is not available in this database.');
@@ -158,6 +172,21 @@ export class InventoryServicesService {
       listConditions.push(`LOWER(s.status) = LOWER($${listParams.length})`);
       summaryParams.push(status.trim());
       summaryConditions.push(`LOWER(s.status) = LOWER($${summaryParams.length})`);
+    }
+
+    const startDate = this.parseDateBound(startDateRaw, false);
+    const endDate = this.parseDateBound(endDateRaw, true);
+    if (startDate) {
+      listParams.push(startDate);
+      listConditions.push(`s.created_at >= $${listParams.length}::timestamptz`);
+      summaryParams.push(startDate);
+      summaryConditions.push(`s.created_at >= $${summaryParams.length}::timestamptz`);
+    }
+    if (endDate) {
+      listParams.push(endDate);
+      listConditions.push(`s.created_at <= $${listParams.length}::timestamptz`);
+      summaryParams.push(endDate);
+      summaryConditions.push(`s.created_at <= $${summaryParams.length}::timestamptz`);
     }
 
     const whereClause = `WHERE ${listConditions.join(' AND ')}`;
@@ -486,18 +515,26 @@ export class InventoryServicesService {
         );
       }
 
+      await this.recordStatusChange(client, {
+        serviceId,
+        fromStatus: null,
+        toStatus: dto.status?.trim() || 'Pending',
+        reason: null,
+        changedBy: createdBy ?? null,
+      });
+
       return serviceId;
     });
 
     return this.getById(newId);
   }
 
-  async update(id: number, dto: CreateServiceDto) {
+  async update(id: number, dto: CreateServiceDto, changedBy?: number) {
     if (!(await tableExists(this.databaseService, 'pcmazing_services'))) {
       throw new ServiceUnavailableException('Service catalog table is not available in this database.');
     }
 
-    await this.getById(id);
+    const existing = await this.getById(id);
 
     const customerName = dto.customerName?.trim() || '';
     const customerEmail = dto.customerEmail?.trim() || null;
@@ -621,54 +658,95 @@ export class InventoryServicesService {
           ],
         );
       }
+
+      if (this.normalizeStatusLabel(existing.status) !== this.normalizeStatusLabel(nextStatus)) {
+        await this.recordStatusChange(client, {
+          serviceId: id,
+          fromStatus: existing.status,
+          toStatus: nextStatus,
+          reason: nextStatus.toLowerCase() === 'cancelled' ? dto.notes?.trim() || null : null,
+          changedBy: changedBy ?? null,
+        });
+      }
     });
 
     return this.getById(id);
   }
 
-  async updateStatus(id: number, dto: UpdateServiceStatusDto) {
+  async updateStatus(id: number, dto: UpdateServiceStatusDto, changedBy?: number) {
     if (!(await tableExists(this.databaseService, 'pcmazing_services'))) {
       throw new ServiceUnavailableException('Service catalog table is not available in this database.');
     }
 
-    await this.getById(id);
+    const existing = await this.getById(id);
 
     const status = dto.status.trim();
     if (!(JOB_ORDER_STATUSES as readonly string[]).includes(status)) {
       throw new BadRequestException(`Invalid status "${status}".`);
     }
 
-    await this.databaseService.query(
-      `UPDATE pcmazing_services
-       SET status = $1::varchar,
-           started_at = CASE
-             WHEN LOWER($1::text) = 'active' AND started_at IS NULL THEN NOW()
-             ELSE started_at
-           END,
-           payment_method = COALESCE($3::varchar, payment_method),
-           updated_at = NOW()
-       WHERE id = $2::int AND deleted_at IS NULL`,
-      [status, id, this.normalizePaymentMethod(dto.paymentMethod)],
-    );
+    const cancelReason = String(dto.cancelReason ?? '').trim();
+    if (status.toLowerCase() === 'cancelled' && cancelReason.length < 3) {
+      throw new BadRequestException('A cancellation reason is required.');
+    }
+
+    await this.databaseService.withTransaction(async (client) => {
+      await client.query(
+        `UPDATE pcmazing_services
+         SET status = $1::varchar,
+             started_at = CASE
+               WHEN LOWER($1::text) = 'active' AND started_at IS NULL THEN NOW()
+               ELSE started_at
+             END,
+             payment_method = COALESCE($3::varchar, payment_method),
+             cancel_reason = CASE
+               WHEN LOWER($1::text) = 'cancelled' THEN $4
+               ELSE NULL
+             END,
+             updated_at = NOW()
+         WHERE id = $2::int AND deleted_at IS NULL`,
+        [status, id, this.normalizePaymentMethod(dto.paymentMethod), cancelReason || null],
+      );
+
+      if (this.normalizeStatusLabel(existing.status) !== this.normalizeStatusLabel(status)) {
+        await this.recordStatusChange(client, {
+          serviceId: id,
+          fromStatus: existing.status,
+          toStatus: status,
+          reason: status.toLowerCase() === 'cancelled' ? cancelReason : null,
+          changedBy: changedBy ?? null,
+        });
+      }
+    });
 
     return this.getById(id);
   }
 
-  async softDelete(id: number): Promise<void> {
+  async softDelete(id: number, changedBy?: number): Promise<void> {
     if (!(await tableExists(this.databaseService, 'pcmazing_services'))) {
       throw new ServiceUnavailableException('Service catalog table is not available in this database.');
     }
 
-    await this.getById(id);
+    const existing = await this.getById(id);
 
-    await this.databaseService.query(
-      `UPDATE pcmazing_services
-       SET status = 'Deleted',
-           deleted_at = NOW(),
-           updated_at = NOW()
-       WHERE id = $1 AND deleted_at IS NULL`,
-      [id],
-    );
+    await this.databaseService.withTransaction(async (client) => {
+      await client.query(
+        `UPDATE pcmazing_services
+         SET status = 'Deleted',
+             deleted_at = NOW(),
+             updated_at = NOW()
+         WHERE id = $1 AND deleted_at IS NULL`,
+        [id],
+      );
+
+      await this.recordStatusChange(client, {
+        serviceId: id,
+        fromStatus: existing.status,
+        toStatus: 'Deleted',
+        reason: null,
+        changedBy: changedBy ?? null,
+      });
+    });
   }
 
   async uploadImage(id: number, file: Express.Multer.File) {
@@ -702,11 +780,26 @@ export class InventoryServicesService {
       status: 's.status',
       interval: 's.started_at',
       personInCharge: 's.person_in_charge_user_id',
+      createdAt: 's.created_at',
     };
 
-    const column = sortMap[sortBy] ?? 's.updated_at';
+    const column = sortMap[sortBy] ?? 's.created_at';
     const fallbackDirection = sortMap[sortBy] ? direction : 'DESC';
     return `ORDER BY ${column} ${fallbackDirection} NULLS LAST, s.id DESC`;
+  }
+
+  private parseDateBound(value?: string, endOfDay = false): string | null {
+    const raw = String(value ?? '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      return null;
+    }
+
+    const parsed = new Date(`${raw}T${endOfDay ? '23:59:59.999' : '00:00:00'}`);
+    if (Number.isNaN(parsed.getTime())) {
+      return null;
+    }
+
+    return parsed.toISOString();
   }
 
   private async loadPersonNames(
@@ -776,6 +869,7 @@ export class InventoryServicesService {
       labor: string | null;
       status: string | null;
       notes: string | null;
+      cancel_reason: string | null;
       labor_discount_type: string | null;
       custom_discount: string | null;
       downpayment: string | null;
@@ -806,6 +900,7 @@ export class InventoryServicesService {
         s.labor::text,
         s.status,
         s.notes,
+        s.cancel_reason,
         s.labor_discount_type,
         s.custom_discount::text,
         s.downpayment::text,
@@ -922,6 +1017,7 @@ export class InventoryServicesService {
       labor,
       status: row.status ?? 'Active',
       notes: row.notes,
+      cancelReason: row.cancel_reason?.trim() || null,
       laborDiscountType: this.normalizeDiscountType(row.labor_discount_type),
       customDiscount: Number(row.custom_discount ?? 0),
       downpayment: Number(row.downpayment ?? 0),
@@ -950,6 +1046,7 @@ export class InventoryServicesService {
         discountAmount: Number(part.discount_amount ?? 0),
       })),
       updatedAt: row.updated_at,
+      statusHistory: await this.loadStatusHistory(id),
     };
   }
 
@@ -1420,5 +1517,93 @@ export class InventoryServicesService {
     if (!result.rows[0]) {
       throw new BadRequestException(`Person in charge ${userId} was not found.`);
     }
+  }
+
+  private normalizeStatusLabel(status: string | null | undefined): string {
+    return String(status ?? '').trim().toLowerCase();
+  }
+
+  private async recordStatusChange(
+    client: PoolClient,
+    entry: {
+      serviceId: number;
+      fromStatus: string | null;
+      toStatus: string;
+      reason: string | null;
+      changedBy: number | null;
+    },
+  ): Promise<void> {
+    if (!(await tableExists(this.databaseService, 'pcmazing_service_status_history'))) {
+      return;
+    }
+
+    await client.query(
+      `INSERT INTO pcmazing_service_status_history (
+         service_id,
+         from_status,
+         to_status,
+         reason,
+         changed_by
+       )
+       VALUES ($1, $2, $3, $4, $5)`,
+      [entry.serviceId, entry.fromStatus, entry.toStatus, entry.reason, entry.changedBy],
+    );
+  }
+
+  private async loadStatusHistory(serviceId: number): Promise<JobOrderStatusHistoryItem[]> {
+    if (!(await tableExists(this.databaseService, 'pcmazing_service_status_history'))) {
+      return [];
+    }
+
+    const result = await this.databaseService.query<{
+      id: number;
+      from_status: string | null;
+      to_status: string;
+      reason: string | null;
+      changed_by: string | null;
+      created_at: string;
+    }>(
+      `SELECT
+         id,
+         from_status,
+         to_status,
+         reason,
+         changed_by::text,
+         created_at::text
+       FROM pcmazing_service_status_history
+       WHERE service_id = $1
+       ORDER BY created_at DESC, id DESC`,
+      [serviceId],
+    );
+
+    const names = await this.loadPersonNames(
+      result.rows.flatMap((row) => {
+        const userId = row.changed_by ? Number(row.changed_by) : null;
+        if (!userId) {
+          return [];
+        }
+        return [
+          { userId, source: 'pcmazing_admin_users' as const },
+          { userId, source: 'tblusers' as const },
+        ];
+      }),
+    );
+
+    return result.rows.map((row) => {
+      const changedBy = row.changed_by ? Number(row.changed_by) : null;
+      return {
+        id: row.id,
+        fromStatus: row.from_status,
+        toStatus: row.to_status,
+        reason: row.reason,
+        changedBy,
+        changedByName: changedBy
+          ? names.get(`pcmazing_admin_users:${changedBy}`) ??
+            names.get(`tblusers:${changedBy}`) ??
+            null
+          : null,
+        createdAt: row.created_at,
+      };
+    });
   }
 }

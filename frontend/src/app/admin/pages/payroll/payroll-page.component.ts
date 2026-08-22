@@ -16,6 +16,7 @@ import {
 } from '../../services/admin-api.service';
 
 type PayrollTab = 'overview' | 'attendance' | 'employees' | 'period' | 'overtime';
+type PayslipPeriod = 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
 
 @Component({
   selector: 'app-payroll-page',
@@ -55,6 +56,13 @@ export class PayrollPageComponent implements OnInit {
   readonly dateTo = signal('');
   readonly generating = signal(false);
   readonly generateMessage = signal('');
+  readonly payslipPeriodByKey = signal<Record<string, PayslipPeriod>>({});
+  readonly payslipPeriodOptions: Array<{ value: PayslipPeriod; label: string }> = [
+    { value: 'weekly', label: 'Weekly' },
+    { value: 'semi_monthly', label: 'Semi-Monthly' },
+    { value: 'monthly', label: 'Monthly' },
+    { value: 'cutoff', label: 'Selected dates' },
+  ];
 
   readonly overtimeItems = signal<PayrollOvertimeItem[]>([]);
   readonly overtimeMeta = signal<PaginationMeta | null>(null);
@@ -136,6 +144,7 @@ export class PayrollPageComponent implements OnInit {
     this.periodMeta.set(response.meta);
     this.dateFrom.set(response.meta.dateFrom);
     this.dateTo.set(response.meta.dateTo);
+    this.syncPayslipPeriods(response.data);
   }
 
   private async loadOvertime(): Promise<void> {
@@ -249,7 +258,15 @@ export class PayrollPageComponent implements OnInit {
     this.generateMessage.set('');
     try {
       const response = await firstValueFrom(
-        this.adminApi.generatePayrollPeriod(this.dateFrom(), this.dateTo()),
+        this.adminApi.generatePayrollPeriod(
+          this.dateFrom(),
+          this.dateTo(),
+          this.periodItems().map((item) => ({
+            userId: item.userId,
+            userSource: item.userSource,
+            payslipPeriod: this.payslipPeriodFor(item),
+          })),
+        ),
       );
       const data = response.data;
       this.dateFrom.set(data.dateFrom);
@@ -348,6 +365,152 @@ export class PayrollPageComponent implements OnInit {
       default:
         return 'Monthly';
     }
+  }
+
+  payoutMethodLabel(value: string | null | undefined): string {
+    return value === 'online' ? 'Online' : 'Cash';
+  }
+
+  employeeKey(item: { userId: number; userSource: string }): string {
+    return `${item.userSource}:${item.userId}`;
+  }
+
+  payslipPeriodFor(item: PayrollPeriodItem): PayslipPeriod {
+    return this.payslipPeriodByKey()[this.employeeKey(item)] ?? item.payslipPeriod ?? item.salaryType;
+  }
+
+  setPayslipPeriod(item: PayrollPeriodItem, period: PayslipPeriod): void {
+    this.payslipPeriodByKey.update((current) => ({
+      ...current,
+      [this.employeeKey(item)]: period,
+    }));
+  }
+
+  payslipRangeLabel(item: PayrollPeriodItem): string {
+    const selected = this.payslipPeriodFor(item);
+    const range =
+      selected === (item.payslipPeriod ?? item.salaryType) && item.periodDateFrom && item.periodDateTo
+        ? { dateFrom: item.periodDateFrom, dateTo: item.periodDateTo }
+        : this.resolvePayslipRange(selected, this.dateFrom(), this.dateTo());
+    return `${range.dateFrom} → ${range.dateTo}`;
+  }
+
+  selectedPeriodPay(item: PayrollPeriodItem): number {
+    const selected = this.payslipPeriodFor(item);
+    const fixed = item.fixedMonthlySalary;
+    if (fixed != null && fixed > 0) {
+      const selectedBase = this.monthlyToScheduleAmount(fixed, selected);
+      const profileBase = this.monthlyToScheduleAmount(fixed, item.salaryType);
+      const overtimePortion = Math.max(0, item.estimatedPay - profileBase);
+      return this.roundMoney(selectedBase + overtimePortion);
+    }
+    return item.estimatedPay;
+  }
+
+  private syncPayslipPeriods(items: PayrollPeriodItem[]): void {
+    this.payslipPeriodByKey.update((current) => {
+      const next = { ...current };
+      for (const item of items) {
+        const key = this.employeeKey(item);
+        if (!next[key]) {
+          next[key] = item.payslipPeriod ?? item.salaryType;
+        }
+      }
+      return next;
+    });
+  }
+
+  private resolvePayslipRange(
+    period: PayslipPeriod,
+    dateFrom: string,
+    dateTo: string,
+  ): { dateFrom: string; dateTo: string } {
+    const ref = dateTo || dateFrom;
+    const [year, month, day] = ref.split('-').map(Number);
+    const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    const pad = (value: number) => String(value).padStart(2, '0');
+    const yearMonth = `${year}-${pad(month)}`;
+
+    switch (period) {
+      case 'weekly': {
+        const utc = Date.UTC(year, month - 1, day);
+        const weekday = new Date(utc).getUTCDay();
+        const mondayOffset = weekday === 0 ? -6 : 1 - weekday;
+        const from = new Date(Date.UTC(year, month - 1, day + mondayOffset));
+        const to = new Date(Date.UTC(year, month - 1, day + mondayOffset + 6));
+        return {
+          dateFrom: from.toISOString().slice(0, 10),
+          dateTo: to.toISOString().slice(0, 10),
+        };
+      }
+      case 'semi_monthly':
+        if (day <= 15) {
+          return { dateFrom: `${yearMonth}-01`, dateTo: `${yearMonth}-15` };
+        }
+        return { dateFrom: `${yearMonth}-16`, dateTo: `${yearMonth}-${pad(lastDay)}` };
+      case 'monthly':
+        return { dateFrom: `${yearMonth}-01`, dateTo: `${yearMonth}-${pad(lastDay)}` };
+      case 'cutoff':
+      default:
+        return { dateFrom, dateTo };
+    }
+  }
+
+  scheduledPayAmount(item: PayrollEmployeeItem): number | null {
+    const schedule = item.salaryType;
+    const fixedMonthly = item.fixedMonthlySalary;
+    if (fixedMonthly != null && fixedMonthly > 0) {
+      return this.monthlyToScheduleAmount(fixedMonthly, schedule);
+    }
+
+    const amount = item.monthlySalary;
+    if (amount == null || amount <= 0) {
+      return null;
+    }
+
+    switch (schedule) {
+      case 'weekly':
+      case 'monthly':
+      case 'cutoff':
+        return this.roundMoney(amount);
+      case 'semi_monthly':
+        return this.roundMoney(amount * 11);
+      default:
+        return this.roundMoney(amount);
+    }
+  }
+
+  scheduledPayLabel(item: PayrollEmployeeItem): string {
+    switch (item.salaryType) {
+      case 'weekly':
+        return 'Weekly pay';
+      case 'semi_monthly':
+        return 'Semi-monthly pay';
+      case 'cutoff':
+        return 'Cutoff pay';
+      default:
+        return 'Monthly pay';
+    }
+  }
+
+  private monthlyToScheduleAmount(
+    monthly: number,
+    schedule: PayrollEmployeeItem['salaryType'],
+  ): number {
+    switch (schedule) {
+      case 'weekly':
+        return this.roundMoney(monthly / 4);
+      case 'semi_monthly':
+        return this.roundMoney(monthly / 2);
+      case 'cutoff':
+      case 'monthly':
+      default:
+        return this.roundMoney(monthly);
+    }
+  }
+
+  private roundMoney(value: number): number {
+    return Math.round(value * 100) / 100;
   }
 
   todayStatusLabel(value: PayrollEmployeeItem['todayStatus']): string {

@@ -85,16 +85,33 @@
     @if (overview(); as data) {
       <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         @for (kpi of salesKpis(); track kpi.key) {
-          <app-dashboard-kpi-card [kpi]="kpi" />
+          <app-dashboard-kpi-card
+            [kpi]="kpi"
+            [active]="selectedMetric() === kpi.key"
+            (opened)="openDetails($event)"
+          />
         }
       </div>
 
       @if (financialKpis().length) {
         <div class="mt-4 grid gap-4 md:grid-cols-2">
           @for (kpi of financialKpis(); track kpi.key) {
-            <app-dashboard-kpi-card [kpi]="kpi" />
+            <app-dashboard-kpi-card
+              [kpi]="kpi"
+              [active]="selectedMetric() === kpi.key"
+              (opened)="openDetails($event)"
+            />
           }
         </div>
+      }
+
+      @if (selectedMetric() && (details() || detailsLoading() || detailsError())) {
+        <app-dashboard-details-panel
+          [details]="details()"
+          [loading]="detailsLoading()"
+          [error]="detailsError()"
+          (closed)="closeDetails()"
+        />
       }
 
       <div class="mt-8 grid gap-6 xl:grid-cols-3">

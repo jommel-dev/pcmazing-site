@@ -1,7 +1,12 @@
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { APP_CONFIG } from '../../core/config/app-config';
-import { DashboardOverview, DashboardPeriod } from '../data/dashboard.types';
+import {
+  DashboardDetailMetric,
+  DashboardDetails,
+  DashboardOverview,
+  DashboardPeriod,
+} from '../data/dashboard.types';
 import { AdminAuthService } from './admin-auth.service';
 
 export interface PaginationMeta {
@@ -116,6 +121,16 @@ export interface JobOrderCustomerSuggestion {
   address: string | null;
 }
 
+export interface JobOrderStatusHistoryItem {
+  id: number;
+  fromStatus: string | null;
+  toStatus: string;
+  reason: string | null;
+  changedBy: number | null;
+  changedByName: string | null;
+  createdAt: string;
+}
+
 export interface InventoryServiceItem {
   id: number;
   referenceNo: string | null;
@@ -142,6 +157,8 @@ export interface InventoryServiceItem {
   endedAt: string | null;
   durationMinutes: number | null;
   notes?: string | null;
+  cancelReason?: string | null;
+  statusHistory?: JobOrderStatusHistoryItem[];
   laborDiscountType?: 'none' | 'senior' | 'pwd';
   customDiscount?: number;
   downpayment?: number;
@@ -476,6 +493,10 @@ export interface AdminUser {
   positionTitle?: string | null;
   salaryType?: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
   monthlySalary?: number | null;
+  fixedMonthlySalary?: number | null;
+  payoutMethod?: 'cash' | 'online';
+  bankDetails?: string | null;
+  qrImageUrl?: string | null;
   payrollEnabled?: boolean;
 }
 
@@ -654,6 +675,8 @@ export interface PayrollEmployeeItem {
   positionTitle: string | null;
   salaryType: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
   monthlySalary: number | null;
+  fixedMonthlySalary?: number | null;
+  payoutMethod?: 'cash' | 'online';
   payrollEnabled: boolean;
   todayStatus: 'not_started' | 'timed_in' | 'completed' | 'absent';
   todayTimeIn: string | null;
@@ -669,6 +692,7 @@ export interface PayrollPeriodItem {
   department: string | null;
   salaryType: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
   salaryAmount: number | null;
+  fixedMonthlySalary?: number | null;
   daysPresent: number;
   daysCompleted: number;
   paidDayUnits?: number;
@@ -676,6 +700,9 @@ export interface PayrollPeriodItem {
   approvedOvertimeHours: number;
   pendingOvertimeHours: number;
   estimatedPay: number;
+  payslipPeriod?: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
+  periodDateFrom?: string;
+  periodDateTo?: string;
 }
 
 export interface PayrollPeriodMeta {
@@ -1275,6 +1302,8 @@ export class AdminApiService {
     status = '',
     sortBy = '',
     sortDir: 'asc' | 'desc' = 'desc',
+    startDate = '',
+    endDate = '',
   ) {
     let params = this.listParams(page, limit, search);
     if (type.trim()) {
@@ -1288,6 +1317,12 @@ export class AdminApiService {
     }
     if (sortDir) {
       params = params.set('sortDir', sortDir);
+    }
+    if (startDate.trim()) {
+      params = params.set('startDate', startDate.trim());
+    }
+    if (endDate.trim()) {
+      params = params.set('endDate', endDate.trim());
     }
 
     return this.http.get<
@@ -1338,12 +1373,18 @@ export class AdminApiService {
     );
   }
 
-  updateInventoryServiceStatus(id: number, status: string, paymentMethod?: string) {
+  updateInventoryServiceStatus(
+    id: number,
+    status: string,
+    paymentMethod?: string,
+    cancelReason?: string,
+  ) {
     return this.http.patch<ItemResponse<InventoryServiceItem>>(
       `${APP_CONFIG.apiUrl}/admin/inventory/services/${id}/status`,
       {
         status,
         ...(paymentMethod ? { paymentMethod } : {}),
+        ...(cancelReason ? { cancelReason } : {}),
       },
       { headers: this.headers() },
     );
@@ -1367,10 +1408,31 @@ export class AdminApiService {
     );
   }
 
-  listSalesOrders(page = 1, limit = 20, search = '', voidFilter = '') {
+  listSalesOrders(
+    page = 1,
+    limit = 20,
+    search = '',
+    voidFilter = '',
+    sortBy = '',
+    sortDir: 'asc' | 'desc' = 'desc',
+    startDate = '',
+    endDate = '',
+  ) {
     let params = this.listParams(page, limit, search);
     if (voidFilter.trim()) {
       params = params.set('void', voidFilter.trim());
+    }
+    if (sortBy.trim()) {
+      params = params.set('sortBy', sortBy.trim());
+    }
+    if (sortDir) {
+      params = params.set('sortDir', sortDir);
+    }
+    if (startDate.trim()) {
+      params = params.set('startDate', startDate.trim());
+    }
+    if (endDate.trim()) {
+      params = params.set('endDate', endDate.trim());
     }
 
     return this.http.get<
@@ -1603,6 +1665,30 @@ export class AdminApiService {
     );
   }
 
+  getDashboardDetails(options: {
+    metric: DashboardDetailMetric;
+    period?: DashboardPeriod;
+    startDate?: string;
+    endDate?: string;
+  }) {
+    let params = new HttpParams().set('metric', options.metric);
+
+    if (options.period) {
+      params = params.set('period', options.period);
+    }
+    if (options.startDate) {
+      params = params.set('startDate', options.startDate);
+    }
+    if (options.endDate) {
+      params = params.set('endDate', options.endDate);
+    }
+
+    return this.http.get<ItemResponse<DashboardDetails>>(
+      `${APP_CONFIG.apiUrl}/admin/dashboard/details`,
+      { headers: this.headers(), params },
+    );
+  }
+
   getRbacStatus() {
     return this.http.get<ItemResponse<RbacStatus>>(
       `${APP_CONFIG.apiUrl}/admin/users/rbac-status`,
@@ -1638,6 +1724,9 @@ export class AdminApiService {
     positionTitle?: string;
     salaryType?: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
     monthlySalary?: number | null;
+    fixedMonthlySalary?: number | null;
+    payoutMethod?: 'cash' | 'online';
+    bankDetails?: string | null;
     payrollEnabled?: boolean;
   }) {
     return this.http.post<MessageResponse<AdminUser>>(
@@ -1659,6 +1748,9 @@ export class AdminApiService {
       positionTitle?: string;
       salaryType?: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
       monthlySalary?: number | null;
+      fixedMonthlySalary?: number | null;
+      payoutMethod?: 'cash' | 'online';
+      bankDetails?: string | null;
       payrollEnabled?: boolean;
     },
   ) {
@@ -1698,6 +1790,24 @@ export class AdminApiService {
   removeUserProfileImage(id: number) {
     return this.http.delete<MessageResponse<AdminUser>>(
       `${APP_CONFIG.apiUrl}/admin/users/${id}/profile-image`,
+      { headers: this.headers() },
+    );
+  }
+
+  uploadUserPayrollQr(id: number, file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    return this.http.post<MessageResponse<AdminUser>>(
+      `${APP_CONFIG.apiUrl}/admin/users/${id}/payroll-qr`,
+      formData,
+      { headers: this.headers() },
+    );
+  }
+
+  removeUserPayrollQr(id: number) {
+    return this.http.delete<MessageResponse<AdminUser>>(
+      `${APP_CONFIG.apiUrl}/admin/users/${id}/payroll-qr`,
       { headers: this.headers() },
     );
   }
@@ -1753,12 +1863,21 @@ export class AdminApiService {
     );
   }
 
-  generatePayrollPeriod(dateFrom = '', dateTo = '') {
+  generatePayrollPeriod(
+    dateFrom = '',
+    dateTo = '',
+    employees?: Array<{
+      userId: number;
+      userSource: string;
+      payslipPeriod: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
+    }>,
+  ) {
     return this.http.post<ItemResponse<PayrollGenerateResult>>(
       `${APP_CONFIG.apiUrl}/admin/payroll/period/generate`,
       {
         dateFrom: dateFrom.trim() || undefined,
         dateTo: dateTo.trim() || undefined,
+        employees,
       },
       { headers: this.headers() },
     );

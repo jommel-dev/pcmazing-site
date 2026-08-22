@@ -143,11 +143,55 @@
               </td>
               <td class="px-4 py-3 text-slate-600 dark:text-slate-400">{{ formatDate(item.updatedAt) }}</td>
               <td class="px-4 py-3">
-                <div class="flex flex-wrap gap-2">
-                  <button type="button" class="font-bold text-pcmazing-500 hover:text-pcmazing-600" (click)="openEditForm(item)">Edit</button>
-                  <button type="button" class="font-bold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300" (click)="openPasswordForm(item)">Password</button>
+                <div class="flex items-center gap-1">
+                  <button
+                    type="button"
+                    class="inline-flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-pcmazing-600 dark:hover:bg-slate-800"
+                    title="View"
+                    aria-label="View user"
+                    (click)="openViewForm(item)"
+                  >
+                    <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    class="inline-flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-pcmazing-600 dark:hover:bg-slate-800"
+                    title="Edit"
+                    aria-label="Edit user"
+                    (click)="openEditForm(item)"
+                  >
+                    <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 3.5 20.5 7.5 8 20H4v-4L16.5 3.5Z" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    class="inline-flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                    title="Change password"
+                    aria-label="Change password"
+                    (click)="openPasswordForm(item)"
+                  >
+                    <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                      <rect x="5" y="11" width="14" height="10" rx="2" />
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M8 11V8a4 4 0 0 1 8 0v3" />
+                    </svg>
+                  </button>
                   @if (item.isActive && !isCurrentUser(item)) {
-                    <button type="button" class="font-bold text-red-500 hover:text-red-600" (click)="deactivateUser(item)">Deactivate</button>
+                    <button
+                      type="button"
+                      class="inline-flex size-8 items-center justify-center rounded-lg text-red-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40"
+                      title="Deactivate"
+                      aria-label="Deactivate user"
+                      (click)="deactivateUser(item)"
+                    >
+                      <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <circle cx="12" cy="12" r="9" />
+                        <path stroke-linecap="round" d="M8 12h8" />
+                      </svg>
+                    </button>
                   }
                 </div>
               </td>
@@ -267,18 +311,76 @@
                 <input type="text" formControlName="positionTitle" class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />
               </div>
               <div>
-                <label class="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">Salary type</label>
+                <label class="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">Pay schedule</label>
                 <select formControlName="salaryType" class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
                   @for (option of salaryTypeOptions; track option.value) {
                     <option [value]="option.value">{{ option.label }}</option>
                   }
                 </select>
+                <p class="mt-1 text-xs text-slate-500">How often this employee is paid: weekly, semi-monthly, or monthly.</p>
               </div>
               <div>
                 <label class="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">Salary amount</label>
                 <input type="number" min="0" step="0.01" formControlName="monthlySalary" class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />
-                <p class="mt-1 text-xs text-slate-500">For Semi-Monthly, this is the daily rate. Full day (9h+) = full amount; half day (4–4.5h+) = half amount.</p>
+                <p class="mt-1 text-xs text-slate-500">Used for daily computation when no fixed monthly salary is set. For Semi-Monthly, this is the daily rate.</p>
               </div>
+              <div>
+                <label class="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">Fixed monthly salary</label>
+                <input type="number" min="0" step="0.01" formControlName="fixedMonthlySalary" class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />
+                <p class="mt-1 text-xs text-slate-500">Optional. When filled, payroll uses this monthly amount (prorated to the period) instead of daily attendance units.</p>
+              </div>
+              <div>
+                <label class="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">Payout method</label>
+                <select formControlName="payoutMethod" class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
+                  @for (option of payoutMethodOptions; track option.value) {
+                    <option [value]="option.value">{{ option.label }}</option>
+                  }
+                </select>
+              </div>
+              @if (isOnlinePayout()) {
+                <div>
+                  <label class="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">Bank details</label>
+                  <textarea
+                    formControlName="bankDetails"
+                    rows="3"
+                    class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    placeholder="Bank name, account name, account number, or e-wallet number"
+                  ></textarea>
+                </div>
+                <div>
+                  <label class="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">QR code / payout image</label>
+                  <div class="flex items-start gap-4">
+                    @if (qrPreview(); as qrUrl) {
+                      <button
+                        type="button"
+                        class="rounded-xl focus:outline-none focus-visible:ring-2 focus:ring-pcmazing-500"
+                        title="View full image"
+                        (click)="openQrLightbox(qrUrl, $event)"
+                      >
+                        <img
+                          [src]="qrUrl"
+                          alt="Payroll QR preview"
+                          class="size-20 rounded-xl border border-slate-200 object-cover transition hover:opacity-90 dark:border-slate-700"
+                        />
+                      </button>
+                    } @else {
+                      <span class="inline-flex size-20 items-center justify-center rounded-xl border border-dashed border-slate-300 text-xs text-slate-400">No QR</span>
+                    }
+                    <div class="flex flex-col gap-2">
+                      <label class="inline-flex cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                        Upload image
+                        <input type="file" accept="image/*" class="hidden" (change)="onQrImageSelected($event)" />
+                      </label>
+                      @if (qrPreview() || selectedUser()?.qrImageUrl) {
+                        <button type="button" class="text-sm font-semibold text-red-500 hover:text-red-600" (click)="removeQrImage()">
+                          Remove image
+                        </button>
+                      }
+                    </div>
+                  </div>
+                  <p class="mt-1 text-xs text-slate-500">Upload a QR code or bank screenshot. JPEG, PNG, WEBP, or GIF up to 2MB.</p>
+                </div>
+              }
               <label class="inline-flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
                 <input type="checkbox" formControlName="payrollEnabled" class="size-4 rounded border-slate-300" />
                 Enable payroll time clock
@@ -295,6 +397,156 @@
         </div>
       </form>
     </aside>
+  </div>
+}
+
+@if (viewOpen()) {
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" (click)="closeViewForm()">
+    <div
+      class="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-700 dark:bg-slate-900"
+      (click)="$event.stopPropagation()"
+    >
+      @if (selectedUser(); as user) {
+        <div class="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5 dark:border-slate-800">
+          <div class="flex min-w-0 items-center gap-4">
+            @if (profileImageFor(user); as imageUrl) {
+              <img [src]="imageUrl" [alt]="user.fullName" class="size-14 rounded-full border border-slate-200 object-cover dark:border-slate-700" />
+            } @else {
+              <span class="inline-flex size-14 items-center justify-center rounded-full bg-slate-200 text-lg font-bold text-slate-700 dark:bg-slate-700 dark:text-slate-100">
+                {{ userInitials(user.fullName) }}
+              </span>
+            }
+            <div class="min-w-0">
+              <h3 class="text-lg font-bold text-slate-900 dark:text-white">{{ user.fullName }}</h3>
+              <p class="text-sm text-slate-500">{{ user.username }}</p>
+            </div>
+          </div>
+          <button type="button" class="text-slate-400 hover:text-slate-600" (click)="closeViewForm()">Close</button>
+        </div>
+
+        <div class="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <p class="text-xs font-bold tracking-wide text-slate-400 uppercase">Email</p>
+              <p class="mt-1 text-sm font-medium text-slate-900 dark:text-white">{{ displayValue(user.email) }}</p>
+            </div>
+            <div>
+              <p class="text-xs font-bold tracking-wide text-slate-400 uppercase">Role</p>
+              <p class="mt-1 text-sm font-medium text-slate-900 dark:text-white">{{ user.role }}</p>
+            </div>
+            <div>
+              <p class="text-xs font-bold tracking-wide text-slate-400 uppercase">Status</p>
+              <p class="mt-1">
+                @if (user.isActive) {
+                  <span class="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">Active</span>
+                } @else {
+                  <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">Inactive</span>
+                }
+              </p>
+            </div>
+            <div>
+              <p class="text-xs font-bold tracking-wide text-slate-400 uppercase">Updated</p>
+              <p class="mt-1 text-sm font-medium text-slate-900 dark:text-white">{{ formatDate(user.updatedAt) }}</p>
+            </div>
+          </div>
+
+          <div class="mt-6 border-t border-slate-100 pt-5 dark:border-slate-800">
+            <p class="text-sm font-bold text-slate-900 dark:text-white">Payroll</p>
+            <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <p class="text-xs font-bold tracking-wide text-slate-400 uppercase">Payroll clock</p>
+                <p class="mt-1 text-sm font-medium text-slate-900 dark:text-white">{{ user.payrollEnabled ? 'Enabled' : 'Off' }}</p>
+              </div>
+              <div>
+                <p class="text-xs font-bold tracking-wide text-slate-400 uppercase">Employee code</p>
+                <p class="mt-1 text-sm font-medium text-slate-900 dark:text-white">{{ displayValue(user.employeeCode) }}</p>
+              </div>
+              <div>
+                <p class="text-xs font-bold tracking-wide text-slate-400 uppercase">Department</p>
+                <p class="mt-1 text-sm font-medium text-slate-900 dark:text-white">{{ displayValue(user.department) }}</p>
+              </div>
+              <div>
+                <p class="text-xs font-bold tracking-wide text-slate-400 uppercase">Position</p>
+                <p class="mt-1 text-sm font-medium text-slate-900 dark:text-white">{{ displayValue(user.positionTitle) }}</p>
+              </div>
+              <div>
+                <p class="text-xs font-bold tracking-wide text-slate-400 uppercase">Pay schedule</p>
+                <p class="mt-1 text-sm font-medium text-slate-900 dark:text-white">{{ salaryTypeLabel(user.salaryType) }}</p>
+              </div>
+              <div>
+                <p class="text-xs font-bold tracking-wide text-slate-400 uppercase">Salary amount</p>
+                <p class="mt-1 text-sm font-medium text-slate-900 dark:text-white">{{ formatMoney(user.monthlySalary) }}</p>
+              </div>
+              <div>
+                <p class="text-xs font-bold tracking-wide text-slate-400 uppercase">Fixed monthly salary</p>
+                <p class="mt-1 text-sm font-medium text-slate-900 dark:text-white">{{ formatMoney(user.fixedMonthlySalary) }}</p>
+              </div>
+              <div>
+                <p class="text-xs font-bold tracking-wide text-slate-400 uppercase">Payout method</p>
+                <p class="mt-1 text-sm font-medium text-slate-900 dark:text-white">{{ payoutMethodLabel(user.payoutMethod) }}</p>
+              </div>
+            </div>
+
+            @if (user.payoutMethod === 'online') {
+              <div class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div class="sm:col-span-2">
+                  <p class="text-xs font-bold tracking-wide text-slate-400 uppercase">Bank details</p>
+                  <p class="mt-1 whitespace-pre-wrap text-sm font-medium text-slate-900 dark:text-white">{{ displayValue(user.bankDetails) }}</p>
+                </div>
+                <div>
+                  <p class="text-xs font-bold tracking-wide text-slate-400 uppercase">QR code / payout image</p>
+                  @if (qrImageFor(user); as qrUrl) {
+                    <button
+                      type="button"
+                      class="mt-2 block rounded-xl focus:outline-none focus-visible:ring-2 focus:ring-pcmazing-500"
+                      title="View full image"
+                      (click)="openQrLightbox(qrUrl, $event)"
+                    >
+                      <img
+                        [src]="qrUrl"
+                        alt="Payroll QR"
+                        class="size-28 rounded-xl border border-slate-200 object-cover transition hover:opacity-90 dark:border-slate-700"
+                      />
+                    </button>
+                  } @else {
+                    <p class="mt-1 text-sm font-medium text-slate-500">—</p>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+        </div>
+
+        <div class="flex shrink-0 justify-end gap-2 border-t border-slate-100 px-6 py-4 dark:border-slate-800">
+          <button type="button" class="rounded-xl border px-4 py-2.5 text-sm font-bold dark:border-slate-700" (click)="closeViewForm()">Close</button>
+          <button type="button" class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600" (click)="startEditFromView()">
+            Edit
+          </button>
+        </div>
+      }
+    </div>
+  </div>
+}
+
+@if (qrLightboxUrl(); as qrUrl) {
+  <div
+    class="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/80 p-4"
+    (click)="closeQrLightbox()"
+  >
+    <div class="relative max-h-[90vh] w-full max-w-3xl" (click)="$event.stopPropagation()">
+      <button
+        type="button"
+        class="absolute top-0 right-0 z-10 rounded-lg bg-slate-900/70 px-3 py-1.5 text-sm font-bold text-white hover:bg-slate-900"
+        (click)="closeQrLightbox()"
+      >
+        Close
+      </button>
+      <img
+        [src]="qrUrl"
+        alt="Payroll QR full image"
+        class="mx-auto max-h-[90vh] w-auto max-w-full rounded-2xl object-contain shadow-2xl"
+      />
+    </div>
   </div>
 }
 

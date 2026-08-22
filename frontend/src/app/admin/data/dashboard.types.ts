@@ -17,6 +17,32 @@ export interface DashboardChartPoint {
   value: number;
 }
 
+export type DashboardDetailMetric =
+  | 'activeJobs'
+  | 'completedJobs'
+  | 'inquiries'
+  | 'projects'
+  | 'net'
+  | 'outstanding';
+
+export interface DashboardDetailRow {
+  id: number;
+  title: string;
+  subtitle: string;
+  status: string | null;
+  amount: number | null;
+  date: string | null;
+  href: string;
+}
+
+export interface DashboardDetails {
+  metric: DashboardDetailMetric;
+  title: string;
+  description: string;
+  viewAllHref: string;
+  rows: DashboardDetailRow[];
+}
+
 export interface DashboardOverview {
   generatedAt: string;
   period: {

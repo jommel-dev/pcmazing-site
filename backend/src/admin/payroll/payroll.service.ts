@@ -12,8 +12,14 @@ import {
 } from '../users/tblusers.util';
 import { ensureUserManagementTable } from '../users/user-management.schema';
 import { AdminUserRecord } from '../users/users.types';
-import { PayrollProfileFieldsDto, PayrollSalaryType } from './dto/payroll-profile-fields.dto';
+import { GeneratePayslipEmployeeDto } from './dto/generate-payslips.dto';
+import {
+  PayrollPayoutMethod,
+  PayrollProfileFieldsDto,
+  PayrollSalaryType,
+} from './dto/payroll-profile-fields.dto';
 import { saveAttendanceSelfieFile } from './attendance-selfie.util';
+import { deletePayrollQrImageFile, savePayrollQrImageFile } from './payroll-qr-image.util';
 import { ensurePayrollTables, manilaWorkDate } from './payroll.schema';
 import { buildPayslipPdfBuffer, PayslipPdfPayload } from './payslip-pdf.util';
 
@@ -23,6 +29,10 @@ export interface PayrollProfile {
   positionTitle: string | null;
   salaryType: PayrollSalaryType;
   monthlySalary: number | null;
+  fixedMonthlySalary: number | null;
+  payoutMethod: PayrollPayoutMethod;
+  bankDetails: string | null;
+  qrImageUrl: string | null;
   payrollEnabled: boolean;
 }
 
@@ -76,6 +86,10 @@ export interface PayrollEmployeeRecord {
   positionTitle: string | null;
   salaryType: PayrollSalaryType;
   monthlySalary: number | null;
+  fixedMonthlySalary: number | null;
+  payoutMethod: PayrollPayoutMethod;
+  bankDetails: string | null;
+  qrImageUrl: string | null;
   payrollEnabled: boolean;
   todayStatus: 'not_started' | 'timed_in' | 'completed' | 'absent';
   todayTimeIn: string | null;
@@ -100,6 +114,7 @@ export interface PayrollPeriodRow {
   department: string | null;
   salaryType: PayrollSalaryType;
   salaryAmount: number | null;
+  fixedMonthlySalary: number | null;
   daysPresent: number;
   daysCompleted: number;
   /** Full days count as 1; half days (4–&lt;9h) count as 0.5. */
@@ -108,6 +123,9 @@ export interface PayrollPeriodRow {
   approvedOvertimeHours: number;
   pendingOvertimeHours: number;
   estimatedPay: number;
+  payslipPeriod: PayrollSalaryType;
+  periodDateFrom: string;
+  periodDateTo: string;
 }
 
 export interface EmployeePayslipItem {
@@ -153,6 +171,10 @@ const EMPTY_PAYROLL: PayrollProfile = {
   positionTitle: null,
   salaryType: 'monthly',
   monthlySalary: null,
+  fixedMonthlySalary: null,
+  payoutMethod: 'cash',
+  bankDetails: null,
+  qrImageUrl: null,
   payrollEnabled: false,
 };
 
@@ -188,10 +210,15 @@ export class PayrollService {
       position_title: string | null;
       salary_type: string | null;
       monthly_salary: string | null;
+      fixed_monthly_salary: string | null;
+      payout_method: string | null;
+      bank_details: string | null;
+      qr_image_url: string | null;
       payroll_enabled: boolean;
     }>(
       `SELECT user_id, user_source, employee_code, department, position_title, salary_type,
-              monthly_salary, payroll_enabled
+              monthly_salary, fixed_monthly_salary, payout_method, bank_details, qr_image_url,
+              payroll_enabled
        FROM pcmazing_user_payroll
        WHERE (user_id, user_source) IN (${tuples.join(', ')})`,
       params,
@@ -212,9 +239,14 @@ export class PayrollService {
       position_title: string | null;
       salary_type: string | null;
       monthly_salary: string | null;
+      fixed_monthly_salary: string | null;
+      payout_method: string | null;
+      bank_details: string | null;
+      qr_image_url: string | null;
       payroll_enabled: boolean;
     }>(
-      `SELECT employee_code, department, position_title, salary_type, monthly_salary, payroll_enabled
+      `SELECT employee_code, department, position_title, salary_type, monthly_salary,
+              fixed_monthly_salary, payout_method, bank_details, qr_image_url, payroll_enabled
        FROM pcmazing_user_payroll
        WHERE user_id = $1 AND user_source = $2
        LIMIT 1`,
@@ -246,6 +278,20 @@ export class PayrollService {
           ? null
           : Number(dto.monthlySalary)
         : existing.monthlySalary;
+    const fixedMonthlySalary =
+      dto.fixedMonthlySalary !== undefined
+        ? dto.fixedMonthlySalary == null
+          ? null
+          : Number(dto.fixedMonthlySalary)
+        : existing.fixedMonthlySalary;
+    const payoutMethod =
+      dto.payoutMethod !== undefined
+        ? this.normalizePayoutMethod(dto.payoutMethod)
+        : existing.payoutMethod;
+    const bankDetails =
+      dto.bankDetails !== undefined
+        ? dto.bankDetails?.trim() || null
+        : existing.bankDetails;
     const payrollEnabled =
       dto.payrollEnabled !== undefined ? Boolean(dto.payrollEnabled) : existing.payrollEnabled;
 
@@ -255,20 +301,29 @@ export class PayrollService {
       position_title: string | null;
       salary_type: string | null;
       monthly_salary: string | null;
+      fixed_monthly_salary: string | null;
+      payout_method: string | null;
+      bank_details: string | null;
+      qr_image_url: string | null;
       payroll_enabled: boolean;
     }>(
       `INSERT INTO pcmazing_user_payroll (
-         user_id, user_source, employee_code, department, position_title, salary_type, monthly_salary, payroll_enabled
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         user_id, user_source, employee_code, department, position_title, salary_type, monthly_salary,
+         fixed_monthly_salary, payout_method, bank_details, payroll_enabled
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        ON CONFLICT (user_id, user_source) DO UPDATE SET
          employee_code = EXCLUDED.employee_code,
          department = EXCLUDED.department,
          position_title = EXCLUDED.position_title,
          salary_type = EXCLUDED.salary_type,
          monthly_salary = EXCLUDED.monthly_salary,
+         fixed_monthly_salary = EXCLUDED.fixed_monthly_salary,
+         payout_method = EXCLUDED.payout_method,
+         bank_details = EXCLUDED.bank_details,
          payroll_enabled = EXCLUDED.payroll_enabled,
          updated_at = NOW()
-       RETURNING employee_code, department, position_title, salary_type, monthly_salary, payroll_enabled`,
+       RETURNING employee_code, department, position_title, salary_type, monthly_salary,
+                 fixed_monthly_salary, payout_method, bank_details, qr_image_url, payroll_enabled`,
       [
         userId,
         userSource,
@@ -277,11 +332,54 @@ export class PayrollService {
         positionTitle,
         salaryType,
         monthlySalary,
+        fixedMonthlySalary,
+        payoutMethod,
+        bankDetails,
         payrollEnabled,
       ],
     );
 
     return this.mapProfile(result.rows[0]);
+  }
+
+  async uploadQrImage(
+    userId: number,
+    userSource: AdminUserRecord['source'],
+    file: Express.Multer.File,
+  ): Promise<PayrollProfile> {
+    await this.ensureReady();
+    const existing = await this.getProfile(userId, userSource);
+    const qrImageUrl = await savePayrollQrImageFile(userId, file);
+    await deletePayrollQrImageFile(existing.qrImageUrl);
+
+    await this.databaseService.query(
+      `INSERT INTO pcmazing_user_payroll (user_id, user_source, qr_image_url, payroll_enabled)
+       VALUES ($1, $2, $3, FALSE)
+       ON CONFLICT (user_id, user_source) DO UPDATE SET
+         qr_image_url = EXCLUDED.qr_image_url,
+         updated_at = NOW()`,
+      [userId, userSource, qrImageUrl],
+    );
+
+    return this.getProfile(userId, userSource);
+  }
+
+  async removeQrImage(
+    userId: number,
+    userSource: AdminUserRecord['source'],
+  ): Promise<PayrollProfile> {
+    await this.ensureReady();
+    const existing = await this.getProfile(userId, userSource);
+    await deletePayrollQrImageFile(existing.qrImageUrl);
+
+    await this.databaseService.query(
+      `UPDATE pcmazing_user_payroll
+       SET qr_image_url = NULL, updated_at = NOW()
+       WHERE user_id = $1 AND user_source = $2`,
+      [userId, userSource],
+    );
+
+    return this.getProfile(userId, userSource);
   }
 
   async listAttendance(pageRaw?: string, limitRaw?: string, workDate?: string) {
@@ -559,10 +657,15 @@ export class PayrollService {
       position_title: string | null;
       salary_type: string | null;
       monthly_salary: string | null;
+      fixed_monthly_salary: string | null;
+      payout_method: string | null;
+      bank_details: string | null;
+      qr_image_url: string | null;
       payroll_enabled: boolean;
     }>(
       `SELECT user_id, user_source, employee_code, department, position_title, salary_type,
-              monthly_salary, payroll_enabled
+              monthly_salary, fixed_monthly_salary, payout_method, bank_details, qr_image_url,
+              payroll_enabled
        FROM pcmazing_user_payroll
        WHERE payroll_enabled = TRUE
        ORDER BY employee_code NULLS LAST, user_id ASC`,
@@ -595,6 +698,11 @@ export class PayrollService {
         positionTitle: row.position_title,
         salaryType: this.normalizeSalaryType(row.salary_type),
         monthlySalary: row.monthly_salary == null ? null : Number(row.monthly_salary),
+        fixedMonthlySalary:
+          row.fixed_monthly_salary == null ? null : Number(row.fixed_monthly_salary),
+        payoutMethod: this.normalizePayoutMethod(row.payout_method),
+        bankDetails: row.bank_details,
+        qrImageUrl: row.qr_image_url,
         payrollEnabled: Boolean(row.payroll_enabled),
         todayStatus,
         todayTimeIn: attendance?.time_in ?? null,
@@ -633,6 +741,8 @@ export class PayrollService {
     }
 
     const employees = await this.listEmployees('');
+    const attendanceFrom = this.shiftIsoDate(dateFrom, -7);
+    const attendanceTo = this.shiftIsoDate(dateTo, 31);
     const attendance = await this.databaseService.query<{
       user_id: number;
       user_source: 'pcmazing_admin_users' | 'tblusers';
@@ -649,7 +759,7 @@ export class PayrollService {
        WHERE work_date BETWEEN $1::date AND $2::date
          AND time_in IS NOT NULL
        ORDER BY work_date ASC`,
-      [dateFrom, dateTo],
+      [attendanceFrom, attendanceTo],
     );
 
     const byUser = new Map<string, typeof attendance.rows>();
@@ -660,61 +770,13 @@ export class PayrollService {
       byUser.set(key, list);
     }
 
-    const periodDays = this.countInclusiveDays(dateFrom, dateTo);
     const rows: PayrollPeriodRow[] = employees.map((employee) => {
-      const punches = byUser.get(`${employee.userSource}:${employee.userId}`) ?? [];
-      let totalHours = 0;
-      let regularHours = 0;
-      let daysCompleted = 0;
-      let paidDayUnits = 0;
-      let approvedOvertimeHours = 0;
-      let pendingOvertimeHours = 0;
-
-      for (const punch of punches) {
-        const hours = this.computeHours(punch.time_in, punch.time_out);
-        if (hours != null) {
-          totalHours += hours;
-          daysCompleted += 1;
-          const units = this.dayPayUnits(hours);
-          paidDayUnits += units;
-          regularHours += Math.min(hours, FULL_DAY_HOURS);
-          const otHours = Number(punch.overtime_hours ?? 0) || 0;
-          const otStatus = this.normalizeOvertimeStatus(punch.overtime_status);
-          if (otHours > 0 && otStatus === 'approved') {
-            approvedOvertimeHours += otHours;
-          } else if (otHours > 0 && otStatus === 'pending') {
-            pendingOvertimeHours += otHours;
-          }
-        }
-      }
-
-      const daysPresent = punches.length;
-      const estimatedPay = this.estimatePay({
-        salaryType: employee.salaryType,
-        salaryAmount: employee.monthlySalary,
-        regularHours,
-        paidDayUnits,
-        periodDays,
-        approvedOvertimeHours,
-      });
-
-      return {
-        userId: employee.userId,
-        userSource: employee.userSource,
-        username: employee.username,
-        fullName: employee.fullName,
-        employeeCode: employee.employeeCode,
-        department: employee.department,
-        salaryType: employee.salaryType,
-        salaryAmount: employee.monthlySalary,
-        daysPresent,
-        daysCompleted,
-        paidDayUnits: Math.round(paidDayUnits * 100) / 100,
-        totalHours: Math.round(totalHours * 100) / 100,
-        approvedOvertimeHours: Math.round(approvedOvertimeHours * 100) / 100,
-        pendingOvertimeHours: Math.round(pendingOvertimeHours * 100) / 100,
-        estimatedPay: Math.round(estimatedPay * 100) / 100,
-      };
+      const payslipPeriod = employee.salaryType;
+      const range = this.resolvePayslipRange(payslipPeriod, dateFrom, dateTo);
+      const punches = (byUser.get(`${employee.userSource}:${employee.userId}`) ?? []).filter(
+        (punch) => punch.work_date >= range.dateFrom && punch.work_date <= range.dateTo,
+      );
+      return this.buildPeriodRow(employee, punches, payslipPeriod, range.dateFrom, range.dateTo);
     });
 
     rows.sort((a, b) => a.fullName.localeCompare(b.fullName));
@@ -722,7 +784,7 @@ export class PayrollService {
     return {
       dateFrom,
       dateTo,
-      periodDays,
+      periodDays: this.countInclusiveDays(dateFrom, dateTo),
       items: rows,
       totals: {
         employees: rows.length,
@@ -738,86 +800,183 @@ export class PayrollService {
 
   /**
    * Persist period pay as generated payslips so employees can see them in ESS.
-   * Re-generating the same date range replaces the previous run.
+   * Each employee can use a different payslip period; defaults to their profile schedule.
    */
   async generatePayslips(
     dateFromRaw?: string,
     dateToRaw?: string,
     generatedBy?: { userId: number; username: string },
+    employeePeriods?: GeneratePayslipEmployeeDto[],
   ) {
-    const summary = await this.getPeriodSummary(dateFromRaw, dateToRaw);
-    const label = this.formatPeriodLabel(summary.dateFrom, summary.dateTo);
-
-    const existing = await this.databaseService.query<{ id: number }>(
-      `SELECT id FROM pcmazing_payroll_runs
-       WHERE date_from = $1::date AND date_to = $2::date
-       LIMIT 1`,
-      [summary.dateFrom, summary.dateTo],
-    );
-    const existingId = existing.rows[0]?.id;
-    if (existingId != null) {
-      await this.databaseService.query(`DELETE FROM pcmazing_payroll_runs WHERE id = $1`, [
-        existingId,
-      ]);
+    const today = manilaWorkDate();
+    const dateFrom = dateFromRaw?.trim() || today.slice(0, 8) + '01';
+    const dateTo = dateToRaw?.trim() || today;
+    if (dateFrom > dateTo) {
+      throw new BadRequestException('dateFrom must be on or before dateTo.');
     }
 
-    const run = await this.databaseService.query<{ id: number }>(
-      `INSERT INTO pcmazing_payroll_runs (
-         date_from, date_to, period_days, label, generated_by_user_id, generated_by_username
-       ) VALUES ($1::date, $2::date, $3, $4, $5, $6)
-       RETURNING id`,
-      [
-        summary.dateFrom,
-        summary.dateTo,
-        summary.periodDays,
-        label,
-        generatedBy?.userId ?? null,
-        generatedBy?.username ?? null,
-      ],
+    const employees = await this.listEmployees('');
+    const overrideByKey = new Map(
+      (employeePeriods ?? []).map((item) => [
+        `${item.userSource}:${item.userId}`,
+        this.normalizeSalaryType(item.payslipPeriod),
+      ]),
     );
-    const runId = Number(run.rows[0]?.id);
-    if (!Number.isFinite(runId) || runId <= 0) {
-      throw new BadRequestException('Unable to create payroll run.');
+
+    const attendanceFrom = this.shiftIsoDate(dateFrom, -7);
+    const attendanceTo = this.shiftIsoDate(dateTo, 31);
+    const attendance = await this.databaseService.query<{
+      user_id: number;
+      user_source: 'pcmazing_admin_users' | 'tblusers';
+      work_date: string;
+      time_in: string | null;
+      time_out: string | null;
+      overtime_hours: string | number | null;
+      overtime_status: string | null;
+    }>(
+      `SELECT user_id, user_source, work_date::text AS work_date,
+              time_in::text AS time_in, time_out::text AS time_out,
+              overtime_hours, overtime_status
+       FROM pcmazing_attendance
+       WHERE work_date BETWEEN $1::date AND $2::date
+         AND time_in IS NOT NULL
+       ORDER BY work_date ASC`,
+      [attendanceFrom, attendanceTo],
+    );
+
+    const byUser = new Map<string, typeof attendance.rows>();
+    for (const row of attendance.rows) {
+      const key = `${row.user_source}:${row.user_id}`;
+      const list = byUser.get(key) ?? [];
+      list.push(row);
+      byUser.set(key, list);
     }
 
-    for (const item of summary.items) {
-      await this.databaseService.query(
-        `INSERT INTO pcmazing_generated_payslips (
-           run_id, user_id, user_source, username, full_name, employee_code, department,
-           salary_type, salary_amount, days_present, days_completed, total_hours,
-           estimated_pay, payroll_enabled
-         ) VALUES (
-           $1, $2, $3, $4, $5, $6, $7,
-           $8, $9, $10, $11, $12,
-           $13, TRUE
-         )`,
-        [
-          runId,
-          item.userId,
-          item.userSource,
-          item.username,
-          item.fullName,
-          item.employeeCode,
-          item.department,
-          item.salaryType,
-          item.salaryAmount,
-          item.daysPresent,
-          item.daysCompleted,
-          item.totalHours,
-          item.estimatedPay,
-        ],
+    const rows = employees.map((employee) => {
+      const key = `${employee.userSource}:${employee.userId}`;
+      const payslipPeriod = overrideByKey.get(key) ?? employee.salaryType;
+      const range = this.resolvePayslipRange(payslipPeriod, dateFrom, dateTo);
+      const punches = (byUser.get(`${employee.userSource}:${employee.userId}`) ?? []).filter(
+        (punch) => punch.work_date >= range.dateFrom && punch.work_date <= range.dateTo,
       );
+      return this.buildPeriodRow(employee, punches, payslipPeriod, range.dateFrom, range.dateTo);
+    });
+
+    const grouped = new Map<string, PayrollPeriodRow[]>();
+    for (const row of rows) {
+      const key = `${row.periodDateFrom}|${row.periodDateTo}`;
+      const list = grouped.get(key) ?? [];
+      list.push(row);
+      grouped.set(key, list);
     }
 
+    let runId = 0;
+    let replaced = false;
+    for (const group of grouped.values()) {
+      const groupFrom = group[0].periodDateFrom;
+      const groupTo = group[0].periodDateTo;
+      const periodDays = this.countInclusiveDays(groupFrom, groupTo);
+      const label = this.formatPeriodLabel(groupFrom, groupTo);
+      const existing = await this.databaseService.query<{ id: number }>(
+        `SELECT id FROM pcmazing_payroll_runs
+         WHERE date_from = $1::date AND date_to = $2::date
+         LIMIT 1`,
+        [groupFrom, groupTo],
+      );
+      let groupRunId = existing.rows[0]?.id ?? null;
+      if (groupRunId == null) {
+        const created = await this.databaseService.query<{ id: number }>(
+          `INSERT INTO pcmazing_payroll_runs (
+             date_from, date_to, period_days, label, generated_by_user_id, generated_by_username
+           ) VALUES ($1::date, $2::date, $3, $4, $5, $6)
+           RETURNING id`,
+          [
+            groupFrom,
+            groupTo,
+            periodDays,
+            label,
+            generatedBy?.userId ?? null,
+            generatedBy?.username ?? null,
+          ],
+        );
+        groupRunId = Number(created.rows[0]?.id);
+      } else {
+        replaced = true;
+        await this.databaseService.query(
+          `UPDATE pcmazing_payroll_runs
+           SET period_days = $2, label = $3, generated_by_user_id = $4, generated_by_username = $5
+           WHERE id = $1`,
+          [groupRunId, periodDays, label, generatedBy?.userId ?? null, generatedBy?.username ?? null],
+        );
+      }
+
+      if (!Number.isFinite(Number(groupRunId)) || Number(groupRunId) <= 0) {
+        throw new BadRequestException('Unable to create payroll run.');
+      }
+
+      runId = Number(groupRunId);
+      for (const item of group) {
+        await this.databaseService.query(
+          `INSERT INTO pcmazing_generated_payslips (
+             run_id, user_id, user_source, username, full_name, employee_code, department,
+             salary_type, salary_amount, days_present, days_completed, total_hours,
+             estimated_pay, payroll_enabled
+           ) VALUES (
+             $1, $2, $3, $4, $5, $6, $7,
+             $8, $9, $10, $11, $12,
+             $13, TRUE
+           )
+           ON CONFLICT (run_id, user_id, user_source) DO UPDATE SET
+             username = EXCLUDED.username,
+             full_name = EXCLUDED.full_name,
+             employee_code = EXCLUDED.employee_code,
+             department = EXCLUDED.department,
+             salary_type = EXCLUDED.salary_type,
+             salary_amount = EXCLUDED.salary_amount,
+             days_present = EXCLUDED.days_present,
+             days_completed = EXCLUDED.days_completed,
+             total_hours = EXCLUDED.total_hours,
+             estimated_pay = EXCLUDED.estimated_pay,
+             payroll_enabled = TRUE`,
+          [
+            groupRunId,
+            item.userId,
+            item.userSource,
+            item.username,
+            item.fullName,
+            item.employeeCode,
+            item.department,
+            item.payslipPeriod,
+            item.fixedMonthlySalary ?? item.salaryAmount,
+            item.daysPresent,
+            item.daysCompleted,
+            item.totalHours,
+            item.estimatedPay,
+          ],
+        );
+      }
+    }
+
+    const first = rows[0];
     return {
       runId,
-      label,
-      dateFrom: summary.dateFrom,
-      dateTo: summary.dateTo,
-      periodDays: summary.periodDays,
-      employeeCount: summary.items.length,
-      totals: summary.totals,
-      replaced: existingId != null,
+      label: first
+        ? this.formatPeriodLabel(first.periodDateFrom, first.periodDateTo)
+        : this.formatPeriodLabel(dateFrom, dateTo),
+      dateFrom,
+      dateTo,
+      periodDays: this.countInclusiveDays(dateFrom, dateTo),
+      employeeCount: rows.length,
+      totals: {
+        employees: rows.length,
+        totalHours: Math.round(rows.reduce((sum, row) => sum + row.totalHours, 0) * 100) / 100,
+        approvedOvertimeHours:
+          Math.round(rows.reduce((sum, row) => sum + row.approvedOvertimeHours, 0) * 100) / 100,
+        pendingOvertimeHours:
+          Math.round(rows.reduce((sum, row) => sum + row.pendingOvertimeHours, 0) * 100) / 100,
+        estimatedPay: Math.round(rows.reduce((sum, row) => sum + row.estimatedPay, 0) * 100) / 100,
+      },
+      replaced,
     };
   }
 
@@ -901,6 +1060,7 @@ export class PayrollService {
       position_title: string | null;
       salary_type: string | null;
       salary_amount: string | null;
+      fixed_monthly_salary: string | null;
       days_present: number;
       days_completed: number;
       total_hours: string;
@@ -914,6 +1074,7 @@ export class PayrollService {
       `SELECT p.id, p.username, p.full_name, p.employee_code, p.department,
               pay.position_title,
               p.salary_type, p.salary_amount::text AS salary_amount,
+              pay.fixed_monthly_salary::text AS fixed_monthly_salary,
               p.days_present, p.days_completed, p.total_hours::text AS total_hours,
               p.estimated_pay::text AS estimated_pay,
               r.label, r.date_from::text AS date_from, r.date_to::text AS date_to,
@@ -936,8 +1097,16 @@ export class PayrollService {
 
     const salaryType = this.normalizeSalaryType(slip.salary_type);
     const salaryAmount = slip.salary_amount == null ? null : Number(slip.salary_amount);
+    const fixedMonthlySalary =
+      slip.fixed_monthly_salary == null ? null : Number(slip.fixed_monthly_salary);
     const periodDays = Number(slip.period_days) || 0;
-    const { dailyRate, hourlyRate } = this.resolvePayRates(salaryType, salaryAmount, periodDays);
+    const usesFixedSalary = fixedMonthlySalary != null && fixedMonthlySalary > 0;
+    const { dailyRate, hourlyRate } = usesFixedSalary
+      ? {
+          dailyRate: 0,
+          hourlyRate: (fixedMonthlySalary / 22) / FULL_DAY_HOURS,
+        }
+      : this.resolvePayRates(salaryType, salaryAmount, periodDays);
 
     const attendance = await this.databaseService.query<{
       work_date: string;
@@ -1011,6 +1180,7 @@ export class PayrollService {
         this.estimatePay({
           salaryType,
           salaryAmount,
+          fixedMonthlySalary,
           regularHours,
           paidDayUnits,
           periodDays,
@@ -1022,6 +1192,7 @@ export class PayrollService {
         this.estimatePay({
           salaryType,
           salaryAmount,
+          fixedMonthlySalary,
           regularHours,
           paidDayUnits,
           periodDays,
@@ -1608,6 +1779,10 @@ export class PayrollService {
     position_title: string | null;
     salary_type?: string | null;
     monthly_salary: string | null;
+    fixed_monthly_salary?: string | null;
+    payout_method?: string | null;
+    bank_details?: string | null;
+    qr_image_url?: string | null;
     payroll_enabled: boolean;
   }): PayrollProfile {
     return {
@@ -1616,8 +1791,17 @@ export class PayrollService {
       positionTitle: row.position_title,
       salaryType: this.normalizeSalaryType(row.salary_type),
       monthlySalary: row.monthly_salary == null ? null : Number(row.monthly_salary),
+      fixedMonthlySalary:
+        row.fixed_monthly_salary == null ? null : Number(row.fixed_monthly_salary),
+      payoutMethod: this.normalizePayoutMethod(row.payout_method),
+      bankDetails: row.bank_details ?? null,
+      qrImageUrl: row.qr_image_url ?? null,
       payrollEnabled: Boolean(row.payroll_enabled),
     };
+  }
+
+  private normalizePayoutMethod(value?: string | null): PayrollPayoutMethod {
+    return (value ?? '').trim().toLowerCase() === 'online' ? 'online' : 'cash';
   }
 
   private normalizeSalaryType(value?: string | null): PayrollSalaryType {
@@ -1649,6 +1833,132 @@ export class PayrollService {
     return Math.round(((end - start) / 3_600_000) * 100) / 100;
   }
 
+  private buildPeriodRow(
+    employee: PayrollEmployeeRecord,
+    punches: Array<{
+      work_date: string;
+      time_in: string | null;
+      time_out: string | null;
+      overtime_hours: string | number | null;
+      overtime_status: string | null;
+    }>,
+    payslipPeriod: PayrollSalaryType,
+    periodDateFrom: string,
+    periodDateTo: string,
+  ): PayrollPeriodRow {
+    let totalHours = 0;
+    let regularHours = 0;
+    let daysCompleted = 0;
+    let paidDayUnits = 0;
+    let approvedOvertimeHours = 0;
+    let pendingOvertimeHours = 0;
+
+    for (const punch of punches) {
+      const hours = this.computeHours(punch.time_in, punch.time_out);
+      if (hours != null) {
+        totalHours += hours;
+        daysCompleted += 1;
+        const units = this.dayPayUnits(hours);
+        paidDayUnits += units;
+        regularHours += Math.min(hours, FULL_DAY_HOURS);
+        const otHours = Number(punch.overtime_hours ?? 0) || 0;
+        const otStatus = this.normalizeOvertimeStatus(punch.overtime_status);
+        if (otHours > 0 && otStatus === 'approved') {
+          approvedOvertimeHours += otHours;
+        } else if (otHours > 0 && otStatus === 'pending') {
+          pendingOvertimeHours += otHours;
+        }
+      }
+    }
+
+    const periodDays = this.countInclusiveDays(periodDateFrom, periodDateTo);
+    const estimatedPay = this.estimatePay({
+      salaryType: payslipPeriod,
+      salaryAmount: employee.monthlySalary,
+      fixedMonthlySalary: employee.fixedMonthlySalary,
+      regularHours,
+      paidDayUnits,
+      periodDays,
+      approvedOvertimeHours,
+    });
+
+    return {
+      userId: employee.userId,
+      userSource: employee.userSource,
+      username: employee.username,
+      fullName: employee.fullName,
+      employeeCode: employee.employeeCode,
+      department: employee.department,
+      salaryType: employee.salaryType,
+      salaryAmount: employee.monthlySalary,
+      fixedMonthlySalary: employee.fixedMonthlySalary,
+      daysPresent: punches.length,
+      daysCompleted,
+      paidDayUnits: Math.round(paidDayUnits * 100) / 100,
+      totalHours: Math.round(totalHours * 100) / 100,
+      approvedOvertimeHours: Math.round(approvedOvertimeHours * 100) / 100,
+      pendingOvertimeHours: Math.round(pendingOvertimeHours * 100) / 100,
+      estimatedPay: Math.round(estimatedPay * 100) / 100,
+      payslipPeriod,
+      periodDateFrom,
+      periodDateTo,
+    };
+  }
+
+  private resolvePayslipRange(
+    period: PayrollSalaryType,
+    dateFrom: string,
+    dateTo: string,
+  ): { dateFrom: string; dateTo: string } {
+    const ref = dateTo || dateFrom;
+    const [year, month, day] = ref.split('-').map(Number);
+    const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    const pad = (value: number) => String(value).padStart(2, '0');
+    const yearMonth = `${year}-${pad(month)}`;
+
+    switch (period) {
+      case 'weekly': {
+        const utc = Date.UTC(year, month - 1, day);
+        const weekday = new Date(utc).getUTCDay();
+        const mondayOffset = weekday === 0 ? -6 : 1 - weekday;
+        return {
+          dateFrom: this.shiftIsoDate(ref, mondayOffset),
+          dateTo: this.shiftIsoDate(ref, mondayOffset + 6),
+        };
+      }
+      case 'semi_monthly':
+        if (day <= 15) {
+          return { dateFrom: `${yearMonth}-01`, dateTo: `${yearMonth}-15` };
+        }
+        return { dateFrom: `${yearMonth}-16`, dateTo: `${yearMonth}-${pad(lastDay)}` };
+      case 'monthly':
+        return { dateFrom: `${yearMonth}-01`, dateTo: `${yearMonth}-${pad(lastDay)}` };
+      case 'cutoff':
+      default:
+        return { dateFrom, dateTo };
+    }
+  }
+
+  private scheduledFixedPay(monthly: number, period: PayrollSalaryType): number {
+    switch (period) {
+      case 'weekly':
+        return Math.round((monthly / 4) * 100) / 100;
+      case 'semi_monthly':
+        return Math.round((monthly / 2) * 100) / 100;
+      case 'cutoff':
+      case 'monthly':
+      default:
+        return Math.round(monthly * 100) / 100;
+    }
+  }
+
+  private shiftIsoDate(value: string, days: number): string {
+    const [year, month, day] = value.split('-').map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    date.setUTCDate(date.getUTCDate() + days);
+    return date.toISOString().slice(0, 10);
+  }
+
   private countInclusiveDays(dateFrom: string, dateTo: string): number {
     const start = new Date(`${dateFrom}T00:00:00+08:00`).getTime();
     const end = new Date(`${dateTo}T00:00:00+08:00`).getTime();
@@ -1662,11 +1972,27 @@ export class PayrollService {
   private estimatePay(input: {
     salaryType: PayrollSalaryType;
     salaryAmount: number | null;
+    fixedMonthlySalary?: number | null;
     regularHours: number;
     paidDayUnits: number;
     periodDays: number;
     approvedOvertimeHours: number;
   }): number {
+    const fixedMonthly =
+      input.fixedMonthlySalary != null && input.fixedMonthlySalary > 0
+        ? input.fixedMonthlySalary
+        : null;
+
+    if (fixedMonthly != null) {
+      const basePay = this.scheduledFixedPay(fixedMonthly, input.salaryType);
+      const hourlyRate = (fixedMonthly / 22) / FULL_DAY_HOURS;
+      const overtimePay =
+        input.approvedOvertimeHours > 0 && hourlyRate > 0
+          ? input.approvedOvertimeHours * hourlyRate * OVERTIME_MULTIPLIER
+          : 0;
+      return basePay + overtimePay;
+    }
+
     const amount = input.salaryAmount;
     if (amount == null || amount <= 0) {
       return 0;

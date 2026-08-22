@@ -22,6 +22,7 @@ import { SalesOrderCreatePageComponent } from './pages/inventory/sales-order-cre
 import { SalesOrderReceiptPageComponent } from './pages/inventory/sales-order-receipt-page.component';
 import { SalesOrdersPageComponent } from './pages/inventory/sales-orders-page.component';
 import { InventoryServiceCreatePageComponent } from './pages/inventory/inventory-service-create-page.component';
+import { InventoryServiceViewPageComponent } from './pages/inventory/inventory-service-view-page.component';
 import { InventoryServiceReceiptPageComponent } from './pages/inventory/inventory-service-receipt-page.component';
 import { InventoryServicesPageComponent } from './pages/inventory/inventory-services-page.component';
 import { InventoryServiceTypesPageComponent } from './pages/inventory/inventory-service-types-page.component';
@@ -210,9 +211,16 @@ export const adminRoutes: Routes = [
         data: { module: 'job_order' },
       },
       {
-        path: 'job-order/:id',
+        path: 'job-order/:id/edit',
         component: InventoryServiceCreatePageComponent,
         title: 'Edit Job Order | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'job_order' },
+      },
+      {
+        path: 'job-order/:id',
+        component: InventoryServiceViewPageComponent,
+        title: 'View Job Order | PCMazing Admin',
         canActivate: [adminRoleGuard],
         data: { module: 'job_order' },
       },

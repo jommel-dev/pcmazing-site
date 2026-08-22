@@ -378,7 +378,7 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
       this.printingSettings.set(settingsResult?.data ?? null);
       this.selectedTemplateId.set(this.resolveInitialTemplateId(templates, settingsResult?.data));
 
-      if (this.autoPrint()) {
+      if (this.autoPrint() && !this.isCancelled()) {
         queueMicrotask(() => {
           setTimeout(() => {
             if (this.autoReprint()) {
@@ -406,11 +406,21 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
     }
   }
 
+  isCancelled(): boolean {
+    return String(this.item()?.status ?? '').trim().toLowerCase() === 'cancelled';
+  }
+
   printReceipt(): void {
+    if (this.isCancelled()) {
+      return;
+    }
     this.openPrintDialog(false);
   }
 
   reprintReceipt(): void {
+    if (this.isCancelled()) {
+      return;
+    }
     this.openPrintDialog(true);
   }
 

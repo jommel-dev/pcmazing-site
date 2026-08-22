@@ -141,6 +141,35 @@ export class UsersController {
     }));
   }
 
+  @Post(':id/payroll-qr')
+  @Roles('admin')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 2 * 1024 * 1024 },
+    }),
+  )
+  uploadPayrollQr(
+    @Param('id', ParseIntPipe) id: number,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.usersService.uploadPayrollQr(id, file).then((item) => ({
+      success: true,
+      message: 'Payroll QR image updated.',
+      data: item,
+    }));
+  }
+
+  @Delete(':id/payroll-qr')
+  @Roles('admin')
+  removePayrollQr(@Param('id', ParseIntPipe) id: number) {
+    return this.usersService.removePayrollQr(id).then((item) => ({
+      success: true,
+      message: 'Payroll QR image removed.',
+      data: item,
+    }));
+  }
+
   @Delete(':id')
   @Roles('admin')
   deactivate(
