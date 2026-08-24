@@ -87,6 +87,7 @@
 
         <div class="subpanel">
           <h4>Margins (mm)</h4>
+          <p class="subpanel-hint">0 is the minimum print margin.</p>
           <div class="form-grid four-col">
             <label><span>Top</span><input type="number" min="0" step="0.5" formControlName="marginTopMm" /></label>
             <label><span>Right</span><input type="number" min="0" step="0.5" formControlName="marginRightMm" /></label>
@@ -337,6 +338,7 @@
                 [marginRightMm]="settingsForm.controls.marginRightMm.value"
                 [marginBottomMm]="settingsForm.controls.marginBottomMm.value"
                 [marginLeftMm]="settingsForm.controls.marginLeftMm.value"
+                [fieldPreview]="fieldPreview()"
                 [selectedElementId]="selectedElementId()"
                 (elementsChange)="onCanvasElementsChange($event)"
                 (elementSelect)="selectedElementId.set($event)"

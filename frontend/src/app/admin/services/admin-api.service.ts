@@ -106,6 +106,7 @@ export interface InventoryServiceSummary {
   totalSales: number;
   totalLaborSales: number;
   totalPartsCost: number;
+  totalDiscount?: number;
   itemCount: number;
 }
 
@@ -153,6 +154,7 @@ export interface InventoryServiceItem {
   imageUrl: string | null;
   totalCosting: number;
   totalSales: number;
+  totalDiscount?: number;
   startedAt: string | null;
   endedAt: string | null;
   durationMinutes: number | null;

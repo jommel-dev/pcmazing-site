@@ -146,6 +146,11 @@
                 </button>
               </th>
               <th class="px-4 py-3">
+                <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('discount')">
+                  Discount{{ sortIndicator('discount') }}
+                </button>
+              </th>
+              <th class="px-4 py-3">
                 <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('total')">
                   Total{{ sortIndicator('total') }}
                 </button>
@@ -179,6 +184,7 @@
                     <div class="mt-0.5 max-w-xs truncate text-xs text-slate-400">{{ item.itemsSummary.join(', ') }}</div>
                   }
                 </td>
+                <td class="px-4 py-3 font-medium text-amber-700">{{ formatMoney(item.discountTotal) }}</td>
                 <td class="px-4 py-3 font-semibold text-slate-900">{{ formatMoney(item.totalAmount) }}</td>
                 <td class="px-4 py-3 text-slate-600">{{ formatDate(item.saleDate) }}</td>
                 <td class="px-4 py-3">

@@ -7,6 +7,7 @@ import { connect as netConnect, Socket } from 'node:net';
 import { DatabaseService } from '../../database/database.service';
 import { tableExists } from '../common/admin-table.util';
 import { TestPrinterConnectionDto, UpdatePrintingSettingsDto } from './dto/printing.dto';
+import { PrintingTemplatesService } from './printing-templates.service';
 
 export type PrinterConnectionType = 'direct' | 'network' | 'bluetooth';
 export type PrinterTestStatus = 'never' | 'ok' | 'failed';
@@ -81,7 +82,10 @@ type SettingsRow = {
 
 @Injectable()
 export class PrintingSettingsService {
-  constructor(private readonly databaseService: DatabaseService) {}
+  constructor(
+    private readonly databaseService: DatabaseService,
+    private readonly printingTemplatesService: PrintingTemplatesService,
+  ) {}
 
   private async ensureTable(): Promise<void> {
     if (!(await tableExists(this.databaseService, 'pcmazing_printing_settings'))) {
@@ -239,6 +243,19 @@ export class PrintingSettingsService {
         dto.thanksMessage?.trim() ?? null,
       ],
     );
+
+    if (
+      dto.warrantyPolicy !== undefined ||
+      dto.footerNote !== undefined ||
+      dto.thanksMessage !== undefined
+    ) {
+      const saved = await this.get();
+      await this.printingTemplatesService.applyReceiptContentToAll({
+        warrantyPolicy: saved.warrantyPolicy,
+        footerNote: saved.footerNote,
+        thanksMessage: saved.thanksMessage,
+      });
+    }
 
     return this.get();
   }

@@ -61,13 +61,37 @@ export interface DashboardDetailsResponse {
   rows: DashboardDetailRow[];
 }
 
+const JOB_LABOR_DISCOUNT_SQL = `
+  CASE
+    WHEN LOWER(TRIM(COALESCE(s.labor_discount_type, ''))) IN ('senior', 'pwd')
+      THEN ROUND(COALESCE(s.labor, 0) * 0.20, 2)
+    ELSE 0
+  END
+`;
+
+const JOB_DISCOUNT_SQL = `
+  (
+    COALESCE(s.custom_discount, 0)
+    + COALESCE(parts.parts_discount, 0)
+    + ${JOB_LABOR_DISCOUNT_SQL}
+  )
+`;
+
 const JOB_SALE_AMOUNT_SQL = `
   GREATEST(
-    COALESCE(s.base_cost, 0)
+    COALESCE(parts.parts_sales, 0)
+      - COALESCE(parts.parts_discount, 0)
       + COALESCE(s.labor, 0)
       + COALESCE(parts.parts_labor, 0)
-      + COALESCE(parts.parts_sales, 0)
+      - ${JOB_LABOR_DISCOUNT_SQL}
       - COALESCE(s.custom_discount, 0),
+    0
+  )
+`;
+
+const JOB_OUTSTANDING_SQL = `
+  GREATEST(
+    ${JOB_SALE_AMOUNT_SQL} - COALESCE(s.downpayment, 0),
     0
   )
 `;
@@ -81,7 +105,8 @@ const JOB_PARTS_LATERAL_SQL = `
           WHEN sp.material_id IS NULL THEN COALESCE(sp.unit_price, 0)
           ELSE COALESCE(NULLIF(sp.unit_price, 0), NULLIF(m.sell_price, 0), NULLIF(m.unit_price, 0), 0)
         END
-      ), 0) AS parts_sales
+      ), 0) AS parts_sales,
+      COALESCE(SUM(COALESCE(sp.discount_amount, 0)), 0) AS parts_discount
     FROM pcmazing_service_parts sp
     LEFT JOIN tblmaterials m ON m.id = sp.material_id
     WHERE sp.service_id = s.id AND sp.deleted_at IS NULL
@@ -104,6 +129,8 @@ export class DashboardService {
       projects,
       financials,
       previousFinancials,
+      discounts,
+      previousDiscounts,
       salesActivity,
       jobStatus,
       inquiriesTrend,
@@ -116,6 +143,8 @@ export class DashboardService {
       this.countOpenProjects(),
       this.getFinancialSummary(range),
       this.getFinancialSummary(range, true),
+      this.getDiscountTotal(range),
+      this.getDiscountTotal(range, true),
       this.getSalesActivitySeries(range),
       this.getJobStatusBreakdown(),
       this.getInquiriesTrendSeries(range),
@@ -142,10 +171,17 @@ export class DashboardService {
         'outstanding',
         'Outstanding',
         financials.outstanding,
-        financials.outstanding,
+        previousFinancials.outstanding,
         'currency',
         range,
-        { snapshotLabel: 'Open job order balance' },
+      ),
+      this.buildKpi(
+        'discounts',
+        'Total Discounts',
+        discounts,
+        previousDiscounts,
+        'currency',
+        range,
       ),
     ];
 
@@ -214,13 +250,21 @@ export class DashboardService {
           viewAllHref: '/admin/sales-order',
           rows: await this.listNetRows(range),
         };
+      case 'discounts':
+        return {
+          metric,
+          title: 'Total Discounts',
+          description: `Discounts applied on sales orders and job orders during ${range.label}. These amounts are not included in Net collected.`,
+          viewAllHref: '/admin/sales-order',
+          rows: await this.listDiscountRows(range),
+        };
       case 'outstanding':
         return {
           metric,
           title: 'Outstanding',
-          description: 'Open job orders that still have a remaining balance.',
+          description: `Unpaid balance on open job orders from ${range.label}. Downpayments are subtracted.`,
           viewAllHref: '/admin/job-order',
-          rows: await this.listJobOrderRows('open'),
+          rows: await this.listJobOrderRows('open', range),
         };
       default:
         return {
@@ -470,16 +514,17 @@ export class DashboardService {
         );
         jobCollected = this.toNumber(jobCollectedResult.rows[0]?.total);
 
-        if (!previous) {
-          const outstandingResult = await this.databaseService.query<{ total: string }>(
-            `SELECT COALESCE(SUM(${JOB_SALE_AMOUNT_SQL}), 0)::text AS total
-             FROM pcmazing_services s
-             ${JOB_PARTS_LATERAL_SQL}
-             WHERE s.deleted_at IS NULL
-               AND ${this.statusExpr('s')} IN ('active', 'pending')`,
-          );
-          outstanding = this.toNumber(outstandingResult.rows[0]?.total);
-        }
+        const outstandingResult = await this.databaseService.query<{ total: string }>(
+          `SELECT COALESCE(SUM(${JOB_OUTSTANDING_SQL}), 0)::text AS total
+           FROM pcmazing_services s
+           ${JOB_PARTS_LATERAL_SQL}
+           WHERE s.deleted_at IS NULL
+             AND ${this.statusExpr('s')} IN ('active', 'pending')
+             AND COALESCE(s.started_at, s.created_at) >= $1::timestamptz
+             AND COALESCE(s.started_at, s.created_at) <= $2::timestamptz`,
+          [start.toISOString(), end.toISOString()],
+        );
+        outstanding = this.toNumber(outstandingResult.rows[0]?.total);
       }
     } catch (error) {
       console.warn('Dashboard financial summary query failed:', error);
@@ -492,6 +537,147 @@ export class DashboardService {
       net,
       outstanding,
     };
+  }
+
+  private async getDiscountTotal(range: DashboardDateRange, previous = false): Promise<number> {
+    const [start, end] = this.dateBounds(range, previous);
+    const [hasSalesOrders, hasJobOrders] = await Promise.all([
+      this.tableExists('pcmazing_sales_orders'),
+      this.tableExists('pcmazing_services'),
+    ]);
+
+    let total = 0;
+
+    try {
+      if (hasSalesOrders) {
+        const salesResult = await this.databaseService.query<{ total: string }>(
+          `SELECT COALESCE(SUM(o.discount_total), 0)::text AS total
+           FROM pcmazing_sales_orders o
+           WHERE o.deleted_at IS NULL
+             AND o.is_void = FALSE
+             AND COALESCE(o.sale_date, o.created_at) >= $1::timestamptz
+             AND COALESCE(o.sale_date, o.created_at) <= $2::timestamptz`,
+          [start.toISOString(), end.toISOString()],
+        );
+        total += this.toNumber(salesResult.rows[0]?.total);
+      }
+
+      if (hasJobOrders) {
+        const jobResult = await this.databaseService.query<{ total: string }>(
+          `SELECT COALESCE(SUM(${JOB_DISCOUNT_SQL}), 0)::text AS total
+           FROM pcmazing_services s
+           ${JOB_PARTS_LATERAL_SQL}
+           WHERE s.deleted_at IS NULL
+             AND ${this.statusExpr('s')} <> 'cancelled'
+             AND COALESCE(s.ended_at, s.updated_at, s.created_at) >= $1::timestamptz
+             AND COALESCE(s.ended_at, s.updated_at, s.created_at) <= $2::timestamptz`,
+          [start.toISOString(), end.toISOString()],
+        );
+        total += this.toNumber(jobResult.rows[0]?.total);
+      }
+    } catch (error) {
+      console.warn('Dashboard discount total query failed:', error);
+      return 0;
+    }
+
+    return total;
+  }
+
+  private async listDiscountRows(range: DashboardDateRange): Promise<DashboardDetailRow[]> {
+    const [start, end] = this.dateBounds(range);
+    const [hasSalesOrders, hasJobOrders] = await Promise.all([
+      this.tableExists('pcmazing_sales_orders'),
+      this.tableExists('pcmazing_services'),
+    ]);
+    const rows: DashboardDetailRow[] = [];
+
+    try {
+      if (hasSalesOrders) {
+        const salesResult = await this.databaseService.query<{
+          id: number;
+          title: string | null;
+          subtitle: string | null;
+          amount: string | null;
+          date: string | null;
+        }>(
+          `SELECT
+             o.id,
+             COALESCE(NULLIF(TRIM(o.customer_name), ''), o.reference_no, 'Sales order') AS title,
+             COALESCE(o.reference_no, 'Sales order') AS subtitle,
+             o.discount_total::text AS amount,
+             COALESCE(o.sale_date, o.created_at)::text AS date
+           FROM pcmazing_sales_orders o
+           WHERE o.deleted_at IS NULL
+             AND o.is_void = FALSE
+             AND COALESCE(o.discount_total, 0) > 0
+             AND COALESCE(o.sale_date, o.created_at) >= $1::timestamptz
+             AND COALESCE(o.sale_date, o.created_at) <= $2::timestamptz
+           ORDER BY COALESCE(o.sale_date, o.created_at) DESC
+           LIMIT 50`,
+          [start.toISOString(), end.toISOString()],
+        );
+
+        rows.push(
+          ...salesResult.rows.map((row) => ({
+            id: row.id,
+            title: row.title || `Sales #${row.id}`,
+            subtitle: 'Sales order discount',
+            status: 'Sales Order',
+            amount: this.toNumber(row.amount),
+            date: row.date,
+            href: `/admin/sales-order/${row.id}`,
+          })),
+        );
+      }
+
+      if (hasJobOrders) {
+        const jobResult = await this.databaseService.query<{
+          id: number;
+          title: string | null;
+          subtitle: string | null;
+          status: string | null;
+          amount: string | null;
+          date: string | null;
+        }>(
+          `SELECT
+             s.id,
+             COALESCE(NULLIF(TRIM(s.customer_name), ''), s.service_name, s.reference_no, 'Job order') AS title,
+             COALESCE(NULLIF(TRIM(s.service_name), ''), s.reference_no, 'Job order') AS subtitle,
+             s.status,
+             ${JOB_DISCOUNT_SQL}::text AS amount,
+             COALESCE(s.ended_at, s.updated_at, s.created_at)::text AS date
+           FROM pcmazing_services s
+           ${JOB_PARTS_LATERAL_SQL}
+           WHERE s.deleted_at IS NULL
+             AND ${this.statusExpr('s')} <> 'cancelled'
+             AND ${JOB_DISCOUNT_SQL} > 0
+             AND COALESCE(s.ended_at, s.updated_at, s.created_at) >= $1::timestamptz
+             AND COALESCE(s.ended_at, s.updated_at, s.created_at) <= $2::timestamptz
+           ORDER BY COALESCE(s.ended_at, s.updated_at, s.created_at) DESC
+           LIMIT 50`,
+          [start.toISOString(), end.toISOString()],
+        );
+
+        rows.push(
+          ...jobResult.rows.map((row) => ({
+            id: row.id,
+            title: row.title || `Job #${row.id}`,
+            subtitle: row.subtitle || 'Job order discount',
+            status: row.status ? `Job Order · ${row.status}` : 'Job Order',
+            amount: this.toNumber(row.amount),
+            date: row.date,
+            href: `/admin/job-order/${row.id}`,
+          })),
+        );
+      }
+    } catch (error) {
+      console.warn('Dashboard discount details query failed:', error);
+      return [];
+    }
+
+    return rows
+      .sort((left, right) => String(right.date ?? '').localeCompare(String(left.date ?? '')))
+      .slice(0, 50);
   }
 
   private async getSalesActivitySeries(range: DashboardDateRange): Promise<DashboardChartPoint[]> {
@@ -626,6 +812,13 @@ export class DashboardService {
 
     if (mode === 'open') {
       conditions.push(`${this.statusExpr('s')} IN ('active', 'pending')`);
+      if (range) {
+        params.push(range.start.toISOString(), range.end.toISOString());
+        conditions.push(
+          `COALESCE(s.started_at, s.created_at) >= $1::timestamptz
+           AND COALESCE(s.started_at, s.created_at) <= $2::timestamptz`,
+        );
+      }
     } else {
       conditions.push(`${this.statusExpr('s')} = 'done'`);
       if (range) {
@@ -651,7 +844,7 @@ export class DashboardService {
            COALESCE(NULLIF(TRIM(s.customer_name), ''), s.service_name, s.reference_no, 'Job order') AS title,
            COALESCE(NULLIF(TRIM(s.service_name), ''), s.reference_no, '') AS subtitle,
            s.status,
-           ${JOB_SALE_AMOUNT_SQL}::text AS amount,
+           ${mode === 'open' ? JOB_OUTSTANDING_SQL : JOB_SALE_AMOUNT_SQL}::text AS amount,
            COALESCE(s.ended_at, s.updated_at, s.created_at)::text AS date
          FROM pcmazing_services s
          ${JOB_PARTS_LATERAL_SQL}

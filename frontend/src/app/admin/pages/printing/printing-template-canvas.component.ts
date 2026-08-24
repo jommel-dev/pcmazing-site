@@ -2,12 +2,18 @@ import {
   Component,
   ElementRef,
   HostListener,
+  computed,
   input,
   output,
   signal,
   viewChild,
 } from '@angular/core';
 import { sampleForField } from './printing-fields.data';
+import {
+  expandReceiptContentElements,
+  layoutBottomMm,
+  receiptContentFieldKeyFor,
+} from './printing-receipt-content.util';
 import { CANVAS_SCALE, PrintLayoutElement, roundMm } from './printing.types';
 
 type DragState = {
@@ -25,7 +31,7 @@ type DragState = {
       #canvasRoot
       class="template-canvas-root"
       [style.width.px]="paperWidthMm() * scale()"
-      [style.height.px]="paperHeightMm() * scale()"
+      [style.height.px]="canvasHeightMm() * scale()"
       (mousedown)="onCanvasBackgroundClick($event)"
     >
       <div
@@ -36,17 +42,19 @@ type DragState = {
         [style.bottom.px]="marginBottomMm() * scale()"
       ></div>
 
-      @for (element of elements(); track element.id) {
+      @for (element of laidOutElements(); track element.id) {
         <div
           class="template-element"
           [class.selected]="selectedElementId() === element.id"
           [class.type-line]="element.type === 'line'"
           [class.type-table]="element.type === 'table'"
           [class.type-image]="element.type === 'image'"
+          [class.wrap-content]="isWrappingContentField(element)"
           [style.left.px]="element.x * scale()"
           [style.top.px]="element.y * scale()"
           [style.width.px]="(element.width || defaultWidth(element)) * scale()"
-          [style.height.px]="(element.height || defaultHeight(element)) * scale()"
+          [style.height.px]="isWrappingContentField(element) ? null : (element.height || defaultHeight(element)) * scale()"
+          [style.min-height.px]="(element.height || defaultHeight(element)) * scale()" 
           [style.font-size.px]="(element.fontSize || 11) * (scale() / 3)"
           [style.font-weight]="element.fontWeight || 'normal'"
           [style.text-align]="element.textAlign || 'left'"
@@ -65,7 +73,12 @@ type DragState = {
               <span class="table-hint">{{ previewValue(element) }}</span>
             }
             @case ('text') {
-              {{ element.content || element.label || 'Text' }}
+              @if (isWrappingContentField(element)) {
+                <span class="field-label">{{ element.label || element.fieldKey }}</span>
+                <span class="field-value wrap">{{ previewValue(element) }}</span>
+              } @else {
+                {{ element.content || element.label || 'Text' }}
+              }
             }
             @default {
               @if (element.fieldKey === 'barcode') {
@@ -75,7 +88,9 @@ type DragState = {
                 </div>
               } @else {
                 <span class="field-label">{{ element.label || element.fieldKey }}</span>
-                <span class="field-value">{{ previewValue(element) }}</span>
+                <span class="field-value" [class.wrap]="isWrappingContentField(element)">{{
+                  previewValue(element)
+                }}</span>
               }
             }
           }
@@ -108,6 +123,17 @@ type DragState = {
         cursor: grab;
         overflow: hidden;
         background: rgba(255, 255, 255, 0.72);
+      }
+
+      .template-element.wrap-content {
+        overflow: visible;
+        height: auto;
+        display: flex;
+        flex-direction: column;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        background: rgba(255, 255, 255, 0.96);
       }
 
       .template-element.selected {
@@ -154,6 +180,16 @@ type DragState = {
         color: #64748b;
       }
 
+      .field-value.wrap {
+        margin-top: 2px;
+        color: inherit;
+        font-size: inherit;
+        line-height: 1.35;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+      }
+
       .field-label {
         display: block;
         font-size: 0.72em;
@@ -198,8 +234,21 @@ export class PrintingTemplateCanvasComponent {
   readonly marginRightMm = input(0);
   readonly marginBottomMm = input(0);
   readonly marginLeftMm = input(0);
+  readonly fieldPreview = input<Record<string, string>>({});
   readonly selectedElementId = input<string | null>(null);
   readonly scale = input(CANVAS_SCALE);
+
+  readonly laidOutElements = computed(() =>
+    expandReceiptContentElements(this.elements(), {
+      warrantyPolicy: this.fieldPreview()['warrantyPolicy'] ?? '',
+      footerNote: this.fieldPreview()['footerNote'] ?? '',
+      thanksMessage: this.fieldPreview()['thanksMessage'] ?? '',
+    }),
+  );
+
+  readonly canvasHeightMm = computed(() =>
+    Math.max(this.paperHeightMm(), layoutBottomMm(this.laidOutElements()) + 8),
+  );
 
   readonly elementSelect = output<string>();
   readonly elementsChange = output<PrintLayoutElement[]>();
@@ -231,9 +280,27 @@ export class PrintingTemplateCanvasComponent {
     return 8;
   }
 
+  isWrappingContentField(element: PrintLayoutElement): boolean {
+    return receiptContentFieldKeyFor(element) != null;
+  }
+
   previewValue(element: PrintLayoutElement): string {
+    const contentKey = receiptContentFieldKeyFor(element);
+    if (contentKey) {
+      const liveValue = this.fieldPreview()[contentKey];
+      if (liveValue?.trim()) {
+        return liveValue;
+      }
+    }
     if (element.type === 'text') {
       return element.content || 'Text';
+    }
+    const liveValue = element.fieldKey ? this.fieldPreview()[element.fieldKey] : '';
+    if (liveValue?.trim()) {
+      return liveValue;
+    }
+    if (element.content?.trim()) {
+      return element.content;
     }
     return sampleForField(element.fieldKey);
   }
@@ -278,9 +345,9 @@ export class PrintingTemplateCanvasComponent {
     const deltaX = (event.clientX - drag.startClientX) / this.scale();
     const deltaY = (event.clientY - drag.startClientY) / this.scale();
     const maxX = this.paperWidthMm() - 1;
-    const maxY = this.paperHeightMm() - 1;
+    const maxY = this.canvasHeightMm() - 1;
 
-    const next = this.elements().map((element) => {
+    const next = this.laidOutElements().map((element) => {
       if (element.id !== drag.elementId) {
         return element;
       }

@@ -22,7 +22,8 @@ type ServiceColumnKey =
   | 'cost'
   | 'labor'
   | 'totalCosting'
-  | 'totalSales';
+  | 'totalSales'
+  | 'totalDiscount';
 
 type ServiceSortKey =
   | 'referenceNo'
@@ -35,6 +36,7 @@ type ServiceSortKey =
   | 'labor'
   | 'totalCosting'
   | 'totalSales'
+  | 'totalDiscount'
   | 'status'
   | 'createdAt';
 
@@ -137,6 +139,7 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
     { key: 'labor', label: 'Labor' },
     { key: 'totalCosting', label: 'T.Costing' },
     { key: 'totalSales', label: 'T.Sales' },
+    { key: 'totalDiscount', label: 'Discount' },
   ];
   readonly visibleColumns = signal<Record<ServiceColumnKey, boolean>>({
     customer: true,
@@ -149,6 +152,7 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
     labor: false,
     totalCosting: false,
     totalSales: true,
+    totalDiscount: true,
   });
 
   readonly formatMoney = formatInventoryMoney;
@@ -488,7 +492,14 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
       return Math.max(0, lines - (Number(item.customDiscount) || 0));
     }
 
+    if (item.totalDiscount != null) {
+      return Math.max(0, Number(item.totalSales) || 0);
+    }
     return Math.max(0, (Number(item.totalSales) || 0) - (Number(item.customDiscount) || 0));
+  }
+
+  orderDiscount(item: InventoryServiceItem): number {
+    return Math.max(0, Number(item.totalDiscount ?? item.customDiscount) || 0);
   }
 
   settlementDownpayment(): number {

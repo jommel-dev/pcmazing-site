@@ -9,6 +9,7 @@ export const DASHBOARD_DETAIL_METRICS = [
   'projects',
   'net',
   'outstanding',
+  'discounts',
 ] as const;
 
 export type DashboardDetailMetric = (typeof DASHBOARD_DETAIL_METRICS)[number];
