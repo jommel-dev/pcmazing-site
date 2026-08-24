@@ -231,7 +231,7 @@ class PrintLayoutElementDto {
 
   @IsOptional()
   @IsString()
-  @MaxLength(500)
+  @MaxLength(8000)
   content?: string;
 
   @IsOptional()
@@ -281,7 +281,7 @@ export class CreatePrintingTemplateDto {
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(40)
-  @Max(500)
+  @Max(2000)
   paperHeightMm?: number;
 
   @IsOptional()
@@ -320,7 +320,7 @@ export class UpdatePrintingTemplateDto {
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(40)
-  @Max(500)
+  @Max(2000)
   paperHeightMm?: number;
 
   @IsOptional()

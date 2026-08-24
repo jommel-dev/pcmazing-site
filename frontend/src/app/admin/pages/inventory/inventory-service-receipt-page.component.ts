@@ -1,5 +1,5 @@
 import { DatePipe, DecimalPipe, NgStyle, NgTemplateOutlet } from '@angular/common';
-import { ChangeDetectorRef, Component, OnInit, computed, inject, signal } from '@angular/core';
+import { ChangeDetectorRef, Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
@@ -12,12 +12,23 @@ import {
 } from '../../services/admin-api.service';
 import { PrintLayoutElement, jobOrderSalesReceiptLayout, roundMm } from '../printing/printing.types';
 import {
+  A4_PRINT_HEIGHT_MM,
+  A4_PRINT_WIDTH_MM,
+  barcodeBarStyle,
+  receiptPrintPageCss,
+} from '../printing/printing-print-page.util';
+import {
   DEFAULT_FOOTER_NOTE,
   DEFAULT_STORE_ADDRESS,
   DEFAULT_STORE_NAME,
   DEFAULT_THANKS_MESSAGE,
   DEFAULT_WARRANTY_POLICY,
 } from '../printing/printing-receipt-content.defaults';
+import {
+  compactReceiptText,
+  fitReceiptTemplate,
+  receiptContentFieldKeyFor,
+} from '../printing/printing-receipt-content.util';
 import {
   applyLineDiscount,
   applyPhSpecialDiscount,
@@ -45,12 +56,13 @@ const BUILTIN_TEMPLATE_VALUE = 0;
   templateUrl: './inventory-service-receipt-page.component.html',
   styleUrl: './inventory-service-receipt-page.component.css',
 })
-export class InventoryServiceReceiptPageComponent implements OnInit {
+export class InventoryServiceReceiptPageComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly adminApi = inject(AdminApiService);
   private readonly adminAuth = inject(AdminAuthService);
   private readonly changeDetector = inject(ChangeDetectorRef);
+  private printStyleEl: HTMLStyleElement | null = null;
 
   readonly loading = signal(true);
   readonly error = signal('');
@@ -228,6 +240,7 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
   }
 
   readonly barcodeBars = computed(() => this.buildBarcodeBars(this.receiptNo()));
+  readonly barcodeBarStyle = barcodeBarStyle;
 
   readonly selectedTemplate = computed(() => {
     const id = this.selectedTemplateId();
@@ -275,7 +288,7 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
     return ys.length ? Math.min(...ys) : 0;
   });
 
-  readonly activeTemplates = computed(() =>
+readonly activeTemplates = computed(() =>
     this.templates().filter((template) => template.isActive !== false),
   );
 
@@ -342,6 +355,11 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
     void this.loadReceipt();
   }
 
+  ngOnDestroy(): void {
+    this.printStyleEl?.remove();
+    this.printStyleEl = null;
+  }
+
   async loadReceipt(): Promise<void> {
     const id = Number(this.route.snapshot.paramMap.get('id'));
     if (!Number.isFinite(id) || id <= 0) {
@@ -363,20 +381,24 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
       this.item.set(serviceResponse.data);
       this.printedAt.set(new Date());
 
+      const receiptContent = {
+        warrantyPolicy: settingsResult?.data?.warrantyPolicy || DEFAULT_WARRANTY_POLICY,
+        footerNote: settingsResult?.data?.footerNote || DEFAULT_FOOTER_NOTE,
+        thanksMessage: settingsResult?.data?.thanksMessage || DEFAULT_THANKS_MESSAGE,
+      };
       const templates = (templatesResult?.data ?? [])
         .filter((template) => template.documentType === 'sales_receipt' || !template.documentType)
         .map((template) => {
-          if (template.name.trim().toLowerCase() !== 'job order sales receipt') {
-            return template;
-          }
-          return {
-            ...template,
-            layout: jobOrderSalesReceiptLayout(),
-          };
+          const layout =
+            template.name.trim().toLowerCase() === 'job order sales receipt'
+              ? jobOrderSalesReceiptLayout()
+              : template.layout;
+          return fitReceiptTemplate({ ...template, layout }, receiptContent);
         });
       this.templates.set(templates);
       this.printingSettings.set(settingsResult?.data ?? null);
       this.selectedTemplateId.set(this.resolveInitialTemplateId(templates, settingsResult?.data));
+      this.applyPrintPageStyle();
 
       if (this.autoPrint() && !this.isCancelled()) {
         queueMicrotask(() => {
@@ -399,6 +421,7 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
   onTemplateChange(rawValue: string | number): void {
     const nextId = Number(rawValue);
     this.selectedTemplateId.set(Number.isFinite(nextId) ? nextId : BUILTIN_TEMPLATE_VALUE);
+    this.applyPrintPageStyle();
     try {
       sessionStorage.setItem(TEMPLATE_STORAGE_KEY, String(this.selectedTemplateId()));
     } catch {
@@ -427,6 +450,7 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
   private openPrintDialog(reprinted: boolean): void {
     this.showReprinted.set(reprinted);
     this.printedAt.set(new Date());
+    this.applyPrintPageStyle();
     this.changeDetector.detectChanges();
     setTimeout(() => window.print(), 0);
   }
@@ -474,6 +498,25 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
     };
   }
 
+  printPageCss(): string {
+    return receiptPrintPageCss({
+      widthMm: A4_PRINT_WIDTH_MM,
+      heightMm: A4_PRINT_HEIGHT_MM,
+    });
+  }
+
+  private applyPrintPageStyle(): void {
+    if (typeof document === 'undefined') {
+      return;
+    }
+    if (!this.printStyleEl) {
+      this.printStyleEl = document.createElement('style');
+      this.printStyleEl.setAttribute('data-pcmazing-receipt-print', 'true');
+      document.head.appendChild(this.printStyleEl);
+    }
+    this.printStyleEl.textContent = this.printPageCss();
+  }
+
   elementStyle(element: PrintLayoutElement): Record<string, string> {
     const width = element.width ?? (element.type === 'line' ? 40 : 30);
     const height = element.height ?? (element.type === 'line' ? 2 : 8);
@@ -490,9 +533,10 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
 
   flowBodyStyle(): Record<string, string> {
     const table = this.templateTableElement();
+    const topMm = table && table.y != null ? table.y : 94;
     const template = this.selectedTemplate();
     return {
-      top: `${table?.y ?? 94}mm`,
+      top: `${topMm}mm`,
       left: '0',
       width: `${template?.paperWidthMm || 210}mm`,
     };
@@ -519,7 +563,8 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
     };
   }
 
-  flowFooterElementStyle(element: PrintLayoutElement): Record<string, string> {
+  
+flowFooterElementStyle(element: PrintLayoutElement): Record<string, string> {
     const origin = this.templateFooterOriginY();
     const width = element.width ?? (element.type === 'line' ? 40 : 30);
     const height = element.height ?? (element.type === 'line' ? 2 : 8);
@@ -549,11 +594,23 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
   }
 
   fieldValue(element: PrintLayoutElement): string {
-    if (element.type === 'text') {
-      return element.content || element.label || '';
-    }
     if (element.fieldKey === 'reprintedLabel' && !this.showReprinted()) {
       return '';
+    }
+
+    const contentKey = receiptContentFieldKeyFor(element);
+    if (contentKey === 'warrantyPolicy') {
+      return this.warrantyPolicyText();
+    }
+    if (contentKey === 'footerNote') {
+      return this.footerNoteText();
+    }
+    if (contentKey === 'thanksMessage') {
+      return this.thanksMessageText();
+    }
+
+    if (element.type === 'text') {
+      return element.content || element.label || '';
     }
     return this.fieldValues()[element.fieldKey || ''] ?? element.content ?? element.label ?? '';
   }
@@ -586,9 +643,15 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
     return false;
   }
 
-  usesPreWrapField(fieldKey?: string): boolean {
+  usesPreWrapField(elementOrKey?: PrintLayoutElement | string): boolean {
+    const fieldKey =
+      typeof elementOrKey === 'string' || elementOrKey == null
+        ? elementOrKey
+        : receiptContentFieldKeyFor(elementOrKey) || elementOrKey.fieldKey;
     return (
       fieldKey === 'warrantyPolicy' ||
+      fieldKey === 'footerNote' ||
+      fieldKey === 'thanksMessage' ||
       fieldKey === 'jobNotes' ||
       fieldKey === 'customerAddress' ||
       fieldKey === 'addressLine' ||
@@ -663,18 +726,15 @@ export class InventoryServiceReceiptPageComponent implements OnInit {
   }
 
   warrantyPolicyText(): string {
-    const value = this.printingSettings()?.warrantyPolicy?.trim();
-    return value || DEFAULT_WARRANTY_POLICY;
+    return compactReceiptText(this.printingSettings()?.warrantyPolicy || DEFAULT_WARRANTY_POLICY);
   }
 
   footerNoteText(): string {
-    const value = this.printingSettings()?.footerNote?.trim();
-    return value || DEFAULT_FOOTER_NOTE;
+    return compactReceiptText(this.printingSettings()?.footerNote || DEFAULT_FOOTER_NOTE);
   }
 
   thanksMessageText(): string {
-    const value = this.printingSettings()?.thanksMessage?.trim();
-    return value || DEFAULT_THANKS_MESSAGE;
+    return compactReceiptText(this.printingSettings()?.thanksMessage || DEFAULT_THANKS_MESSAGE);
   }
 
   private buildBarcodeBars(value: string): Array<{ width: number; filled: boolean }> {

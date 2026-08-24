@@ -23,7 +23,8 @@ export type DashboardDetailMetric =
   | 'inquiries'
   | 'projects'
   | 'net'
-  | 'outstanding';
+  | 'outstanding'
+  | 'discounts';
 
 export interface DashboardDetailRow {
   id: number;

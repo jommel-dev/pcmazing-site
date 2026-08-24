@@ -115,7 +115,12 @@
 
         <ng-template #receiptElementTpl let-element let-style="style">
           @if (!isHiddenElement(element)) {
-            <div class="template-print-element" [attr.data-type]="element.type" [ngStyle]="style">
+            <div
+              class="template-print-element"
+              [class.wrap-content]="usesPreWrapField(element)"
+              [attr.data-type]="element.type"
+              [ngStyle]="style"
+            >
               @switch (element.type) {
                 @case ('line') {
                   <span class="template-line"></span>
@@ -132,7 +137,7 @@
                     <div class="template-barcode-wrap" [ngStyle]="barcodeWrapStyle(element)">
                       <div class="receipt-barcode template-receipt-barcode" aria-hidden="true">
                         @for (bar of barcodeBars(); track $index) {
-                          <span [style.width.px]="bar.width" [class.filled]="bar.filled"></span>
+                          <span [ngStyle]="barcodeBarStyle(bar)" [class.filled]="bar.filled" [class.bar-on]="bar.filled"></span>
                         }
                       </div>
                       <p class="barcode-label">{{ receiptNo() }}</p>
@@ -153,13 +158,13 @@
                       }
                     </span>
                   } @else {
-                    <span class="template-field-text" [class.pre-wrap]="usesPreWrapField(element.fieldKey)">
+                    <span class="template-field-text" [class.pre-wrap]="usesPreWrapField(element)">
                       {{ fieldValue(element) }}
                     </span>
                   }
                 }
                 @default {
-                  <span class="template-field-text">{{ fieldValue(element) }}</span>
+                  <span class="template-field-text" [class.pre-wrap]="usesPreWrapField(element)">{{ fieldValue(element) }}</span>
                 }
               }
             </div>
@@ -167,7 +172,7 @@
         </ng-template>
       </div>
     } @else {
-      <div class="receipt-sheet mx-auto bg-white text-black shadow-sm">
+      <div class="receipt-sheet job-order-builtin mx-auto bg-white text-black shadow-sm">
         <div class="receipt-meta">
           <div class="receipt-meta-left">
             <div>Printed: {{ printedAt() | date:'M/d/yyyy h:mm:ss a' }}</div>
@@ -282,10 +287,7 @@
           <div class="receipt-barcode-wrap">
             <div class="receipt-barcode" aria-hidden="true">
               @for (bar of barcodeBars(); track $index) {
-                <span
-                  [style.width.px]="bar.width"
-                  [class.filled]="bar.filled"
-                ></span>
+                <span [ngStyle]="barcodeBarStyle(bar)" [class.filled]="bar.filled" [class.bar-on]="bar.filled"></span>
               }
             </div>
             <p class="barcode-label">{{ receiptNo() }}</p>

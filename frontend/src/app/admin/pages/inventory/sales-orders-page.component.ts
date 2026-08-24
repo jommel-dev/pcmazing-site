@@ -12,7 +12,7 @@ import {
 import { formatInventoryMoney } from './inventory-stock.util';
 
 type DatePeriod = 'daily' | 'weekly' | 'monthly' | 'custom';
-type SalesSortKey = 'referenceNo' | 'customer' | 'items' | 'total' | 'saleDate' | 'status';
+type SalesSortKey = 'referenceNo' | 'customer' | 'items' | 'total' | 'discount' | 'saleDate' | 'status';
 
 @Component({
   selector: 'app-sales-orders-page',

@@ -1,11 +1,11 @@
 <div
-  class="h-dvh overflow-hidden font-outfit text-slate-900 transition-colors"
+  class="admin-print-root h-dvh overflow-hidden font-outfit text-slate-900 transition-colors"
   [class.dark]="themeService.isDark()"
   [class.bg-slate-100]="!themeService.isDark()"
   [class.bg-slate-950]="themeService.isDark()"
   [class.text-slate-100]="themeService.isDark()"
 >
-  <div class="flex h-full overflow-hidden">
+  <div class="admin-print-root flex h-full overflow-hidden">
     @if (sidebarOpen()) {
       <button
         type="button"

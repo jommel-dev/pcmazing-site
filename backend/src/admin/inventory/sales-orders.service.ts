@@ -586,6 +586,7 @@ export class SalesOrdersService {
       customer: 'o.customer_name',
       items: 'COALESCE(items.item_count, 0)',
       total: 'o.total_amount',
+      discount: 'o.discount_total',
       saleDate: 'COALESCE(o.sale_date, o.created_at)',
       createdAt: 'COALESCE(o.sale_date, o.created_at)',
       status: 'o.is_void',

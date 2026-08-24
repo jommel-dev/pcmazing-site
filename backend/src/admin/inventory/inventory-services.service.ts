@@ -58,6 +58,7 @@ export interface InventoryServiceListItem {
   deviceSerial?: string | null;
   totalCosting: number;
   totalSales: number;
+  totalDiscount?: number;
   startedAt: string | null;
   endedAt: string | null;
   durationMinutes: number | null;
@@ -100,6 +101,7 @@ export interface InventoryServiceSummary {
   totalSales: number;
   totalLaborSales: number;
   totalPartsCost: number;
+  totalDiscount: number;
   itemCount: number;
 }
 
@@ -206,12 +208,24 @@ export class InventoryServicesService {
       total_parts_cost: string;
       total_base_cost: string;
       total_labor_sales: string;
+      total_parts_sales: string;
+      total_discount: string;
     }>(
       `SELECT
         COUNT(*)::text AS item_count,
         COALESCE(SUM(COALESCE(parts.parts_cost, 0)), 0)::text AS total_parts_cost,
         COALESCE(SUM(COALESCE(s.base_cost, 0)), 0)::text AS total_base_cost,
-        COALESCE(SUM(COALESCE(s.labor, 0) + COALESCE(parts.parts_labor, 0)), 0)::text AS total_labor_sales
+        COALESCE(SUM(COALESCE(s.labor, 0) + COALESCE(parts.parts_labor, 0)), 0)::text AS total_labor_sales,
+        COALESCE(SUM(COALESCE(parts.parts_sales, 0)), 0)::text AS total_parts_sales,
+        COALESCE(SUM(
+          COALESCE(s.custom_discount, 0)
+          + COALESCE(parts.parts_discount, 0)
+          + CASE
+              WHEN LOWER(TRIM(COALESCE(s.labor_discount_type, ''))) IN ('senior', 'pwd')
+                THEN ROUND(COALESCE(s.labor, 0) * 0.20, 2)
+              ELSE 0
+            END
+        ), 0)::text AS total_discount
        FROM pcmazing_services s
        LEFT JOIN LATERAL (
          SELECT COALESCE(
@@ -220,7 +234,9 @@ export class InventoryServicesService {
            ),
            0
          ) AS parts_cost,
-         COALESCE(SUM(COALESCE(sp.labor, 0)), 0) AS parts_labor
+         COALESCE(SUM(COALESCE(sp.labor, 0)), 0) AS parts_labor,
+         COALESCE(SUM(COALESCE(sp.discount_amount, 0)), 0) AS parts_discount,
+         COALESCE(SUM(sp.quantity * ${PART_SALE_UNIT_PRICE_SQL}), 0) AS parts_sales
          FROM pcmazing_service_parts sp
          LEFT JOIN tblmaterials m ON m.id = sp.material_id
          WHERE sp.service_id = s.id AND sp.deleted_at IS NULL
@@ -233,6 +249,8 @@ export class InventoryServicesService {
     const totalPartsCost = Number(summaryResult.rows[0]?.total_parts_cost ?? 0);
     const totalBaseCost = Number(summaryResult.rows[0]?.total_base_cost ?? 0);
     const totalLaborSales = Number(summaryResult.rows[0]?.total_labor_sales ?? 0);
+    const totalPartsSales = Number(summaryResult.rows[0]?.total_parts_sales ?? 0);
+    const totalDiscount = Number(summaryResult.rows[0]?.total_discount ?? 0);
 
     const filterWhereClause = `WHERE s.deleted_at IS NULL`;
 
@@ -269,8 +287,12 @@ export class InventoryServicesService {
       parts_used: string | null;
       parts_cost: string | null;
       parts_labor: string | null;
+      parts_discount: string | null;
+      parts_sales: string | null;
       base_cost: string | null;
       labor: string | null;
+      labor_discount_type: string | null;
+      custom_discount: string | null;
       status: string | null;
       image_url: string | null;
       started_at: string | null;
@@ -290,8 +312,12 @@ export class InventoryServicesService {
         parts.parts_used,
         COALESCE(parts.parts_cost, 0)::text AS parts_cost,
         COALESCE(parts.parts_labor, 0)::text AS parts_labor,
+        COALESCE(parts.parts_discount, 0)::text AS parts_discount,
+        COALESCE(parts.parts_sales, 0)::text AS parts_sales,
         s.base_cost::text,
         s.labor::text,
+        s.labor_discount_type,
+        s.custom_discount::text,
         s.status,
         s.image_url,
         s.started_at::text,
@@ -311,7 +337,9 @@ export class InventoryServicesService {
              ),
              0
            ) AS parts_cost,
-           COALESCE(SUM(COALESCE(sp.labor, 0)), 0) AS parts_labor
+           COALESCE(SUM(COALESCE(sp.labor, 0)), 0) AS parts_labor,
+           COALESCE(SUM(COALESCE(sp.discount_amount, 0)), 0) AS parts_discount,
+           COALESCE(SUM(sp.quantity * ${PART_SALE_UNIT_PRICE_SQL}), 0) AS parts_sales
          FROM pcmazing_service_parts sp
          LEFT JOIN tblmaterials m ON m.id = sp.material_id
          WHERE sp.service_id = s.id AND sp.deleted_at IS NULL
@@ -334,6 +362,15 @@ export class InventoryServicesService {
         const baseCost = Number(row.base_cost ?? 0);
         const labor = Number(row.labor ?? 0) + Number(row.parts_labor ?? 0);
         const partsCost = Number(row.parts_cost ?? 0);
+        const customDiscount = Number(row.custom_discount ?? 0);
+        const partsDiscount = Number(row.parts_discount ?? 0);
+        const partsSales = Number(row.parts_sales ?? 0);
+        const laborDiscountType = String(row.labor_discount_type ?? '').trim().toLowerCase();
+        const laborDiscount =
+          laborDiscountType === 'senior' || laborDiscountType === 'pwd'
+            ? Math.round(Number(row.labor ?? 0) * 0.2 * 100) / 100
+            : 0;
+        const totalDiscount = customDiscount + partsDiscount + laborDiscount;
         const userId = row.person_in_charge_user_id ? Number(row.person_in_charge_user_id) : null;
         const source = row.person_in_charge_source ?? 'tblusers';
 
@@ -356,7 +393,12 @@ export class InventoryServicesService {
           status: row.status ?? 'Active',
           imageUrl: row.image_url,
           totalCosting: partsCost,
-          totalSales: baseCost + labor,
+          totalSales: Math.max(
+            0,
+            labor + partsSales - partsDiscount - customDiscount - laborDiscount,
+          ),
+          totalDiscount,
+          customDiscount,
           startedAt: row.started_at,
           endedAt: row.ended_at,
           durationMinutes: this.computeDurationMinutes(row.started_at, row.ended_at),
@@ -366,9 +408,10 @@ export class InventoryServicesService {
       meta: buildPaginationMeta(page, limit, total),
       summary: {
         totalCosting: totalPartsCost,
-        totalSales: totalBaseCost + totalLaborSales,
+        totalSales: Math.max(0, totalLaborSales + totalPartsSales - totalDiscount),
         totalLaborSales,
         totalPartsCost,
+        totalDiscount,
         itemCount: summaryItemCount,
       } satisfies InventoryServiceSummary,
       filters: {
@@ -776,7 +819,9 @@ export class InventoryServicesService {
       cost: 's.base_cost',
       labor: '(COALESCE(s.labor, 0) + COALESCE(parts.parts_labor, 0))',
       totalCosting: 'COALESCE(parts.parts_cost, 0)',
-      totalSales: '(COALESCE(s.base_cost, 0) + COALESCE(s.labor, 0) + COALESCE(parts.parts_labor, 0))',
+      totalSales:
+        '(COALESCE(s.base_cost, 0) + COALESCE(s.labor, 0) + COALESCE(parts.parts_labor, 0) - COALESCE(s.custom_discount, 0))',
+      totalDiscount: '(COALESCE(s.custom_discount, 0) + COALESCE(parts.parts_discount, 0))',
       status: 's.status',
       interval: 's.started_at',
       personInCharge: 's.person_in_charge_user_id',
