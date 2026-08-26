@@ -6,6 +6,10 @@ import {
   DashboardOverviewQueryDto,
 } from './dto/dashboard-overview-query.dto';
 import { DashboardDateRange, resolveDashboardDateRange } from './dashboard-date.util';
+import {
+  COMPANY_EXPENSE_CATEGORY_COLORS,
+  COMPANY_EXPENSE_CATEGORY_LABELS,
+} from '../company-expenses/dto/company-expense.dto';
 
 type Trend = 'up' | 'down' | 'flat';
 
@@ -40,6 +44,7 @@ export interface DashboardOverviewResponse {
     jobStatus: Array<{ label: string; value: number; color: string }>;
     inquiriesTrend: DashboardChartPoint[];
     financialSplit: { net: number; outstanding: number; gross: number };
+    expenseCategories: Array<{ label: string; value: number; color: string }>;
   };
 }
 
@@ -134,6 +139,9 @@ export class DashboardService {
       salesActivity,
       jobStatus,
       inquiriesTrend,
+      operatingExpenses,
+      previousOperatingExpenses,
+      expenseCategories,
     ] = await Promise.all([
       this.countOpenJobOrders(),
       this.countCompletedJobOrders(range),
@@ -148,6 +156,9 @@ export class DashboardService {
       this.getSalesActivitySeries(range),
       this.getJobStatusBreakdown(),
       this.getInquiriesTrendSeries(range),
+      this.getOperatingExpenseTotal(range),
+      this.getOperatingExpenseTotal(range, true),
+      this.getExpenseCategoryBreakdown(range),
     ]);
 
     const kpis: DashboardKpi[] = [
@@ -183,6 +194,15 @@ export class DashboardService {
         'currency',
         range,
       ),
+      this.buildKpi(
+        'operatingExpenses',
+        'Operating Expenses',
+        operatingExpenses,
+        previousOperatingExpenses,
+        'currency',
+        range,
+        { invertTrend: true },
+      ),
     ];
 
     return {
@@ -201,6 +221,7 @@ export class DashboardService {
         jobStatus,
         inquiriesTrend,
         financialSplit: financials,
+        expenseCategories,
       },
     };
   }
@@ -266,6 +287,14 @@ export class DashboardService {
           viewAllHref: '/admin/job-order',
           rows: await this.listJobOrderRows('open', range),
         };
+      case 'operatingExpenses':
+        return {
+          metric,
+          title: 'Operating Expenses',
+          description: `Company operational expenses recorded during ${range.label}.`,
+          viewAllHref: '/admin/company-expenses',
+          rows: await this.listOperatingExpenseRows(range),
+        };
       default:
         return {
           metric,
@@ -284,7 +313,7 @@ export class DashboardService {
     previousValue: number,
     format: 'integer' | 'currency',
     range: DashboardDateRange,
-    options?: { snapshotLabel?: string },
+    options?: { snapshotLabel?: string; invertTrend?: boolean },
   ): DashboardKpi {
     if (options?.snapshotLabel) {
       return {
@@ -299,7 +328,10 @@ export class DashboardService {
     }
 
     const delta = value - previousValue;
-    const trend: Trend = delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat';
+    let trend: Trend = delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat';
+    if (options?.invertTrend && trend !== 'flat') {
+      trend = trend === 'up' ? 'down' : 'up';
+    }
     const comparisonLabel = this.comparisonLabel(range.period);
     const formattedDelta =
       format === 'currency'
@@ -1057,5 +1089,118 @@ export class DashboardService {
     return rows
       .sort((left, right) => String(right.date ?? '').localeCompare(String(left.date ?? '')))
       .slice(0, 50);
+  }
+
+  private toDateOnly(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  private async getOperatingExpenseTotal(
+    range: DashboardDateRange,
+    previous = false,
+  ): Promise<number> {
+    try {
+      if (!(await this.tableExists('pcmazing_company_expenses'))) {
+        return 0;
+      }
+
+      const [start, end] = this.dateBounds(range, previous);
+      const result = await this.databaseService.query<{ total: string }>(
+        `SELECT COALESCE(SUM(amount), 0)::text AS total
+         FROM pcmazing_company_expenses
+         WHERE deleted_at IS NULL
+           AND expense_date >= $1::date
+           AND expense_date <= $2::date`,
+        [this.toDateOnly(start), this.toDateOnly(end)],
+      );
+      return this.toNumber(result.rows[0]?.total);
+    } catch (error) {
+      console.warn('Dashboard operating expenses query failed:', error);
+      return 0;
+    }
+  }
+
+  private async getExpenseCategoryBreakdown(
+    range: DashboardDateRange,
+  ): Promise<Array<{ label: string; value: number; color: string }>> {
+    try {
+      if (!(await this.tableExists('pcmazing_company_expenses'))) {
+        return [];
+      }
+
+      const result = await this.databaseService.query<{ category: string; total: string }>(
+        `SELECT category, COALESCE(SUM(amount), 0)::text AS total
+         FROM pcmazing_company_expenses
+         WHERE deleted_at IS NULL
+           AND expense_date >= $1::date
+           AND expense_date <= $2::date
+         GROUP BY category
+         ORDER BY SUM(amount) DESC`,
+        [this.toDateOnly(range.start), this.toDateOnly(range.end)],
+      );
+
+      return result.rows
+        .map((row) => {
+          const key = row.category as keyof typeof COMPANY_EXPENSE_CATEGORY_LABELS;
+          return {
+            label: COMPANY_EXPENSE_CATEGORY_LABELS[key] ?? row.category,
+            value: this.toNumber(row.total),
+            color: COMPANY_EXPENSE_CATEGORY_COLORS[key] ?? '#94a3b8',
+          };
+        })
+        .filter((item) => item.value > 0);
+    } catch (error) {
+      console.warn('Dashboard expense category query failed:', error);
+      return [];
+    }
+  }
+
+  private async listOperatingExpenseRows(
+    range: DashboardDateRange,
+  ): Promise<DashboardDetailRow[]> {
+    try {
+      if (!(await this.tableExists('pcmazing_company_expenses'))) {
+        return [];
+      }
+
+      const result = await this.databaseService.query<{
+        id: number;
+        title: string;
+        category: string;
+        vendor: string | null;
+        amount: string;
+        expense_date: string;
+        status: string;
+      }>(
+        `SELECT id, title, category, vendor, amount::text, expense_date::text, status
+         FROM pcmazing_company_expenses
+         WHERE deleted_at IS NULL
+           AND expense_date >= $1::date
+           AND expense_date <= $2::date
+         ORDER BY expense_date DESC, id DESC
+         LIMIT 50`,
+        [this.toDateOnly(range.start), this.toDateOnly(range.end)],
+      );
+
+      return result.rows.map((row) => {
+        const key = row.category as keyof typeof COMPANY_EXPENSE_CATEGORY_LABELS;
+        const categoryLabel = COMPANY_EXPENSE_CATEGORY_LABELS[key] ?? row.category;
+        return {
+          id: row.id,
+          title: row.title,
+          subtitle: row.vendor ? `${categoryLabel} · ${row.vendor}` : categoryLabel,
+          status: row.status,
+          amount: this.toNumber(row.amount),
+          date: row.expense_date,
+          href: '/admin/company-expenses',
+        };
+      });
+    } catch (error) {
+      console.warn('Dashboard operating expense details query failed:', error);
+      return [];
+    }
   }
 }

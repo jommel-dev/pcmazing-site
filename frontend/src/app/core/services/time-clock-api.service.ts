@@ -15,6 +15,7 @@ export interface TimeClockStatus {
   message: string;
   /** Authoritative server/DB timestamp (ISO). */
   serverNow: string;
+  undertimeGraceMinutes?: number;
 }
 
 export interface ServerClock {

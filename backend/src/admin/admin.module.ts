@@ -41,6 +41,8 @@ import { PayrollModule } from './payroll/payroll.module';
 import { TimeClockController } from './payroll/time-clock.controller';
 import { ProjectsController } from './projects/projects.controller';
 import { ProjectsModule } from './projects/projects.module';
+import { CompanyExpensesController } from './company-expenses/company-expenses.controller';
+import { CompanyExpensesService } from './company-expenses/company-expenses.service';
 
 @Module({
   imports: [DatabaseModule, AuthModule, PayrollModule, ProjectsModule],
@@ -64,6 +66,7 @@ import { ProjectsModule } from './projects/projects.module';
     EmployeeWorkspaceController,
     PrintingSettingsController,
     PrintingTemplatesController,
+    CompanyExpensesController,
   ],
   providers: [
     DashboardService,
@@ -85,6 +88,7 @@ import { ProjectsModule } from './projects/projects.module';
     EmployeeWorkspaceService,
     PrintingSettingsService,
     PrintingTemplatesService,
+    CompanyExpensesService,
   ],
 })
 export class AdminModule {}

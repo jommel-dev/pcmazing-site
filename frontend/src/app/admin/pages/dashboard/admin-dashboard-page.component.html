@@ -91,7 +91,7 @@
         }
       </div>
 
-      <div class="mt-4 grid gap-4 md:grid-cols-3">
+      <div class="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         @for (kpi of financialKpis(); track kpi.key) {
           <app-dashboard-kpi-card
             [kpi]="kpi"
@@ -188,6 +188,32 @@
           } @else {
             <div class="flex h-72 items-center justify-center rounded-xl bg-slate-50 text-sm text-slate-500 dark:bg-slate-950 dark:text-slate-400">
               No financial data for this period.
+            </div>
+          }
+        </div>
+      </div>
+
+      <div class="mt-6 grid gap-6 xl:grid-cols-2">
+        <app-company-expenses-widget />
+
+        <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div class="mb-4">
+            <h3 class="text-lg font-bold text-slate-900 dark:text-white">Operating Expense Mix</h3>
+            <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              Company operational expenses by category for the selected period.
+            </p>
+          </div>
+          @if (expenseCategoryLabels().length) {
+            <app-dashboard-chart
+              kind="doughnut"
+              [labels]="expenseCategoryLabels()"
+              [values]="expenseCategoryValues()"
+              [colors]="expenseCategoryColors()"
+              [currency]="true"
+            />
+          } @else {
+            <div class="flex h-72 items-center justify-center rounded-xl bg-slate-50 text-sm text-slate-500 dark:bg-slate-950 dark:text-slate-400">
+              No operating expenses recorded for this period.
             </div>
           }
         </div>

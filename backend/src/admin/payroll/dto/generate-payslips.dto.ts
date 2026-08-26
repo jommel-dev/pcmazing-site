@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsArray, IsIn, IsInt, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, ValidateNested } from 'class-validator';
 import { PAYROLL_SALARY_TYPES } from './payroll-profile-fields.dto';
 import type { PayrollSalaryType } from './payroll-profile-fields.dto';
 
@@ -23,6 +23,14 @@ export class GeneratePayslipsDto {
   @IsOptional()
   @IsString()
   dateTo?: string;
+
+  @IsOptional()
+  @IsIn([...PAYROLL_SALARY_TYPES])
+  periodType?: PayrollSalaryType;
+
+  @IsOptional()
+  @IsBoolean()
+  confirmOverlap?: boolean;
 
   @IsOptional()
   @IsArray()

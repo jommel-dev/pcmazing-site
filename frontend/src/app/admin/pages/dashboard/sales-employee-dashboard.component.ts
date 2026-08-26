@@ -31,6 +31,19 @@ export class SalesEmployeeDashboardComponent implements OnInit {
   readonly saving = signal(false);
   readonly requestingOvertimeId = signal<number | null>(null);
   readonly overtimeMessage = signal('');
+  readonly requestingAdjustmentId = signal<number | null>(null);
+  readonly adjustmentMessage = signal('');
+  readonly adjustmentPhoto = signal<File | null>(null);
+  readonly adjustmentPhotoPreview = signal<string | null>(null);
+  readonly requestedTimeOut = signal('');
+  readonly adjustmentNote = signal('');
+  readonly undertimeCategory = signal<'emergency' | 'appointment' | 'event' | 'other'>('emergency');
+  readonly undertimeCategoryOptions: Array<{ value: 'emergency' | 'appointment' | 'event' | 'other'; label: string }> = [
+    { value: 'emergency', label: 'Emergency' },
+    { value: 'appointment', label: 'Scheduled appointment' },
+    { value: 'event', label: 'Important event' },
+    { value: 'other', label: 'Other' },
+  ];
   readonly openingPayslipId = signal<string | null>(null);
   readonly payslipDetail = signal<EmployeePayslipDetail | null>(null);
   readonly payslipDetailOpen = signal(false);
@@ -41,6 +54,10 @@ export class SalesEmployeeDashboardComponent implements OnInit {
 
   readonly overtimeEligibleDays = computed(() =>
     (this.dashboard()?.attendanceDays ?? []).filter((day) => day.canRequestOvertime),
+  );
+
+  readonly incompletePunchDays = computed(() =>
+    (this.dashboard()?.attendanceDays ?? []).filter((day) => day.canRequestTimeOutAdjustment),
   );
 
   readonly selectedDayTodos = computed(() => {
@@ -97,6 +114,76 @@ export class SalesEmployeeDashboardComponent implements OnInit {
     } finally {
       this.requestingOvertimeId.set(null);
     }
+  }
+
+  async requestTimeOutAdjustment(attendanceId: number | null | undefined): Promise<void> {
+    const photo = this.adjustmentPhoto();
+    const requestedTimeOut = this.requestedTimeOut().trim();
+    if (attendanceId == null || this.requestingAdjustmentId() != null) {
+      return;
+    }
+    if (!photo) {
+      this.error.set('Upload a time-out photo first.');
+      return;
+    }
+    if (!requestedTimeOut) {
+      this.error.set('Enter the time you actually left.');
+      return;
+    }
+    if (this.adjustmentNote().trim().length < 8) {
+      this.error.set('Explain why you missed clocking out (at least 8 characters).');
+      return;
+    }
+
+    this.requestingAdjustmentId.set(attendanceId);
+    this.adjustmentMessage.set('');
+    this.error.set('');
+    try {
+      const response = await firstValueFrom(
+        this.adminApi.requestEmployeeTimeOutAdjustment(
+          attendanceId,
+          photo,
+          requestedTimeOut,
+          this.adjustmentNote(),
+          this.undertimeCategory(),
+        ),
+      );
+      this.adjustmentMessage.set(
+        response.data.message || response.message || 'Time-out adjustment submitted.',
+      );
+      this.clearAdjustmentForm();
+      await this.load();
+    } catch (error) {
+      const message =
+        error && typeof error === 'object' && 'error' in error
+          ? (error as { error?: { message?: string } }).error?.message
+          : null;
+      this.error.set(message || 'Unable to submit time-out adjustment. Please try again.');
+    } finally {
+      this.requestingAdjustmentId.set(null);
+    }
+  }
+
+  onAdjustmentPhoto(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0] ?? null;
+    const previous = this.adjustmentPhotoPreview();
+    if (previous) {
+      URL.revokeObjectURL(previous);
+    }
+    this.adjustmentPhoto.set(file);
+    this.adjustmentPhotoPreview.set(file ? URL.createObjectURL(file) : null);
+  }
+
+  private clearAdjustmentForm(): void {
+    const previous = this.adjustmentPhotoPreview();
+    if (previous) {
+      URL.revokeObjectURL(previous);
+    }
+    this.adjustmentPhoto.set(null);
+    this.adjustmentPhotoPreview.set(null);
+    this.adjustmentNote.set('');
+    this.undertimeCategory.set('emergency');
   }
 
   async viewPayslipPdf(payslipId: string): Promise<void> {
@@ -169,7 +256,26 @@ export class SalesEmployeeDashboardComponent implements OnInit {
   selectDate(isoDate: string): void {
     this.selectedDate.set(isoDate);
     this.dayOffReason.set('');
+    this.clearAdjustmentForm();
+    const punch = (this.dashboard()?.attendanceDays ?? []).find((item) => item.workDate === isoDate);
+    this.requestedTimeOut.set(punch ? this.defaultRequestedTimeOut(punch.workDate, punch.timeIn) : `${isoDate}T18:00`);
     this.dayOffModalOpen.set(true);
+  }
+
+  private defaultRequestedTimeOut(workDate: string, timeIn: string | null): string {
+    if (!timeIn) {
+      return `${workDate}T18:00`;
+    }
+    const start = new Date(timeIn).getTime();
+    const guessed = new Date(start + 9 * 60 * 60 * 1000);
+    const manilaDate = guessed.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+    const manilaTime = guessed.toLocaleTimeString('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: 'Asia/Manila',
+    });
+    return `${manilaDate}T${manilaTime}`;
   }
 
   formatPunch(value: string | null | undefined): string {
@@ -300,6 +406,8 @@ export class SalesEmployeeDashboardComponent implements OnInit {
         return 'Day off removed';
       case 'overtime_requested':
         return 'Overtime request';
+      case 'time_out_adjustment_requested':
+        return 'Time-out adjustment';
       case 'todo_created':
         return 'To-do added';
       case 'todo_completed':
@@ -341,6 +449,7 @@ export class SalesEmployeeDashboardComponent implements OnInit {
     isToday: boolean;
     isSelected: boolean;
     hasAttendance: boolean;
+    hasIncompletePunch: boolean;
     hasDayOff: boolean;
     hasTodo: boolean;
   }> {
@@ -351,6 +460,11 @@ export class SalesEmployeeDashboardComponent implements OnInit {
     const today = data?.workDate ?? this.todayIso();
     const selected = this.selectedDate();
     const attendanceSet = new Set((data?.attendanceDays ?? []).map((item) => item.workDate));
+    const incompleteSet = new Set(
+      (data?.attendanceDays ?? [])
+        .filter((item) => item.timeIn && !item.timeOut)
+        .map((item) => item.workDate),
+    );
     const dayOffSet = new Set((data?.dayOffs ?? []).map((item) => item.dayOffDate));
     const todoSet = new Set((data?.todos ?? []).map((item) => item.dueDate));
 
@@ -361,6 +475,7 @@ export class SalesEmployeeDashboardComponent implements OnInit {
       isToday: boolean;
       isSelected: boolean;
       hasAttendance: boolean;
+      hasIncompletePunch: boolean;
       hasDayOff: boolean;
       hasTodo: boolean;
     }> = [];
@@ -378,6 +493,7 @@ export class SalesEmployeeDashboardComponent implements OnInit {
         isToday: isoDate === today,
         isSelected: isoDate === selected,
         hasAttendance: attendanceSet.has(isoDate),
+        hasIncompletePunch: incompleteSet.has(isoDate),
         hasDayOff: dayOffSet.has(isoDate),
         hasTodo: todoSet.has(isoDate),
       });

@@ -27,6 +27,7 @@ export type AdminModuleKey =
   | 'quotation'
   | 'inventory'
   | 'customers'
+  | 'company_expenses'
   | 'lead_generation'
   | 'organization_team'
   | 'projects'
@@ -164,6 +165,7 @@ export function getAllowedModuleKeys(role?: string | null): Set<AdminModuleKey> 
       'job_order',
       'quotation',
       'inventory',
+      'company_expenses',
       'profile',
     ]);
   }

@@ -47,6 +47,7 @@ import { ProjectTasksPageComponent } from './pages/projects/project-tasks-page.c
 import { KanbanHubPageComponent } from './pages/projects/kanban-hub-page.component';
 import { AdminModulePlaceholderPageComponent } from './pages/modules/admin-module-placeholder-page.component';
 import { PrintingGeneratorPageComponent } from './pages/printing/printing-generator-page.component';
+import { CompanyExpensesPageComponent } from './pages/company-expenses/company-expenses-page.component';
 
 export const adminRoutes: Routes = [
   {
@@ -153,6 +154,13 @@ export const adminRoutes: Routes = [
         title: 'Inventory | PCMazing Admin',
         canActivate: [adminRoleGuard],
         data: { module: 'inventory' },
+      },
+      {
+        path: 'company-expenses',
+        component: CompanyExpensesPageComponent,
+        title: 'Company Expenses | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'company_expenses' },
       },
       {
         path: 'inventory/service-types',

@@ -1,0 +1,359 @@
+<section>
+  <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <div>
+      <p class="text-xs font-bold tracking-[0.2em] text-pcmazing-500 uppercase">Sales Operations</p>
+      <h2 class="mt-2 text-2xl font-bold text-slate-900 dark:text-white">Company Expenses</h2>
+      <p class="mt-2 max-w-3xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+        Track operational expenses on a calendar — salary, rent, bills, taxes, and maintenance.
+      </p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+        (click)="changeMonth(-1)"
+      >
+        Prev
+      </button>
+      <span class="min-w-36 text-center text-sm font-semibold text-slate-700 dark:text-slate-200">
+        {{ monthLabel() }}
+      </span>
+      <button
+        type="button"
+        class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+        (click)="changeMonth(1)"
+      >
+        Next
+      </button>
+      <button
+        type="button"
+        class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+        (click)="goToToday()"
+      >
+        Today
+      </button>
+      <button
+        type="button"
+        class="rounded-xl bg-pcmazing-500 px-4 py-2 text-sm font-bold text-white hover:bg-pcmazing-600"
+        (click)="openCreate()"
+      >
+        Add expense
+      </button>
+    </div>
+  </div>
+
+  @if (error()) {
+    <div class="mb-4 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+      {{ error() }}
+    </div>
+  }
+
+  @if (loading() && !calendar()) {
+    <div class="rounded-2xl border border-slate-200 bg-white px-6 py-16 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+      Loading expense calendar...
+    </div>
+  } @else if (calendar(); as data) {
+    <div class="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <p class="text-xs font-bold uppercase tracking-wide text-slate-400">Month total</p>
+        <p class="mt-2 text-2xl font-bold text-slate-900 dark:text-white">
+          {{ data.totals.amount | currency: 'PHP':'symbol-narrow':'1.0-0' }}
+        </p>
+      </div>
+      <div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 dark:border-emerald-900 dark:bg-emerald-950/30">
+        <p class="text-xs font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Paid</p>
+        <p class="mt-2 text-2xl font-bold text-emerald-900 dark:text-emerald-200">
+          {{ data.totals.paidAmount | currency: 'PHP':'symbol-narrow':'1.0-0' }}
+        </p>
+      </div>
+      <div class="rounded-2xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-900 dark:bg-amber-950/30">
+        <p class="text-xs font-bold uppercase tracking-wide text-amber-700 dark:text-amber-300">Planned</p>
+        <p class="mt-2 text-2xl font-bold text-amber-900 dark:text-amber-200">
+          {{ data.totals.plannedAmount | currency: 'PHP':'symbol-narrow':'1.0-0' }}
+        </p>
+      </div>
+      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <p class="text-xs font-bold uppercase tracking-wide text-slate-400">Entries</p>
+        <p class="mt-2 text-2xl font-bold text-slate-900 dark:text-white">{{ data.totals.count }}</p>
+      </div>
+    </div>
+
+    <div class="grid gap-6 xl:grid-cols-3">
+      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 xl:col-span-2">
+        <div class="grid grid-cols-7 gap-1 text-center text-[10px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+          <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+        </div>
+        <div class="mt-2 grid grid-cols-7 gap-1">
+          @for (cell of calendarDays(); track cell.isoDate) {
+            <button
+              type="button"
+              class="min-h-20 rounded-xl border px-1.5 py-1.5 text-left transition sm:min-h-24"
+              [class.opacity-30]="!cell.inMonth"
+              [ngClass]="
+                cell.isSelected
+                  ? 'border-pcmazing-500 bg-pcmazing-50 dark:border-pcmazing-400 dark:bg-pcmazing-500/20'
+                  : 'border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800'
+              "
+              (click)="selectDate(cell.isoDate)"
+            >
+              <span
+                class="inline-flex size-6 items-center justify-center rounded-full text-xs font-bold"
+                [class.bg-pcmazing-500]="cell.isToday"
+                [class.text-white]="cell.isToday"
+                [class.text-slate-700]="!cell.isToday"
+                [class.dark:text-slate-200]="!cell.isToday"
+              >
+                {{ cell.day }}
+              </span>
+              @if (cell.count > 0) {
+                <p class="mt-1 truncate text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+                  {{ formatCompact(cell.total) }}
+                </p>
+                <span class="mt-1 flex gap-0.5">
+                  @for (color of cell.colors; track color) {
+                    <span class="size-1.5 rounded-full" [style.background]="color"></span>
+                  }
+                </span>
+              }
+            </button>
+          }
+        </div>
+        @if (data.categories.length) {
+          <div class="mt-4 flex flex-wrap gap-2">
+            @for (item of data.categories; track item.key) {
+              <span class="inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                <span class="size-2 rounded-full" [style.background]="item.color"></span>
+                {{ item.label }}
+                {{ item.amount | currency: 'PHP':'symbol-narrow':'1.0-0' }}
+              </span>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <h3 class="text-lg font-bold text-slate-900 dark:text-white">
+              {{ selectedDate() | date: 'mediumDate' }}
+            </h3>
+            <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              @if (selectedDayExpenses().length) {
+                {{ selectedDayTotal() | currency: 'PHP':'symbol-narrow':'1.0-0' }}
+                · {{ selectedDayExpenses().length }}
+                {{ selectedDayExpenses().length === 1 ? 'entry' : 'entries' }}
+              } @else {
+                No expenses on this day.
+              }
+            </p>
+          </div>
+          <button
+            type="button"
+            class="rounded-xl bg-pcmazing-500 px-3 py-2 text-xs font-bold text-white hover:bg-pcmazing-600"
+            (click)="openCreate(selectedDate())"
+          >
+            Add
+          </button>
+        </div>
+
+        <div class="mt-4 space-y-3">
+          @for (item of selectedDayExpenses(); track item.id) {
+            <div class="rounded-xl border border-slate-200 px-3 py-3 dark:border-slate-700">
+              <div class="flex items-start justify-between gap-2">
+                <div class="min-w-0">
+                  <p class="truncate font-semibold text-slate-900 dark:text-white">{{ item.title }}</p>
+                  <p class="mt-0.5 text-xs text-slate-500">
+                    {{ item.categoryLabel }}
+                    @if (item.vendor) {
+                      · {{ item.vendor }}
+                    }
+                  </p>
+                </div>
+                <p class="shrink-0 text-sm font-bold text-slate-900 dark:text-white">
+                  {{ item.amount | currency: 'PHP':'symbol-narrow':'1.0-0' }}
+                </p>
+              </div>
+              <div class="mt-2 flex items-center justify-between gap-2">
+                <span
+                  class="inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase"
+                  [class.bg-emerald-50]="item.status === 'paid'"
+                  [class.text-emerald-700]="item.status === 'paid'"
+                  [class.bg-amber-50]="item.status === 'planned'"
+                  [class.text-amber-700]="item.status === 'planned'"
+                >
+                  {{ item.status }}
+                </span>
+                <div class="flex gap-2">
+                  <button
+                    type="button"
+                    class="text-xs font-bold text-pcmazing-600 hover:text-pcmazing-700"
+                    (click)="openEdit(item)"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    class="text-xs font-bold text-red-600 hover:text-red-700 disabled:opacity-50"
+                    [disabled]="deletingId() === item.id"
+                    (click)="remove(item)"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+  }
+</section>
+
+@if (formOpen()) {
+  <div class="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/50 p-4 sm:items-center" (click)="closeForm()">
+    <section
+      class="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-900"
+      (click)="$event.stopPropagation()"
+    >
+      <div class="border-b border-slate-100 px-5 py-4 dark:border-slate-800">
+        <h3 class="text-lg font-bold text-slate-900 dark:text-white">
+          {{ isEditing() ? 'Edit expense' : 'Add expense' }}
+        </h3>
+        <p class="mt-1 text-sm text-slate-500">Operational expense for the company calendar.</p>
+      </div>
+      <form class="space-y-4 px-5 py-4" (ngSubmit)="save()">
+        @if (formError()) {
+          <div class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {{ formError() }}
+          </div>
+        }
+        <div>
+          <label class="mb-1 block text-xs font-semibold text-slate-500" for="expense-title">Title</label>
+          <input
+            id="expense-title"
+            type="text"
+            class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-pcmazing-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+            [ngModel]="title()"
+            (ngModelChange)="title.set($event)"
+            name="title"
+            maxlength="180"
+            required
+          />
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="mb-1 block text-xs font-semibold text-slate-500" for="expense-amount">Amount (₱)</label>
+            <input
+              id="expense-amount"
+              type="number"
+              min="0"
+              step="0.01"
+              class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-pcmazing-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              [ngModel]="amount()"
+              (ngModelChange)="amount.set($event)"
+              name="amount"
+              required
+            />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold text-slate-500" for="expense-date">Date</label>
+            <input
+              id="expense-date"
+              type="date"
+              class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-pcmazing-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              [ngModel]="expenseDate()"
+              (ngModelChange)="expenseDate.set($event)"
+              name="expenseDate"
+              required
+            />
+          </div>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="mb-1 block text-xs font-semibold text-slate-500" for="expense-category">Category</label>
+            <select
+              id="expense-category"
+              class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-pcmazing-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              [ngModel]="category()"
+              (ngModelChange)="category.set($event)"
+              name="category"
+            >
+              @for (option of categoryOptions; track option.value) {
+                <option [value]="option.value">{{ option.label }}</option>
+              }
+            </select>
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold text-slate-500" for="expense-status">Status</label>
+            <select
+              id="expense-status"
+              class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-pcmazing-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              [ngModel]="status()"
+              (ngModelChange)="status.set($event)"
+              name="status"
+            >
+              <option value="paid">Paid</option>
+              <option value="planned">Planned</option>
+            </select>
+          </div>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="mb-1 block text-xs font-semibold text-slate-500" for="expense-vendor">Vendor / payee</label>
+            <input
+              id="expense-vendor"
+              type="text"
+              class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-pcmazing-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              [ngModel]="vendor()"
+              (ngModelChange)="vendor.set($event)"
+              name="vendor"
+              maxlength="160"
+            />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold text-slate-500" for="expense-payment">Payment</label>
+            <select
+              id="expense-payment"
+              class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-pcmazing-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              [ngModel]="paymentMethod()"
+              (ngModelChange)="paymentMethod.set($event)"
+              name="paymentMethod"
+            >
+              @for (option of paymentOptions; track option.value) {
+                <option [value]="option.value">{{ option.label }}</option>
+              }
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="mb-1 block text-xs font-semibold text-slate-500" for="expense-notes">Notes</label>
+          <textarea
+            id="expense-notes"
+            rows="3"
+            class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-pcmazing-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+            [ngModel]="notes()"
+            (ngModelChange)="notes.set($event)"
+            name="notes"
+            maxlength="2000"
+          ></textarea>
+        </div>
+        <div class="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
+          <button
+            type="button"
+            class="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+            (click)="closeForm()"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            class="rounded-xl bg-pcmazing-500 px-4 py-2 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:opacity-50"
+            [disabled]="saving()"
+          >
+            {{ saving() ? 'Saving...' : isEditing() ? 'Save changes' : 'Save expense' }}
+          </button>
+        </div>
+      </form>
+    </section>
+  </div>
+}
