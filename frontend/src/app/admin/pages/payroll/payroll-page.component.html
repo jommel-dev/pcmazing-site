@@ -5,7 +5,7 @@
       <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
         Attendance, enrolled employees, overtime approvals, and period pay estimates. Configure salary fields in
         <a routerLink="/admin/users" class="font-semibold text-pcmazing-500 hover:underline">User Management</a>.
-        Semi-monthly Amount is a daily rate: 9h+ = full day, 4–4.5h+ (under 9h) = half day. Overtime over 9 hours needs employee request + admin approval.
+        Weekly and Semi-Monthly Amount is a daily rate: 9h+ = full day, owner-agreed undertime (default 30 min early) still pays a full day, 4h to under that = half day. Overtime over 9 hours needs employee request + admin approval.
       </p>
     </div>
     <button
@@ -165,6 +165,9 @@
                   <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
                     {{ attendanceStatusLabel(item.status) }}
                   </span>
+                  @if (item.adjustmentStatus === 'pending') {
+                    <p class="mt-1 text-[11px] font-semibold text-sky-700">Time-out request pending</p>
+                  }
                 </td>
               </tr>
             }
@@ -261,53 +264,149 @@
       </div>
     }
   } @else if (activeTab() === 'period') {
-    <form class="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end" (ngSubmit)="applyPeriodFilter()">
-      <div class="w-full sm:max-w-xs">
-        <label class="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">From</label>
-        <input
-          type="date"
-          class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-          [ngModel]="dateFrom()"
-          (ngModelChange)="dateFrom.set($event)"
-          name="dateFrom"
-        />
+    <form
+      class="mb-6 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
+      (ngSubmit)="applyPeriodFilter()"
+    >
+      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <div>
+          <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Period type</label>
+          <select
+            class="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 focus:border-pcmazing-400 focus:outline-none focus:ring-2 focus:ring-pcmazing-400/30 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+            [ngModel]="periodType()"
+            (ngModelChange)="setPeriodType($event)"
+            name="periodType"
+          >
+            @for (option of periodTypeOptions; track option.value) {
+              <option [ngValue]="option.value">{{ option.label }}</option>
+            }
+          </select>
+        </div>
+        <div>
+          <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Work week</label>
+          <select
+            class="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 focus:border-pcmazing-400 focus:outline-none focus:ring-2 focus:ring-pcmazing-400/30 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+            [ngModel]="workWeek()"
+            (ngModelChange)="setWorkWeek($event)"
+            name="workWeek"
+            [disabled]="savingWorkWeek()"
+          >
+            @for (option of workWeekOptions; track option.value) {
+              <option [ngValue]="option.value">{{ option.label }}</option>
+            }
+          </select>
+        </div>
+        <div>
+          <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Undertime grace</label>
+          <div class="relative">
+            <input
+              type="number"
+              min="0"
+              max="90"
+              step="5"
+              class="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 pr-10 text-sm text-slate-900 focus:border-pcmazing-400 focus:outline-none focus:ring-2 focus:ring-pcmazing-400/30 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              [ngModel]="undertimeGraceMinutes()"
+              (ngModelChange)="undertimeGraceMinutes.set(+$event || 0)"
+              (change)="setUndertimeGrace(undertimeGraceMinutes())"
+              name="undertimeGraceMinutes"
+              [disabled]="savingWorkWeek()"
+            />
+            <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-bold text-slate-400">min</span>
+          </div>
+          <p class="mt-1 text-[11px] text-slate-400">Owner-agreed early out (0–90). Default 30 keeps 8.5h as a full paid day.</p>
+        </div>
+        <div>
+          <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">From</label>
+          <input
+            type="date"
+            class="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 focus:border-pcmazing-400 focus:outline-none focus:ring-2 focus:ring-pcmazing-400/30 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+            [ngModel]="dateFrom()"
+            (ngModelChange)="dateFrom.set($event)"
+            name="dateFrom"
+          />
+        </div>
+        <div>
+          <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">To</label>
+          <input
+            type="date"
+            class="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 focus:border-pcmazing-400 focus:outline-none focus:ring-2 focus:ring-pcmazing-400/30 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+            [ngModel]="dateTo()"
+            (ngModelChange)="dateTo.set($event)"
+            name="dateTo"
+          />
+        </div>
       </div>
-      <div class="w-full sm:max-w-xs">
-        <label class="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">To</label>
-        <input
-          type="date"
-          class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-          [ngModel]="dateTo()"
-          (ngModelChange)="dateTo.set($event)"
-          name="dateTo"
-        />
-      </div>
-      <button type="submit" class="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white dark:bg-slate-100 dark:text-slate-900">
-        Compute
-      </button>
-      <button
-        type="button"
-        class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:opacity-60"
-        [disabled]="generating() || periodItems().length === 0"
-        (click)="generatePayslips()"
-      >
-        @if (generating()) { Generating... } @else { Generate payslips }
-      </button>
-    </form>
 
-    <div class="mb-6 flex flex-wrap gap-2">
-      <button type="button" class="rounded-lg border px-3 py-1.5 text-xs font-bold dark:border-slate-700" (click)="setSemiMonthlyPeriod(1); applyPeriodFilter()">
-        1st–15th
-      </button>
-      <button type="button" class="rounded-lg border px-3 py-1.5 text-xs font-bold dark:border-slate-700" (click)="setSemiMonthlyPeriod(2); applyPeriodFilter()">
-        16th–month end
-      </button>
-    </div>
+      <div class="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800">
+        <div class="flex flex-wrap gap-2">
+          @if (periodType() === 'weekly') {
+            <button type="button" class="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200" (click)="shiftWeekly(-1); applyPeriodFilter()">
+              Previous week
+            </button>
+            <button type="button" class="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200" (click)="shiftWeekly(0); applyPeriodFilter()">
+              This week
+            </button>
+          }
+          @if (periodType() === 'semi_monthly') {
+            <button type="button" class="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200" (click)="setSemiMonthlyPeriod(1); applyPeriodFilter()">
+              1st–15th
+            </button>
+            <button type="button" class="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200" (click)="setSemiMonthlyPeriod(2); applyPeriodFilter()">
+              16th–month end
+            </button>
+          }
+          @if (periodType() === 'monthly') {
+            <button type="button" class="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200" (click)="setMonthlyPeriod(); applyPeriodFilter()">
+              This month
+            </button>
+          }
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button
+            type="submit"
+            class="h-11 rounded-xl bg-slate-900 px-5 text-sm font-bold text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900"
+          >
+            Compute
+          </button>
+          <button
+            type="button"
+            class="h-11 rounded-xl bg-pcmazing-500 px-5 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:opacity-60"
+            [disabled]="previewLoading() || generating() || periodItems().length === 0"
+            (click)="openPayslipPreview()"
+          >
+            @if (previewLoading()) { Loading preview... } @else { Preview payslips }
+          </button>
+        </div>
+      </div>
+    </form>
 
     @if (generateMessage()) {
       <p class="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
         {{ generateMessage() }}
       </p>
+    }
+
+    @if (exactOverlaps().length > 0) {
+      <p class="mb-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-200">
+        Payslips already exist for these exact dates. Generating again will replace them.
+      </p>
+    }
+
+    @if (blockingOverlaps().length > 0) {
+      <div class="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+        <p class="font-semibold">These dates overlap existing payslips. Generating may double-pay the same days.</p>
+        <ul class="mt-2 space-y-1 text-xs">
+          @for (item of blockingOverlaps(); track item.runId + '-' + item.userSource + '-' + item.userId) {
+            <li>
+              {{ item.fullName }} already has {{ item.label }} ({{ item.dateFrom }} → {{ item.dateTo }}) · {{ formatMoney(item.estimatedPay) }}
+            </li>
+          }
+        </ul>
+        <label class="mt-3 flex items-center gap-2 text-sm font-semibold">
+          <input type="checkbox" class="rounded border-amber-400" [ngModel]="confirmOverlap()" (ngModelChange)="confirmOverlap.set($event)" [ngModelOptions]="{standalone: true}" name="confirmOverlap" />
+          I understand — generate anyway
+        </label>
+      </div>
     }
 
     @if (periodMeta(); as meta) {
@@ -326,10 +425,11 @@
         </div>
       </div>
       <p class="mb-4 text-sm text-slate-500">
-        Reference dates {{ meta.dateFrom }} → {{ meta.dateTo }}.
-        Each employee defaults to the pay schedule on their profile. Change the payslip period per employee before generating.
-        Compute previews attendance and pay for those periods; Generate payslips publishes them to employee portals.
-        Approved overtime (past 9h, employee-requested) pays at 1.25× hourly; pending OT is excluded until approved.
+        Dates {{ meta.dateFrom }} → {{ meta.dateTo }} · {{ periodType() === 'cutoff' ? 'Custom' : salaryTypeLabel(periodType()) }} · {{ workWeekLabel(workWeek()) }}.
+        Period type sets From/To for every employee. Pay formula still uses each employee profile (daily rate × paid days, or fixed monthly).
+        Work week marks rest days: Mon–Fri (Sat+Sun rest), Mon–Sat (Sunday rest), or day-off basis (plotted day offs only).
+        Undertime grace ({{ undertimeGraceMinutes() }} min) still pays a full day if they clock out a little early for an owner-approved reason.
+        Preview each payslip, then confirm generate. If this range overlaps an existing payslip, you will be asked to confirm before publishing.
       </p>
     }
 
@@ -344,12 +444,12 @@
             <tr>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Employee</th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Type</th>
-              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Payslip period</th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Days</th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Paid units</th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Hours</th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">OT</th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Est. pay</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Payslip</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
@@ -364,21 +464,8 @@
                   @if (item.fixedMonthlySalary) {
                     <p class="text-xs font-medium text-emerald-600">Fixed monthly {{ formatMoney(item.fixedMonthlySalary) }}</p>
                   } @else {
-                    <p class="text-xs text-slate-500">{{ formatMoney(item.salaryAmount) }}</p>
+                    <p class="text-xs text-slate-500">Daily {{ formatMoney(item.salaryAmount) }}</p>
                   }
-                </td>
-                <td class="px-4 py-3">
-                  <select
-                    class="w-full min-w-[9.5rem] rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-                    [ngModel]="payslipPeriodFor(item)"
-                    (ngModelChange)="setPayslipPeriod(item, $event)"
-                    [name]="'payslipPeriod-' + item.userSource + '-' + item.userId"
-                  >
-                    @for (option of payslipPeriodOptions; track option.value) {
-                      <option [ngValue]="option.value">{{ option.label }}</option>
-                    }
-                  </select>
-                  <p class="mt-1 text-[11px] text-slate-500">{{ payslipRangeLabel(item) }}</p>
                 </td>
                 <td class="px-4 py-3 text-slate-700 dark:text-slate-200">
                   {{ item.daysCompleted }}/{{ item.daysPresent }}
@@ -393,7 +480,17 @@
                     <p class="text-xs text-amber-600">{{ formatHours(item.pendingOvertimeHours) }} pending</p>
                   }
                 </td>
-                <td class="px-4 py-3 font-semibold text-slate-900 dark:text-white">{{ formatMoney(selectedPeriodPay(item)) }}</td>
+                <td class="px-4 py-3 font-semibold text-slate-900 dark:text-white">{{ formatMoney(item.estimatedPay) }}</td>
+                <td class="px-4 py-3">
+                  <button
+                    type="button"
+                    class="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                    [disabled]="previewLoading() || generating()"
+                    (click)="openPayslipPreview(item)"
+                  >
+                    Preview
+                  </button>
+                </td>
               </tr>
             }
           </tbody>
@@ -520,6 +617,317 @@
         </div>
       }
     }
+  } @else if (activeTab() === 'adjustments') {
+    <form class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end" (ngSubmit)="applyAdjustmentFilter()">
+      <div class="w-full sm:max-w-xs">
+        <label class="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">Status</label>
+        <select
+          class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+          [ngModel]="adjustmentStatus()"
+          (ngModelChange)="adjustmentStatus.set($event)"
+          name="adjustmentStatus"
+        >
+          <option value="pending">Pending approval</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+        </select>
+      </div>
+      <button type="submit" class="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white dark:bg-slate-100 dark:text-slate-900">
+        Filter
+      </button>
+    </form>
+
+    <p class="mb-4 text-sm text-slate-500">
+      Employees who forgot to clock out can upload a time-out photo and why they left (emergency, appointment, event).
+      Approving writes that time onto the attendance record. If the hours still fall within undertime grace, payroll pays a full day.
+    </p>
+
+    @if (adjustmentItems().length === 0) {
+      <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900">
+        No {{ adjustmentStatus() }} time-out adjustments.
+      </div>
+    } @else {
+      <div class="table-scroll overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <table class="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
+          <thead class="bg-slate-50 dark:bg-slate-950">
+            <tr>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Employee</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Work date</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Time in</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Claimed out</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Photos</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Status</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+            @for (item of adjustmentItems(); track item.id) {
+              <tr>
+                <td class="px-4 py-3">
+                  <p class="font-semibold text-slate-900 dark:text-white">{{ item.fullName }}</p>
+                  <p class="text-xs text-slate-500">@{{ item.username }} · {{ item.employeeCode || 'No code' }}</p>
+                  @if (item.adjustmentNote) {
+                    <p class="mt-1 text-xs text-slate-500">{{ item.adjustmentNote }}</p>
+                  }
+                  @if (item.undertimeCategory) {
+                    <p class="mt-1 text-[11px] font-semibold text-sky-700">{{ undertimeCategoryLabel(item.undertimeCategory) }}</p>
+                  }
+                </td>
+                <td class="px-4 py-3 text-slate-700 dark:text-slate-200">{{ item.workDate }}</td>
+                <td class="px-4 py-3 text-slate-700 dark:text-slate-200">{{ formatPunch(item.timeIn) }}</td>
+                <td class="px-4 py-3 font-medium text-slate-900 dark:text-white">
+                  {{ formatPunch(item.requestedTimeOut) }}
+                  <p class="text-xs font-normal text-slate-500">{{ formatHours(item.hoursWorked) }} if approved</p>
+                </td>
+                <td class="px-4 py-3">
+                  <div class="flex items-center gap-2">
+                    @if (selfieUrl(item.timeInSelfieUrl); as inSelfie) {
+                      <button type="button" title="Time in selfie" (click)="openSelfieModal(inSelfie, 'Time in selfie')">
+                        <img [src]="inSelfie" alt="Time in selfie" class="size-10 rounded-lg border border-slate-200 object-cover" />
+                      </button>
+                    }
+                    @if (selfieUrl(item.adjustmentSelfieUrl); as outSelfie) {
+                      <button type="button" title="Claimed time-out photo" (click)="openSelfieModal(outSelfie, 'Claimed time-out photo')">
+                        <img [src]="outSelfie" alt="Claimed time-out photo" class="size-10 rounded-lg border border-sky-200 object-cover" />
+                      </button>
+                    }
+                  </div>
+                </td>
+                <td class="px-4 py-3">
+                  <span class="rounded-full px-2.5 py-1 text-xs font-bold" [class]="overtimeStatusClass(item.adjustmentStatus)">
+                    {{ overtimeStatusLabel(item.adjustmentStatus) }}
+                  </span>
+                </td>
+                <td class="px-4 py-3">
+                  @if (item.adjustmentStatus === 'pending') {
+                    <div class="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        class="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                        [disabled]="reviewingAdjustmentId() != null"
+                        (click)="reviewAdjustment(item, 'approved')"
+                      >
+                        @if (reviewingAdjustmentId() === item.id) { Saving... } @else { Approve }
+                      </button>
+                      <button
+                        type="button"
+                        class="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-50"
+                        [disabled]="reviewingAdjustmentId() != null"
+                        (click)="reviewAdjustment(item, 'rejected')"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  } @else {
+                    <p class="text-xs text-slate-500">{{ item.adjustmentReviewNote || '—' }}</p>
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      @if (adjustmentMeta(); as pagination) {
+        <div class="mt-4 flex items-center justify-between text-sm text-slate-500">
+          <span>Page {{ pagination.page }} of {{ pagination.totalPages }} · {{ pagination.total }} total</span>
+          <div class="flex gap-2">
+            <button type="button" class="rounded-lg border px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page <= 1" (click)="goToAdjustmentPage(pagination.page - 1)">Previous</button>
+            <button type="button" class="rounded-lg border px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page >= pagination.totalPages" (click)="goToAdjustmentPage(pagination.page + 1)">Next</button>
+          </div>
+        </div>
+      }
+    }
+  }
+
+  @if (previewOpen()) {
+    <div
+      class="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/60 sm:items-center sm:p-4 dark:bg-black/70"
+      (click)="closePayslipPreview()"
+    >
+      <div
+        class="flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-t-3xl border border-slate-200 bg-white shadow-xl sm:rounded-3xl dark:border-slate-700 dark:bg-slate-900"
+        (click)="$event.stopPropagation()"
+      >
+        <div class="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 dark:border-slate-800">
+          <div class="min-w-0">
+            <p class="text-[10px] font-bold uppercase tracking-wide text-amber-600">Draft preview — not published</p>
+            <h3 class="mt-1 text-base font-bold text-slate-900 dark:text-white">
+              @if (previewEmployee(); as detail) {
+                {{ detail.employee.fullName }}
+              } @else if (previewLoading()) {
+                Loading payslip preview...
+              } @else {
+                Payslip preview
+              }
+            </h3>
+            @if (previewItems().length > 0) {
+              <p class="mt-0.5 text-xs text-slate-500">
+                Employee {{ previewIndex() + 1 }} of {{ previewItems().length }}. Review each slip before generating.
+              </p>
+            }
+          </div>
+          <button
+            type="button"
+            class="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-bold text-slate-700 dark:border-slate-600 dark:text-slate-200"
+            (click)="closePayslipPreview()"
+          >
+            Close
+          </button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto px-5 py-4">
+          @if (previewLoading()) {
+            <p class="py-10 text-center text-sm text-slate-500">Loading payslip details...</p>
+          } @else if (previewEmployee(); as detail) {
+            <div class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              This is a draft. If hours, days, or pay look wrong, close this preview and correct attendance, overtime, or the payslip period first. Nothing is sent to employee portals until you confirm generate.
+            </div>
+
+            <div class="mt-4 grid gap-1 text-sm text-slate-700 dark:text-slate-200 sm:grid-cols-2">
+              <p><span class="font-semibold text-slate-900 dark:text-white">Employee:</span> {{ detail.employee.fullName }}</p>
+              <p><span class="font-semibold text-slate-900 dark:text-white">Position:</span> {{ detail.employee.positionTitle || '—' }}</p>
+              <p>
+                <span class="font-semibold text-slate-900 dark:text-white">Code:</span>
+                {{ detail.employee.employeeCode || 'No code' }}
+                @if (detail.employee.username) {
+                  · @{{ detail.employee.username }}
+                }
+              </p>
+              <p><span class="font-semibold text-slate-900 dark:text-white">Department:</span> {{ detail.employee.department || '—' }}</p>
+              <p><span class="font-semibold text-slate-900 dark:text-white">Pay schedule:</span> {{ salaryTypeLabel(detail.salaryType || '') }}</p>
+              <p>
+                <span class="font-semibold text-slate-900 dark:text-white">Payroll period:</span>
+                {{ detail.dateFrom }} → {{ detail.dateTo }}
+              </p>
+            </div>
+
+            <div class="mt-5">
+              <h4 class="text-sm font-bold text-slate-900 dark:text-white">Compensation summary</h4>
+              <div class="mt-3 overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+                <table class="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
+                  <thead class="bg-slate-50 dark:bg-slate-950">
+                    <tr>
+                      <th class="px-3 py-2 text-left text-xs font-bold text-slate-500">Date</th>
+                      <th class="px-3 py-2 text-left text-xs font-bold text-slate-500">Shift</th>
+                      <th class="px-3 py-2 text-left text-xs font-bold text-slate-500">Hours</th>
+                      <th class="px-3 py-2 text-left text-xs font-bold text-slate-500">Day</th>
+                      <th class="px-3 py-2 text-left text-xs font-bold text-slate-500">Day pay</th>
+                      <th class="px-3 py-2 text-left text-xs font-bold text-slate-500">OT</th>
+                      <th class="px-3 py-2 text-left text-xs font-bold text-slate-500">OT pay</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+                    @for (day of detail.days; track day.workDate) {
+                      <tr>
+                        <td class="px-3 py-2 font-medium text-slate-900 dark:text-white">{{ day.workDate }}</td>
+                        <td class="px-3 py-2 text-slate-600 dark:text-slate-300">{{ day.timeInLabel }}–{{ day.timeOutLabel }}</td>
+                        <td class="px-3 py-2 text-slate-700 dark:text-slate-200">{{ formatHours(day.hoursWorked) }}</td>
+                        <td class="px-3 py-2 text-slate-700 dark:text-slate-200">{{ day.dayType }}</td>
+                        <td class="px-3 py-2 text-slate-900 dark:text-white">{{ formatMoney(day.dayPay) }}</td>
+                        <td class="px-3 py-2 text-slate-700 dark:text-slate-200">
+                          @if (day.overtimeHours > 0) {
+                            {{ formatHours(day.overtimeHours) }}
+                            <span class="block text-[11px] capitalize text-slate-500">{{ day.overtimeStatus }}</span>
+                          } @else {
+                            —
+                          }
+                        </td>
+                        <td class="px-3 py-2 text-slate-900 dark:text-white">
+                          @if (day.overtimePay > 0) {
+                            {{ formatMoney(day.overtimePay) }}
+                          } @else {
+                            —
+                          }
+                        </td>
+                      </tr>
+                    } @empty {
+                      <tr>
+                        <td colspan="7" class="px-3 py-6 text-center text-sm text-slate-500">
+                          No days in this payroll period.
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-700 dark:bg-slate-950/60">
+              <h4 class="text-sm font-bold text-slate-900 dark:text-white">Summary</h4>
+              <div class="mt-3 grid gap-1.5 text-sm text-slate-600 dark:text-slate-300 sm:grid-cols-2">
+                @if (detail.totals.salaryTypeLabel) {
+                  <p>Pay schedule: {{ detail.totals.salaryTypeLabel }}</p>
+                }
+                @if (detail.totals.payBasis) {
+                  <p class="sm:col-span-2">Pay basis: {{ detail.totals.payBasis }}</p>
+                }
+                @if (detail.totals.periodDays != null) {
+                  <p>Days in period: {{ detail.totals.periodDays }}</p>
+                }
+                <p>Days present / completed: {{ detail.totals.daysPresent }} / {{ detail.totals.daysCompleted }}</p>
+                <p>Paid day units: {{ detail.totals.paidDayUnits.toFixed(2) }}</p>
+                <p>Total hours: {{ formatHours(detail.totals.totalHours) }}</p>
+                <p>Approved overtime: {{ formatHours(detail.totals.approvedOvertimeHours) }}</p>
+                @if (detail.totals.pendingOvertimeHours > 0) {
+                  <p class="text-amber-700 dark:text-amber-300 sm:col-span-2">
+                    Pending overtime (not paid): {{ formatHours(detail.totals.pendingOvertimeHours) }}
+                  </p>
+                }
+                <p>Base pay: {{ formatMoney(detail.totals.basePay) }}</p>
+                <p>Overtime pay: {{ formatMoney(detail.totals.overtimePay) }}</p>
+                <p class="pt-2 text-base font-bold text-pcmazing-500 sm:col-span-2">
+                  Net estimated pay: {{ formatMoney(detail.totals.estimatedPay) }}
+                </p>
+              </div>
+            </div>
+          } @else {
+            <p class="py-10 text-center text-sm text-slate-500">No payslips to preview for this cutoff.</p>
+          }
+        </div>
+
+        <div class="flex flex-col gap-3 border-t border-slate-100 px-5 py-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              class="rounded-lg border px-3 py-1.5 text-xs font-bold disabled:opacity-40 dark:border-slate-700"
+              [disabled]="!canPreviewPrev()"
+              (click)="showPreviousPayslip()"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              class="rounded-lg border px-3 py-1.5 text-xs font-bold disabled:opacity-40 dark:border-slate-700"
+              [disabled]="!canPreviewNext()"
+              (click)="showNextPayslip()"
+            >
+              Next
+            </button>
+          </div>
+          <div class="flex min-w-0 flex-col items-stretch gap-2 sm:items-end">
+            @if (blockingOverlaps().length > 0 && !confirmOverlap()) {
+              <p class="text-xs font-medium text-amber-700">Tick “generate anyway” on the Period pay page first — these dates overlap existing payslips.</p>
+            }
+            @if (error()) {
+              <p class="text-xs font-medium text-red-600">{{ error() }}</p>
+            }
+            <button
+              type="button"
+              class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:opacity-50"
+              [disabled]="generating() || previewLoading() || previewItems().length === 0 || (blockingOverlaps().length > 0 && !confirmOverlap())"
+              (click)="generatePayslips()"
+            >
+              @if (generating()) {
+                Generating...
+              } @else {
+                Confirm & generate {{ previewItems().length }} payslip{{ previewItems().length === 1 ? '' : 's' }}
+              }
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   }
 
   @if (selfieModal(); as modal) {

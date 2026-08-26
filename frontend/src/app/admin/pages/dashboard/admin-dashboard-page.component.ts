@@ -5,6 +5,7 @@ import { firstValueFrom } from 'rxjs';
 import { DashboardChartComponent } from '../../components/dashboard-chart/dashboard-chart.component';
 import { DashboardDetailsPanelComponent } from '../../components/dashboard-details-panel/dashboard-details-panel.component';
 import { DashboardKpiCardComponent } from '../../components/dashboard-kpi-card/dashboard-kpi-card.component';
+import { CompanyExpensesWidgetComponent } from '../../components/company-expenses-widget/company-expenses-widget.component';
 import {
   DashboardDetailMetric,
   DashboardDetails,
@@ -21,6 +22,7 @@ import { AdminApiService } from '../../services/admin-api.service';
     DashboardKpiCardComponent,
     DashboardChartComponent,
     DashboardDetailsPanelComponent,
+    CompanyExpensesWidgetComponent,
   ],
   templateUrl: './admin-dashboard-page.component.html',
 })
@@ -64,7 +66,7 @@ export class AdminDashboardPageComponent implements OnInit {
       return [];
     }
 
-    const order = ['net', 'outstanding', 'discounts'];
+    const order = ['net', 'outstanding', 'discounts', 'operatingExpenses'];
     return order
       .map((key) => data.kpis.find((item) => item.key === key))
       .filter((item): item is NonNullable<typeof item> => Boolean(item));
@@ -103,6 +105,16 @@ export class AdminDashboardPageComponent implements OnInit {
 
   readonly hasFinancialSplit = computed(() =>
     this.financialSplitValues().some((value) => value > 0),
+  );
+
+  readonly expenseCategoryLabels = computed(
+    () => this.overview()?.charts.expenseCategories?.map((item) => item.label) ?? [],
+  );
+  readonly expenseCategoryValues = computed(
+    () => this.overview()?.charts.expenseCategories?.map((item) => item.value) ?? [],
+  );
+  readonly expenseCategoryColors = computed(
+    () => this.overview()?.charts.expenseCategories?.map((item) => item.color) ?? [],
   );
 
   ngOnInit(): void {

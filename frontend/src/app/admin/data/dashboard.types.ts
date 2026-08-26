@@ -24,7 +24,8 @@ export type DashboardDetailMetric =
   | 'projects'
   | 'net'
   | 'outstanding'
-  | 'discounts';
+  | 'discounts'
+  | 'operatingExpenses';
 
 export interface DashboardDetailRow {
   id: number;
@@ -60,5 +61,6 @@ export interface DashboardOverview {
     jobStatus: Array<{ label: string; value: number; color: string }>;
     inquiriesTrend: DashboardChartPoint[];
     financialSplit: { net: number; outstanding: number; gross: number };
+    expenseCategories?: Array<{ label: string; value: number; color: string }>;
   };
 }

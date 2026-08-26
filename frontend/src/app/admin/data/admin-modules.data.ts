@@ -114,6 +114,13 @@ export const ADMIN_MODULES: AdminModuleItem[] = [
     referenceMenu: 'customers',
   },
   {
+    key: 'company_expenses',
+    label: 'Company Expenses',
+    route: '/admin/company-expenses',
+    description: 'Operational expense calendar for salary, rent, bills, taxes, and maintenance.',
+    status: 'active',
+  },
+  {
     key: 'lead_generation',
     label: 'Lead Generation',
     route: '/admin/lead-generation',
@@ -199,7 +206,9 @@ export const ADMIN_NAV_SECTIONS: AdminNavSection[] = [
     key: 'sales_operations',
     title: 'Sales Operations',
     items: ADMIN_MODULES.filter((item) =>
-      ['sales_order', 'job_order', 'quotation', 'inventory', 'customers'].includes(item.key),
+      ['sales_order', 'job_order', 'quotation', 'inventory', 'customers', 'company_expenses'].includes(
+        item.key,
+      ),
     ),
   },
   {
@@ -252,7 +261,9 @@ export function filterNavSectionsForRole(
         key: 'sales_operations',
         title: 'Sales Operations',
         items: ADMIN_MODULES.filter((item) =>
-          ['sales_order', 'job_order', 'quotation', 'inventory', 'customers'].includes(item.key),
+          ['sales_order', 'job_order', 'quotation', 'inventory', 'customers', 'company_expenses'].includes(
+        item.key,
+      ),
         ),
       },
       {
@@ -303,7 +314,8 @@ export function filterNavSectionsForRole(
   );
   const salesOps = ADMIN_MODULES.filter(
     (item) =>
-      ['sales_order', 'job_order', 'quotation', 'inventory'].includes(item.key) && allowed.has(item.key),
+      ['sales_order', 'job_order', 'quotation', 'inventory', 'company_expenses'].includes(item.key) &&
+      allowed.has(item.key),
   );
   if (salesHome.length) {
     sections.push({ key: 'sales_home', title: 'Sales', items: salesHome });

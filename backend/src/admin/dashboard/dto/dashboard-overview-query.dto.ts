@@ -10,6 +10,7 @@ export const DASHBOARD_DETAIL_METRICS = [
   'net',
   'outstanding',
   'discounts',
+  'operatingExpenses',
 ] as const;
 
 export type DashboardDetailMetric = (typeof DASHBOARD_DETAIL_METRICS)[number];

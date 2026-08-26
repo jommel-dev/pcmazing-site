@@ -30,6 +30,7 @@ export class TimeClockController {
     const value = username?.trim();
     if (!value) {
       const clock = await this.payrollService.getServerClock();
+      const settings = await this.payrollService.getSettings();
       return {
         success: true,
         data: {
@@ -44,6 +45,7 @@ export class TimeClockController {
           status: 'not_found',
           message: 'Enter a username to continue.',
           serverNow: clock.serverNow,
+          undertimeGraceMinutes: settings.undertimeGraceMinutes,
         },
       };
     }

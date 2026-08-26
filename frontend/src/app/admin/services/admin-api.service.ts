@@ -73,6 +73,64 @@ export interface DemoRequest {
   updatedAt: string;
 }
 
+export type CompanyExpenseCategory =
+  | 'salary'
+  | 'rent'
+  | 'electric_bill'
+  | 'water_bill'
+  | 'internet_bill'
+  | 'taxes'
+  | 'maintenance';
+
+export type CompanyExpensePaymentMethod = 'cash' | 'bank' | 'gcash' | 'card' | 'other';
+
+export type CompanyExpenseStatus = 'planned' | 'paid';
+
+export interface CompanyExpense {
+  id: number;
+  title: string;
+  amount: number;
+  expenseDate: string;
+  category: CompanyExpenseCategory;
+  categoryLabel: string;
+  vendor: string | null;
+  paymentMethod: CompanyExpensePaymentMethod;
+  status: CompanyExpenseStatus;
+  notes: string | null;
+  createdBy: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CompanyExpenseCalendar {
+  items: CompanyExpense[];
+  totals: {
+    amount: number;
+    paidAmount: number;
+    plannedAmount: number;
+    count: number;
+  };
+  categories: Array<{
+    key: CompanyExpenseCategory;
+    label: string;
+    amount: number;
+    count: number;
+    color: string;
+  }>;
+  range: { from: string; to: string };
+}
+
+export interface CompanyExpensePayload {
+  title: string;
+  amount: number;
+  expenseDate: string;
+  category: CompanyExpenseCategory;
+  vendor?: string;
+  paymentMethod?: CompanyExpensePaymentMethod;
+  status?: CompanyExpenseStatus;
+  notes?: string;
+}
+
 export interface MaterialItem {
   id: number;
   materialCode: string | null;
@@ -521,6 +579,7 @@ export interface PayrollAttendanceItem {
   timeOutSelfieUrl?: string | null;
   overtimeHours?: number;
   overtimeStatus?: PayrollOvertimeStatus;
+  adjustmentStatus?: PayrollOvertimeStatus;
 }
 
 export interface PayrollOvertimeItem {
@@ -539,6 +598,28 @@ export interface PayrollOvertimeItem {
   department: string | null;
   overtimeReviewedAt: string | null;
   overtimeReviewNote: string | null;
+}
+
+export interface PayrollAdjustmentItem {
+  id: number;
+  userId: number;
+  userSource: 'pcmazing_admin_users' | 'tblusers';
+  username: string;
+  fullName: string;
+  workDate: string;
+  timeIn: string | null;
+  timeOut: string | null;
+  requestedTimeOut: string | null;
+  hoursWorked: number | null;
+  employeeCode: string | null;
+  department: string | null;
+  timeInSelfieUrl: string | null;
+  adjustmentSelfieUrl: string | null;
+  adjustmentNote: string | null;
+  undertimeCategory: 'emergency' | 'appointment' | 'event' | 'other' | null;
+  adjustmentStatus: PayrollOvertimeStatus;
+  adjustmentReviewedAt: string | null;
+  adjustmentReviewNote: string | null;
 }
 
 export interface EmployeeDayOffItem {
@@ -613,12 +694,20 @@ export interface EmployeePayslipDetail {
     basePay: number;
     overtimePay: number;
     estimatedPay: number;
+    periodDays?: number;
+    salaryTypeLabel?: string;
+    payBasis?: string;
   };
+  isPreview?: boolean;
+  salaryType?: string;
+  userId?: number;
+  userSource?: string;
 }
 
 export interface EmployeeWorkspaceDashboard {
   workDate: string;
   month: string;
+  undertimeGraceMinutes?: number;
   today: {
     timeIn: string | null;
     timeOut: string | null;
@@ -628,6 +717,8 @@ export interface EmployeeWorkspaceDashboard {
     overtimeStatus?: PayrollOvertimeStatus;
     canRequestOvertime?: boolean;
     attendanceId?: number | null;
+    canRequestTimeOutAdjustment?: boolean;
+    adjustmentStatus?: PayrollOvertimeStatus;
   };
   monthSummary: {
     totalHours: number;
@@ -636,6 +727,11 @@ export interface EmployeeWorkspaceDashboard {
     dayOffCount: number;
   };
   overtimeNotice?: {
+    eligibleCount: number;
+    pendingCount: number;
+    message: string | null;
+  };
+  adjustmentNotice?: {
     eligibleCount: number;
     pendingCount: number;
     message: string | null;
@@ -650,6 +746,10 @@ export interface EmployeeWorkspaceDashboard {
     overtimeHours?: number;
     overtimeStatus?: PayrollOvertimeStatus;
     canRequestOvertime?: boolean;
+    requestedTimeOut?: string | null;
+    adjustmentStatus?: PayrollOvertimeStatus;
+    adjustmentNote?: string | null;
+    canRequestTimeOutAdjustment?: boolean;
   }>;
   dayOffs: EmployeeDayOffItem[];
   todos: EmployeeTodoItem[];
@@ -707,9 +807,24 @@ export interface PayrollPeriodItem {
   periodDateTo?: string;
 }
 
+export interface PayrollOverlapItem {
+  userId: number;
+  userSource: string;
+  fullName: string;
+  estimatedPay: number;
+  runId: number;
+  label: string;
+  dateFrom: string;
+  dateTo: string;
+  exactMatch: boolean;
+}
+
 export interface PayrollPeriodMeta {
   dateFrom: string;
   dateTo: string;
+  periodType?: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
+  workWeek?: 'mon_fri' | 'mon_sat' | 'day_off_basis';
+  undertimeGraceMinutes?: number;
   periodDays: number;
   totals: {
     employees: number;
@@ -718,6 +833,7 @@ export interface PayrollPeriodMeta {
     pendingOvertimeHours?: number;
     estimatedPay: number;
   };
+  overlaps?: PayrollOverlapItem[];
 }
 
 export interface PayrollGenerateResult {
@@ -1691,6 +1807,55 @@ export class AdminApiService {
     );
   }
 
+  listCompanyExpenses(options: {
+    from?: string;
+    to?: string;
+    category?: string;
+    status?: string;
+  } = {}) {
+    let params = new HttpParams();
+    if (options.from) {
+      params = params.set('from', options.from);
+    }
+    if (options.to) {
+      params = params.set('to', options.to);
+    }
+    if (options.category) {
+      params = params.set('category', options.category);
+    }
+    if (options.status) {
+      params = params.set('status', options.status);
+    }
+
+    return this.http.get<ItemResponse<CompanyExpenseCalendar>>(
+      `${APP_CONFIG.apiUrl}/admin/company-expenses`,
+      { headers: this.headers(), params },
+    );
+  }
+
+  createCompanyExpense(payload: CompanyExpensePayload) {
+    return this.http.post<ItemResponse<CompanyExpense>>(
+      `${APP_CONFIG.apiUrl}/admin/company-expenses`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  updateCompanyExpense(id: number, payload: Partial<CompanyExpensePayload>) {
+    return this.http.patch<ItemResponse<CompanyExpense>>(
+      `${APP_CONFIG.apiUrl}/admin/company-expenses/${id}`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  deleteCompanyExpense(id: number) {
+    return this.http.delete<ItemResponse<CompanyExpense>>(
+      `${APP_CONFIG.apiUrl}/admin/company-expenses/${id}`,
+      { headers: this.headers() },
+    );
+  }
+
   getRbacStatus() {
     return this.http.get<ItemResponse<RbacStatus>>(
       `${APP_CONFIG.apiUrl}/admin/users/rbac-status`,
@@ -1850,13 +2015,20 @@ export class AdminApiService {
     );
   }
 
-  getPayrollPeriod(dateFrom = '', dateTo = '') {
+  getPayrollPeriod(
+    dateFrom = '',
+    dateTo = '',
+    periodType?: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff',
+  ) {
     let params = new HttpParams();
     if (dateFrom.trim()) {
       params = params.set('dateFrom', dateFrom.trim());
     }
     if (dateTo.trim()) {
       params = params.set('dateTo', dateTo.trim());
+    }
+    if (periodType) {
+      params = params.set('periodType', periodType);
     }
 
     return this.http.get<{ success: boolean; data: PayrollPeriodItem[]; meta: PayrollPeriodMeta }>(
@@ -1868,19 +2040,62 @@ export class AdminApiService {
   generatePayrollPeriod(
     dateFrom = '',
     dateTo = '',
-    employees?: Array<{
-      userId: number;
-      userSource: string;
-      payslipPeriod: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
-    }>,
+    periodType?: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff',
+    confirmOverlap = false,
   ) {
     return this.http.post<ItemResponse<PayrollGenerateResult>>(
       `${APP_CONFIG.apiUrl}/admin/payroll/period/generate`,
       {
         dateFrom: dateFrom.trim() || undefined,
         dateTo: dateTo.trim() || undefined,
-        employees,
+        periodType,
+        confirmOverlap: confirmOverlap || undefined,
       },
+      { headers: this.headers() },
+    );
+  }
+
+  previewPayrollPeriod(
+    dateFrom = '',
+    dateTo = '',
+    periodType?: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff',
+  ) {
+    return this.http.post<
+      ItemResponse<{
+        dateFrom: string;
+        dateTo: string;
+        overlaps?: PayrollOverlapItem[];
+        items: EmployeePayslipDetail[];
+      }>
+    >(
+      `${APP_CONFIG.apiUrl}/admin/payroll/period/preview`,
+      {
+        dateFrom: dateFrom.trim() || undefined,
+        dateTo: dateTo.trim() || undefined,
+        periodType,
+      },
+      { headers: this.headers() },
+    );
+  }
+
+  getPayrollSettings() {
+    return this.http.get<
+      ItemResponse<{ workWeek: 'mon_fri' | 'mon_sat' | 'day_off_basis'; undertimeGraceMinutes: number }>
+    >(
+      `${APP_CONFIG.apiUrl}/admin/payroll/settings`,
+      { headers: this.headers() },
+    );
+  }
+
+  updatePayrollSettings(payload: {
+    workWeek?: 'mon_fri' | 'mon_sat' | 'day_off_basis';
+    undertimeGraceMinutes?: number;
+  }) {
+    return this.http.patch<
+      ItemResponse<{ workWeek: 'mon_fri' | 'mon_sat' | 'day_off_basis'; undertimeGraceMinutes: number }>
+    >(
+      `${APP_CONFIG.apiUrl}/admin/payroll/settings`,
+      payload,
       { headers: this.headers() },
     );
   }
@@ -1906,6 +2121,34 @@ export class AdminApiService {
       }>
     >(
       `${APP_CONFIG.apiUrl}/admin/payroll/overtime/${id}`,
+      { status, ...(note.trim() ? { note: note.trim() } : {}) },
+      { headers: this.headers() },
+    );
+  }
+
+  listPayrollAdjustments(status: PayrollOvertimeStatus | 'pending' = 'pending', page = 1, limit = 50) {
+    let params = this.listParams(page, limit, '');
+    params = params.set('status', status);
+
+    return this.http.get<ListResponse<PayrollAdjustmentItem> & { status: PayrollOvertimeStatus }>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/adjustments`,
+      { headers: this.headers(), params },
+    );
+  }
+
+  reviewPayrollAdjustment(id: number, status: 'approved' | 'rejected', note = '') {
+    return this.http.patch<
+      ItemResponse<{
+        id: number;
+        timeOut: string | null;
+        requestedTimeOut: string | null;
+        adjustmentStatus: PayrollOvertimeStatus;
+        adjustmentReviewedAt: string | null;
+        adjustmentReviewNote: string | null;
+        adjustmentSelfieUrl: string | null;
+      }>
+    >(
+      `${APP_CONFIG.apiUrl}/admin/payroll/adjustments/${id}`,
       { status, ...(note.trim() ? { note: note.trim() } : {}) },
       { headers: this.headers() },
     );
@@ -2425,6 +2668,33 @@ export class AdminApiService {
     >(
       `${APP_CONFIG.apiUrl}/admin/employee-workspace/overtime/${attendanceId}/request`,
       {},
+      { headers: this.headers() },
+    );
+  }
+
+  requestEmployeeTimeOutAdjustment(
+    attendanceId: number,
+    selfie: File,
+    requestedTimeOut: string,
+    note = '',
+    undertimeCategory: 'emergency' | 'appointment' | 'event' | 'other' = 'other',
+  ) {
+    const formData = new FormData();
+    formData.append('selfie', selfie);
+    formData.append('requestedTimeOut', requestedTimeOut);
+    formData.append('note', note.trim());
+    formData.append('undertimeCategory', undertimeCategory);
+    return this.http.post<
+      ItemResponse<{
+        id: number;
+        workDate: string;
+        requestedTimeOut: string | null;
+        adjustmentStatus: PayrollOvertimeStatus;
+        message: string;
+      }> & { message?: string }
+    >(
+      `${APP_CONFIG.apiUrl}/admin/employee-workspace/attendance/${attendanceId}/request-time-out`,
+      formData,
       { headers: this.headers() },
     );
   }

@@ -115,6 +115,10 @@ export class DashboardDetailsPanelComponent {
       case 'completed':
       case 'active':
         return `${base} bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200`;
+      case 'paid':
+        return `${base} bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200`;
+      case 'planned':
+        return `${base} bg-amber-50 text-amber-700 ring-1 ring-amber-200`;
       case 'pending':
       case 'on_hold':
       case 'on hold':

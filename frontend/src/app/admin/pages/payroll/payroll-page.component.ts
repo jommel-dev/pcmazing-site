@@ -5,9 +5,12 @@ import { firstValueFrom } from 'rxjs';
 import { APP_CONFIG } from '../../../core/config/app-config';
 import {
   AdminApiService,
+  EmployeePayslipDetail,
   PaginationMeta,
+  PayrollAdjustmentItem,
   PayrollAttendanceItem,
   PayrollEmployeeItem,
+  PayrollOverlapItem,
   PayrollOverview,
   PayrollOvertimeItem,
   PayrollOvertimeStatus,
@@ -15,8 +18,9 @@ import {
   PayrollPeriodMeta,
 } from '../../services/admin-api.service';
 
-type PayrollTab = 'overview' | 'attendance' | 'employees' | 'period' | 'overtime';
-type PayslipPeriod = 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
+type PayrollTab = 'overview' | 'attendance' | 'employees' | 'period' | 'overtime' | 'adjustments';
+type PeriodType = 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
+type WorkWeek = 'mon_fri' | 'mon_sat' | 'day_off_basis';
 
 @Component({
   selector: 'app-payroll-page',
@@ -34,6 +38,7 @@ export class PayrollPageComponent implements OnInit {
     { key: 'employees', label: 'Employees' },
     { key: 'period', label: 'Period pay' },
     { key: 'overtime', label: 'Overtime' },
+    { key: 'adjustments', label: 'Adjustments' },
   ];
 
   readonly activeTab = signal<PayrollTab>('overview');
@@ -56,12 +61,26 @@ export class PayrollPageComponent implements OnInit {
   readonly dateTo = signal('');
   readonly generating = signal(false);
   readonly generateMessage = signal('');
-  readonly payslipPeriodByKey = signal<Record<string, PayslipPeriod>>({});
-  readonly payslipPeriodOptions: Array<{ value: PayslipPeriod; label: string }> = [
+  readonly previewOpen = signal(false);
+  readonly previewLoading = signal(false);
+  readonly previewItems = signal<EmployeePayslipDetail[]>([]);
+  readonly previewIndex = signal(0);
+  readonly periodType = signal<PeriodType>('weekly');
+  readonly workWeek = signal<WorkWeek>('mon_fri');
+  readonly undertimeGraceMinutes = signal(30);
+  readonly savingWorkWeek = signal(false);
+  readonly overlaps = signal<PayrollOverlapItem[]>([]);
+  readonly confirmOverlap = signal(false);
+  readonly periodTypeOptions: Array<{ value: PeriodType; label: string }> = [
     { value: 'weekly', label: 'Weekly' },
     { value: 'semi_monthly', label: 'Semi-Monthly' },
     { value: 'monthly', label: 'Monthly' },
-    { value: 'cutoff', label: 'Selected dates' },
+    { value: 'cutoff', label: 'Custom' },
+  ];
+  readonly workWeekOptions: Array<{ value: WorkWeek; label: string }> = [
+    { value: 'mon_fri', label: 'Mon–Fri' },
+    { value: 'mon_sat', label: 'Mon–Sat' },
+    { value: 'day_off_basis', label: 'Day-off basis' },
   ];
 
   readonly overtimeItems = signal<PayrollOvertimeItem[]>([]);
@@ -70,14 +89,30 @@ export class PayrollPageComponent implements OnInit {
   readonly overtimePage = signal(1);
   readonly reviewingOvertimeId = signal<number | null>(null);
 
+  readonly adjustmentItems = signal<PayrollAdjustmentItem[]>([]);
+  readonly adjustmentMeta = signal<PaginationMeta | null>(null);
+  readonly adjustmentStatus = signal<PayrollOvertimeStatus>('pending');
+  readonly adjustmentPage = signal(1);
+  readonly reviewingAdjustmentId = signal<number | null>(null);
+
   readonly timeClockUrl = `${APP_CONFIG.publicSiteUrl.replace(/\/$/, '')}/time-clock`;
 
   ngOnInit(): void {
     const today = this.manilaToday();
     this.workDate.set(today);
-    this.dateTo.set(today);
-    this.dateFrom.set(`${today.slice(0, 8)}01`);
-    void this.loadActiveTab();
+    void this.bootstrapDates(today);
+  }
+
+  private async bootstrapDates(today: string): Promise<void> {
+    try {
+      const settings = await firstValueFrom(this.adminApi.getPayrollSettings());
+      this.workWeek.set(settings.data.workWeek);
+      this.undertimeGraceMinutes.set(settings.data.undertimeGraceMinutes ?? 30);
+    } catch {
+      // Keep default Mon–Fri until settings load with Period pay.
+    }
+    this.snapDatesForPeriodType(today);
+    await this.loadActiveTab();
   }
 
   async setTab(tab: PayrollTab): Promise<void> {
@@ -105,6 +140,9 @@ export class PayrollPageComponent implements OnInit {
           break;
         case 'overtime':
           await this.loadOvertime();
+          break;
+        case 'adjustments':
+          await this.loadAdjustments();
           break;
       }
     } catch {
@@ -137,14 +175,19 @@ export class PayrollPageComponent implements OnInit {
   }
 
   private async loadPeriod(): Promise<void> {
-    const response = await firstValueFrom(
-      this.adminApi.getPayrollPeriod(this.dateFrom(), this.dateTo()),
-    );
-    this.periodItems.set(response.data);
-    this.periodMeta.set(response.meta);
-    this.dateFrom.set(response.meta.dateFrom);
-    this.dateTo.set(response.meta.dateTo);
-    this.syncPayslipPeriods(response.data);
+    const [periodResponse, settingsResponse] = await Promise.all([
+      firstValueFrom(
+        this.adminApi.getPayrollPeriod(this.dateFrom(), this.dateTo(), this.periodType()),
+      ),
+      firstValueFrom(this.adminApi.getPayrollSettings()),
+    ]);
+    this.periodItems.set(periodResponse.data);
+    this.periodMeta.set(periodResponse.meta);
+    this.dateFrom.set(periodResponse.meta.dateFrom);
+    this.dateTo.set(periodResponse.meta.dateTo);
+    this.overlaps.set(periodResponse.meta.overlaps ?? []);
+    this.workWeek.set(settingsResponse.data.workWeek);
+    this.undertimeGraceMinutes.set(settingsResponse.data.undertimeGraceMinutes ?? 30);
   }
 
   private async loadOvertime(): Promise<void> {
@@ -154,6 +197,15 @@ export class PayrollPageComponent implements OnInit {
     this.overtimeItems.set(response.data);
     this.overtimeMeta.set(response.meta);
     this.overtimeStatus.set(response.status);
+  }
+
+  private async loadAdjustments(): Promise<void> {
+    const response = await firstValueFrom(
+      this.adminApi.listPayrollAdjustments(this.adjustmentStatus(), this.adjustmentPage(), 50),
+    );
+    this.adjustmentItems.set(response.data);
+    this.adjustmentMeta.set(response.meta);
+    this.adjustmentStatus.set(response.status);
   }
 
   async applyAttendanceFilter(): Promise<void> {
@@ -197,6 +249,7 @@ export class PayrollPageComponent implements OnInit {
     this.loading.set(true);
     this.error.set('');
     this.generateMessage.set('');
+    this.confirmOverlap.set(false);
     try {
       await this.loadPeriod();
     } catch {
@@ -248,8 +301,50 @@ export class PayrollPageComponent implements OnInit {
     }
   }
 
+  async applyAdjustmentFilter(): Promise<void> {
+    this.adjustmentPage.set(1);
+    this.loading.set(true);
+    this.error.set('');
+    try {
+      await this.loadAdjustments();
+    } catch {
+      this.error.set('Unable to load time-out adjustments.');
+    } finally {
+      this.loading.set(false);
+    }
+  }
+
+  async goToAdjustmentPage(nextPage: number): Promise<void> {
+    this.adjustmentPage.set(nextPage);
+    this.loading.set(true);
+    try {
+      await this.loadAdjustments();
+    } catch {
+      this.error.set('Unable to load time-out adjustments.');
+    } finally {
+      this.loading.set(false);
+    }
+  }
+
+  async reviewAdjustment(item: PayrollAdjustmentItem, status: 'approved' | 'rejected'): Promise<void> {
+    if (this.reviewingAdjustmentId() != null) {
+      return;
+    }
+
+    this.reviewingAdjustmentId.set(item.id);
+    this.error.set('');
+    try {
+      await firstValueFrom(this.adminApi.reviewPayrollAdjustment(item.id, status));
+      await this.loadAdjustments();
+    } catch {
+      this.error.set(`Unable to ${status === 'approved' ? 'approve' : 'reject'} time-out adjustment.`);
+    } finally {
+      this.reviewingAdjustmentId.set(null);
+    }
+  }
+
   async generatePayslips(): Promise<void> {
-    if (this.generating()) {
+    if (this.generating() || this.periodItems().length === 0) {
       return;
     }
 
@@ -261,26 +356,86 @@ export class PayrollPageComponent implements OnInit {
         this.adminApi.generatePayrollPeriod(
           this.dateFrom(),
           this.dateTo(),
-          this.periodItems().map((item) => ({
-            userId: item.userId,
-            userSource: item.userSource,
-            payslipPeriod: this.payslipPeriodFor(item),
-          })),
+          this.periodType(),
+          this.confirmOverlap() || this.blockingOverlaps().length === 0,
         ),
       );
       const data = response.data;
       this.dateFrom.set(data.dateFrom);
       this.dateTo.set(data.dateTo);
+      this.closePayslipPreview();
       await this.loadPeriod();
       this.generateMessage.set(
         data.replaced
           ? `Re-generated ${data.label} for ${data.employeeCount} employee(s). Payslips are now visible on their portal.`
           : `Generated ${data.label} for ${data.employeeCount} employee(s). Payslips are now visible on their portal.`,
       );
-    } catch {
-      this.error.set('Unable to generate payslips for this cutoff.');
+    } catch (err) {
+      const overlapMessage = this.readOverlapError(err);
+      this.error.set(overlapMessage || 'Unable to generate payslips for this cutoff.');
     } finally {
       this.generating.set(false);
+    }
+  }
+
+  async openPayslipPreview(item?: PayrollPeriodItem): Promise<void> {
+    if (this.previewLoading() || this.periodItems().length === 0) {
+      return;
+    }
+
+    this.previewOpen.set(true);
+    this.previewLoading.set(true);
+    this.previewItems.set([]);
+    this.error.set('');
+    this.generateMessage.set('');
+    try {
+      const response = await firstValueFrom(
+        this.adminApi.previewPayrollPeriod(this.dateFrom(), this.dateTo(), this.periodType()),
+      );
+      const items = response.data.items ?? [];
+      this.previewItems.set(items);
+      this.overlaps.set(response.data.overlaps ?? this.overlaps());
+      const startKey = item ? this.employeeKey(item) : '';
+      const startIndex = startKey
+        ? items.findIndex((slip) => `${slip.userSource}:${slip.userId}` === startKey)
+        : 0;
+      this.previewIndex.set(startIndex >= 0 ? startIndex : 0);
+    } catch {
+      this.error.set('Unable to load payslip preview.');
+      this.previewOpen.set(false);
+    } finally {
+      this.previewLoading.set(false);
+    }
+  }
+
+  closePayslipPreview(): void {
+    this.previewOpen.set(false);
+    this.previewLoading.set(false);
+    this.previewItems.set([]);
+    this.previewIndex.set(0);
+  }
+
+  previewEmployee(): EmployeePayslipDetail | null {
+    return this.previewItems()[this.previewIndex()] ?? null;
+  }
+
+  canPreviewPrev(): boolean {
+    return this.previewIndex() > 0;
+  }
+
+  canPreviewNext(): boolean {
+    return this.previewIndex() < this.previewItems().length - 1;
+  }
+
+  showPreviousPayslip(): void {
+    if (this.canPreviewPrev()) {
+      this.previewIndex.update((index) => index - 1);
+    }
+  }
+
+  showNextPayslip(): void {
+    if (this.canPreviewNext()) {
+      this.previewIndex.update((index) => index + 1);
     }
   }
 
@@ -351,7 +506,25 @@ export class PayrollPageComponent implements OnInit {
 
   @HostListener('document:keydown.escape')
   onEscape(): void {
+    if (this.previewOpen()) {
+      this.closePayslipPreview();
+      return;
+    }
     this.closeSelfieModal();
+  }
+
+  @HostListener('document:keydown.arrowleft')
+  onPreviewPrev(): void {
+    if (this.previewOpen() && !this.previewLoading()) {
+      this.showPreviousPayslip();
+    }
+  }
+
+  @HostListener('document:keydown.arrowright')
+  onPreviewNext(): void {
+    if (this.previewOpen() && !this.previewLoading()) {
+      this.showNextPayslip();
+    }
   }
 
   salaryTypeLabel(value: string): string {
@@ -375,85 +548,144 @@ export class PayrollPageComponent implements OnInit {
     return `${item.userSource}:${item.userId}`;
   }
 
-  payslipPeriodFor(item: PayrollPeriodItem): PayslipPeriod {
-    return this.payslipPeriodByKey()[this.employeeKey(item)] ?? item.payslipPeriod ?? item.salaryType;
+  blockingOverlaps(): PayrollOverlapItem[] {
+    return this.overlaps().filter((item) => !item.exactMatch);
   }
 
-  setPayslipPeriod(item: PayrollPeriodItem, period: PayslipPeriod): void {
-    this.payslipPeriodByKey.update((current) => ({
-      ...current,
-      [this.employeeKey(item)]: period,
-    }));
+  exactOverlaps(): PayrollOverlapItem[] {
+    return this.overlaps().filter((item) => item.exactMatch);
   }
 
-  payslipRangeLabel(item: PayrollPeriodItem): string {
-    const selected = this.payslipPeriodFor(item);
-    const range =
-      selected === (item.payslipPeriod ?? item.salaryType) && item.periodDateFrom && item.periodDateTo
-        ? { dateFrom: item.periodDateFrom, dateTo: item.periodDateTo }
-        : this.resolvePayslipRange(selected, this.dateFrom(), this.dateTo());
-    return `${range.dateFrom} → ${range.dateTo}`;
+  async setPeriodType(type: PeriodType): Promise<void> {
+    this.periodType.set(type);
+    this.confirmOverlap.set(false);
+    this.snapDatesForPeriodType();
+    await this.applyPeriodFilter();
   }
 
-  selectedPeriodPay(item: PayrollPeriodItem): number {
-    const selected = this.payslipPeriodFor(item);
-    const fixed = item.fixedMonthlySalary;
-    if (fixed != null && fixed > 0) {
-      const selectedBase = this.monthlyToScheduleAmount(fixed, selected);
-      const profileBase = this.monthlyToScheduleAmount(fixed, item.salaryType);
-      const overtimePortion = Math.max(0, item.estimatedPay - profileBase);
-      return this.roundMoney(selectedBase + overtimePortion);
+  async setWorkWeek(workWeek: WorkWeek): Promise<void> {
+    if (this.savingWorkWeek()) {
+      return;
     }
-    return item.estimatedPay;
+    this.savingWorkWeek.set(true);
+    this.error.set('');
+    try {
+      const response = await firstValueFrom(
+        this.adminApi.updatePayrollSettings({
+          workWeek,
+          undertimeGraceMinutes: this.undertimeGraceMinutes(),
+        }),
+      );
+      this.workWeek.set(response.data.workWeek);
+      this.undertimeGraceMinutes.set(response.data.undertimeGraceMinutes ?? this.undertimeGraceMinutes());
+      this.snapDatesForPeriodType();
+      await this.applyPeriodFilter();
+    } catch {
+      this.error.set('Unable to save work week.');
+    } finally {
+      this.savingWorkWeek.set(false);
+    }
   }
 
-  private syncPayslipPeriods(items: PayrollPeriodItem[]): void {
-    this.payslipPeriodByKey.update((current) => {
-      const next = { ...current };
-      for (const item of items) {
-        const key = this.employeeKey(item);
-        if (!next[key]) {
-          next[key] = item.payslipPeriod ?? item.salaryType;
-        }
-      }
-      return next;
-    });
+  async setUndertimeGrace(minutes: number | string): Promise<void> {
+    const parsed = Math.min(90, Math.max(0, Math.round(Number(minutes) || 0)));
+    this.undertimeGraceMinutes.set(parsed);
+    if (this.savingWorkWeek()) {
+      return;
+    }
+    this.savingWorkWeek.set(true);
+    this.error.set('');
+    try {
+      const response = await firstValueFrom(
+        this.adminApi.updatePayrollSettings({
+          workWeek: this.workWeek(),
+          undertimeGraceMinutes: parsed,
+        }),
+      );
+      this.undertimeGraceMinutes.set(response.data.undertimeGraceMinutes ?? parsed);
+      await this.applyPeriodFilter();
+    } catch {
+      this.error.set('Unable to save undertime grace.');
+    } finally {
+      this.savingWorkWeek.set(false);
+    }
   }
 
-  private resolvePayslipRange(
-    period: PayslipPeriod,
-    dateFrom: string,
-    dateTo: string,
-  ): { dateFrom: string; dateTo: string } {
-    const ref = dateTo || dateFrom;
-    const [year, month, day] = ref.split('-').map(Number);
-    const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
-    const pad = (value: number) => String(value).padStart(2, '0');
-    const yearMonth = `${year}-${pad(month)}`;
+  workWeekLabel(value: WorkWeek): string {
+    return this.workWeekOptions.find((option) => option.value === value)?.label ?? value;
+  }
 
-    switch (period) {
-      case 'weekly': {
-        const utc = Date.UTC(year, month - 1, day);
-        const weekday = new Date(utc).getUTCDay();
-        const mondayOffset = weekday === 0 ? -6 : 1 - weekday;
-        const from = new Date(Date.UTC(year, month - 1, day + mondayOffset));
-        const to = new Date(Date.UTC(year, month - 1, day + mondayOffset + 6));
-        return {
-          dateFrom: from.toISOString().slice(0, 10),
-          dateTo: to.toISOString().slice(0, 10),
-        };
-      }
+  shiftWeekly(weeks: -1 | 0 | 1): void {
+    if (weeks === 0) {
+      this.snapWeeklyRange(this.manilaToday());
+      return;
+    }
+    const base = this.dateFrom() || this.manilaToday();
+    this.snapWeeklyRange(this.shiftIsoDate(base, weeks * 7));
+  }
+
+  setMonthlyPeriod(): void {
+    const base = this.dateTo() || this.manilaToday();
+    const yearMonth = base.slice(0, 7);
+    this.dateFrom.set(`${yearMonth}-01`);
+    this.dateTo.set(this.monthEnd(yearMonth));
+  }
+
+  private snapDatesForPeriodType(ref = this.dateTo() || this.manilaToday()): void {
+    switch (this.periodType()) {
+      case 'weekly':
+        this.snapWeeklyRange(ref);
+        break;
       case 'semi_monthly':
-        if (day <= 15) {
-          return { dateFrom: `${yearMonth}-01`, dateTo: `${yearMonth}-15` };
-        }
-        return { dateFrom: `${yearMonth}-16`, dateTo: `${yearMonth}-${pad(lastDay)}` };
+        this.setSemiMonthlyPeriod(Number(ref.slice(8, 10)) <= 15 ? 1 : 2);
+        break;
       case 'monthly':
-        return { dateFrom: `${yearMonth}-01`, dateTo: `${yearMonth}-${pad(lastDay)}` };
-      case 'cutoff':
+        this.setMonthlyPeriod();
+        break;
       default:
-        return { dateFrom, dateTo };
+        break;
     }
+  }
+
+  private snapWeeklyRange(ref: string): void {
+    const [year, month, day] = ref.split('-').map(Number);
+    const utc = Date.UTC(year, month - 1, day);
+    const weekday = new Date(utc).getUTCDay();
+    const mondayOffset = weekday === 0 ? -6 : 1 - weekday;
+    const from = this.shiftIsoDate(ref, mondayOffset);
+    const span = this.workWeek() === 'mon_fri' ? 4 : this.workWeek() === 'mon_sat' ? 5 : 6;
+    this.dateFrom.set(from);
+    this.dateTo.set(this.shiftIsoDate(from, span));
+  }
+
+  private shiftIsoDate(value: string, days: number): string {
+    const [year, month, day] = value.split('-').map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day + days));
+    return date.toISOString().slice(0, 10);
+  }
+
+  private readOverlapError(err: unknown): string {
+    const body = (err as { error?: Record<string, unknown> })?.error;
+    if (!body) {
+      return '';
+    }
+    const nested = body['message'];
+    const overlaps = Array.isArray(body['overlaps'])
+      ? (body['overlaps'] as PayrollOverlapItem[])
+      : nested && typeof nested === 'object' && nested !== null && Array.isArray((nested as { overlaps?: unknown }).overlaps)
+        ? ((nested as { overlaps: PayrollOverlapItem[] }).overlaps)
+        : [];
+    if (overlaps.length > 0) {
+      this.overlaps.set(overlaps);
+      const text =
+        (typeof nested === 'string' ? nested : (nested as { message?: string } | null)?.message) ||
+        (typeof body['message'] === 'string' ? (body['message'] as string) : '');
+      return text || 'These dates overlap existing payslips. Confirm generate to continue.';
+    }
+    if (typeof nested === 'string' && nested.toLowerCase().includes('overlap')) {
+      return nested;
+    }
+    return '';
   }
 
   scheduledPayAmount(item: PayrollEmployeeItem): number | null {
@@ -483,7 +715,7 @@ export class PayrollPageComponent implements OnInit {
   scheduledPayLabel(item: PayrollEmployeeItem): string {
     switch (item.salaryType) {
       case 'weekly':
-        return 'Weekly pay';
+        return 'Daily rate';
       case 'semi_monthly':
         return 'Semi-monthly pay';
       case 'cutoff':
@@ -560,6 +792,21 @@ export class PayrollPageComponent implements OnInit {
         return 'Rejected';
       default:
         return '—';
+    }
+  }
+
+  undertimeCategoryLabel(value?: string | null): string {
+    switch (value) {
+      case 'emergency':
+        return 'Emergency';
+      case 'appointment':
+        return 'Scheduled appointment';
+      case 'event':
+        return 'Important event';
+      case 'other':
+        return 'Other';
+      default:
+        return value || '';
     }
   }
 
