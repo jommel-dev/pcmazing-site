@@ -1,4 +1,4 @@
-import { Component, inject, OnDestroy, OnInit, signal } from '@angular/core';
+import { Component, computed, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { DecimalPipe, NgClass } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -11,6 +11,8 @@ import {
   PaginationMeta,
 } from '../../services/admin-api.service';
 import { formatInventoryMoney } from './inventory-stock.util';
+import { loadColumnOrder, moveColumn, saveColumnOrder } from './table-column-order.util';
+import { loadPeriodFilter, savePeriodFilter } from './table-period-filter.util';
 
 type ServiceColumnKey =
   | 'customer'
@@ -23,7 +25,30 @@ type ServiceColumnKey =
   | 'labor'
   | 'totalCosting'
   | 'totalSales'
-  | 'totalDiscount';
+  | 'totalDiscount'
+  | 'createdAt';
+
+type JobTableColumnKey = 'referenceNo' | ServiceColumnKey | 'status';
+
+const JOB_TABLE_COLUMNS: readonly JobTableColumnKey[] = [
+  'referenceNo',
+  'createdAt',
+  'customer',
+  'serviceName',
+  'personInCharge',
+  'type',
+  'partsUsed',
+  'interval',
+  'cost',
+  'labor',
+  'totalCosting',
+  'totalSales',
+  'totalDiscount',
+  'status',
+];
+
+const JOB_COLUMN_ORDER_STORAGE_KEY = 'pcmazing.job-orders.column-order';
+const JOB_PERIOD_FILTER_STORAGE_KEY = 'pcmazing.job-orders.period-filter';
 
 type ServiceSortKey =
   | 'referenceNo'
@@ -121,7 +146,7 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
   readonly selectedStatus = signal('');
   readonly startDate = signal('');
   readonly endDate = signal('');
-  readonly selectedPeriod = signal<DatePeriod>('daily');
+  readonly selectedPeriod = signal<DatePeriod>('weekly');
   readonly periodOptions: Array<{ value: DatePeriod; label: string }> = [
     { value: 'daily', label: 'Daily' },
     { value: 'weekly', label: 'Weekly' },
@@ -129,6 +154,7 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
     { value: 'custom', label: 'Custom' },
   ];
   readonly columnOptions: Array<{ key: ServiceColumnKey; label: string }> = [
+    { key: 'createdAt', label: 'Date Created' },
     { key: 'customer', label: 'Customer' },
     { key: 'serviceName', label: 'Job Order Description' },
     { key: 'personInCharge', label: 'Person In Charge' },
@@ -141,6 +167,18 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
     { key: 'totalSales', label: 'T.Sales' },
     { key: 'totalDiscount', label: 'Discount' },
   ];
+  readonly columnOrder = signal<JobTableColumnKey[]>(
+    loadColumnOrder(JOB_COLUMN_ORDER_STORAGE_KEY, JOB_TABLE_COLUMNS),
+  );
+  readonly draggingColumn = signal<JobTableColumnKey | null>(null);
+  readonly dropTargetColumn = signal<JobTableColumnKey | null>(null);
+  readonly orderedVisibleColumns = computed(() =>
+    this.columnOrder().filter((key) => key === 'referenceNo' || key === 'status' || this.columnVisible(key)),
+  );
+  readonly orderedColumnOptions = computed(() => {
+    const order = this.columnOrder();
+    return [...this.columnOptions].sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
+  });
   readonly visibleColumns = signal<Record<ServiceColumnKey, boolean>>({
     customer: true,
     serviceName: true,
@@ -153,6 +191,7 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
     totalCosting: false,
     totalSales: true,
     totalDiscount: true,
+    createdAt: true,
   });
 
   readonly formatMoney = formatInventoryMoney;
@@ -178,7 +217,7 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
   readonly settlementPaymentMethods = SETTLEMENT_PAYMENT_METHODS;
 
   ngOnInit(): void {
-    this.applyPresetPeriod('daily');
+    this.restorePeriodFilter();
     void this.loadServices();
   }
 
@@ -294,12 +333,14 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
     this.selectedPeriod.set(period);
     if (period === 'custom') {
       if (!this.startDate() || !this.endDate()) {
-        this.applyPresetPeriod('daily');
+        this.applyPresetPeriod('weekly');
       }
+      this.persistPeriodFilter();
       return;
     }
 
     this.applyPresetPeriod(period);
+    this.persistPeriodFilter();
     this.page.set(1);
     await this.loadServices();
   }
@@ -315,6 +356,7 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
       this.startDate.set(end);
       this.endDate.set(start);
     }
+    this.persistPeriodFilter();
     this.page.set(1);
     await this.loadServices();
   }
@@ -342,6 +384,28 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
+  }
+
+  private restorePeriodFilter(): void {
+    const saved = loadPeriodFilter(JOB_PERIOD_FILTER_STORAGE_KEY);
+    if (saved.period === 'custom' && saved.startDate && saved.endDate) {
+      this.selectedPeriod.set('custom');
+      this.startDate.set(saved.startDate);
+      this.endDate.set(saved.endDate);
+      return;
+    }
+
+    const period = saved.period === 'custom' ? 'weekly' : saved.period;
+    this.selectedPeriod.set(period);
+    this.applyPresetPeriod(period);
+  }
+
+  private persistPeriodFilter(): void {
+    savePeriodFilter(JOB_PERIOD_FILTER_STORAGE_KEY, {
+      period: this.selectedPeriod(),
+      startDate: this.startDate(),
+      endDate: this.endDate(),
+    });
   }
 
   async goToPage(nextPage: number): Promise<void> {
@@ -395,6 +459,112 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
       ...current,
       [key]: !current[key],
     }));
+  }
+
+  isNumericColumn(key: JobTableColumnKey): boolean {
+    return key === 'cost' || key === 'labor' || key === 'totalCosting' || key === 'totalSales' || key === 'totalDiscount';
+  }
+
+  columnLabel(key: JobTableColumnKey): string {
+    const labels: Record<JobTableColumnKey, string> = {
+      referenceNo: 'Ref No',
+      createdAt: 'Date Created',
+      customer: 'Customer',
+      serviceName: 'Job Order Description',
+      personInCharge: 'Person In Charge',
+      type: 'Type',
+      partsUsed: 'Parts Used',
+      interval: 'Interval',
+      cost: 'Cost',
+      labor: 'Labor',
+      totalCosting: 'T.Costing',
+      totalSales: 'T.Sales',
+      totalDiscount: 'Discount',
+      status: 'Status',
+    };
+    return labels[key];
+  }
+
+  isSortableColumn(key: JobTableColumnKey): boolean {
+    return key !== 'partsUsed';
+  }
+
+  toggleSortColumn(key: JobTableColumnKey): void {
+    if (!this.isSortableColumn(key)) {
+      return;
+    }
+    void this.toggleSort(key as ServiceSortKey);
+  }
+
+  sortIndicatorFor(key: JobTableColumnKey): string {
+    if (!this.isSortableColumn(key)) {
+      return '';
+    }
+    return this.sortIndicator(key as ServiceSortKey);
+  }
+
+  columnHeaderClass(key: JobTableColumnKey): string {
+    const base = 'px-2 py-2 font-bold whitespace-nowrap';
+    if (key === 'totalCosting') {
+      return `${base} text-right text-emerald-700`;
+    }
+    if (key === 'totalSales') {
+      return `${base} text-right text-pcmazing-600`;
+    }
+    if (key === 'totalDiscount') {
+      return `${base} text-right text-amber-700`;
+    }
+    if (this.isNumericColumn(key)) {
+      return `${base} text-right text-slate-600`;
+    }
+    if (key === 'serviceName') {
+      return 'max-w-[180px] px-2 py-2 text-left font-bold text-slate-600 sm:max-w-[220px]';
+    }
+    if (key === 'partsUsed') {
+      return 'max-w-[220px] px-2 py-2 text-left font-bold text-slate-600 sm:max-w-[260px]';
+    }
+    return `${base} text-left text-slate-600`;
+  }
+
+  onColumnDragStart(event: DragEvent, key: JobTableColumnKey): void {
+    this.draggingColumn.set(key);
+    event.dataTransfer?.setData('text/plain', key);
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+    }
+  }
+
+  onColumnDragOver(event: DragEvent, key: JobTableColumnKey): void {
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'move';
+    }
+    if (this.draggingColumn() && this.draggingColumn() !== key) {
+      this.dropTargetColumn.set(key);
+    }
+  }
+
+  onColumnDrop(event: DragEvent, key: JobTableColumnKey): void {
+    event.preventDefault();
+    const fromKey = (event.dataTransfer?.getData('text/plain') as JobTableColumnKey) || this.draggingColumn();
+    if (!fromKey) {
+      this.clearColumnDrag();
+      return;
+    }
+
+    const next = moveColumn(this.columnOrder(), fromKey, key);
+    this.columnOrder.set(next);
+    saveColumnOrder(JOB_COLUMN_ORDER_STORAGE_KEY, next);
+    this.clearColumnDrag();
+  }
+
+  onColumnDragEnd(): void {
+    this.clearColumnDrag();
+  }
+
+  private clearColumnDrag(): void {
+    this.draggingColumn.set(null);
+    this.dropTargetColumn.set(null);
   }
 
   statusPillClass(status: string): string {
@@ -723,6 +893,10 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
     const hours = Math.floor(minutes / 60);
     const remainingMinutes = minutes % 60;
     return remainingMinutes ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
+  }
+
+  createdAtLabel(item: InventoryServiceItem): string {
+    return this.formatDateTime(item.createdAt ?? null) || '—';
   }
 
   private formatDateTime(value: string | null): string | null {

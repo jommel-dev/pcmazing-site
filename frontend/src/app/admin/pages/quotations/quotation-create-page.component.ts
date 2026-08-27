@@ -5,15 +5,16 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import {
   AdminApiService,
-  CreateSalesOrderPayload,
+  CreateQuotationPayload,
+  JobOrderCustomerSuggestion,
   MaterialItem,
-  SalesOrderDetail,
+  QuotationDetail,
 } from '../../services/admin-api.service';
 import {
   applyPhSpecialDiscount,
   normalizePhDiscountType,
   type PhDiscountType,
-} from './ph-discount.util';
+} from '../inventory/ph-discount.util';
 
 const DISCOUNT_OPTIONS: Array<{ value: PhDiscountType; label: string }> = [
   { value: 'none', label: 'No discount' },
@@ -21,23 +22,26 @@ const DISCOUNT_OPTIONS: Array<{ value: PhDiscountType; label: string }> = [
   { value: 'pwd', label: 'PWD (20%)' },
 ];
 
+type QuoteItemKind = 'material' | 'custom';
+
 @Component({
-  selector: 'app-sales-order-create-page',
+  selector: 'app-quotation-create-page',
   imports: [ReactiveFormsModule, RouterLink, DecimalPipe],
-  templateUrl: './sales-order-create-page.component.html',
+  templateUrl: './quotation-create-page.component.html',
 })
-export class SalesOrderCreatePageComponent implements OnInit {
+export class QuotationCreatePageComponent implements OnInit {
   private readonly adminApi = inject(AdminApiService);
   private readonly formBuilder = inject(FormBuilder);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private materialSearchTimers = new Map<number, ReturnType<typeof setTimeout>>();
   private partSearchCloseTimer: ReturnType<typeof setTimeout> | null = null;
+  private customerSearchTimer: ReturnType<typeof setTimeout> | null = null;
+  private customerSearchCloseTimer: ReturnType<typeof setTimeout> | null = null;
 
   readonly discountOptions = DISCOUNT_OPTIONS;
   readonly loading = signal(true);
   readonly saving = signal(false);
-  readonly voiding = signal(false);
   readonly error = signal('');
   readonly formError = signal('');
   readonly formSuccess = signal('');
@@ -46,20 +50,26 @@ export class SalesOrderCreatePageComponent implements OnInit {
   readonly materialSearchResults = signal<Record<number, MaterialItem[]>>({});
   readonly openPartSearchIndex = signal<number | null>(null);
   readonly partSearchLoading = signal(false);
-  readonly orderId = signal<number | null>(null);
-  readonly order = signal<SalesOrderDetail | null>(null);
-  readonly pendingVoid = signal(false);
-  readonly referenceNo = signal<string | null>(null);
+  readonly quotationId = signal<number | null>(null);
+  readonly quotation = signal<QuotationDetail | null>(null);
+  readonly quoteNo = signal<string | null>(null);
+  readonly customerQuery = signal('');
+  readonly customerSearchResults = signal<JobOrderCustomerSuggestion[]>([]);
+  readonly openCustomerSearch = signal(false);
+  readonly customerSearchLoading = signal(false);
+  readonly pendingStatus = signal<'draft' | 'finalized'>('draft');
 
-  readonly isViewMode = computed(() => this.orderId() !== null);
-  readonly isVoided = computed(() => !!this.order()?.isVoid);
+  readonly isEditMode = computed(() => this.quotationId() !== null);
 
   readonly form = this.formBuilder.nonNullable.group({
     customerName: ['', [Validators.required, Validators.maxLength(180)]],
     customerPhone: ['', [Validators.maxLength(60)]],
-    notes: ['', [Validators.maxLength(2000)]],
+    customerEmail: ['', [Validators.email, Validators.maxLength(180)]],
+    customerAddress: ['', [Validators.maxLength(2000)]],
+    remarks: ['', [Validators.maxLength(2000)]],
     customDiscount: [0, [Validators.min(0)]],
-    saleDate: [this.toLocalDateTimeInputValue(new Date())],
+    quoteDate: [this.toLocalDateTimeInputValue(new Date())],
+    validityDays: [7, [Validators.required, Validators.min(1), Validators.max(365)]],
     items: this.formBuilder.array([]),
   });
 
@@ -78,60 +88,85 @@ export class SalesOrderCreatePageComponent implements OnInit {
     try {
       const routeId = Number(this.route.snapshot.paramMap.get('id'));
       const id = Number.isFinite(routeId) && routeId > 0 ? routeId : null;
-      this.orderId.set(id);
+      this.quotationId.set(id);
 
-      const [materialsResponse, orderResponse] = await Promise.all([
+      const [materialsResponse, quoteResponse] = await Promise.all([
         firstValueFrom(this.adminApi.listMaterials(1, 100, '')),
-        id ? firstValueFrom(this.adminApi.getSalesOrder(id)) : Promise.resolve(null),
+        id ? firstValueFrom(this.adminApi.getQuotation(id, 'pcmazing')) : Promise.resolve(null),
       ]);
 
       this.materials.set(materialsResponse.data.map((item) => this.normalizeMaterial(item)));
 
-      if (orderResponse?.data) {
-        this.populateFromOrder(orderResponse.data);
+      if (quoteResponse?.data) {
+        if (quoteResponse.data.status !== 'draft') {
+          await this.router.navigate(['/admin/quotations', quoteResponse.data.id], {
+            queryParams: { source: 'pcmazing' },
+          });
+          return;
+        }
+        this.populateFromQuote(quoteResponse.data);
       } else {
-        this.addItem();
+        this.addMaterialItem();
       }
     } catch {
-      this.error.set('Unable to load sales order form.');
+      this.error.set('Unable to load quotation form.');
     } finally {
       this.loading.set(false);
     }
   }
 
-  private populateFromOrder(order: SalesOrderDetail): void {
-    this.order.set(order);
-    this.referenceNo.set(order.referenceNo);
+  private populateFromQuote(quote: QuotationDetail): void {
+    this.quotation.set(quote);
+    this.quoteNo.set(quote.quoteNo);
+    this.customerQuery.set(quote.customerName ?? '');
     this.form.patchValue({
-      customerName: order.customerName,
-      customerPhone: order.customerPhone ?? '',
-      notes: order.notes ?? '',
-      customDiscount: order.customDiscount ?? 0,
-      saleDate: order.saleDate ? this.toLocalDateTimeInputValue(new Date(order.saleDate)) : '',
+      customerName: quote.customerName ?? '',
+      customerPhone: quote.customerContactNumber ?? '',
+      customerEmail: quote.customerEmail ?? '',
+      customerAddress: quote.customerAddress ?? '',
+      remarks: quote.remarks ?? '',
+      customDiscount: quote.customDiscount ?? 0,
+      quoteDate: quote.quoteDate ? this.toLocalDateTimeInputValue(new Date(quote.quoteDate)) : '',
+      validityDays: quote.validityDays || 7,
     });
     this.itemsArray.clear();
     this.partQueries.set([]);
-    for (const item of order.items) {
+    for (const item of quote.items) {
+      const isCustom = !item.materialId;
       this.itemsArray.push(
         this.formBuilder.nonNullable.group({
-          materialId: [String(item.materialId), [Validators.required]],
+          itemKind: [isCustom ? 'custom' : 'material'],
+          materialId: [item.materialId ? String(item.materialId) : ''],
+          description: [item.description || ''],
           quantity: [item.quantity, [Validators.required, Validators.min(0.01)]],
           unitPrice: [item.unitPrice, [Validators.required, Validators.min(0)]],
           discountType: [normalizePhDiscountType(item.discountType)],
         }),
       );
-      this.partQueries.update((queries) => [...queries, item.materialName || '']);
+      this.partQueries.update((queries) => [...queries, isCustom ? '' : item.materialName || item.description || '']);
     }
-    this.form.disable();
   }
 
-  addItem(): void {
-    if (this.isViewMode()) {
-      return;
-    }
+  addMaterialItem(): void {
     this.itemsArray.push(
       this.formBuilder.nonNullable.group({
-        materialId: ['', [Validators.required]],
+        itemKind: ['material' as QuoteItemKind],
+        materialId: [''],
+        description: [''],
+        quantity: [1, [Validators.required, Validators.min(0.01)]],
+        unitPrice: [0, [Validators.required, Validators.min(0)]],
+        discountType: ['none' as PhDiscountType],
+      }),
+    );
+    this.partQueries.update((queries) => [...queries, '']);
+  }
+
+  addCustomItem(): void {
+    this.itemsArray.push(
+      this.formBuilder.nonNullable.group({
+        itemKind: ['custom' as QuoteItemKind],
+        materialId: [''],
+        description: ['', [Validators.required, Validators.maxLength(500)]],
         quantity: [1, [Validators.required, Validators.min(0.01)]],
         unitPrice: [0, [Validators.required, Validators.min(0)]],
         discountType: ['none' as PhDiscountType],
@@ -141,9 +176,6 @@ export class SalesOrderCreatePageComponent implements OnInit {
   }
 
   removeItem(index: number): void {
-    if (this.isViewMode()) {
-      return;
-    }
     this.itemsArray.removeAt(index);
     this.partQueries.update((queries) => queries.filter((_, itemIndex) => itemIndex !== index));
     this.materialSearchResults.update((current) => {
@@ -160,12 +192,16 @@ export class SalesOrderCreatePageComponent implements OnInit {
     });
   }
 
+  isCustomItem(index: number): boolean {
+    return (this.itemsArray.at(index)?.getRawValue() as { itemKind?: QuoteItemKind })?.itemKind === 'custom';
+  }
+
   partQuery(index: number): string {
     return this.partQueries()[index] ?? '';
   }
 
   openPartSearch(index: number): void {
-    if (this.isViewMode()) {
+    if (this.isCustomItem(index)) {
       return;
     }
     if (this.partSearchCloseTimer) {
@@ -187,9 +223,6 @@ export class SalesOrderCreatePageComponent implements OnInit {
   }
 
   onPartQueryInput(index: number, value: string): void {
-    if (this.isViewMode()) {
-      return;
-    }
     this.partQueries.update((items) => {
       const next = [...items];
       next[index] = value;
@@ -235,9 +268,6 @@ export class SalesOrderCreatePageComponent implements OnInit {
   }
 
   selectPartMaterial(index: number, item: MaterialItem): void {
-    if (this.isViewMode()) {
-      return;
-    }
     const group = this.itemsArray.at(index);
     if (!group) {
       return;
@@ -250,6 +280,7 @@ export class SalesOrderCreatePageComponent implements OnInit {
       {
         materialId: String(item.id),
         unitPrice: this.resolveMaterialUnitPrice(item),
+        description: item.materialName,
       },
       { emitEvent: false },
     );
@@ -303,13 +334,78 @@ export class SalesOrderCreatePageComponent implements OnInit {
   private selectedMaterialIds(exceptIndex: number): Set<number> {
     return new Set(
       this.itemsArray.controls
-        .map((control, controlIndex) =>
-          controlIndex === exceptIndex
-            ? null
-            : Number((control.getRawValue() as { materialId: string }).materialId),
-        )
+        .map((control, controlIndex) => {
+          if (controlIndex === exceptIndex) {
+            return null;
+          }
+          const value = control.getRawValue() as { itemKind?: QuoteItemKind; materialId: string };
+          if (value.itemKind === 'custom') {
+            return null;
+          }
+          return Number(value.materialId);
+        })
         .filter((id): id is number => typeof id === 'number' && Number.isFinite(id) && id > 0),
     );
+  }
+
+  openCustomerLookup(): void {
+    if (this.customerSearchCloseTimer) {
+      clearTimeout(this.customerSearchCloseTimer);
+      this.customerSearchCloseTimer = null;
+    }
+    this.openCustomerSearch.set(true);
+    void this.searchCustomers(this.customerQuery());
+  }
+
+  scheduleCloseCustomerSearch(): void {
+    if (this.customerSearchCloseTimer) {
+      clearTimeout(this.customerSearchCloseTimer);
+    }
+    this.customerSearchCloseTimer = setTimeout(() => {
+      this.openCustomerSearch.set(false);
+      this.customerSearchCloseTimer = null;
+    }, 150);
+  }
+
+  onCustomerQueryInput(value: string): void {
+    this.customerQuery.set(value);
+    this.form.controls.customerName.setValue(value);
+    this.openCustomerSearch.set(true);
+    if (this.customerSearchTimer) {
+      clearTimeout(this.customerSearchTimer);
+    }
+    this.customerSearchTimer = setTimeout(() => {
+      void this.searchCustomers(value);
+    }, 250);
+  }
+
+  private async searchCustomers(value: string): Promise<void> {
+    this.customerSearchLoading.set(true);
+    try {
+      const response = await firstValueFrom(this.adminApi.searchJobOrderCustomers(value));
+      this.customerSearchResults.set(response.data ?? []);
+    } catch {
+      this.customerSearchResults.set([]);
+    } finally {
+      this.customerSearchLoading.set(false);
+    }
+  }
+
+  selectCustomer(customer: JobOrderCustomerSuggestion): void {
+    this.customerQuery.set(customer.name);
+    this.form.patchValue({
+      customerName: customer.name,
+      customerEmail: customer.email ?? '',
+      customerPhone: customer.contact ?? '',
+      customerAddress: customer.address ?? '',
+    });
+    this.openCustomerSearch.set(false);
+  }
+
+  onCustomerSuggestionPointerDown(event: Event, customer: JobOrderCustomerSuggestion): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.selectCustomer(customer);
   }
 
   itemSubtotal(index: number): number {
@@ -340,10 +436,6 @@ export class SalesOrderCreatePageComponent implements OnInit {
     return applyPhSpecialDiscount(this.itemSubtotal(index), this.itemDiscountType(index)).discountAmount;
   }
 
-  itemsSubtotal(): number {
-    return this.itemsArray.controls.reduce((total, _, index) => total + this.itemSubtotal(index), 0);
-  }
-
   itemsNetSubtotal(): number {
     return this.itemsArray.controls.reduce((total, _, index) => total + this.itemNetAmount(index), 0);
   }
@@ -353,21 +445,23 @@ export class SalesOrderCreatePageComponent implements OnInit {
   }
 
   customDiscountAmount(): number {
-    if (this.isViewMode()) {
-      return this.order()?.customDiscount ?? 0;
-    }
     return Math.max(0, Number(this.form.controls.customDiscount.value) || 0);
   }
 
-  totalCustomerPayment(): number {
-    if (this.isViewMode()) {
-      return this.order()?.totalAmount ?? 0;
-    }
+  grandTotal(): number {
     return Math.max(0, this.itemsNetSubtotal() - this.customDiscountAmount());
   }
 
-  discountLabel(value: string | null | undefined): string {
-    return DISCOUNT_OPTIONS.find((option) => option.value === normalizePhDiscountType(value))?.label ?? 'No discount';
+  validUntilLabel(): string {
+    const quoteDate = this.form.controls.quoteDate.value
+      ? new Date(this.form.controls.quoteDate.value)
+      : new Date();
+    if (Number.isNaN(quoteDate.getTime())) {
+      return '—';
+    }
+    const days = Math.max(1, Number(this.form.controls.validityDays.value) || 7);
+    const expires = new Date(quoteDate.getTime() + days * 24 * 60 * 60 * 1000);
+    return expires.toLocaleDateString();
   }
 
   materialStockLabel(materialId: string): string {
@@ -375,17 +469,22 @@ export class SalesOrderCreatePageComponent implements OnInit {
     if (!item) {
       return '';
     }
-    const stock = Number(item.onHandStock ?? 0);
-    return `Stock: ${stock}`;
+    return `Stock: ${Number(item.onHandStock ?? 0)}`;
   }
 
-  async submit(): Promise<void> {
-    if (this.isViewMode()) {
-      return;
-    }
+  async saveDraft(): Promise<void> {
+    await this.submit('draft');
+  }
 
+  async saveAndFinalize(): Promise<void> {
+    await this.submit('finalized');
+  }
+
+  private async submit(status: 'draft' | 'finalized'): Promise<void> {
+    this.pendingStatus.set(status);
     this.formError.set('');
     this.formSuccess.set('');
+    this.form.controls.customerName.setValue(this.customerQuery().trim() || this.form.controls.customerName.value);
 
     if (this.form.invalid) {
       this.form.markAllAsTouched();
@@ -399,30 +498,53 @@ export class SalesOrderCreatePageComponent implements OnInit {
     }
 
     const invalidItemIndex = this.itemsArray.controls.findIndex((control) => {
-      const materialId = Number((control.getRawValue() as { materialId: string }).materialId);
+      const item = control.getRawValue() as {
+        itemKind?: QuoteItemKind;
+        materialId: string;
+        description: string;
+      };
+      if (item.itemKind === 'custom') {
+        return !item.description.trim();
+      }
+      const materialId = Number(item.materialId);
       return !Number.isFinite(materialId) || materialId <= 0;
     });
     if (invalidItemIndex >= 0) {
-      this.formError.set(`Select an inventory item for row ${invalidItemIndex + 1}.`);
+      const kind = (this.itemsArray.at(invalidItemIndex)?.getRawValue() as { itemKind?: QuoteItemKind }).itemKind;
+      this.formError.set(
+        kind === 'custom'
+          ? `Enter a description for custom row ${invalidItemIndex + 1}.`
+          : `Select an inventory item for row ${invalidItemIndex + 1}.`,
+      );
       return;
     }
 
     const value = this.form.getRawValue();
-    const payload: CreateSalesOrderPayload = {
+    const payload: CreateQuotationPayload = {
       customerName: value.customerName.trim(),
       customerPhone: value.customerPhone.trim() || undefined,
-      notes: value.notes.trim() || undefined,
+      customerEmail: value.customerEmail.trim() || undefined,
+      customerAddress: value.customerAddress.trim() || undefined,
+      remarks: value.remarks.trim() || undefined,
       customDiscount: Number(value.customDiscount) || 0,
-      saleDate: value.saleDate ? new Date(value.saleDate).toISOString() : undefined,
+      quoteDate: value.quoteDate ? new Date(value.quoteDate).toISOString() : undefined,
+      validityDays: Number(value.validityDays) || 7,
+      status,
       items: this.itemsArray.controls.map((control) => {
         const item = control.getRawValue() as {
+          itemKind?: QuoteItemKind;
           materialId: string;
+          description: string;
           quantity: number | string;
           unitPrice: number | string;
           discountType?: PhDiscountType;
         };
+        const materialId = Number(item.materialId);
+        const hasMaterial =
+          item.itemKind !== 'custom' && Number.isFinite(materialId) && materialId > 0;
         return {
-          materialId: Number(item.materialId),
+          ...(hasMaterial ? { materialId } : {}),
+          description: item.description.trim() || undefined,
           quantity: Number(item.quantity),
           unitPrice: Number(item.unitPrice),
           discountType: normalizePhDiscountType(item.discountType),
@@ -432,60 +554,17 @@ export class SalesOrderCreatePageComponent implements OnInit {
 
     this.saving.set(true);
     try {
-      const response = await firstValueFrom(this.adminApi.createSalesOrder(payload));
-      this.formSuccess.set('Sales order saved.');
-      await this.router.navigate(['/admin/sales-order', response.data.id]);
+      const id = this.quotationId();
+      const response = id
+        ? await firstValueFrom(this.adminApi.updateQuotation(id, payload))
+        : await firstValueFrom(this.adminApi.createQuotation(payload));
+      await this.router.navigate(['/admin/quotations', response.data.id], {
+        queryParams: { source: 'pcmazing' },
+      });
     } catch (err: unknown) {
-      this.formError.set(this.readError(err, 'Unable to save sales order.'));
+      this.formError.set(this.readError(err, 'Unable to save quotation.'));
     } finally {
       this.saving.set(false);
-    }
-  }
-
-  printReceipt(): void {
-    const id = this.orderId();
-    if (!id) {
-      return;
-    }
-    void this.router.navigate(['/admin/sales-order', id, 'receipt'], {
-      queryParams: { print: '1' },
-    });
-  }
-
-  reprintReceipt(): void {
-    const id = this.orderId();
-    if (!id) {
-      return;
-    }
-    void this.router.navigate(['/admin/sales-order', id, 'receipt'], {
-      queryParams: { print: '1', reprint: '1' },
-    });
-  }
-
-  requestVoid(): void {
-    this.pendingVoid.set(true);
-  }
-
-  cancelVoid(): void {
-    this.pendingVoid.set(false);
-  }
-
-  async confirmVoid(): Promise<void> {
-    const id = this.orderId();
-    if (!id) {
-      return;
-    }
-
-    this.voiding.set(true);
-    try {
-      const response = await firstValueFrom(this.adminApi.voidSalesOrder(id));
-      this.order.set(response.data);
-      this.pendingVoid.set(false);
-      this.formSuccess.set('Sales order voided and inventory restored.');
-    } catch (err: unknown) {
-      this.formError.set(this.readError(err, 'Unable to void sales order.'));
-    } finally {
-      this.voiding.set(false);
     }
   }
 

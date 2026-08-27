@@ -140,8 +140,9 @@
             </summary>
             <div class="absolute right-0 z-50 mt-2 max-h-80 w-56 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3 shadow-lg">
               <p class="mb-2 text-xs font-bold tracking-[0.12em] text-slate-400 uppercase">Show Columns</p>
+              <p class="mb-2 text-[11px] leading-snug text-slate-500">Drag the handles on table headers to change column order.</p>
               <div class="space-y-2">
-                @for (column of columnOptions; track column.key) {
+                @for (column of orderedColumnOptions(); track column.key) {
                   <label class="flex items-center gap-2 text-sm text-slate-700">
                     <input
                       type="checkbox"
@@ -187,162 +188,125 @@
           <table class="w-full min-w-[980px] text-[11px] leading-snug">
             <thead class="bg-slate-50">
               <tr>
-                <th class="px-2 py-2 text-left font-bold whitespace-nowrap text-slate-600">
-                  <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('referenceNo')">
-                    Ref No{{ sortIndicator('referenceNo') }}
-                  </button>
-                </th>
-                @if (columnVisible('customer')) {
-                  <th class="px-2 py-2 text-left font-bold whitespace-nowrap text-slate-600">
-                    <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('customer')">
-                      Customer{{ sortIndicator('customer') }}
-                    </button>
+                @for (column of orderedVisibleColumns(); track column) {
+                  <th
+                    [class]="columnHeaderClass(column)"
+                    [class.bg-sky-50]="dropTargetColumn() === column"
+                    [class.opacity-40]="draggingColumn() === column"
+                    (dragover)="onColumnDragOver($event, column)"
+                    (drop)="onColumnDrop($event, column)"
+                  >
+                    <div class="inline-flex items-center gap-1" [class.w-full]="isNumericColumn(column)" [class.justify-end]="isNumericColumn(column)">
+                      <span
+                        class="inline-flex cursor-grab text-slate-400 hover:text-slate-600 active:cursor-grabbing"
+                        draggable="true"
+                        title="Drag to reorder"
+                        (dragstart)="onColumnDragStart($event, column)"
+                        (dragend)="onColumnDragEnd()"
+                      >
+                        <svg class="size-3.5" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                          <circle cx="5" cy="3.5" r="1.15" />
+                          <circle cx="11" cy="3.5" r="1.15" />
+                          <circle cx="5" cy="8" r="1.15" />
+                          <circle cx="11" cy="8" r="1.15" />
+                          <circle cx="5" cy="12.5" r="1.15" />
+                          <circle cx="11" cy="12.5" r="1.15" />
+                        </svg>
+                      </span>
+                      @if (isSortableColumn(column)) {
+                        <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSortColumn(column)">
+                          {{ columnLabel(column) }}{{ sortIndicatorFor(column) }}
+                        </button>
+                      } @else {
+                        <span>{{ columnLabel(column) }}</span>
+                      }
+                    </div>
                   </th>
                 }
-                @if (columnVisible('serviceName')) {
-                  <th class="max-w-[180px] px-2 py-2 text-left font-bold text-slate-600 sm:max-w-[220px]">
-                    <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('serviceName')">
-                      Job Order Description{{ sortIndicator('serviceName') }}
-                    </button>
-                  </th>
-                }
-                @if (columnVisible('personInCharge')) {
-                  <th class="px-2 py-2 text-left font-bold whitespace-nowrap text-slate-600">
-                    <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('personInCharge')">
-                      Person In Charge{{ sortIndicator('personInCharge') }}
-                    </button>
-                  </th>
-                }
-                @if (columnVisible('type')) {
-                  <th class="px-2 py-2 text-left font-bold whitespace-nowrap text-slate-600">
-                    <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('type')">
-                      Type{{ sortIndicator('type') }}
-                    </button>
-                  </th>
-                }
-                @if (columnVisible('partsUsed')) {
-                  <th class="max-w-[220px] px-2 py-2 text-left font-bold text-slate-600 sm:max-w-[260px]">Parts Used</th>
-                }
-                @if (columnVisible('interval')) {
-                  <th class="px-2 py-2 text-left font-bold whitespace-nowrap text-slate-600">
-                    <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('interval')">
-                      Interval{{ sortIndicator('interval') }}
-                    </button>
-                  </th>
-                }
-                @if (columnVisible('cost')) {
-                  <th class="px-2 py-2 text-right font-bold whitespace-nowrap text-slate-600">
-                    <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('cost')">
-                      Cost{{ sortIndicator('cost') }}
-                    </button>
-                  </th>
-                }
-                @if (columnVisible('labor')) {
-                  <th class="px-2 py-2 text-right font-bold whitespace-nowrap text-slate-600">
-                    <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('labor')">
-                      Labor{{ sortIndicator('labor') }}
-                    </button>
-                  </th>
-                }
-                @if (columnVisible('totalCosting')) {
-                  <th class="px-2 py-2 text-right font-bold whitespace-nowrap text-emerald-700">
-                    <button type="button" class="inline-flex items-center gap-0.5 hover:text-emerald-800" (click)="toggleSort('totalCosting')">
-                      T.Costing{{ sortIndicator('totalCosting') }}
-                    </button>
-                  </th>
-                }
-                @if (columnVisible('totalSales')) {
-                  <th class="px-2 py-2 text-right font-bold whitespace-nowrap text-pcmazing-600">
-                    <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-700" (click)="toggleSort('totalSales')">
-                      T.Sales{{ sortIndicator('totalSales') }}
-                    </button>
-                  </th>
-                }
-                @if (columnVisible('totalDiscount')) {
-                  <th class="px-2 py-2 text-right font-bold whitespace-nowrap text-amber-700">
-                    <button type="button" class="inline-flex items-center gap-0.5 hover:text-amber-800" (click)="toggleSort('totalDiscount')">
-                      Discount{{ sortIndicator('totalDiscount') }}
-                    </button>
-                  </th>
-                }
-                <th class="px-2 py-2 text-left font-bold whitespace-nowrap text-slate-600">
-                  <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('status')">
-                    Status{{ sortIndicator('status') }}
-                  </button>
-                </th>
                 <th class="px-2 py-2 text-right font-bold whitespace-nowrap text-slate-600">Actions</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
               @for (item of items(); track item.id) {
                 <tr class="hover:bg-slate-50">
-                  <td class="px-2 py-2 font-medium whitespace-nowrap text-slate-700">
-                    <a [routerLink]="['/admin/job-order', item.id]" class="hover:text-pcmazing-600 hover:underline">
-                      {{ item.referenceNo || 'Pending' }}
-                    </a>
-                  </td>
-                  @if (columnVisible('customer')) {
-                    <td class="max-w-[180px] px-2 py-2 text-slate-700 sm:max-w-[220px]" [title]="item.customerName">
-                      <a [routerLink]="['/admin/job-order', item.id]" class="block truncate hover:text-pcmazing-600 hover:underline">
-                        {{ item.customerName }}
-                      </a>
-                      @if (item.customerContact) {
-                        <div class="truncate text-xs text-slate-500">{{ item.customerContact }}</div>
+                  @for (column of orderedVisibleColumns(); track column) {
+                    @switch (column) {
+                      @case ('referenceNo') {
+                        <td class="px-2 py-2 font-medium whitespace-nowrap text-slate-700">
+                          <a [routerLink]="['/admin/job-order', item.id]" class="hover:text-pcmazing-600 hover:underline">
+                            {{ item.referenceNo || 'Pending' }}
+                          </a>
+                        </td>
                       }
-                    </td>
-                  }
-                  @if (columnVisible('serviceName')) {
-                    <td class="max-w-[180px] truncate px-2 py-2 font-medium text-slate-900 sm:max-w-[220px]" [title]="item.serviceName">
-                      <a [routerLink]="['/admin/job-order', item.id]" class="hover:text-pcmazing-600 hover:underline">
-                        {{ item.serviceName }}
-                      </a>
-                    </td>
-                  }
-                  @if (columnVisible('personInCharge')) {
-                    <td class="max-w-[180px] truncate px-2 py-2 text-slate-600 sm:max-w-[220px]">{{ item.personInChargeName || 'Unassigned' }}</td>
-                  }
-                  @if (columnVisible('type')) {
-                    <td class="px-2 py-2 whitespace-nowrap text-slate-600">{{ item.type }}</td>
-                  }
-                  @if (columnVisible('partsUsed')) {
-                    <td class="max-w-[220px] truncate px-2 py-2 text-slate-600 sm:max-w-[260px]" [title]="partsUsedLabel(item)">{{ partsUsedLabel(item) }}</td>
-                  }
-                  @if (columnVisible('interval')) {
-                    <td class="min-w-[170px] px-2 py-2 text-slate-600">
-                      <div class="font-medium text-slate-700">{{ serviceIntervalLabel(item) }}</div>
-                      <div class="text-[10px] text-slate-500">{{ serviceDurationLabel(item) }}</div>
-                    </td>
-                  }
-                  @if (columnVisible('cost')) {
-                    <td class="px-2 py-2 text-right whitespace-nowrap text-slate-600">{{ formatMoney(item.cost) }}</td>
-                  }
-                  @if (columnVisible('labor')) {
-                    <td class="px-2 py-2 text-right whitespace-nowrap text-slate-600">{{ formatMoney(item.labor) }}</td>
-                  }
-                  @if (columnVisible('totalCosting')) {
-                    <td class="px-2 py-2 text-right whitespace-nowrap font-medium text-emerald-700">{{ formatMoney(item.totalCosting) }}</td>
-                  }
-                  @if (columnVisible('totalSales')) {
-                    <td class="px-2 py-2 text-right whitespace-nowrap font-medium text-pcmazing-600">{{ formatMoney(item.totalSales) }}</td>
-                  }
-                  @if (columnVisible('totalDiscount')) {
-                    <td class="px-2 py-2 text-right whitespace-nowrap font-medium text-amber-700">{{ formatMoney(orderDiscount(item)) }}</td>
-                  }
-                  <td class="px-2 py-2" (click)="$event.stopPropagation()">
-                    <select
-                      class="rounded-full border-0 px-2 py-0.5 text-[9px] font-bold uppercase focus:outline-none focus:ring-2 focus:ring-pcmazing-500 disabled:opacity-60"
-                      [ngClass]="statusPillClass(item.status)"
-                      [ngModel]="normalizeJobStatus(item.status)"
-                      [ngModelOptions]="{ standalone: true }"
-                      [disabled]="statusUpdatingId() === item.id"
-                      (ngModelChange)="onStatusChange(item, $event)"
-                      [attr.aria-label]="'Change status for ' + (item.referenceNo || item.serviceName)"
-                    >
-                      @for (status of statusOptions; track status) {
-                        <option [ngValue]="status">{{ status }}</option>
+                      @case ('createdAt') {
+                        <td class="px-2 py-2 whitespace-nowrap text-slate-600">{{ createdAtLabel(item) }}</td>
                       }
-                    </select>
-                  </td>
+                      @case ('customer') {
+                        <td class="max-w-[180px] px-2 py-2 text-slate-700 sm:max-w-[220px]" [title]="item.customerName">
+                          <a [routerLink]="['/admin/job-order', item.id]" class="block truncate hover:text-pcmazing-600 hover:underline">
+                            {{ item.customerName }}
+                          </a>
+                          @if (item.customerContact) {
+                            <div class="truncate text-xs text-slate-500">{{ item.customerContact }}</div>
+                          }
+                        </td>
+                      }
+                      @case ('serviceName') {
+                        <td class="max-w-[180px] truncate px-2 py-2 font-medium text-slate-900 sm:max-w-[220px]" [title]="item.serviceName">
+                          <a [routerLink]="['/admin/job-order', item.id]" class="hover:text-pcmazing-600 hover:underline">
+                            {{ item.serviceName }}
+                          </a>
+                        </td>
+                      }
+                      @case ('personInCharge') {
+                        <td class="max-w-[180px] truncate px-2 py-2 text-slate-600 sm:max-w-[220px]">{{ item.personInChargeName || 'Unassigned' }}</td>
+                      }
+                      @case ('type') {
+                        <td class="px-2 py-2 whitespace-nowrap text-slate-600">{{ item.type }}</td>
+                      }
+                      @case ('partsUsed') {
+                        <td class="max-w-[220px] truncate px-2 py-2 text-slate-600 sm:max-w-[260px]" [title]="partsUsedLabel(item)">{{ partsUsedLabel(item) }}</td>
+                      }
+                      @case ('interval') {
+                        <td class="min-w-[170px] px-2 py-2 text-slate-600">
+                          <div class="font-medium text-slate-700">{{ serviceIntervalLabel(item) }}</div>
+                          <div class="text-[10px] text-slate-500">{{ serviceDurationLabel(item) }}</div>
+                        </td>
+                      }
+                      @case ('cost') {
+                        <td class="px-2 py-2 text-right whitespace-nowrap text-slate-600">{{ formatMoney(item.cost) }}</td>
+                      }
+                      @case ('labor') {
+                        <td class="px-2 py-2 text-right whitespace-nowrap text-slate-600">{{ formatMoney(item.labor) }}</td>
+                      }
+                      @case ('totalCosting') {
+                        <td class="px-2 py-2 text-right whitespace-nowrap font-medium text-emerald-700">{{ formatMoney(item.totalCosting) }}</td>
+                      }
+                      @case ('totalSales') {
+                        <td class="px-2 py-2 text-right whitespace-nowrap font-medium text-pcmazing-600">{{ formatMoney(item.totalSales) }}</td>
+                      }
+                      @case ('totalDiscount') {
+                        <td class="px-2 py-2 text-right whitespace-nowrap font-medium text-amber-700">{{ formatMoney(orderDiscount(item)) }}</td>
+                      }
+                      @case ('status') {
+                        <td class="px-2 py-2" (click)="$event.stopPropagation()">
+                          <select
+                            class="rounded-full border-0 px-2 py-0.5 text-[9px] font-bold uppercase focus:outline-none focus:ring-2 focus:ring-pcmazing-500 disabled:opacity-60"
+                            [ngClass]="statusPillClass(item.status)"
+                            [ngModel]="normalizeJobStatus(item.status)"
+                            [ngModelOptions]="{ standalone: true }"
+                            [disabled]="statusUpdatingId() === item.id"
+                            (ngModelChange)="onStatusChange(item, $event)"
+                            [attr.aria-label]="'Change status for ' + (item.referenceNo || item.serviceName)"
+                          >
+                            @for (status of statusOptions; track status) {
+                              <option [ngValue]="status">{{ status }}</option>
+                            }
+                          </select>
+                        </td>
+                      }
+                    }
+                  }
                   <td class="px-2 py-2 text-right" (click)="$event.stopPropagation()">
                     <div class="inline-flex items-center justify-end gap-1">
                       <a

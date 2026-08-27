@@ -82,6 +82,7 @@ export interface InventoryServiceListItem {
     discountType?: 'none' | 'senior' | 'pwd';
     discountAmount?: number;
   }>;
+  createdAt: string | null;
   updatedAt: string | null;
   statusHistory?: JobOrderStatusHistoryItem[];
 }
@@ -297,6 +298,7 @@ export class InventoryServicesService {
       image_url: string | null;
       started_at: string | null;
       ended_at: string | null;
+      created_at: string | null;
       updated_at: string | null;
     }>(
       `SELECT
@@ -322,6 +324,7 @@ export class InventoryServicesService {
         s.image_url,
         s.started_at::text,
         s.ended_at::text,
+        s.created_at::text,
         s.updated_at::text
        FROM pcmazing_services s
        LEFT JOIN LATERAL (
@@ -402,6 +405,7 @@ export class InventoryServicesService {
           startedAt: row.started_at,
           endedAt: row.ended_at,
           durationMinutes: this.computeDurationMinutes(row.started_at, row.ended_at),
+          createdAt: row.created_at,
           updatedAt: row.updated_at,
         } satisfies InventoryServiceListItem;
       }),
@@ -925,6 +929,7 @@ export class InventoryServicesService {
       device_serial: string | null;
       started_at: string | null;
       ended_at: string | null;
+      created_at: string | null;
       updated_at: string | null;
     }>(
       `SELECT
@@ -956,6 +961,7 @@ export class InventoryServicesService {
         s.device_serial,
         s.started_at::text,
         s.ended_at::text,
+        s.created_at::text,
         s.updated_at::text
        FROM pcmazing_services s
        LEFT JOIN LATERAL (
@@ -1076,6 +1082,7 @@ export class InventoryServicesService {
       startedAt: row.started_at,
       endedAt: row.ended_at,
       durationMinutes: this.computeDurationMinutes(row.started_at, row.ended_at),
+      createdAt: row.created_at,
       parts: partsResult.rows.map((part) => ({
         materialId: part.material_id ?? undefined,
         serviceTypeId: part.service_type_id ?? undefined,
@@ -1433,6 +1440,28 @@ export class InventoryServicesService {
       );
     }
 
+    if (await tableExists(this.databaseService, 'pcmazing_quotations')) {
+      params.push(like);
+      unions.push(
+        `SELECT
+           TRIM(customer_name) AS customer_name,
+           NULLIF(TRIM(customer_email), '') AS customer_email,
+           NULLIF(TRIM(customer_contact_number), '') AS customer_contact,
+           NULLIF(TRIM(customer_address), '') AS customer_address,
+           COALESCE(updated_at, created_at) AS sort_at,
+           3 AS priority
+         FROM pcmazing_quotations
+         WHERE deleted_at IS NULL
+           AND NULLIF(TRIM(customer_name), '') IS NOT NULL
+           AND (
+             $${params.length} = '%%'
+             OR customer_name ILIKE $${params.length}
+             OR COALESCE(customer_email, '') ILIKE $${params.length}
+             OR COALESCE(customer_contact_number, '') ILIKE $${params.length}
+           )`,
+      );
+    }
+
     if (await tableExists(this.databaseService, 'tblquotation')) {
       params.push(like);
       unions.push(
@@ -1442,7 +1471,7 @@ export class InventoryServicesService {
            NULLIF(TRIM(customer_contact_number), '') AS customer_contact,
            NULLIF(TRIM(customer_address), '') AS customer_address,
            COALESCE(created_at, quote_date) AS sort_at,
-           3 AS priority
+           4 AS priority
          FROM tblquotation
          WHERE COALESCE(is_deleted, FALSE) = FALSE
            AND NULLIF(TRIM(customer_name), '') IS NOT NULL

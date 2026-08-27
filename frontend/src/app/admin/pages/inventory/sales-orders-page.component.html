@@ -126,86 +126,128 @@
     } @else if (items().length === 0) {
       <div class="px-6 py-10 text-center text-sm text-slate-500">No sales orders found.</div>
     } @else {
-      <div class="table-scroll overflow-x-auto">
-        <table class="min-w-full text-sm">
-          <thead class="bg-slate-50 text-left text-xs font-bold tracking-[0.12em] text-slate-500 uppercase">
+      <p class="px-4 pt-3 text-[11px] text-slate-500">Drag the handles on column headers to reorder columns.</p>
+      <div class="table-scroll max-w-full overflow-x-auto">
+        <table class="w-full min-w-[980px] text-[11px] leading-snug">
+          <thead class="bg-slate-50">
             <tr>
-              <th class="px-4 py-3">
-                <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('referenceNo')">
-                  Reference{{ sortIndicator('referenceNo') }}
-                </button>
-              </th>
-              <th class="px-4 py-3">
-                <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('customer')">
-                  Customer{{ sortIndicator('customer') }}
-                </button>
-              </th>
-              <th class="px-4 py-3">
-                <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('items')">
-                  Items{{ sortIndicator('items') }}
-                </button>
-              </th>
-              <th class="px-4 py-3">
-                <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('discount')">
-                  Discount{{ sortIndicator('discount') }}
-                </button>
-              </th>
-              <th class="px-4 py-3">
-                <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('total')">
-                  Total{{ sortIndicator('total') }}
-                </button>
-              </th>
-              <th class="px-4 py-3">
-                <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('saleDate')">
-                  Sale Date{{ sortIndicator('saleDate') }}
-                </button>
-              </th>
-              <th class="px-4 py-3">
-                <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('status')">
-                  Status{{ sortIndicator('status') }}
-                </button>
-              </th>
-              <th class="px-4 py-3 text-right">Actions</th>
+              @for (column of orderedVisibleColumns(); track column) {
+                <th
+                  [class]="columnHeaderClass(column)"
+                  [class.bg-sky-50]="dropTargetColumn() === column"
+                  [class.opacity-40]="draggingColumn() === column"
+                  (dragover)="onColumnDragOver($event, column)"
+                  (drop)="onColumnDrop($event, column)"
+                >
+                  <div class="inline-flex items-center gap-1" [class.w-full]="isNumericColumn(column)" [class.justify-end]="isNumericColumn(column)">
+                    <span
+                      class="inline-flex cursor-grab text-slate-400 hover:text-slate-600 active:cursor-grabbing"
+                      draggable="true"
+                      title="Drag to reorder"
+                      (dragstart)="onColumnDragStart($event, column)"
+                      (dragend)="onColumnDragEnd()"
+                    >
+                      <svg class="size-3.5" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                        <circle cx="5" cy="3.5" r="1.15" />
+                        <circle cx="11" cy="3.5" r="1.15" />
+                        <circle cx="5" cy="8" r="1.15" />
+                        <circle cx="11" cy="8" r="1.15" />
+                        <circle cx="5" cy="12.5" r="1.15" />
+                        <circle cx="11" cy="12.5" r="1.15" />
+                      </svg>
+                    </span>
+                    <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort(sortKeyFor(column))">
+                      {{ columnLabel(column) }}{{ sortIndicator(sortKeyFor(column)) }}
+                    </button>
+                  </div>
+                </th>
+              }
+              <th class="px-2 py-2 text-right font-bold whitespace-nowrap text-slate-600">Actions</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100">
             @for (item of items(); track item.id) {
               <tr class="hover:bg-slate-50">
-                <td class="px-4 py-3 font-semibold text-slate-900">{{ item.referenceNo || ('#' + item.id) }}</td>
-                <td class="px-4 py-3">
-                  <div class="font-medium text-slate-900">{{ item.customerName }}</div>
-                  @if (item.customerPhone) {
-                    <div class="text-xs text-slate-500">{{ item.customerPhone }}</div>
+                @for (column of orderedVisibleColumns(); track column) {
+                  @switch (column) {
+                    @case ('referenceNo') {
+                      <td class="px-2 py-2 font-medium whitespace-nowrap text-slate-700">{{ item.referenceNo || ('#' + item.id) }}</td>
+                    }
+                    @case ('customer') {
+                      <td class="max-w-[180px] px-2 py-2 text-slate-700 sm:max-w-[220px]" [title]="item.customerName">
+                        <div class="truncate font-medium">{{ item.customerName }}</div>
+                        @if (item.customerPhone) {
+                          <div class="truncate text-xs text-slate-500">{{ item.customerPhone }}</div>
+                        }
+                      </td>
+                    }
+                    @case ('items') {
+                      <td class="max-w-[220px] px-2 py-2 text-slate-600 sm:max-w-[260px]">
+                        <div>{{ item.itemCount }} item{{ item.itemCount === 1 ? '' : 's' }}</div>
+                        @if (item.itemsSummary.length) {
+                          <div class="mt-0.5 max-w-xs truncate text-[10px] text-slate-400" [title]="item.itemsSummary.join(', ')">{{ item.itemsSummary.join(', ') }}</div>
+                        }
+                      </td>
+                    }
+                    @case ('discount') {
+                      <td class="px-2 py-2 text-right whitespace-nowrap font-medium text-amber-700">{{ formatMoney(item.discountTotal) }}</td>
+                    }
+                    @case ('total') {
+                      <td class="px-2 py-2 text-right whitespace-nowrap font-medium text-slate-900">{{ formatMoney(item.totalAmount) }}</td>
+                    }
+                    @case ('saleDate') {
+                      <td class="px-2 py-2 whitespace-nowrap text-slate-600">{{ formatDate(item.saleDate) }}</td>
+                    }
+                    @case ('status') {
+                      <td class="px-2 py-2">
+                        <span
+                          class="inline-flex rounded-full px-2 py-0.5 text-[9px] font-bold uppercase"
+                          [ngClass]="item.isVoid ? 'bg-red-50 text-red-700 ring-1 ring-red-200' : 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'"
+                        >
+                          {{ item.isVoid ? 'Void' : 'Completed' }}
+                        </span>
+                      </td>
+                    }
                   }
-                </td>
-                <td class="px-4 py-3 text-slate-600">
-                  <div>{{ item.itemCount }} item{{ item.itemCount === 1 ? '' : 's' }}</div>
-                  @if (item.itemsSummary.length) {
-                    <div class="mt-0.5 max-w-xs truncate text-xs text-slate-400">{{ item.itemsSummary.join(', ') }}</div>
-                  }
-                </td>
-                <td class="px-4 py-3 font-medium text-amber-700">{{ formatMoney(item.discountTotal) }}</td>
-                <td class="px-4 py-3 font-semibold text-slate-900">{{ formatMoney(item.totalAmount) }}</td>
-                <td class="px-4 py-3 text-slate-600">{{ formatDate(item.saleDate) }}</td>
-                <td class="px-4 py-3">
-                  <span
-                    class="inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold uppercase"
-                    [ngClass]="item.isVoid ? 'bg-red-50 text-red-700 ring-1 ring-red-200' : 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200'"
-                  >
-                    {{ item.isVoid ? 'Void' : 'Completed' }}
-                  </span>
-                </td>
-                <td class="px-4 py-3">
-                  <div class="flex justify-end gap-2">
-                    <button type="button" class="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50" (click)="openOrder(item)">
-                      View
+                }
+                <td class="px-2 py-2 text-right">
+                  <div class="inline-flex items-center justify-end gap-1">
+                    <button
+                      type="button"
+                      class="inline-flex size-7 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 hover:text-pcmazing-600"
+                      title="View"
+                      aria-label="View sales order"
+                      (click)="openOrder(item)"
+                    >
+                      <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.5 12s3.5-7 9.5-7 9.5 7 9.5 7-3.5 7-9.5 7-9.5-7-9.5-7Z" />
+                        <circle cx="12" cy="12" r="2.5" />
+                      </svg>
                     </button>
-                    <button type="button" class="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50" (click)="openReceipt(item)">
-                      Receipt
+                    <button
+                      type="button"
+                      class="inline-flex size-7 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 hover:text-pcmazing-600"
+                      title="Print receipt"
+                      aria-label="Print sales order receipt"
+                      (click)="openReceipt(item, false)"
+                    >
+                      <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 9V4h12v5M6 14H5a2 2 0 0 1-2-2v-1a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v1a2 2 0 0 1-2 2h-1" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 14h12v6H6v-6Z" />
+                      </svg>
                     </button>
                     @if (!item.isVoid) {
-                      <button type="button" class="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50" (click)="requestVoid(item)">
-                        Void
+                      <button
+                        type="button"
+                        class="inline-flex size-7 items-center justify-center rounded-lg text-red-600 hover:bg-red-50"
+                        title="Void"
+                        aria-label="Void sales order"
+                        (click)="requestVoid(item)"
+                      >
+                        <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                          <circle cx="12" cy="12" r="8" />
+                          <path stroke-linecap="round" d="M7 7l10 10" />
+                        </svg>
                       </button>
                     }
                   </div>
@@ -217,26 +259,37 @@
       </div>
 
       @if (meta(); as pagination) {
-        <div class="flex flex-col gap-3 border-t border-slate-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div class="text-sm text-slate-500">
-            Showing page {{ pagination.page }} of {{ pagination.totalPages }} ({{ pagination.total }} total)
+        <div class="mt-4 flex flex-col gap-3 px-4 pb-4 text-[11px] text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+          <div class="flex min-w-0 flex-wrap items-center gap-3">
+            <span class="truncate">
+              Page {{ pagination.page }} of {{ pagination.totalPages || 1 }} · {{ pagination.total }} total
+            </span>
+            <label class="inline-flex items-center gap-1.5">
+              <span>Rows</span>
+              <select
+                class="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] text-slate-700 focus:border-pcmazing-500 focus:outline-none"
+                [ngModel]="pageSize()"
+                (ngModelChange)="changePageSize($event)"
+                name="pageSize"
+              >
+                @for (size of pageSizeOptions; track size) {
+                  <option [ngValue]="size">{{ size }}</option>
+                }
+              </select>
+            </label>
           </div>
-          <div class="flex flex-wrap items-center gap-2">
-            <select
-              class="rounded-lg border border-slate-200 px-3 py-2 text-sm"
-              [ngModel]="pageSize()"
-              (ngModelChange)="changePageSize($event)"
-              name="pageSize"
-            >
-              @for (size of pageSizeOptions; track size) {
-                <option [ngValue]="size">{{ size }} / page</option>
-              }
-            </select>
-            <button type="button" class="rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:opacity-50" [disabled]="pagination.page <= 1" (click)="changePage(pagination.page - 1)">
+          <div class="flex shrink-0 gap-2">
+            <button type="button" class="rounded-lg border border-slate-200 px-2.5 py-1 disabled:opacity-40" [disabled]="pagination.page <= 1" (click)="changePage(1)">
+              First
+            </button>
+            <button type="button" class="rounded-lg border border-slate-200 px-2.5 py-1 disabled:opacity-40" [disabled]="pagination.page <= 1" (click)="changePage(pagination.page - 1)">
               Previous
             </button>
-            <button type="button" class="rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:opacity-50" [disabled]="pagination.page >= pagination.totalPages" (click)="changePage(pagination.page + 1)">
+            <button type="button" class="rounded-lg border border-slate-200 px-2.5 py-1 disabled:opacity-40" [disabled]="pagination.page >= pagination.totalPages" (click)="changePage(pagination.page + 1)">
               Next
+            </button>
+            <button type="button" class="rounded-lg border border-slate-200 px-2.5 py-1 disabled:opacity-40" [disabled]="pagination.page >= pagination.totalPages || pagination.totalPages <= 1" (click)="changePage(pagination.totalPages)">
+              Last
             </button>
           </div>
         </div>

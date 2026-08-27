@@ -33,6 +33,8 @@ import { ProductCreatePageComponent } from './pages/inventory/product-create-pag
 import { ProductEditPageComponent } from './pages/inventory/product-edit-page.component';
 import { QuotationsPageComponent } from './pages/quotations/quotations-page.component';
 import { QuotationDetailPageComponent } from './pages/quotations/quotation-detail-page.component';
+import { QuotationCreatePageComponent } from './pages/quotations/quotation-create-page.component';
+import { QuotationPrintPageComponent } from './pages/quotations/quotation-print-page.component';
 import { UserManagementPageComponent } from './pages/user-management/user-management-page.component';
 import { LeadGenerationPageComponent } from './pages/marketing/lead-generation-page.component';
 import { LeadProspectViewPageComponent } from './pages/marketing/lead-prospect-view-page.component';
@@ -292,6 +294,27 @@ export const adminRoutes: Routes = [
         path: 'quotations',
         component: QuotationsPageComponent,
         title: 'Quotations | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'quotation' },
+      },
+      {
+        path: 'quotations/new',
+        component: QuotationCreatePageComponent,
+        title: 'New Quotation | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'quotation' },
+      },
+      {
+        path: 'quotations/:id/edit',
+        component: QuotationCreatePageComponent,
+        title: 'Edit Quotation | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'quotation' },
+      },
+      {
+        path: 'quotations/:id/print',
+        component: QuotationPrintPageComponent,
+        title: 'Print Quotation | PCMazing Admin',
         canActivate: [adminRoleGuard],
         data: { module: 'quotation' },
       },

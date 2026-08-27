@@ -65,18 +65,32 @@ export class StaffAccessPageComponent implements OnInit, OnDestroy {
   }
 
   private extractErrorMessage(error: unknown): string {
-    if (error && typeof error === 'object' && 'error' in error) {
-      const payload = (error as { error?: { message?: string | string[] } }).error;
+    const unreachable = `Unable to reach the admin API at ${APP_CONFIG.apiUrl}. Make sure the backend is running.`;
 
-      if (Array.isArray(payload?.message)) {
-        return payload.message.join(', ');
-      }
-
-      if (typeof payload?.message === 'string' && payload.message.trim()) {
-        return payload.message;
-      }
+    if (!error || typeof error !== 'object') {
+      return unreachable;
     }
 
-    return `Unable to reach the admin API at ${APP_CONFIG.apiUrl}. Make sure the backend is running.`;
+    const httpError = error as {
+      status?: number;
+      error?: { message?: string | string[] };
+    };
+
+    if (httpError.status === 0) {
+      return unreachable;
+    }
+
+    const payload = httpError.error;
+    const message = Array.isArray(payload?.message)
+      ? payload.message.join(', ')
+      : typeof payload?.message === 'string'
+        ? payload.message
+        : '';
+
+    if (!message.trim() || /failed to fetch|networkerror|load failed/i.test(message)) {
+      return unreachable;
+    }
+
+    return message;
   }
 }

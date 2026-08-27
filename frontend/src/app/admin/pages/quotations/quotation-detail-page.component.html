@@ -13,9 +13,26 @@
           <h2 class="mt-2 text-2xl font-bold text-slate-900">{{ quote.quoteNo || ('#' + quote.id) }}</h2>
           <p class="mt-1 text-sm capitalize text-slate-500">{{ quote.status || 'unknown' }} · {{ formatDate(quote.quoteDate) }}</p>
         </div>
-        <div class="rounded-xl bg-slate-50 px-4 py-3 text-right">
-          <p class="text-xs font-bold uppercase text-slate-400">Total amount</p>
-          <p class="mt-1 text-2xl font-bold text-slate-900">{{ quote.totalAmount ?? '—' }}</p>
+        <div class="flex flex-wrap items-start gap-3">
+          <div class="rounded-xl bg-slate-50 px-4 py-3 text-right">
+            <p class="text-xs font-bold uppercase text-slate-400">Total amount</p>
+            <p class="mt-1 text-2xl font-bold text-slate-900">{{ formatMoney(quote.totalAmount) }}</p>
+          </div>
+          @if (canEdit()) {
+            <a
+              [routerLink]="['/admin/quotations', quote.id, 'edit']"
+              class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50"
+            >
+              Edit draft
+            </a>
+          }
+          <a
+            [routerLink]="['/admin/quotations', quote.id, 'print']"
+            [queryParams]="source() ? { source: source() } : {}"
+            class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600"
+          >
+            Print
+          </a>
         </div>
       </div>
 
@@ -23,13 +40,19 @@
         <div class="rounded-xl bg-slate-50 p-4"><p class="text-xs font-bold uppercase text-slate-400">Customer</p><p class="mt-1 text-sm text-slate-800">{{ quote.customerName || '—' }}</p></div>
         <div class="rounded-xl bg-slate-50 p-4"><p class="text-xs font-bold uppercase text-slate-400">Contact</p><p class="mt-1 text-sm text-slate-800">{{ quote.customerContactPerson || quote.customerContactNumber || '—' }}</p></div>
         <div class="rounded-xl bg-slate-50 p-4"><p class="text-xs font-bold uppercase text-slate-400">Email</p><p class="mt-1 text-sm text-slate-800">{{ quote.customerEmail || '—' }}</p></div>
-        <div class="rounded-xl bg-slate-50 p-4"><p class="text-xs font-bold uppercase text-slate-400">Expires</p><p class="mt-1 text-sm text-slate-800">{{ formatDate(quote.expiresAt) }}</p></div>
+        <div class="rounded-xl bg-slate-50 p-4"><p class="text-xs font-bold uppercase text-slate-400">Expires</p><p class="mt-1 text-sm text-slate-800">{{ formatDate(quote.expiresAt) }}@if (quote.validityDays) { <span class="text-slate-500">({{ quote.validityDays }} days)</span> }</p></div>
+        @if (quote.customerAddress) {
+          <div class="rounded-xl bg-slate-50 p-4 sm:col-span-2">
+            <p class="text-xs font-bold uppercase text-slate-400">Address</p>
+            <p class="mt-1 whitespace-pre-line text-sm text-slate-800">{{ quote.customerAddress }}</p>
+          </div>
+        }
       </div>
 
       @if (quote.remarks) {
         <div class="mt-6 rounded-xl border border-slate-200 p-4">
           <p class="text-xs font-bold uppercase text-slate-400">Remarks</p>
-          <p class="mt-2 text-sm text-slate-700">{{ quote.remarks }}</p>
+          <p class="mt-2 whitespace-pre-line text-sm text-slate-700">{{ quote.remarks }}</p>
         </div>
       }
 
@@ -40,20 +63,39 @@
               <th class="px-4 py-3 text-left font-bold text-slate-600">Description</th>
               <th class="px-4 py-3 text-left font-bold text-slate-600">Qty</th>
               <th class="px-4 py-3 text-left font-bold text-slate-600">Rate</th>
-              <th class="px-4 py-3 text-left font-bold text-slate-600">Line total</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600">Discount</th>
+              <th class="px-4 py-3 text-right font-bold text-slate-600">Line total</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100">
             @for (item of quote.items; track item.id) {
               <tr>
                 <td class="px-4 py-3 text-slate-800">{{ lineDescription(item) }}</td>
-                <td class="px-4 py-3 text-slate-600">{{ item.totalSetQty ?? '—' }}</td>
-                <td class="px-4 py-3 text-slate-600">{{ item.sellPrice ?? item.unitPrice ?? '—' }}</td>
-                <td class="px-4 py-3 text-slate-600">{{ item.lineTotal ?? '—' }}</td>
+                <td class="px-4 py-3 text-slate-600">{{ lineQuantity(item) }}</td>
+                <td class="px-4 py-3 text-slate-600">{{ formatMoney(item.unitPrice) }}</td>
+                <td class="px-4 py-3 text-slate-600">{{ discountLabel(item.discountType) }}</td>
+                <td class="px-4 py-3 text-right text-slate-600">{{ formatMoney(item.lineTotal) }}</td>
               </tr>
             }
           </tbody>
         </table>
+      </div>
+
+      <div class="mt-6 ml-auto max-w-xs space-y-2 text-sm text-slate-600">
+        <div class="flex items-center justify-between">
+          <span>Subtotal</span>
+          <span class="font-medium text-slate-800">{{ formatMoney(quote.subtotal ?? quote.totalAmount) }}</span>
+        </div>
+        @if ((quote.discountTotal ?? 0) > 0) {
+          <div class="flex items-center justify-between text-emerald-700">
+            <span>Discounts</span>
+            <span class="font-medium">-{{ formatMoney(quote.discountTotal) }}</span>
+          </div>
+        }
+        <div class="flex items-center justify-between border-t border-slate-200 pt-2 text-base font-bold text-slate-900">
+          <span>Total</span>
+          <span>{{ formatMoney(quote.totalAmount) }}</span>
+        </div>
       </div>
     </div>
   }

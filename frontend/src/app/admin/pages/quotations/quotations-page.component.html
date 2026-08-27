@@ -1,13 +1,18 @@
 <section>
-  <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
     <div>
       <h2 class="text-2xl font-bold text-slate-900">Quotations</h2>
       <p class="mt-1 text-sm text-slate-500">Create, review, and track customer quotations.</p>
     </div>
-    <form class="flex w-full max-w-md gap-2" (ngSubmit)="searchQuotations()">
-      <input type="search" class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-pcmazing-500 focus:outline-none" placeholder="Search quote no, customer..." [ngModel]="search()" (ngModelChange)="search.set($event)" name="search" />
-      <button type="submit" class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600">Search</button>
-    </form>
+    <div class="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-end lg:w-auto">
+      <form class="flex w-full max-w-md gap-2" (ngSubmit)="searchQuotations()">
+        <input type="search" class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-pcmazing-500 focus:outline-none" placeholder="Search quote no, customer..." [ngModel]="search()" (ngModelChange)="search.set($event)" name="search" />
+        <button type="submit" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50">Search</button>
+      </form>
+      <a routerLink="/admin/quotations/new" class="shrink-0 rounded-xl bg-pcmazing-500 px-4 py-2.5 text-center text-sm font-bold text-white hover:bg-pcmazing-600">
+        New Quotation
+      </a>
+    </div>
   </div>
 
   <div class="mb-4 flex flex-wrap gap-2">
@@ -47,7 +52,9 @@
               <td class="px-4 py-3 text-slate-600">{{ item.totalAmount ?? '—' }}</td>
               <td class="px-4 py-3 capitalize text-slate-600">{{ item.status || '—' }}</td>
               <td class="px-4 py-3 text-slate-600">{{ formatDate(item.expiresAt) }}</td>
-              <td class="px-4 py-3"><a [routerLink]="['/admin/quotations', item.id]" class="font-bold text-pcmazing-500 hover:text-pcmazing-600">View</a></td>
+              <td class="px-4 py-3">
+                <a [routerLink]="['/admin/quotations', item.id]" [queryParams]="viewQuery(item)" class="font-bold text-pcmazing-500 hover:text-pcmazing-600">View</a>
+              </td>
             </tr>
           }
         </tbody>
