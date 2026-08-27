@@ -1,4 +1,4 @@
-import { Component, inject, OnDestroy, OnInit, signal } from '@angular/core';
+import { Component, computed, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { NgClass } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
@@ -10,9 +10,25 @@ import {
   SalesOrderSummary,
 } from '../../services/admin-api.service';
 import { formatInventoryMoney } from './inventory-stock.util';
+import { loadColumnOrder, moveColumn, saveColumnOrder } from './table-column-order.util';
+import { loadPeriodFilter, savePeriodFilter } from './table-period-filter.util';
 
 type DatePeriod = 'daily' | 'weekly' | 'monthly' | 'custom';
 type SalesSortKey = 'referenceNo' | 'customer' | 'items' | 'total' | 'discount' | 'saleDate' | 'status';
+type SalesTableColumnKey = 'referenceNo' | 'customer' | 'items' | 'discount' | 'total' | 'saleDate' | 'status';
+
+const SALES_TABLE_COLUMNS: readonly SalesTableColumnKey[] = [
+  'referenceNo',
+  'customer',
+  'items',
+  'discount',
+  'total',
+  'saleDate',
+  'status',
+];
+
+const SALES_COLUMN_ORDER_STORAGE_KEY = 'pcmazing.sales-orders.column-order';
+const SALES_PERIOD_FILTER_STORAGE_KEY = 'pcmazing.sales-orders.period-filter';
 
 @Component({
   selector: 'app-sales-orders-page',
@@ -36,7 +52,7 @@ export class SalesOrdersPageComponent implements OnInit, OnDestroy {
   readonly voidFilter = signal<'all' | 'active' | 'void'>('all');
   readonly startDate = signal('');
   readonly endDate = signal('');
-  readonly selectedPeriod = signal<DatePeriod>('daily');
+  readonly selectedPeriod = signal<DatePeriod>('weekly');
   readonly periodOptions: Array<{ value: DatePeriod; label: string }> = [
     { value: 'daily', label: 'Daily' },
     { value: 'weekly', label: 'Weekly' },
@@ -45,12 +61,18 @@ export class SalesOrdersPageComponent implements OnInit, OnDestroy {
   ];
   readonly sortBy = signal<SalesSortKey>('saleDate');
   readonly sortDir = signal<'asc' | 'desc'>('desc');
+  readonly columnOrder = signal<SalesTableColumnKey[]>(
+    loadColumnOrder(SALES_COLUMN_ORDER_STORAGE_KEY, SALES_TABLE_COLUMNS),
+  );
+  readonly draggingColumn = signal<SalesTableColumnKey | null>(null);
+  readonly dropTargetColumn = signal<SalesTableColumnKey | null>(null);
+  readonly orderedVisibleColumns = computed(() => this.columnOrder());
   readonly pendingVoid = signal<SalesOrderListItem | null>(null);
   readonly voiding = signal(false);
   readonly formatMoney = formatInventoryMoney;
 
   ngOnInit(): void {
-    this.applyPresetPeriod('daily');
+    this.restorePeriodFilter();
     void this.loadOrders();
   }
 
@@ -108,12 +130,14 @@ export class SalesOrdersPageComponent implements OnInit, OnDestroy {
     this.selectedPeriod.set(period);
     if (period === 'custom') {
       if (!this.startDate() || !this.endDate()) {
-        this.applyPresetPeriod('daily');
+        this.applyPresetPeriod('weekly');
       }
+      this.persistPeriodFilter();
       return;
     }
 
     this.applyPresetPeriod(period);
+    this.persistPeriodFilter();
     this.page.set(1);
     await this.loadOrders();
   }
@@ -129,6 +153,7 @@ export class SalesOrdersPageComponent implements OnInit, OnDestroy {
       this.startDate.set(end);
       this.endDate.set(start);
     }
+    this.persistPeriodFilter();
     this.page.set(1);
     await this.loadOrders();
   }
@@ -168,7 +193,7 @@ export class SalesOrdersPageComponent implements OnInit, OnDestroy {
 
   openReceipt(item: SalesOrderListItem, reprint = false): void {
     void this.router.navigate(['/admin/sales-order', item.id, 'receipt'], {
-      queryParams: reprint ? { reprint: '1' } : {},
+      queryParams: reprint ? { print: '1', reprint: '1' } : { print: '1' },
     });
   }
 
@@ -202,7 +227,86 @@ export class SalesOrdersPageComponent implements OnInit, OnDestroy {
     if (!value) {
       return '—';
     }
-    return new Date(value).toLocaleString();
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return '—';
+    }
+
+    return new Intl.DateTimeFormat('en-PH', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    }).format(date);
+  }
+
+  columnLabel(key: SalesTableColumnKey): string {
+    const labels: Record<SalesTableColumnKey, string> = {
+      referenceNo: 'Reference',
+      customer: 'Customer',
+      items: 'Items',
+      discount: 'Discount',
+      total: 'Total',
+      saleDate: 'Sale Date',
+      status: 'Status',
+    };
+    return labels[key];
+  }
+
+  isNumericColumn(key: SalesTableColumnKey): boolean {
+    return key === 'discount' || key === 'total';
+  }
+
+  columnHeaderClass(key: SalesTableColumnKey): string {
+    const base = 'px-2 py-2 font-bold whitespace-nowrap text-slate-600';
+    return this.isNumericColumn(key) ? `${base} text-right` : `${base} text-left`;
+  }
+
+  sortKeyFor(key: SalesTableColumnKey): SalesSortKey {
+    return key;
+  }
+
+  onColumnDragStart(event: DragEvent, key: SalesTableColumnKey): void {
+    this.draggingColumn.set(key);
+    event.dataTransfer?.setData('text/plain', key);
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+    }
+  }
+
+  onColumnDragOver(event: DragEvent, key: SalesTableColumnKey): void {
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'move';
+    }
+    if (this.draggingColumn() && this.draggingColumn() !== key) {
+      this.dropTargetColumn.set(key);
+    }
+  }
+
+  onColumnDrop(event: DragEvent, key: SalesTableColumnKey): void {
+    event.preventDefault();
+    const fromKey = (event.dataTransfer?.getData('text/plain') as SalesTableColumnKey) || this.draggingColumn();
+    if (!fromKey) {
+      this.clearColumnDrag();
+      return;
+    }
+
+    const next = moveColumn(this.columnOrder(), fromKey, key);
+    this.columnOrder.set(next);
+    saveColumnOrder(SALES_COLUMN_ORDER_STORAGE_KEY, next);
+    this.clearColumnDrag();
+  }
+
+  onColumnDragEnd(): void {
+    this.clearColumnDrag();
+  }
+
+  private clearColumnDrag(): void {
+    this.draggingColumn.set(null);
+    this.dropTargetColumn.set(null);
   }
 
   private applyPresetPeriod(period: Exclude<DatePeriod, 'custom'>): void {
@@ -228,5 +332,27 @@ export class SalesOrdersPageComponent implements OnInit, OnDestroy {
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
+  }
+
+  private restorePeriodFilter(): void {
+    const saved = loadPeriodFilter(SALES_PERIOD_FILTER_STORAGE_KEY);
+    if (saved.period === 'custom' && saved.startDate && saved.endDate) {
+      this.selectedPeriod.set('custom');
+      this.startDate.set(saved.startDate);
+      this.endDate.set(saved.endDate);
+      return;
+    }
+
+    const period = saved.period === 'custom' ? 'weekly' : saved.period;
+    this.selectedPeriod.set(period);
+    this.applyPresetPeriod(period);
+  }
+
+  private persistPeriodFilter(): void {
+    savePeriodFilter(SALES_PERIOD_FILTER_STORAGE_KEY, {
+      period: this.selectedPeriod(),
+      startDate: this.startDate(),
+      endDate: this.endDate(),
+    });
   }
 }

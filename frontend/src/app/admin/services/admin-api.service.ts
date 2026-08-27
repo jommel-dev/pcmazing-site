@@ -237,6 +237,7 @@ export interface InventoryServiceItem {
     discountType?: 'none' | 'senior' | 'pwd';
     discountAmount?: number;
   }>;
+  createdAt?: string | null;
   updatedAt: string | null;
 }
 
@@ -503,8 +504,11 @@ export interface CreatePurchasePayload {
   }>;
 }
 
+export type QuotationSource = 'pcmazing' | 'legacy';
+
 export interface QuotationListItem {
   id: number;
+  source: QuotationSource;
   quoteNo: string | null;
   quoteDate: string | null;
   customerName: string | null;
@@ -515,6 +519,23 @@ export interface QuotationListItem {
   createdAt: string | null;
 }
 
+export interface QuotationItem {
+  id: number;
+  materialId: number | null;
+  materialName: string | null;
+  productId: number | null;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  sellPrice: number | null;
+  discountType: 'none' | 'senior' | 'pwd';
+  discountPrice: number | null;
+  totalSetQty: number | null;
+  lineTotal: number;
+  remarks: string | null;
+  metadata: Record<string, unknown> | null;
+}
+
 export interface QuotationDetail extends QuotationListItem {
   customerAddress?: string | null;
   customerContactPerson?: string | null;
@@ -522,17 +543,28 @@ export interface QuotationDetail extends QuotationListItem {
   customerEmail?: string | null;
   validityDays?: number | null;
   remarks?: string | null;
+  customDiscount?: number;
+  subtotal?: number;
+  discountTotal?: number;
+  items: QuotationItem[];
+}
+
+export interface CreateQuotationPayload {
+  customerName: string;
+  customerPhone?: string;
+  customerEmail?: string;
+  customerAddress?: string;
+  remarks?: string;
+  customDiscount?: number;
+  quoteDate?: string;
+  validityDays?: number;
+  status?: 'draft' | 'finalized';
   items: Array<{
-    id: number;
-    materialId: number | null;
-    productId: number | null;
-    unitPrice: number | null;
-    sellPrice: number | null;
-    discountPrice: number | null;
-    totalSetQty: number | null;
-    lineTotal: number | null;
-    remarks: string | null;
-    metadata: Record<string, unknown> | null;
+    materialId?: number | null;
+    description?: string;
+    quantity: number;
+    unitPrice?: number;
+    discountType?: 'none' | 'senior' | 'pwd';
   }>;
 }
 
@@ -1753,9 +1785,30 @@ export class AdminApiService {
     );
   }
 
-  getQuotation(id: number) {
+  getQuotation(id: number, source?: QuotationSource | string) {
+    let params = new HttpParams();
+    if (source?.trim()) {
+      params = params.set('source', source.trim());
+    }
+
     return this.http.get<ItemResponse<QuotationDetail>>(
       `${APP_CONFIG.apiUrl}/admin/quotations/${id}`,
+      { headers: this.headers(), params },
+    );
+  }
+
+  createQuotation(payload: CreateQuotationPayload) {
+    return this.http.post<ItemResponse<QuotationDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/quotations`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  updateQuotation(id: number, payload: CreateQuotationPayload) {
+    return this.http.patch<ItemResponse<QuotationDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/quotations/${id}`,
+      payload,
       { headers: this.headers() },
     );
   }

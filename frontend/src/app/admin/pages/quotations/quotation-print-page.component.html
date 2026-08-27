@@ -1,0 +1,203 @@
+<section class="receipt-page min-w-0 max-w-full">
+  <div class="no-print mb-4 flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <a routerLink="/admin/quotations" class="text-sm font-bold text-pcmazing-500 hover:text-pcmazing-600">
+        ← Back to quotations
+      </a>
+      <h2 class="mt-2 text-2xl font-bold text-slate-900">Print Quotation</h2>
+      <p class="mt-1 text-sm text-slate-500">Review the quotation, then print or save as PDF.</p>
+    </div>
+    <div class="flex flex-wrap items-end gap-3">
+      <label class="template-picker">
+        <span>Print template</span>
+        <select
+          class="template-select"
+          [ngModel]="selectedTemplateId()"
+          (ngModelChange)="onTemplateChange($event)"
+          [disabled]="loading() || !!error() || !quotation()"
+        >
+          <option [ngValue]="0">Built-in quotation layout</option>
+          @for (template of activeTemplates(); track template.id) {
+            <option [ngValue]="template.id">
+              {{ template.name }}@if (template.isDefault) { (Default) }
+            </option>
+          }
+        </select>
+      </label>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50" (click)="backToQuote()">
+          Back to quote
+        </button>
+        <button type="button" class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:opacity-60" [disabled]="loading() || !!error() || !quotation()" (click)="printQuote()">
+          Print
+        </button>
+      </div>
+    </div>
+  </div>
+
+  @if (loading()) {
+    <div class="no-print rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500">
+      Loading quotation...
+    </div>
+  } @else if (error()) {
+    <div class="no-print rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{{ error() }}</div>
+  } @else if (quotation(); as current) {
+    @if (useCustomTemplate() && selectedTemplate(); as template) {
+      <div class="receipt-sheet receipt-sheet-template mx-auto bg-white text-black shadow-sm" [ngStyle]="templateSheetStyle()">
+        @for (element of templateElements(); track element.id) {
+          @if (!isHiddenElement(element)) {
+            <div
+              class="template-print-element"
+              [class.wrap-content]="usesPreWrapField(element)"
+              [attr.data-type]="element.type"
+              [ngStyle]="elementStyle(element)"
+            >
+              @switch (element.type) {
+                @case ('line') {
+                  <span class="template-line"></span>
+                }
+                @case ('image') {
+                  <img class="template-logo" [src]="fieldValue(element) || '/images/logopcm.png'" [alt]="element.label || 'Logo'" />
+                }
+                @case ('table') {
+                  <table class="template-line-items">
+                    <thead>
+                      <tr>
+                        <th>Item</th>
+                        <th>Description</th>
+                        <th class="num">Qty</th>
+                        <th class="num">Price</th>
+                        <th class="num">Discount</th>
+                        <th class="num">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (line of lines(); track $index) {
+                        <tr>
+                          <td>{{ line.itemName }}</td>
+                          <td>{{ line.description }}</td>
+                          <td class="num">{{ line.isCustomDiscount ? '—' : (line.qty | number:'1.0-2') }}</td>
+                          <td class="num">{{ line.isCustomDiscount ? '—' : formatMoney(line.unitPrice) }}</td>
+                          <td class="num">{{ formatDiscount(line) }}</td>
+                          <td class="num">{{ line.isCustomDiscount ? '—' : formatMoney(line.extPrice) }}</td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                }
+                @case ('field') {
+                  @if (element.fieldKey === 'signatureLine') {
+                    <span class="template-signature"></span>
+                  } @else {
+                    <span class="template-field-text" [class.pre-wrap]="usesPreWrapField(element)">
+                      {{ fieldValue(element) }}
+                    </span>
+                  }
+                }
+                @default {
+                  <span class="template-field-text" [class.pre-wrap]="usesPreWrapField(element)">{{ fieldValue(element) }}</span>
+                }
+              }
+            </div>
+          }
+        }
+      </div>
+    } @else {
+      <div class="receipt-sheet mx-auto bg-white text-black shadow-sm">
+        <div class="receipt-meta">
+          <div class="receipt-meta-left">
+            <div>Printed: {{ printedAt() | date:'M/d/yyyy h:mm:ss a' }}</div>
+            @if (printingSettings()?.showPageNumbers !== false) {
+              <div>Page 1</div>
+            }
+          </div>
+          <div class="receipt-meta-right">
+            <div><strong>Quotation {{ quotationNo() }}</strong></div>
+            <div>Date: {{ current.quoteDate ? (current.quoteDate | date:'M/d/yyyy') : (printedAt() | date:'M/d/yyyy') }}</div>
+            @if (current.expiresAt) {
+              <div>Valid until: {{ current.expiresAt | date:'M/d/yyyy' }}</div>
+            }
+          </div>
+        </div>
+
+        <div class="receipt-brand">
+          <img src="/images/logopcm.png" alt="PCmazing IT SERVICES" class="receipt-logo" />
+          <p class="receipt-company">{{ printingSettings()?.storeName || 'PCmazing' }}</p>
+          <p class="receipt-address">{{ printingSettings()?.storeAddress || 'Mabini Extension, Cabanatuan City, 3100' }}</p>
+        </div>
+
+        <div class="receipt-bill-to">
+          <p><strong>Bill To:</strong></p>
+          <p>{{ current.customerName }}</p>
+          @if (current.customerContactNumber) {
+            <p>{{ current.customerContactNumber }}</p>
+          }
+          @if (current.customerEmail) {
+            <p>{{ current.customerEmail }}</p>
+          }
+          @if (current.customerAddress) {
+            <p>{{ current.customerAddress }}</p>
+          }
+        </div>
+
+        <table class="receipt-table">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Description</th>
+              <th class="num">Qty</th>
+              <th class="num">Price</th>
+              <th class="num">Discount</th>
+              <th class="num">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (line of lines(); track $index) {
+              <tr>
+                <td>{{ line.itemName }}</td>
+                <td>{{ line.description }}</td>
+                <td class="num">{{ line.isCustomDiscount ? '—' : (line.qty | number:'1.0-2') }}</td>
+                <td class="num">{{ line.isCustomDiscount ? '—' : formatMoney(line.unitPrice) }}</td>
+                <td class="num">{{ formatDiscount(line) }}</td>
+                <td class="num">{{ line.isCustomDiscount ? '—' : formatMoney(line.extPrice) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+
+        <div class="receipt-totals">
+          <div class="receipt-totals-left">
+            @if (discountTotal() > 0) {
+              <div>Total Discounts: {{ formatMoney(discountTotal()) }}</div>
+            }
+            @if (current.remarks) {
+              <div class="receipt-bill-to">
+                <p><strong>Remarks:</strong></p>
+                <p>{{ current.remarks }}</p>
+              </div>
+            }
+          </div>
+          <div class="receipt-totals-right">
+            <div class="totals-row">
+              <span>Subtotal</span>
+              <span>{{ formatMoney(subtotal()) }}</span>
+            </div>
+            <div class="totals-row totals-row-strong">
+              <span>QUOTE TOTAL</span>
+              <span>{{ formatMoney(quoteTotal()) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="receipt-footer">
+          @if (preparedBy()) {
+            <p>Prepared by: {{ preparedBy() }}</p>
+          }
+          <div class="receipt-signature">
+            <span></span>
+          </div>
+        </div>
+      </div>
+    }
+  }
+</section>

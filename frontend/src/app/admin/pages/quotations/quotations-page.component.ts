@@ -67,4 +67,8 @@ export class QuotationsPageComponent implements OnInit {
   formatDate(value: string | null): string {
     return value ? new Date(value).toLocaleDateString() : '—';
   }
+
+  viewQuery(item: QuotationListItem): Record<string, string> {
+    return item.source ? { source: item.source } : {};
+  }
 }
