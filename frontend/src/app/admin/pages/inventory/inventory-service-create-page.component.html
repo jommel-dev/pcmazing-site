@@ -435,7 +435,12 @@
                   @for (item of filteredMaterials(); track item.id) {
                     <button
                       type="button"
-                      class="block w-full border-b border-slate-100 px-4 py-3 text-left last:border-b-0 hover:bg-slate-50"
+                      class="block w-full border-b border-slate-100 px-4 py-3 text-left last:border-b-0"
+                      [class.hover:bg-slate-50]="isMaterialSelectable(item)"
+                      [class.cursor-not-allowed]="!isMaterialSelectable(item)"
+                      [class.bg-slate-50]="!isMaterialSelectable(item)"
+                      [class.opacity-60]="!isMaterialSelectable(item)"
+                      [disabled]="!isMaterialSelectable(item)"
                       (mousedown)="onPartSuggestionPointerDown($event, item)"
                     >
                       <p class="text-sm font-medium text-slate-800">{{ item.materialName }}</p>
@@ -446,6 +451,12 @@
                         }
                         @if (item.brandName) {
                           · {{ item.brandName }}
+                        }
+                        ·
+                        @if (isMaterialSelectable(item)) {
+                          Stock {{ materialStockQty(item) }}
+                        } @else {
+                          Out of stock
                         }
                       </p>
                     </button>
@@ -481,7 +492,7 @@
 
           @for (part of partsArray.controls; track $index; let partIndex = $index) {
             <div
-              class="grid items-end gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_140px_80px_110px_130px_110px_auto]"
+              class="grid items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_140px_80px_110px_130px_110px_auto]"
               [formGroupName]="partIndex"
             >
               <div class="min-w-0">
@@ -529,7 +540,7 @@
                 <label class="mb-1 block text-xs font-semibold uppercase text-slate-700 sm:hidden">Net</label>
                 <p class="rounded-xl px-4 py-3 text-sm font-semibold text-slate-800">₱{{ partNetAmount(partIndex) | number:'1.2-2' }}</p>
               </div>
-              <div class="flex justify-end">
+              <div class="flex justify-end self-start">
                 @if (!isDoneStatus()) {
                   <button type="button" class="rounded-xl px-3 py-2 text-sm font-semibold text-red-500 hover:bg-red-50" (click)="removePart(partIndex)">
                     Remove

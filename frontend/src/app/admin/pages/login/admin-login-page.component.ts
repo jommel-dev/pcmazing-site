@@ -2,7 +2,7 @@ import { Component, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
-import { getRoleHomeRoute, isSuperAdmin } from '../../rbac/admin-roles';
+import { canUseAdminLogin, getRoleHomeRoute } from '../../rbac/admin-roles';
 import { AdminAuthService } from '../../services/admin-auth.service';
 
 @Component({
@@ -51,9 +51,9 @@ export class AdminLoginPageComponent implements OnInit, OnDestroy {
         this.adminAuth.login(this.username(), this.password(), this.rememberMe()),
       );
 
-      if (!isSuperAdmin(response.data.user.role)) {
+      if (!canUseAdminLogin(response.data.user.role)) {
         this.adminAuth.logout();
-        await this.router.navigateByUrl('/user/login');
+        this.error.set('This account must sign in at MyPeoplePortal (/user/login).');
         return;
       }
 

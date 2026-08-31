@@ -28,6 +28,10 @@ export function stockQty(item: MaterialItem): number {
   return item.onHandStock ?? 0;
 }
 
+export function isMaterialInStock(item: MaterialItem): boolean {
+  return stockQty(item) > 0;
+}
+
 export function extendedCost(item: MaterialItem): number {
   return unitOrderCost(item) * stockQty(item);
 }

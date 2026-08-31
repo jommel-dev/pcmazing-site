@@ -6,6 +6,8 @@ export function normalizeRoleKey(role?: string | null): string {
 export const BUSINESS_ROLE_LABELS = [
   'Super Admin',
   'Admin',
+  'Manager',
+  'Assistant Manager',
   'Marketing Lead',
   'Marketing',
   'Sales Manager',
@@ -78,6 +80,24 @@ export function isMarketing(role?: string | null): boolean {
   return key === 'marketing' || (key.includes('marketing') && !key.includes('lead'));
 }
 
+/** Store operations Manager / Assistant Manager — full Job Order, Sales Order, and Quotation access. */
+export function isOperationsManager(role?: string | null): boolean {
+  if (isSuperAdmin(role)) {
+    return false;
+  }
+  const key = normalizeRoleKey(role);
+  if (key === 'manager' || key === 'assistantmanager' || key === 'assistantsalesmanager') {
+    return true;
+  }
+  return (
+    key.includes('manager') &&
+    key.includes('assistant') &&
+    !key.includes('project') &&
+    !key.includes('marketing') &&
+    !key.includes('sales')
+  );
+}
+
 export function isSales(role?: string | null): boolean {
   if (isSuperAdmin(role)) {
     return true;
@@ -89,8 +109,7 @@ export function isSales(role?: string | null): boolean {
   if (
     key === 'sales' ||
     key === 'salesmanager' ||
-    key === 'assistantsalesmanager' ||
-    key === 'assistantmanager'
+    key === 'assistantsalesmanager'
   ) {
     return true;
   }
@@ -116,19 +135,14 @@ export function isDeveloperOrPm(role?: string | null): boolean {
 }
 
 export function isSalesRestrictedInventory(role?: string | null): boolean {
-  if (isSuperAdmin(role)) {
+  if (isSuperAdmin(role) || isOperationsManager(role)) {
     return false;
   }
   const key = normalizeRoleKey(role);
   if (!key) {
     return false;
   }
-  if (
-    key === 'sales' ||
-    key === 'salesmanager' ||
-    key === 'assistantsalesmanager' ||
-    key === 'assistantmanager'
-  ) {
+  if (key === 'sales' || key === 'salesmanager' || key === 'assistantsalesmanager') {
     return true;
   }
   return key.includes('sales') && (key.includes('manager') || key.includes('assistant'));
@@ -136,6 +150,25 @@ export function isSalesRestrictedInventory(role?: string | null): boolean {
 
 export function canSeeInventoryCosts(role?: string | null): boolean {
   return !isSalesRestrictedInventory(role);
+}
+
+/** Admin or Super Admin — may sign in at /admin/login. */
+export function canUseAdminLogin(role?: string | null): boolean {
+  return isSuperAdmin(role);
+}
+
+/** Roles allowed at /user/login (MyPeoplePortal). */
+export function canUsePortalLogin(role?: string | null): boolean {
+  if (canUseAdminLogin(role)) {
+    return true;
+  }
+  return (
+    isMarketing(role) ||
+    isOperationsManager(role) ||
+    isSalesRestrictedInventory(role) ||
+    isDeveloper(role) ||
+    isProjectManager(role)
+  );
 }
 
 export function getAllowedModuleKeys(role?: string | null): Set<AdminModuleKey> | 'all' {
@@ -156,7 +189,7 @@ export function getAllowedModuleKeys(role?: string | null): Set<AdminModuleKey> 
     return new Set(['marketing_dashboard', 'lead_generation', 'profile']);
   }
 
-  if (isSalesRestrictedInventory(role)) {
+  if (isOperationsManager(role) || isSalesRestrictedInventory(role)) {
     return new Set([
       'sales_dashboard',
       'contact_inquiries',
@@ -192,7 +225,7 @@ export function getRoleHomeRoute(role?: string | null): string {
   if (isMarketingLead(role) || isMarketing(role)) {
     return '/admin/marketing-dashboard';
   }
-  if (isSalesRestrictedInventory(role)) {
+  if (isOperationsManager(role) || isSalesRestrictedInventory(role)) {
     return '/admin/sales-dashboard';
   }
   if (isDeveloper(role) || isProjectManager(role)) {

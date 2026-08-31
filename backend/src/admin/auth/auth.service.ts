@@ -2,13 +2,7 @@ import { ForbiddenException, Injectable, Logger, UnauthorizedException } from '@
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { DatabaseService } from '../../database/database.service';
-import {
-  isDeveloper,
-  isMarketing,
-  isProjectManager,
-  isSalesRestrictedInventory,
-  isSuperAdmin,
-} from '../rbac/admin-roles.util';
+import { canUseAdminLogin, canUsePortalLogin } from '../rbac/admin-roles.util';
 import { ensureUserManagementTable } from '../users/user-management.schema';
 import { AVATAR_SQL } from '../users/tblusers.util';
 import { AdminLoginDto } from './dto/admin-login.dto';
@@ -55,9 +49,9 @@ export class AuthService {
 
   async login(dto: AdminLoginDto): Promise<{ accessToken: string; user: AdminAuthUser }> {
     const user = await this.authenticateCredentials(dto);
-    if (!isSuperAdmin(user.role)) {
+    if (!canUseAdminLogin(user.role)) {
       throw new ForbiddenException(
-        'This account must sign in at /user/portal. Admin login is for Super Admin only.',
+        'This account must sign in at /user/login. Admin login is for Admin and Super Admin only.',
       );
     }
     return this.issueSession(user);
@@ -65,29 +59,12 @@ export class AuthService {
 
   async portalLogin(dto: AdminLoginDto): Promise<{ accessToken: string; user: AdminAuthUser }> {
     const user = await this.authenticateCredentials(dto);
-    if (isSuperAdmin(user.role)) {
-      throw new ForbiddenException(
-        'Super Admin must sign in at /admin/access. Use the staff portal for administrative access.',
-      );
-    }
-    if (!this.canUseUserPortal(user.role)) {
+    if (!canUsePortalLogin(user.role)) {
       throw new ForbiddenException(
         'This account is not allowed to use the user portal. Contact an administrator.',
       );
     }
     return this.issueSession(user);
-  }
-
-  private canUseUserPortal(role?: string | null): boolean {
-    if (isSuperAdmin(role)) {
-      return false;
-    }
-    return (
-      isMarketing(role) ||
-      isSalesRestrictedInventory(role) ||
-      isDeveloper(role) ||
-      isProjectManager(role)
-    );
   }
 
   private async authenticateCredentials(dto: AdminLoginDto): Promise<AdminAuthUser> {

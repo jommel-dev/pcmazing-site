@@ -66,7 +66,7 @@ export class AdminDashboardPageComponent implements OnInit {
       return [];
     }
 
-    const order = ['net', 'outstanding', 'discounts', 'operatingExpenses'];
+    const order = ['net', 'outstanding', 'discounts', 'refunds', 'operatingExpenses'];
     return order
       .map((key) => data.kpis.find((item) => item.key === key))
       .filter((item): item is NonNullable<typeof item> => Boolean(item));

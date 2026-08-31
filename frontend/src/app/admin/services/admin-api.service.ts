@@ -218,6 +218,8 @@ export interface InventoryServiceItem {
   durationMinutes: number | null;
   notes?: string | null;
   cancelReason?: string | null;
+  refundReason?: string | null;
+  refundAmount?: number;
   statusHistory?: JobOrderStatusHistoryItem[];
   laborDiscountType?: 'none' | 'senior' | 'pwd';
   customDiscount?: number;
@@ -292,6 +294,8 @@ export interface SalesOrderItem {
   materialCode: string | null;
   description: string | null;
   quantity: number;
+  refundedQuantity: number;
+  refundableQuantity: number;
   unitPrice: number;
   discountType: 'none' | 'senior' | 'pwd';
 }
@@ -306,12 +310,24 @@ export interface SalesOrderListItem {
   subtotal: number;
   discountTotal: number;
   totalAmount: number;
+  refundAmount: number;
+  netTotalAmount: number;
+  refundReason: string | null;
+  refundedAt: string | null;
   isVoid: boolean;
   voidedAt: string | null;
   saleDate: string | null;
   itemCount: number;
   itemsSummary: string[];
   updatedAt: string | null;
+}
+
+export interface RefundSalesOrderPayload {
+  refundReason: string;
+  items: Array<{
+    itemId: number;
+    quantity: number;
+  }>;
 }
 
 export interface SalesOrderDetail extends SalesOrderListItem {
@@ -1528,6 +1544,8 @@ export class AdminApiService {
     status: string,
     paymentMethod?: string,
     cancelReason?: string,
+    refundReason?: string,
+    refundAmount?: number,
   ) {
     return this.http.patch<ItemResponse<InventoryServiceItem>>(
       `${APP_CONFIG.apiUrl}/admin/inventory/services/${id}/status`,
@@ -1535,6 +1553,8 @@ export class AdminApiService {
         status,
         ...(paymentMethod ? { paymentMethod } : {}),
         ...(cancelReason ? { cancelReason } : {}),
+        ...(refundReason ? { refundReason } : {}),
+        ...(refundAmount != null && refundAmount > 0 ? { refundAmount } : {}),
       },
       { headers: this.headers() },
     );
@@ -1612,6 +1632,14 @@ export class AdminApiService {
     return this.http.patch<ItemResponse<SalesOrderDetail>>(
       `${APP_CONFIG.apiUrl}/admin/inventory/sales-orders/${id}/void`,
       {},
+      { headers: this.headers() },
+    );
+  }
+
+  refundSalesOrder(id: number, payload: RefundSalesOrderPayload) {
+    return this.http.patch<ItemResponse<SalesOrderDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/sales-orders/${id}/refund`,
+      payload,
       { headers: this.headers() },
     );
   }

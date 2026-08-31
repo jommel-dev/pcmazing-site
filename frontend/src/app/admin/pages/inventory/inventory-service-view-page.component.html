@@ -152,6 +152,19 @@
                 <p class="mt-1 whitespace-pre-wrap text-sm text-red-800">{{ job.cancelReason }}</p>
               </div>
             }
+            @if ((job.status || '').trim().toLowerCase() === 'refunded') {
+              <div class="sm:col-span-2 rounded-xl border border-violet-100 bg-violet-50 px-4 py-3">
+                <p class="text-xs font-semibold tracking-wide text-violet-600 uppercase">Refund details</p>
+                @if (job.refundAmount) {
+                  <p class="mt-1 text-sm font-semibold text-violet-900">
+                    Amount refunded: {{ job.refundAmount | currency: 'PHP':'symbol-narrow':'1.2-2' }}
+                  </p>
+                }
+                @if (job.refundReason) {
+                  <p class="mt-1 whitespace-pre-wrap text-sm text-violet-800">{{ job.refundReason }}</p>
+                }
+              </div>
+            }
             <div class="sm:col-span-2">
               <p class="text-xs font-semibold tracking-wide text-slate-400 uppercase">Notes</p>
               <p class="mt-1 whitespace-pre-wrap text-sm text-slate-800">{{ displayValue(job.notes) }}</p>
