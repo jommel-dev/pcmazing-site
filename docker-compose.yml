@@ -44,7 +44,8 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-https://www.pcmazing.com,https://pcmazing.com}
       UPLOADS_DIR: /app/uploads
     volumes:
-      - pcmazing_uploads:/app/uploads
+      # Keep existing files on the host: ~/apps/pcmazing-site/backend/uploads
+      - ./backend/uploads:/app/uploads
     networks:
       - edge
     # Uncomment for local debug: ports: ["3000:3000"]
@@ -66,6 +67,3 @@ networks:
     external: true
     # Override with DOCKER_NETWORK in .env.docker if needed (yours is app-tier)
     name: ${DOCKER_NETWORK:-app-tier}
-
-volumes:
-  pcmazing_uploads:
