@@ -1,0 +1,71 @@
+# PCmazing Site — Docker Compose for Cloudflare Tunnel
+#
+# Tunnel routes (already configured):
+#   www.pcmazing.com  → http://pcmazing_frontend_app:80
+#   v1-api.pcmazing.com  → http://pcmazing_backend_api:3000
+#
+# Deploy on server (as root):
+#   cd ~/apps/pcmazing-site
+#   cp .env.docker.example .env.docker   # edit DB + secrets
+#   docker compose --env-file .env.docker up -d --build
+#
+# Network: must match the network your tunnel container is on (this server: app-tier).
+#   docker inspect <pcmazing-tunnel-container> -f '{{json .NetworkSettings.Networks}}'
+
+name: pcmazing
+
+services:
+  pcmazing_frontend_app:
+    container_name: pcmazing_frontend_app
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        API_URL: ${API_URL:-https://v1-api.pcmazing.com}
+        PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-https://www.pcmazing.com}
+        BUILD_ID: ${BUILD_ID:-}
+    restart: unless-stopped
+    networks:
+      - edge
+    # No host ports required — Cloudflare tunnel reaches the container by name.
+    # Uncomment for local debug: ports: ["8080:80"]
+
+  pcmazing_backend_api:
+    container_name: pcmazing_backend_api
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://www.pcmazing.com,https://pcmazing.com}
+      UPLOADS_DIR: /app/uploads
+    volumes:
+      - pcmazing_uploads:/app/uploads
+    networks:
+      - edge
+    # Uncomment for local debug: ports: ["3000:3000"]
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+networks:
+  edge:
+    external: true
+    # Override with DOCKER_NETWORK in .env.docker if needed (yours is app-tier)
+    name: ${DOCKER_NETWORK:-app-tier}
+
+volumes:
+  pcmazing_uploads:

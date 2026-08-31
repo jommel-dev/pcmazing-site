@@ -11,6 +11,7 @@
 .env.local
 .env.*.local
 /public/app-version.json
+/src/app/core/config/env.generated.ts
 
 # Node
 /node_modules
