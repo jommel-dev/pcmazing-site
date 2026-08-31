@@ -524,6 +524,46 @@
               }
             </label>
           }
+          @if (pending.nextStatus === 'Refunded') {
+            <label class="mt-4 block">
+              <span class="mb-1 block text-sm font-semibold text-slate-800">Refund reason</span>
+              <textarea
+                rows="3"
+                class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 focus:border-pcmazing-500 focus:outline-none"
+                [ngModel]="refundReason()"
+                (ngModelChange)="refundReason.set($event); refundReasonError.set('')"
+                name="refundReason"
+                placeholder="Why is this job being refunded?"
+              ></textarea>
+              @if (refundReasonError()) {
+                <p class="mt-1 text-xs text-red-600">{{ refundReasonError() }}</p>
+              }
+            </label>
+            <label class="mt-4 block">
+              <span class="mb-1 block text-sm font-semibold text-slate-800">Amount refunded</span>
+              <input
+                type="number"
+                min="0.01"
+                [max]="jobOrderMaxRefund(pending.item) || null"
+                step="0.01"
+                class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 focus:border-pcmazing-500 focus:outline-none"
+                [ngModel]="refundAmount()"
+                (ngModelChange)="refundAmount.set($event); refundAmountError.set('')"
+                name="refundAmount"
+                placeholder="0.00"
+              />
+              <button
+                type="button"
+                class="mt-2 text-sm font-semibold text-pcmazing-600 hover:text-pcmazing-700 hover:underline"
+                (click)="fillMaxRefundAmount()"
+              >
+                Max amount: {{ formatMoney(jobOrderMaxRefund(pending.item)) }}
+              </button>
+              @if (refundAmountError()) {
+                <p class="mt-1 text-xs text-red-600">{{ refundAmountError() }}</p>
+              }
+            </label>
+          }
         </div>
       </div>
 
@@ -537,10 +577,15 @@
         </button>
         <button
           type="button"
-          class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600"
+          class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:cursor-not-allowed disabled:opacity-60"
+          [disabled]="statusUpdatingId() !== null"
           (click)="confirmStatusChange()"
         >
-          Yes
+          @if (statusUpdatingId() !== null) {
+            Saving...
+          } @else {
+            Yes
+          }
         </button>
       </div>
     </div>

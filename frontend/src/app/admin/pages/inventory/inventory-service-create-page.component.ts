@@ -19,8 +19,9 @@ import {
   applyPhSpecialDiscount,
   normalizePhDiscountType,
 } from './ph-discount.util';
+import { isMaterialInStock, stockQty } from './inventory-stock.util';
 
-const DEFAULT_STATUSES = ['Active', 'Pending', 'Cancelled', 'Done'];
+const DEFAULT_STATUSES = ['Active', 'Pending', 'Cancelled', 'Done', 'Refunded'];
 const SETTLEMENT_PAYMENT_METHODS = ['Cash', 'Gcash', 'Bank Transfer'] as const;
 
 @Component({
@@ -579,6 +580,9 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
     if (this.isDoneStatus()) {
       return;
     }
+    if (!this.isMaterialSelectable(item)) {
+      return;
+    }
     if (this.selectedMaterialIds().has(Number(item.id))) {
       this.partQuery.set('');
       this.openPartSearch.set(false);
@@ -628,9 +632,20 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
     const selectedIds = this.selectedMaterialIds();
     return (
       this.materials().find(
-        (item) => item.materialName.toLowerCase() === name && !selectedIds.has(Number(item.id)),
+        (item) =>
+          item.materialName.toLowerCase() === name &&
+          !selectedIds.has(Number(item.id)) &&
+          this.isMaterialSelectable(item),
       ) ?? null
     );
+  }
+
+  isMaterialSelectable(item: MaterialItem): boolean {
+    return isMaterialInStock(item);
+  }
+
+  materialStockQty(item: MaterialItem): number {
+    return stockQty(item);
   }
 
   onPartSearchKeydown(event: Event): void {
@@ -728,6 +743,7 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
       unitPrice: item.unitPrice == null ? null : Number(item.unitPrice),
       orderCost: item.orderCost == null ? null : Number(item.orderCost),
       sellPrice: item.sellPrice == null ? null : Number(item.sellPrice),
+      onHandStock: item.onHandStock == null ? null : Number(item.onHandStock),
     };
   }
 
@@ -816,6 +832,9 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
   }
 
   onPartSuggestionPointerDown(event: Event, item: MaterialItem): void {
+    if (!this.isMaterialSelectable(item)) {
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     this.addPartFromCatalog(item);

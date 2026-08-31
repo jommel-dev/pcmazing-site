@@ -2,7 +2,7 @@ import { Component, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
-import { getRoleHomeRoute, isSuperAdmin } from '../../admin/rbac/admin-roles';
+import { getRoleHomeRoute } from '../../admin/rbac/admin-roles';
 import { AdminAuthService } from '../../admin/services/admin-auth.service';
 
 @Component({
@@ -50,12 +50,6 @@ export class PortalLoginPageComponent implements OnInit, OnDestroy {
       const response = await firstValueFrom(
         this.adminAuth.portalLogin(this.username(), this.password(), this.rememberMe()),
       );
-
-      if (isSuperAdmin(response.data.user.role)) {
-        this.adminAuth.logout();
-        this.error.set('Super Admin must sign in at the Admin Portal.');
-        return;
-      }
 
       this.adminAuth.saveSession(
         response.data.accessToken,

@@ -41,20 +41,33 @@ export function isMarketing(role?: string | null): boolean {
   return key === 'marketing' || (key.includes('marketing') && !key.includes('lead'));
 }
 
-export function isSalesRestrictedInventory(role?: string | null): boolean {
+/** Store operations Manager / Assistant Manager — full Job Order, Sales Order, and Quotation access. */
+export function isOperationsManager(role?: string | null): boolean {
   if (isSuperAdmin(role)) {
+    return false;
+  }
+  const key = normalizeRoleKey(role);
+  if (key === 'manager' || key === 'assistantmanager' || key === 'assistantsalesmanager') {
+    return true;
+  }
+  return (
+    key.includes('manager') &&
+    key.includes('assistant') &&
+    !key.includes('project') &&
+    !key.includes('marketing') &&
+    !key.includes('sales')
+  );
+}
+
+export function isSalesRestrictedInventory(role?: string | null): boolean {
+  if (isSuperAdmin(role) || isOperationsManager(role)) {
     return false;
   }
   const key = normalizeRoleKey(role);
   if (!key) {
     return false;
   }
-  if (
-    key === 'sales' ||
-    key === 'salesmanager' ||
-    key === 'assistantsalesmanager' ||
-    key === 'assistantmanager'
-  ) {
+  if (key === 'sales' || key === 'salesmanager' || key === 'assistantsalesmanager') {
     return true;
   }
   return key.includes('sales') && (key.includes('manager') || key.includes('assistant'));
@@ -82,6 +95,25 @@ export function canSeeInventoryCosts(role?: string | null): boolean {
   return !isSalesRestrictedInventory(role);
 }
 
+/** Admin or Super Admin — may sign in at /admin/login. */
+export function canUseAdminLogin(role?: string | null): boolean {
+  return isSuperAdmin(role);
+}
+
+/** Roles allowed at /user/login (MyPeoplePortal). */
+export function canUsePortalLogin(role?: string | null): boolean {
+  if (canUseAdminLogin(role)) {
+    return true;
+  }
+  return (
+    isMarketing(role) ||
+    isOperationsManager(role) ||
+    isSalesRestrictedInventory(role) ||
+    isDeveloper(role) ||
+    isProjectManager(role)
+  );
+}
+
 export function rolesMatch(userRole: string | null | undefined, required: string): boolean {
   const userKey = normalizeRoleKey(userRole);
   const requiredKey = normalizeRoleKey(required);
@@ -103,6 +135,8 @@ export function rolesMatch(userRole: string | null | undefined, required: string
 export const BUSINESS_ROLE_LABELS = [
   'Super Admin',
   'Admin',
+  'Manager',
+  'Assistant Manager',
   'Marketing Lead',
   'Marketing',
   'Sales Manager',

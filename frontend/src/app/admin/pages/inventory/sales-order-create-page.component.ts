@@ -1,4 +1,4 @@
-import { DecimalPipe } from '@angular/common';
+import { DecimalPipe, DatePipe } from '@angular/common';
 import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormArray, FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
@@ -14,6 +14,8 @@ import {
   normalizePhDiscountType,
   type PhDiscountType,
 } from './ph-discount.util';
+import { normalizeSalesOrderDetail } from './sales-order.util';
+import { isMaterialInStock, stockQty } from './inventory-stock.util';
 
 const DISCOUNT_OPTIONS: Array<{ value: PhDiscountType; label: string }> = [
   { value: 'none', label: 'No discount' },
@@ -23,7 +25,7 @@ const DISCOUNT_OPTIONS: Array<{ value: PhDiscountType; label: string }> = [
 
 @Component({
   selector: 'app-sales-order-create-page',
-  imports: [ReactiveFormsModule, RouterLink, DecimalPipe],
+  imports: [ReactiveFormsModule, RouterLink, DecimalPipe, DatePipe],
   templateUrl: './sales-order-create-page.component.html',
 })
 export class SalesOrderCreatePageComponent implements OnInit {
@@ -53,6 +55,14 @@ export class SalesOrderCreatePageComponent implements OnInit {
 
   readonly isViewMode = computed(() => this.orderId() !== null);
   readonly isVoided = computed(() => !!this.order()?.isVoid);
+  readonly hasRefund = computed(() => (this.order()?.refundAmount ?? 0) > 0);
+  readonly netTotalAmount = computed(() => {
+    const order = this.order();
+    if (!order) {
+      return 0;
+    }
+    return Math.max(0, (order.netTotalAmount ?? order.totalAmount) - 0);
+  });
 
   readonly form = this.formBuilder.nonNullable.group({
     customerName: ['', [Validators.required, Validators.maxLength(180)]],
@@ -88,7 +98,7 @@ export class SalesOrderCreatePageComponent implements OnInit {
       this.materials.set(materialsResponse.data.map((item) => this.normalizeMaterial(item)));
 
       if (orderResponse?.data) {
-        this.populateFromOrder(orderResponse.data);
+        this.populateFromOrder(normalizeSalesOrderDetail(orderResponse.data));
       } else {
         this.addItem();
       }
@@ -238,6 +248,9 @@ export class SalesOrderCreatePageComponent implements OnInit {
     if (this.isViewMode()) {
       return;
     }
+    if (!this.isMaterialSelectable(item)) {
+      return;
+    }
     const group = this.itemsArray.at(index);
     if (!group) {
       return;
@@ -262,9 +275,16 @@ export class SalesOrderCreatePageComponent implements OnInit {
   }
 
   onPartSuggestionPointerDown(event: Event, index: number, item: MaterialItem): void {
+    if (!this.isMaterialSelectable(item)) {
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     this.selectPartMaterial(index, item);
+  }
+
+  isMaterialSelectable(item: MaterialItem): boolean {
+    return isMaterialInStock(item);
   }
 
   filteredMaterials(index: number): MaterialItem[] {
@@ -370,12 +390,20 @@ export class SalesOrderCreatePageComponent implements OnInit {
     return DISCOUNT_OPTIONS.find((option) => option.value === normalizePhDiscountType(value))?.label ?? 'No discount';
   }
 
+  itemRefundedQuantity(index: number): number {
+    const items = this.order()?.items ?? [];
+    return Math.max(0, Number(items[index]?.refundedQuantity) || 0);
+  }
+
   materialStockLabel(materialId: string): string {
     const item = this.materials().find((entry) => String(entry.id) === String(materialId));
     if (!item) {
       return '';
     }
-    const stock = Number(item.onHandStock ?? 0);
+    const stock = stockQty(item);
+    if (stock <= 0) {
+      return 'Out of stock';
+    }
     return `Stock: ${stock}`;
   }
 

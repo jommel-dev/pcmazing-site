@@ -6,10 +6,15 @@ import { firstValueFrom } from 'rxjs';
 import {
   AdminApiService,
   PaginationMeta,
+  SalesOrderDetail,
   SalesOrderListItem,
   SalesOrderSummary,
 } from '../../services/admin-api.service';
 import { formatInventoryMoney } from './inventory-stock.util';
+import {
+  normalizeSalesOrderDetail,
+  normalizeSalesOrderListItem,
+} from './sales-order.util';
 import { loadColumnOrder, moveColumn, saveColumnOrder } from './table-column-order.util';
 import { loadPeriodFilter, savePeriodFilter } from './table-period-filter.util';
 
@@ -69,6 +74,14 @@ export class SalesOrdersPageComponent implements OnInit, OnDestroy {
   readonly orderedVisibleColumns = computed(() => this.columnOrder());
   readonly pendingVoid = signal<SalesOrderListItem | null>(null);
   readonly voiding = signal(false);
+  readonly pendingRefund = signal<SalesOrderDetail | null>(null);
+  readonly refundLoading = signal(false);
+  readonly refunding = signal(false);
+  readonly refundReason = signal('');
+  readonly refundReasonError = signal('');
+  readonly refundError = signal('');
+  readonly refundSelections = signal<Record<number, { selected: boolean; quantity: number }>>({});
+  readonly refundConfirmPending = signal(false);
   readonly formatMoney = formatInventoryMoney;
 
   ngOnInit(): void {
@@ -99,7 +112,7 @@ export class SalesOrdersPageComponent implements OnInit, OnDestroy {
           this.endDate(),
         ),
       );
-      this.items.set(response.data);
+      this.items.set(response.data.map((item) => normalizeSalesOrderListItem(item)));
       this.meta.set(response.meta);
       this.summary.set(response.summary);
     } catch {
@@ -221,6 +234,311 @@ export class SalesOrdersPageComponent implements OnInit, OnDestroy {
     } finally {
       this.voiding.set(false);
     }
+  }
+
+  async requestRefund(item: SalesOrderListItem): Promise<void> {
+    this.refundError.set('');
+    this.refundReason.set('');
+    this.refundReasonError.set('');
+    this.refundLoading.set(true);
+
+    try {
+      const response = await firstValueFrom(this.adminApi.getSalesOrder(item.id));
+      const order = response.data ? normalizeSalesOrderDetail(response.data) : null;
+      if (!order || order.isVoid) {
+        return;
+      }
+
+      const selections: Record<number, { selected: boolean; quantity: number }> = {};
+      for (const line of order.items) {
+        if (line.refundableQuantity > 0) {
+          selections[Number(line.id)] = { selected: false, quantity: line.refundableQuantity };
+        }
+      }
+
+      if (!Object.keys(selections).length) {
+        this.error.set('All items on this order have already been refunded.');
+        return;
+      }
+
+      this.refundSelections.set(selections);
+      this.pendingRefund.set(order);
+    } catch {
+      this.error.set('Unable to load sales order for refund.');
+    } finally {
+      this.refundLoading.set(false);
+    }
+  }
+
+  cancelRefund(): void {
+    if (this.refunding()) {
+      return;
+    }
+    this.closeRefundModal();
+  }
+
+  private closeRefundModal(): void {
+    this.pendingRefund.set(null);
+    this.refundReason.set('');
+    this.refundReasonError.set('');
+    this.refundError.set('');
+    this.refundSelections.set({});
+    this.refundConfirmPending.set(false);
+  }
+
+  cancelRefundConfirm(): void {
+    if (this.refunding()) {
+      return;
+    }
+    this.refundConfirmPending.set(false);
+    this.refundError.set('');
+  }
+
+  onRefundBackdropClick(): void {
+    if (this.refunding()) {
+      return;
+    }
+    if (this.refundConfirmPending()) {
+      this.cancelRefundConfirm();
+      return;
+    }
+    this.cancelRefund();
+  }
+
+  toggleRefundItem(itemId: number, selected: boolean): void {
+    const order = this.pendingRefund();
+    if (!order) {
+      return;
+    }
+
+    const line = order.items.find((item) => Number(item.id) === Number(itemId));
+    if (!line) {
+      return;
+    }
+
+    this.refundSelections.update((current) => ({
+      ...current,
+      [Number(itemId)]: {
+        selected,
+        quantity: selected ? Math.max(0.01, line.refundableQuantity) : current[Number(itemId)]?.quantity ?? line.refundableQuantity,
+      },
+    }));
+    this.refundError.set('');
+  }
+
+  updateRefundQuantity(itemId: number, rawValue: string): void {
+    const order = this.pendingRefund();
+    if (!order) {
+      return;
+    }
+
+    const line = order.items.find((item) => Number(item.id) === Number(itemId));
+    if (!line) {
+      return;
+    }
+
+    const parsed = Number(rawValue);
+    const quantity = Number.isFinite(parsed) ? parsed : 0;
+    this.refundSelections.update((current) => ({
+      ...current,
+      [Number(itemId)]: {
+        selected: current[Number(itemId)]?.selected ?? true,
+        quantity: Math.min(Math.max(quantity, 0), line.refundableQuantity),
+      },
+    }));
+    this.refundError.set('');
+  }
+
+  refundPreviewAmount(): number {
+    const order = this.pendingRefund();
+    if (!order) {
+      return 0;
+    }
+
+    const lines = this.buildRefundLines(order);
+    return this.computeRefundAmount(order, lines);
+  }
+
+  selectedRefundItemCount(): number {
+    const order = this.pendingRefund();
+    if (!order) {
+      return 0;
+    }
+    return this.buildRefundLines(order).length;
+  }
+
+  refundSelectionFor(itemId: number | string): { selected: boolean; quantity: number } | undefined {
+    return this.refundSelections()[Number(itemId)];
+  }
+
+  maxRefundableAmount(order: SalesOrderDetail | SalesOrderListItem): number {
+    const priorRefund = Math.max(0, Number(order.refundAmount) || 0);
+    return Math.max(0, Number(order.totalAmount) - priorRefund);
+  }
+
+  applyMaxRefundSelection(): void {
+    const order = this.pendingRefund();
+    if (!order) {
+      return;
+    }
+
+    const selections: Record<number, { selected: boolean; quantity: number }> = {};
+    for (const line of order.items) {
+      if (line.refundableQuantity > 0) {
+        selections[Number(line.id)] = { selected: true, quantity: line.refundableQuantity };
+      }
+    }
+    this.refundSelections.set(selections);
+    this.refundError.set('');
+  }
+
+  prepareRefundConfirm(): void {
+    const order = this.pendingRefund();
+    if (!order) {
+      return;
+    }
+
+    const reason = this.refundReason().trim();
+    if (reason.length < 3) {
+      this.refundReasonError.set('Please enter a refund reason.');
+      return;
+    }
+
+    const lines = this.buildRefundLines(order);
+    if (!lines.length) {
+      this.refundError.set('Select at least one item to refund.');
+      return;
+    }
+
+    const previewAmount = this.computeRefundAmount(order, lines);
+    const maxRefund = this.maxRefundableAmount(order);
+    if (previewAmount <= 0) {
+      this.refundError.set('Refund amount must be greater than zero.');
+      return;
+    }
+    if (previewAmount > maxRefund + 0.009) {
+      this.refundError.set(`Refund cannot exceed ${this.formatMoney(maxRefund)}.`);
+      return;
+    }
+
+    this.refundReasonError.set('');
+    this.refundError.set('');
+    this.refundConfirmPending.set(true);
+  }
+
+  async submitRefund(): Promise<void> {
+    const order = this.pendingRefund();
+    if (!order) {
+      return;
+    }
+
+    const reason = this.refundReason().trim();
+    const lines = this.buildRefundLines(order);
+    if (!reason || !lines.length) {
+      this.refundConfirmPending.set(false);
+      return;
+    }
+
+    this.refundReasonError.set('');
+    this.refundError.set('');
+    this.refunding.set(true);
+
+    try {
+      await firstValueFrom(
+        this.adminApi.refundSalesOrder(order.id, {
+          refundReason: reason,
+          items: lines,
+        }),
+      );
+      this.closeRefundModal();
+      await this.loadOrders();
+    } catch (error: unknown) {
+      const detail =
+        typeof error === 'object' &&
+        error !== null &&
+        'error' in error &&
+        typeof (error as { error?: { message?: unknown } }).error?.message === 'string'
+          ? String((error as { error: { message: string } }).error.message)
+          : 'Unable to refund this sales order.';
+      this.refundError.set(detail);
+    } finally {
+      this.refunding.set(false);
+    }
+  }
+
+  orderStatusLabel(item: SalesOrderListItem): string {
+    if (item.isVoid) {
+      return 'Void';
+    }
+    const refundAmount = Math.max(0, Number(item.refundAmount) || 0);
+    const totalAmount = Math.max(0, Number(item.totalAmount) || 0);
+    if (refundAmount <= 0) {
+      return 'Completed';
+    }
+    if (refundAmount >= totalAmount - 0.009) {
+      return 'Refunded';
+    }
+    return 'Partial Refund';
+  }
+
+  orderStatusClass(item: SalesOrderListItem): string {
+    const status = this.orderStatusLabel(item);
+    if (status === 'Void') {
+      return 'bg-red-50 text-red-700 ring-1 ring-red-200';
+    }
+    if (status === 'Refunded') {
+      return 'bg-amber-50 text-amber-800 ring-1 ring-amber-200';
+    }
+    if (status === 'Partial Refund') {
+      return 'bg-orange-50 text-orange-800 ring-1 ring-orange-200';
+    }
+    return 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200';
+  }
+
+  hasRefundableItems(item: SalesOrderListItem): boolean {
+    const refundAmount = Math.max(0, Number(item.refundAmount) || 0);
+    const totalAmount = Math.max(0, Number(item.totalAmount) || 0);
+    return !item.isVoid && refundAmount < totalAmount - 0.009;
+  }
+
+  private buildRefundLines(order: SalesOrderDetail): Array<{ itemId: number; quantity: number }> {
+    const selections = this.refundSelections();
+    const lines: Array<{ itemId: number; quantity: number }> = [];
+
+    for (const item of order.items) {
+      const selection = selections[Number(item.id)];
+      if (!selection?.selected || selection.quantity <= 0) {
+        continue;
+      }
+      lines.push({ itemId: Number(item.id), quantity: selection.quantity });
+    }
+
+    return lines;
+  }
+
+  private computeRefundAmount(
+    order: SalesOrderDetail,
+    lines: Array<{ itemId: number; quantity: number }>,
+  ): number {
+    const itemMap = new Map(order.items.map((item) => [Number(item.id), item]));
+    let total = 0;
+    const orderSubtotal = Math.max(0, Number(order.subtotal) || 0);
+    const customDiscount = Math.max(0, Number(order.customDiscount) || 0);
+
+    for (const line of lines) {
+      const item = itemMap.get(Number(line.itemId));
+      if (!item) {
+        continue;
+      }
+
+      const gross = line.quantity * item.unitPrice;
+      const lineDiscount =
+        item.discountType === 'senior' || item.discountType === 'pwd' ? gross * 0.2 : 0;
+      const customShare = orderSubtotal > 0 ? (gross / orderSubtotal) * customDiscount : 0;
+      total += Math.max(0, gross - lineDiscount - customShare);
+    }
+
+    return Math.round(total * 100) / 100;
   }
 
   formatDate(value: string | null): string {

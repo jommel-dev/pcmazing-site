@@ -66,7 +66,7 @@ export class SalesReportingDashboardComponent implements OnInit {
       return [];
     }
 
-    const order = ['outstanding', 'discounts', 'operatingExpenses'];
+    const order = ['outstanding', 'discounts', 'refunds', 'operatingExpenses'];
     return order
       .map((key) => data.kpis.find((item) => item.key === key))
       .filter((item): item is NonNullable<typeof item> => Boolean(item));

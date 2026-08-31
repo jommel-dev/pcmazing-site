@@ -9,6 +9,7 @@ import {
 import { CreateServiceDto } from './dto/create-service.dto';
 import { JOB_ORDER_STATUSES, UpdateServiceStatusDto } from './dto/update-service-status.dto';
 import { deleteServiceImageFile, saveServiceImageFile } from './service-image.util';
+import { ensureJobOrderRefundColumns } from './job-order-refund.schema';
 
 const JOB_PAYMENT_METHODS = ['Cash', 'Gcash', 'Bank Transfer'] as const;
 type JobPaymentMethod = (typeof JOB_PAYMENT_METHODS)[number];
@@ -64,6 +65,8 @@ export interface InventoryServiceListItem {
   durationMinutes: number | null;
   notes?: string | null;
   cancelReason?: string | null;
+  refundReason?: string | null;
+  refundAmount?: number;
   laborDiscountType?: 'none' | 'senior' | 'pwd';
   customDiscount?: number;
   downpayment?: number;
@@ -115,6 +118,13 @@ export interface InventoryServiceFilterOption {
 export class InventoryServicesService {
   constructor(private readonly databaseService: DatabaseService) {}
 
+  redactProfitabilityFields<T extends { totalCosting?: number | null }>(item: T): T {
+    return {
+      ...item,
+      totalCosting: 0,
+    };
+  }
+
   async list(
     pageRaw?: string,
     limitRaw?: string,
@@ -129,6 +139,8 @@ export class InventoryServicesService {
     if (!(await tableExists(this.databaseService, 'pcmazing_services'))) {
       throw new ServiceUnavailableException('Service catalog table is not available in this database.');
     }
+
+    await ensureJobOrderRefundColumns(this.databaseService);
 
     const { page, limit, offset } = buildPagination(pageRaw, limitRaw);
     const listParams: unknown[] = [];
@@ -211,6 +223,7 @@ export class InventoryServicesService {
       total_labor_sales: string;
       total_parts_sales: string;
       total_discount: string;
+      total_refunds: string;
     }>(
       `SELECT
         COUNT(*)::text AS item_count,
@@ -226,7 +239,14 @@ export class InventoryServicesService {
                 THEN ROUND(COALESCE(s.labor, 0) * 0.20, 2)
               ELSE 0
             END
-        ), 0)::text AS total_discount
+        ), 0)::text AS total_discount,
+        COALESCE(SUM(
+          CASE
+            WHEN LOWER(TRIM(COALESCE(s.status, ''))) = 'refunded'
+              THEN COALESCE(s.refund_amount, 0)
+            ELSE 0
+          END
+        ), 0)::text AS total_refunds
        FROM pcmazing_services s
        LEFT JOIN LATERAL (
          SELECT COALESCE(
@@ -252,6 +272,7 @@ export class InventoryServicesService {
     const totalLaborSales = Number(summaryResult.rows[0]?.total_labor_sales ?? 0);
     const totalPartsSales = Number(summaryResult.rows[0]?.total_parts_sales ?? 0);
     const totalDiscount = Number(summaryResult.rows[0]?.total_discount ?? 0);
+    const totalRefunds = Number(summaryResult.rows[0]?.total_refunds ?? 0);
 
     const filterWhereClause = `WHERE s.deleted_at IS NULL`;
 
@@ -294,6 +315,7 @@ export class InventoryServicesService {
       labor: string | null;
       labor_discount_type: string | null;
       custom_discount: string | null;
+      refund_amount: string | null;
       status: string | null;
       image_url: string | null;
       started_at: string | null;
@@ -320,6 +342,7 @@ export class InventoryServicesService {
         s.labor::text,
         s.labor_discount_type,
         s.custom_discount::text,
+        s.refund_amount::text,
         s.status,
         s.image_url,
         s.started_at::text,
@@ -374,6 +397,14 @@ export class InventoryServicesService {
             ? Math.round(Number(row.labor ?? 0) * 0.2 * 100) / 100
             : 0;
         const totalDiscount = customDiscount + partsDiscount + laborDiscount;
+        const grossSales = Math.max(
+          0,
+          labor + partsSales - partsDiscount - customDiscount - laborDiscount,
+        );
+        const refundAmount =
+          this.normalizeStatusLabel(row.status) === 'refunded'
+            ? Math.max(0, Number(row.refund_amount ?? 0))
+            : 0;
         const userId = row.person_in_charge_user_id ? Number(row.person_in_charge_user_id) : null;
         const source = row.person_in_charge_source ?? 'tblusers';
 
@@ -396,11 +427,9 @@ export class InventoryServicesService {
           status: row.status ?? 'Active',
           imageUrl: row.image_url,
           totalCosting: partsCost,
-          totalSales: Math.max(
-            0,
-            labor + partsSales - partsDiscount - customDiscount - laborDiscount,
-          ),
+          totalSales: Math.max(0, grossSales - refundAmount),
           totalDiscount,
+          refundAmount: refundAmount > 0 ? refundAmount : undefined,
           customDiscount,
           startedAt: row.started_at,
           endedAt: row.ended_at,
@@ -412,7 +441,7 @@ export class InventoryServicesService {
       meta: buildPaginationMeta(page, limit, total),
       summary: {
         totalCosting: totalPartsCost,
-        totalSales: Math.max(0, totalLaborSales + totalPartsSales - totalDiscount),
+        totalSales: Math.max(0, totalLaborSales + totalPartsSales - totalDiscount - totalRefunds),
         totalLaborSales,
         totalPartsCost,
         totalDiscount,
@@ -725,6 +754,8 @@ export class InventoryServicesService {
       throw new ServiceUnavailableException('Service catalog table is not available in this database.');
     }
 
+    await ensureJobOrderRefundColumns(this.databaseService);
+
     const existing = await this.getById(id);
 
     const status = dto.status.trim();
@@ -735,6 +766,23 @@ export class InventoryServicesService {
     const cancelReason = String(dto.cancelReason ?? '').trim();
     if (status.toLowerCase() === 'cancelled' && cancelReason.length < 3) {
       throw new BadRequestException('A cancellation reason is required.');
+    }
+
+    const refundReason = String(dto.refundReason ?? '').trim();
+    const refundAmount = Number(dto.refundAmount ?? 0);
+    if (status.toLowerCase() === 'refunded') {
+      if (refundReason.length < 3) {
+        throw new BadRequestException('A refund reason is required.');
+      }
+      if (!Number.isFinite(refundAmount) || refundAmount <= 0) {
+        throw new BadRequestException('A valid refund amount is required.');
+      }
+      const grossSales = this.computeGrossFromServiceItem(existing);
+      if (refundAmount > grossSales) {
+        throw new BadRequestException(
+          `Refund amount cannot exceed the job order total of ${grossSales.toFixed(2)}.`,
+        );
+      }
     }
 
     await this.databaseService.withTransaction(async (client) => {
@@ -750,17 +798,38 @@ export class InventoryServicesService {
                WHEN LOWER($1::text) = 'cancelled' THEN $4
                ELSE NULL
              END,
+             refund_reason = CASE
+               WHEN LOWER($1::text) = 'refunded' THEN $5
+               ELSE NULL
+             END,
+             refund_amount = CASE
+               WHEN LOWER($1::text) = 'refunded' THEN $6::numeric
+               ELSE NULL::numeric
+             END,
              updated_at = NOW()
          WHERE id = $2::int AND deleted_at IS NULL`,
-        [status, id, this.normalizePaymentMethod(dto.paymentMethod), cancelReason || null],
+        [
+          status,
+          id,
+          this.normalizePaymentMethod(dto.paymentMethod),
+          cancelReason || null,
+          refundReason || null,
+          status.toLowerCase() === 'refunded' ? refundAmount : null,
+        ],
       );
 
       if (this.normalizeStatusLabel(existing.status) !== this.normalizeStatusLabel(status)) {
+        const historyReason =
+          status.toLowerCase() === 'cancelled'
+            ? cancelReason
+            : status.toLowerCase() === 'refunded'
+              ? `${refundReason} (Refunded ${refundAmount.toFixed(2)})`
+              : null;
         await this.recordStatusChange(client, {
           serviceId: id,
           fromStatus: existing.status,
           toStatus: status,
-          reason: status.toLowerCase() === 'cancelled' ? cancelReason : null,
+          reason: historyReason,
           changedBy: changedBy ?? null,
         });
       }
@@ -900,6 +969,8 @@ export class InventoryServicesService {
   }
 
   async getById(id: number): Promise<InventoryServiceListItem> {
+    await ensureJobOrderRefundColumns(this.databaseService);
+
     const result = await this.databaseService.query<{
       id: number;
       reference_no: string | null;
@@ -919,6 +990,8 @@ export class InventoryServicesService {
       status: string | null;
       notes: string | null;
       cancel_reason: string | null;
+      refund_reason: string | null;
+      refund_amount: string | null;
       labor_discount_type: string | null;
       custom_discount: string | null;
       downpayment: string | null;
@@ -951,6 +1024,8 @@ export class InventoryServicesService {
         s.status,
         s.notes,
         s.cancel_reason,
+        s.refund_reason,
+        s.refund_amount::text,
         s.labor_discount_type,
         s.custom_discount::text,
         s.downpayment::text,
@@ -1049,6 +1124,27 @@ export class InventoryServicesService {
       [id],
     );
 
+    const partsDiscount = partsResult.rows.reduce(
+      (sum, part) => sum + Number(part.discount_amount ?? 0),
+      0,
+    );
+    const partsSales = partsResult.rows.reduce(
+      (sum, part) => sum + Number(part.quantity ?? 0) * Number(part.unit_price ?? 0),
+      0,
+    );
+    const grossSales = this.computeGrossJobSale(
+      labor,
+      partsLabor,
+      partsSales,
+      partsDiscount,
+      Number(row.custom_discount ?? 0),
+      row.labor_discount_type,
+    );
+    const refundAmount =
+      this.normalizeStatusLabel(row.status) === 'refunded'
+        ? Math.max(0, Number(row.refund_amount ?? 0))
+        : 0;
+
     return {
       id: Number(row.id),
       referenceNo: row.reference_no,
@@ -1069,6 +1165,8 @@ export class InventoryServicesService {
       status: row.status ?? 'Active',
       notes: row.notes,
       cancelReason: row.cancel_reason?.trim() || null,
+      refundReason: row.refund_reason?.trim() || null,
+      refundAmount: refundAmount > 0 ? refundAmount : undefined,
       laborDiscountType: this.normalizeDiscountType(row.labor_discount_type),
       customDiscount: Number(row.custom_discount ?? 0),
       downpayment: Number(row.downpayment ?? 0),
@@ -1078,7 +1176,7 @@ export class InventoryServicesService {
       deviceModel: row.device_model?.trim() || null,
       deviceSerial: row.device_serial?.trim() || null,
       totalCosting: partsCost,
-      totalSales: cost + labor + partsLabor,
+      totalSales: Math.max(0, grossSales - refundAmount),
       startedAt: row.started_at,
       endedAt: row.ended_at,
       durationMinutes: this.computeDurationMinutes(row.started_at, row.ended_at),
@@ -1591,6 +1689,49 @@ export class InventoryServicesService {
     if (!result.rows[0]) {
       throw new BadRequestException(`Person in charge ${userId} was not found.`);
     }
+  }
+
+  private computeGrossJobSale(
+    laborBase: number,
+    partsLabor: number,
+    partsSales: number,
+    partsDiscount: number,
+    customDiscount: number,
+    laborDiscountType: string | null | undefined,
+  ): number {
+    const laborDiscount =
+      this.normalizeDiscountType(laborDiscountType) === 'senior' ||
+      this.normalizeDiscountType(laborDiscountType) === 'pwd'
+        ? Math.round(laborBase * 0.2 * 100) / 100
+        : 0;
+
+    return Math.max(
+      0,
+      laborBase + partsLabor + partsSales - partsDiscount - customDiscount - laborDiscount,
+    );
+  }
+
+  private computeGrossFromServiceItem(item: InventoryServiceListItem): number {
+    const parts = item.parts ?? [];
+    const partsSales = parts.reduce(
+      (sum, part) => sum + (Number(part.quantity) || 0) * (Number(part.unitPrice) || 0),
+      0,
+    );
+    const partsDiscount = parts.reduce(
+      (sum, part) => sum + (Number(part.discountAmount) || 0),
+      0,
+    );
+    const partsLabor = parts.reduce((sum, part) => sum + (Number(part.labor) || 0), 0);
+    const laborBase = Number(item.labor) || 0;
+
+    return this.computeGrossJobSale(
+      laborBase,
+      partsLabor,
+      partsSales,
+      partsDiscount,
+      Number(item.customDiscount) || 0,
+      item.laborDiscountType,
+    );
   }
 
   private normalizeStatusLabel(status: string | null | undefined): string {

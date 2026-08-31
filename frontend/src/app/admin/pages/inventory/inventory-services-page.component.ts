@@ -195,7 +195,7 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
   });
 
   readonly formatMoney = formatInventoryMoney;
-  readonly statusOptions = ['Active', 'Pending', 'Cancelled', 'Done'] as const;
+  readonly statusOptions = ['Active', 'Pending', 'Cancelled', 'Done', 'Refunded'] as const;
   readonly pendingDelete = signal<InventoryServiceItem | null>(null);
   readonly deleting = signal(false);
   readonly statusUpdatingId = signal<number | null>(null);
@@ -208,6 +208,10 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
   } | null>(null);
   readonly cancelReason = signal('');
   readonly cancelReasonError = signal('');
+  readonly refundReason = signal('');
+  readonly refundReasonError = signal('');
+  readonly refundAmount = signal('');
+  readonly refundAmountError = signal('');
   readonly pendingSettlement = signal<InventoryServiceItem | null>(null);
   readonly settlementJob = signal<InventoryServiceItem | null>(null);
   readonly settlementLoading = signal(false);
@@ -285,10 +289,10 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
       this.items.set(response.data.map((item) => this.withNormalizedStatus(item)));
       this.meta.set(response.meta);
       this.summary.set(response.summary);
-      this.serviceTypes.set(response.filters.types);
-      this.statuses.set(response.filters.statuses);
-    } catch {
-      this.error.set('Unable to load service catalog.');
+      this.serviceTypes.set(response.filters?.types ?? []);
+      this.statuses.set(response.filters?.statuses ?? []);
+    } catch (err) {
+      this.error.set(this.readLoadError(err));
     } finally {
       this.loading.set(false);
     }
@@ -577,6 +581,8 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
         return 'bg-amber-50 text-amber-700 ring-1 ring-amber-200';
       case 'cancelled':
         return 'bg-red-50 text-red-700 ring-1 ring-red-200';
+      case 'refunded':
+        return 'bg-violet-50 text-violet-700 ring-1 ring-violet-200';
       default:
         return 'bg-slate-100 text-slate-700 ring-1 ring-slate-200';
     }
@@ -609,6 +615,10 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
 
     this.cancelReason.set('');
     this.cancelReasonError.set('');
+    this.refundReason.set('');
+    this.refundReasonError.set('');
+    this.refundAmount.set('');
+    this.refundAmountError.set('');
     this.pendingStatusChange.set({ item, nextStatus });
   }
 
@@ -619,11 +629,15 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
     this.pendingStatusChange.set(null);
     this.cancelReason.set('');
     this.cancelReasonError.set('');
+    this.refundReason.set('');
+    this.refundReasonError.set('');
+    this.refundAmount.set('');
+    this.refundAmountError.set('');
   }
 
   async confirmStatusChange(): Promise<void> {
     const pending = this.pendingStatusChange();
-    if (!pending) {
+    if (!pending || this.statusUpdatingId() !== null) {
       return;
     }
 
@@ -633,22 +647,66 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
       return;
     }
 
-    this.pendingStatusChange.set(null);
-    this.cancelReasonError.set('');
-    await this.applyStatusChange(pending.item, pending.nextStatus, undefined, reason);
-    this.cancelReason.set('');
-  }
-
-  private settlementSource(): InventoryServiceItem | null {
-    return this.settlementJob() ?? this.pendingSettlement();
-  }
-
-  settlementTotalToPay(): number {
-    const item = this.settlementSource();
-    if (!item) {
-      return 0;
+    const refundReason = this.refundReason().trim();
+    const refundAmountRaw = String(this.refundAmount() ?? '').trim();
+    const refundAmount = Number(refundAmountRaw);
+    if (pending.nextStatus === 'Refunded') {
+      if (refundReason.length < 3) {
+        this.refundReasonError.set('Please enter a refund reason.');
+        return;
+      }
+      if (!refundAmountRaw || !Number.isFinite(refundAmount) || refundAmount <= 0) {
+        this.refundAmountError.set('Please enter a valid refund amount.');
+        return;
+      }
+      const maxRefund = this.jobOrderMaxRefund(pending.item);
+      if (refundAmount > maxRefund + 0.009) {
+        this.refundAmountError.set(`Refund cannot exceed ${this.formatMoney(maxRefund)}.`);
+        return;
+      }
     }
 
+    this.cancelReasonError.set('');
+    this.refundReasonError.set('');
+    this.refundAmountError.set('');
+
+    const saved = await this.applyStatusChange(
+      pending.item,
+      pending.nextStatus,
+      undefined,
+      reason,
+      pending.nextStatus === 'Refunded' ? refundReason : undefined,
+      pending.nextStatus === 'Refunded' ? refundAmount : undefined,
+    );
+
+    if (!saved) {
+      return;
+    }
+
+    this.pendingStatusChange.set(null);
+    this.cancelReason.set('');
+    this.refundReason.set('');
+    this.refundAmount.set('');
+  }
+
+  jobOrderMaxRefund(item: InventoryServiceItem): number {
+    const netSales = Math.max(0, Number(item.totalSales) || 0);
+    const priorRefund = Math.max(0, Number(item.refundAmount) || 0);
+    return netSales + priorRefund;
+  }
+
+  fillMaxRefundAmount(): void {
+    const pending = this.pendingStatusChange();
+    if (!pending) {
+      return;
+    }
+
+    const max = this.jobOrderMaxRefund(pending.item);
+    this.refundAmount.set(max > 0 ? max.toFixed(2) : '');
+    this.refundAmountError.set('');
+  }
+
+  jobOrderGrossTotal(item: InventoryServiceItem): number {
     const parts = item.parts ?? [];
     if (parts.length) {
       const lines = parts.reduce((sum, part) => {
@@ -662,10 +720,26 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
       return Math.max(0, lines - (Number(item.customDiscount) || 0));
     }
 
-    if (item.totalDiscount != null) {
-      return Math.max(0, Number(item.totalSales) || 0);
+    const totalSales = Math.max(0, Number(item.totalSales) || 0);
+    const totalDiscount = Math.max(0, Number(item.totalDiscount) || 0);
+    if (totalDiscount > 0) {
+      return totalSales + totalDiscount;
     }
-    return Math.max(0, (Number(item.totalSales) || 0) - (Number(item.customDiscount) || 0));
+
+    return totalSales;
+  }
+
+  private settlementSource(): InventoryServiceItem | null {
+    return this.settlementJob() ?? this.pendingSettlement();
+  }
+
+  settlementTotalToPay(): number {
+    const item = this.settlementSource();
+    if (!item) {
+      return 0;
+    }
+
+    return this.jobOrderGrossTotal(item);
   }
 
   orderDiscount(item: InventoryServiceItem): number {
@@ -759,12 +833,21 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
     status: string,
     paymentMethod?: string,
     cancelReason?: string,
-  ): Promise<void> {
+    refundReason?: string,
+    refundAmount?: number,
+  ): Promise<boolean> {
     this.statusUpdatingId.set(item.id);
 
     try {
       const response = await firstValueFrom(
-        this.adminApi.updateInventoryServiceStatus(item.id, status, paymentMethod, cancelReason),
+        this.adminApi.updateInventoryServiceStatus(
+          item.id,
+          status,
+          paymentMethod,
+          cancelReason,
+          refundReason,
+          refundAmount,
+        ),
       );
       const nextStatus = this.normalizeJobStatus(response.data.status);
       this.applyLocalStatusUpdate({
@@ -792,6 +875,8 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
           queryParams: { print: '1' },
         });
       }
+
+      return true;
     } catch (err: unknown) {
       const httpErr = err as { error?: { message?: string | string[] } };
       const msg = httpErr?.error?.message;
@@ -799,6 +884,12 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
       const message = `Unable to update status: ${detail}`;
       this.settlementError.set(message);
       this.showToast('error', message);
+
+      if (status === 'Refunded') {
+        this.refundAmountError.set(detail);
+      }
+
+      return false;
     } finally {
       this.statusUpdatingId.set(null);
     }
@@ -867,6 +958,20 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
     } finally {
       this.deleting.set(false);
     }
+  }
+
+  private readLoadError(err: unknown): string {
+    if (err && typeof err === 'object' && 'error' in err) {
+      const payload = (err as { error?: { message?: string | string[] } }).error;
+      if (Array.isArray(payload?.message)) {
+        return payload.message.join(', ');
+      }
+      if (typeof payload?.message === 'string' && payload.message.trim()) {
+        return payload.message;
+      }
+    }
+
+    return 'Unable to load job orders.';
   }
 
   serviceIntervalLabel(item: InventoryServiceItem): string {

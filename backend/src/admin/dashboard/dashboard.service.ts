@@ -10,6 +10,8 @@ import {
   COMPANY_EXPENSE_CATEGORY_COLORS,
   COMPANY_EXPENSE_CATEGORY_LABELS,
 } from '../company-expenses/dto/company-expense.dto';
+import { ensureJobOrderRefundColumns } from '../inventory/job-order-refund.schema';
+import { ensureSalesOrderRefundColumns } from '../inventory/sales-order-refund.schema';
 
 type Trend = 'up' | 'down' | 'flat';
 
@@ -94,6 +96,14 @@ const JOB_SALE_AMOUNT_SQL = `
   )
 `;
 
+const JOB_NET_SALE_AMOUNT_SQL = `
+  CASE
+    WHEN LOWER(TRIM(COALESCE(s.status, ''))) = 'refunded'
+      THEN GREATEST(${JOB_SALE_AMOUNT_SQL} - COALESCE(s.refund_amount, 0), 0)
+    ELSE ${JOB_SALE_AMOUNT_SQL}
+  END
+`;
+
 const JOB_OUTSTANDING_SQL = `
   GREATEST(
     ${JOB_SALE_AMOUNT_SQL} - COALESCE(s.downpayment, 0),
@@ -136,6 +146,8 @@ export class DashboardService {
       previousFinancials,
       discounts,
       previousDiscounts,
+      refunds,
+      previousRefunds,
       salesActivity,
       jobStatus,
       inquiriesTrend,
@@ -153,6 +165,8 @@ export class DashboardService {
       this.getFinancialSummary(range, true),
       this.getDiscountTotal(range),
       this.getDiscountTotal(range, true),
+      this.getRefundTotal(range),
+      this.getRefundTotal(range, true),
       this.getSalesActivitySeries(range),
       this.getJobStatusBreakdown(),
       this.getInquiriesTrendSeries(range),
@@ -193,6 +207,15 @@ export class DashboardService {
         previousDiscounts,
         'currency',
         range,
+      ),
+      this.buildKpi(
+        'refunds',
+        'Total Refunded',
+        refunds,
+        previousRefunds,
+        'currency',
+        range,
+        { invertTrend: true },
       ),
       this.buildKpi(
         'operatingExpenses',
@@ -278,6 +301,14 @@ export class DashboardService {
           description: `Discounts applied on sales orders and job orders during ${range.label}. These amounts are not included in Net collected.`,
           viewAllHref: '/admin/sales-order',
           rows: await this.listDiscountRows(range),
+        };
+      case 'refunds':
+        return {
+          metric,
+          title: 'Total Refunded',
+          description: `Refunds issued on job orders during ${range.label}. These amounts are deducted from Net collected and Total Sales.`,
+          viewAllHref: '/admin/job-order',
+          rows: await this.listRefundRows(range),
         };
       case 'outstanding':
         return {
@@ -520,9 +551,16 @@ export class DashboardService {
     let outstanding = 0;
 
     try {
+      if (hasJobOrders) {
+        await ensureJobOrderRefundColumns(this.databaseService);
+      }
+
       if (hasSalesOrders) {
+        await ensureSalesOrderRefundColumns(this.databaseService);
         const salesResult = await this.databaseService.query<{ total: string }>(
-          `SELECT COALESCE(SUM(o.total_amount), 0)::text AS total
+          `SELECT COALESCE(SUM(
+             GREATEST(o.total_amount - COALESCE(o.refund_amount, 0), 0)
+           ), 0)::text AS total
            FROM pcmazing_sales_orders o
            WHERE o.deleted_at IS NULL
              AND o.is_void = FALSE
@@ -535,11 +573,11 @@ export class DashboardService {
 
       if (hasJobOrders) {
         const jobCollectedResult = await this.databaseService.query<{ total: string }>(
-          `SELECT COALESCE(SUM(${JOB_SALE_AMOUNT_SQL}), 0)::text AS total
+          `SELECT COALESCE(SUM(${JOB_NET_SALE_AMOUNT_SQL}), 0)::text AS total
            FROM pcmazing_services s
            ${JOB_PARTS_LATERAL_SQL}
            WHERE s.deleted_at IS NULL
-             AND ${this.statusExpr('s')} = 'done'
+             AND ${this.statusExpr('s')} IN ('done', 'refunded')
              AND COALESCE(s.ended_at, s.updated_at, s.created_at) >= $1::timestamptz
              AND COALESCE(s.ended_at, s.updated_at, s.created_at) <= $2::timestamptz`,
           [start.toISOString(), end.toISOString()],
@@ -613,6 +651,149 @@ export class DashboardService {
     }
 
     return total;
+  }
+
+  private async getRefundTotal(range: DashboardDateRange, previous = false): Promise<number> {
+    const [start, end] = this.dateBounds(range, previous);
+    let total = 0;
+
+    if (await this.tableExists('pcmazing_services')) {
+      try {
+        await ensureJobOrderRefundColumns(this.databaseService);
+        const result = await this.databaseService.query<{ total: string }>(
+          `SELECT COALESCE(SUM(COALESCE(s.refund_amount, 0)), 0)::text AS total
+           FROM pcmazing_services s
+           WHERE s.deleted_at IS NULL
+             AND ${this.statusExpr('s')} = 'refunded'
+             AND s.updated_at >= $1::timestamptz
+             AND s.updated_at <= $2::timestamptz`,
+          [start.toISOString(), end.toISOString()],
+        );
+        total += this.toNumber(result.rows[0]?.total);
+      } catch (error) {
+        console.warn('Dashboard job refund total query failed:', error);
+      }
+    }
+
+    if (await this.tableExists('pcmazing_sales_orders')) {
+      try {
+        await ensureSalesOrderRefundColumns(this.databaseService);
+        const result = await this.databaseService.query<{ total: string }>(
+          `SELECT COALESCE(SUM(COALESCE(o.refund_amount, 0)), 0)::text AS total
+           FROM pcmazing_sales_orders o
+           WHERE o.deleted_at IS NULL
+             AND o.is_void = FALSE
+             AND COALESCE(o.refund_amount, 0) > 0
+             AND COALESCE(o.refunded_at, o.updated_at) >= $1::timestamptz
+             AND COALESCE(o.refunded_at, o.updated_at) <= $2::timestamptz`,
+          [start.toISOString(), end.toISOString()],
+        );
+        total += this.toNumber(result.rows[0]?.total);
+      } catch (error) {
+        console.warn('Dashboard sales refund total query failed:', error);
+      }
+    }
+
+    return total;
+  }
+
+  private async listRefundRows(range: DashboardDateRange): Promise<DashboardDetailRow[]> {
+    const [start, end] = this.dateBounds(range);
+    const rows: DashboardDetailRow[] = [];
+
+    if (await this.tableExists('pcmazing_services')) {
+      try {
+        await ensureJobOrderRefundColumns(this.databaseService);
+        const result = await this.databaseService.query<{
+          id: number;
+          title: string | null;
+          subtitle: string | null;
+          reason: string | null;
+          amount: string | null;
+          date: string | null;
+        }>(
+          `SELECT
+             s.id,
+             COALESCE(NULLIF(TRIM(s.customer_name), ''), s.service_name, s.reference_no, 'Job order') AS title,
+             COALESCE(s.reference_no, 'Job order') AS subtitle,
+             s.refund_reason AS reason,
+             s.refund_amount::text AS amount,
+             s.updated_at::text AS date
+           FROM pcmazing_services s
+           WHERE s.deleted_at IS NULL
+             AND ${this.statusExpr('s')} = 'refunded'
+             AND COALESCE(s.refund_amount, 0) > 0
+             AND s.updated_at >= $1::timestamptz
+             AND s.updated_at <= $2::timestamptz
+           ORDER BY s.updated_at DESC
+           LIMIT 50`,
+          [start.toISOString(), end.toISOString()],
+        );
+
+        rows.push(
+          ...result.rows.map((row) => ({
+            id: row.id,
+            title: row.title || `Job #${row.id}`,
+            subtitle: row.reason?.trim() || row.subtitle || 'Job order refund',
+            status: 'Refunded',
+            amount: this.toNumber(row.amount),
+            date: row.date,
+            href: `/admin/job-order/${row.id}`,
+          })),
+        );
+      } catch (error) {
+        console.warn('Dashboard job refund details query failed:', error);
+      }
+    }
+
+    if (await this.tableExists('pcmazing_sales_orders')) {
+      try {
+        await ensureSalesOrderRefundColumns(this.databaseService);
+        const result = await this.databaseService.query<{
+          id: number;
+          title: string | null;
+          subtitle: string | null;
+          reason: string | null;
+          amount: string | null;
+          date: string | null;
+        }>(
+          `SELECT
+             o.id,
+             COALESCE(NULLIF(TRIM(o.customer_name), ''), o.reference_no, 'Sales order') AS title,
+             COALESCE(o.reference_no, 'Sales order') AS subtitle,
+             o.refund_reason AS reason,
+             o.refund_amount::text AS amount,
+             COALESCE(o.refunded_at, o.updated_at)::text AS date
+           FROM pcmazing_sales_orders o
+           WHERE o.deleted_at IS NULL
+             AND o.is_void = FALSE
+             AND COALESCE(o.refund_amount, 0) > 0
+             AND COALESCE(o.refunded_at, o.updated_at) >= $1::timestamptz
+             AND COALESCE(o.refunded_at, o.updated_at) <= $2::timestamptz
+           ORDER BY COALESCE(o.refunded_at, o.updated_at) DESC
+           LIMIT 50`,
+          [start.toISOString(), end.toISOString()],
+        );
+
+        rows.push(
+          ...result.rows.map((row) => ({
+            id: row.id,
+            title: row.title || `Sales #${row.id}`,
+            subtitle: row.reason?.trim() || row.subtitle || 'Sales order refund',
+            status: 'Refunded',
+            amount: this.toNumber(row.amount),
+            date: row.date,
+            href: `/admin/sales-order/${row.id}`,
+          })),
+        );
+      } catch (error) {
+        console.warn('Dashboard sales refund details query failed:', error);
+      }
+    }
+
+    return rows
+      .sort((left, right) => String(right.date ?? '').localeCompare(String(left.date ?? '')))
+      .slice(0, 50);
   }
 
   private async listDiscountRows(range: DashboardDateRange): Promise<DashboardDetailRow[]> {
@@ -758,6 +939,7 @@ export class DashboardService {
              WHEN ${this.statusExpr('s')} IN ('active', 'pending') THEN 'Active'
              WHEN ${this.statusExpr('s')} = 'done' THEN 'Completed'
              WHEN ${this.statusExpr('s')} = 'cancelled' THEN 'Cancelled'
+             WHEN ${this.statusExpr('s')} = 'refunded' THEN 'Refunded'
              ELSE 'Other'
            END AS label,
            COUNT(*)::text AS value
@@ -771,6 +953,7 @@ export class DashboardService {
         Active: '#2563eb',
         Completed: '#16a34a',
         Cancelled: '#ef4444',
+        Refunded: '#9333ea',
         Other: '#94a3b8',
       };
 
@@ -852,7 +1035,7 @@ export class DashboardService {
         );
       }
     } else {
-      conditions.push(`${this.statusExpr('s')} = 'done'`);
+      conditions.push(`${this.statusExpr('s')} IN ('done', 'refunded')`);
       if (range) {
         params.push(range.start.toISOString(), range.end.toISOString());
         conditions.push(
@@ -876,7 +1059,7 @@ export class DashboardService {
            COALESCE(NULLIF(TRIM(s.customer_name), ''), s.service_name, s.reference_no, 'Job order') AS title,
            COALESCE(NULLIF(TRIM(s.service_name), ''), s.reference_no, '') AS subtitle,
            s.status,
-           ${mode === 'open' ? JOB_OUTSTANDING_SQL : JOB_SALE_AMOUNT_SQL}::text AS amount,
+           ${mode === 'open' ? JOB_OUTSTANDING_SQL : JOB_NET_SALE_AMOUNT_SQL}::text AS amount,
            COALESCE(s.ended_at, s.updated_at, s.created_at)::text AS date
          FROM pcmazing_services s
          ${JOB_PARTS_LATERAL_SQL}
@@ -1041,6 +1224,7 @@ export class DashboardService {
 
     try {
       if (hasSalesOrders) {
+        await ensureSalesOrderRefundColumns(this.databaseService);
         const salesResult = await this.databaseService.query<{
           id: number;
           title: string | null;
@@ -1052,7 +1236,7 @@ export class DashboardService {
              o.id,
              COALESCE(NULLIF(TRIM(o.customer_name), ''), o.reference_no, 'Sales order') AS title,
              COALESCE(o.reference_no, 'Sales order') AS subtitle,
-             o.total_amount::text AS amount,
+             GREATEST(o.total_amount - COALESCE(o.refund_amount, 0), 0)::text AS amount,
              COALESCE(o.sale_date, o.created_at)::text AS date
            FROM pcmazing_sales_orders o
            WHERE o.deleted_at IS NULL

@@ -13,6 +13,7 @@ import {
 import { Request } from 'express';
 import { AdminJwtPayload, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateSalesOrderDto } from './dto/create-sales-order.dto';
+import { RefundSalesOrderDto } from './dto/refund-sales-order.dto';
 import { SalesOrdersService } from './sales-orders.service';
 
 @Controller('admin/inventory/sales-orders')
@@ -69,6 +70,19 @@ export class SalesOrdersController {
     return this.salesOrdersService.voidOrder(id, request.user?.sub).then((item) => ({
       success: true,
       message: 'Sales order voided and inventory restored.',
+      data: item,
+    }));
+  }
+
+  @Patch(':id/refund')
+  refundOrder(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: RefundSalesOrderDto,
+    @Req() request: Request & { user?: AdminJwtPayload },
+  ) {
+    return this.salesOrdersService.refundOrder(id, dto, request.user?.sub).then((item) => ({
+      success: true,
+      message: 'Sales order items refunded and inventory restored.',
       data: item,
     }));
   }

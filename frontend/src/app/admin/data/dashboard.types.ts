@@ -25,6 +25,7 @@ export type DashboardDetailMetric =
   | 'net'
   | 'outstanding'
   | 'discounts'
+  | 'refunds'
   | 'operatingExpenses';
 
 export interface DashboardDetailRow {

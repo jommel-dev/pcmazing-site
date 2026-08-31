@@ -10,6 +10,7 @@ export const DASHBOARD_DETAIL_METRICS = [
   'net',
   'outstanding',
   'discounts',
+  'refunds',
   'operatingExpenses',
 ] as const;
 
