@@ -169,6 +169,37 @@
   color: #64748b;
 }
 
+.content-blocks {
+  gap: 1.25rem;
+}
+
+.content-block {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 1rem;
+  background: #f8fafc;
+}
+
+.content-toggle {
+  margin: 0;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.content-block label:not(.checkbox-row) {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.content-block textarea:disabled,
+.content-block input:disabled {
+  background: #e2e8f0;
+  color: #64748b;
+  cursor: not-allowed;
+}
+
 .connection-type-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

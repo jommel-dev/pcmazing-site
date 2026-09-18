@@ -134,6 +134,18 @@ export class UpdatePrintingSettingsDto {
   @IsString()
   @MaxLength(500)
   thanksMessage?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  showWarrantyPolicy?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  showFooterNote?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  showThanksMessage?: boolean;
 }
 
 export class TestPrinterConnectionDto {

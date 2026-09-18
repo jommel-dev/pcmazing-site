@@ -46,6 +46,8 @@ type ReceiptLine = {
 
 const TEMPLATE_STORAGE_KEY = 'pcmazing.salesReceipt.selectedTemplateId';
 const BUILTIN_TEMPLATE_VALUE = 0;
+/** Temporarily hide Store/Workstation/Date/Page on receipts; flip to true to restore. */
+const SHOW_RECEIPT_HEADER_EXTRAS = false;
 
 @Component({
   selector: 'app-sales-order-receipt-page',
@@ -68,6 +70,8 @@ export class SalesOrderReceiptPageComponent implements OnInit, OnDestroy {
   readonly autoPrint = signal(false);
   readonly autoReprint = signal(false);
   readonly showReprinted = signal(false);
+  /** Kept for future use — Store/Workstation/Date/Page header lines. */
+  readonly showReceiptHeaderExtras = SHOW_RECEIPT_HEADER_EXTRAS;
   readonly templates = signal<PrintingTemplateItem[]>([]);
   readonly printingSettings = signal<PrintingSettingsItem | null>(null);
   readonly selectedTemplateId = signal<number>(BUILTIN_TEMPLATE_VALUE);
@@ -386,6 +390,15 @@ export class SalesOrderReceiptPageComponent implements OnInit, OnDestroy {
     if (element.fieldKey === 'reprintedLabel' && !this.showReprinted() && !this.order()?.isVoid) {
       return true;
     }
+    if (
+      !SHOW_RECEIPT_HEADER_EXTRAS &&
+      (element.fieldKey === 'storeCode' ||
+        element.fieldKey === 'workstationNo' ||
+        element.fieldKey === 'printedDate' ||
+        element.fieldKey === 'pageNumber')
+    ) {
+      return true;
+    }
     if (element.fieldKey === 'pageNumber' && this.printingSettings()?.showPageNumbers === false) {
       return true;
     }
@@ -393,6 +406,16 @@ export class SalesOrderReceiptPageComponent implements OnInit, OnDestroy {
       return true;
     }
     if (element.fieldKey === 'customerPhone' && !this.fieldValues()['customerPhone']) {
+      return true;
+    }
+    const contentKey = receiptContentFieldKeyFor(element);
+    if (contentKey === 'warrantyPolicy' && !this.showWarrantyPolicy()) {
+      return true;
+    }
+    if (contentKey === 'footerNote' && !this.showFooterNote()) {
+      return true;
+    }
+    if (contentKey === 'thanksMessage' && !this.showThanksMessage()) {
       return true;
     }
     return false;
@@ -455,6 +478,18 @@ export class SalesOrderReceiptPageComponent implements OnInit, OnDestroy {
 
   thanksMessageText(): string {
     return compactReceiptText(this.printingSettings()?.thanksMessage || DEFAULT_THANKS_MESSAGE);
+  }
+
+  showWarrantyPolicy(): boolean {
+    return this.printingSettings()?.showWarrantyPolicy !== false;
+  }
+
+  showFooterNote(): boolean {
+    return this.printingSettings()?.showFooterNote !== false;
+  }
+
+  showThanksMessage(): boolean {
+    return this.printingSettings()?.showThanksMessage !== false;
   }
 
   private buildBarcodeBars(value: string): Array<{ width: number; filled: boolean }> {

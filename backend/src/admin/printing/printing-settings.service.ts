@@ -39,6 +39,9 @@ export interface PrintingSettingsItem {
   warrantyPolicy: string;
   footerNote: string;
   thanksMessage: string;
+  showWarrantyPolicy: boolean;
+  showFooterNote: boolean;
+  showThanksMessage: boolean;
   updatedAt: string | null;
 }
 
@@ -77,6 +80,9 @@ type SettingsRow = {
   warranty_policy: string | null;
   footer_note: string | null;
   thanks_message: string | null;
+  show_warranty_policy: boolean | null;
+  show_footer_note: boolean | null;
+  show_thanks_message: boolean | null;
   updated_at: string | null;
 };
 
@@ -113,6 +119,17 @@ export class PrintingSettingsService {
         'Printer connection columns are missing. Apply migration 043_printing_printer_connection.sql.',
       );
     }
+
+    await this.ensureReceiptContentVisibilityColumns();
+  }
+
+  private async ensureReceiptContentVisibilityColumns(): Promise<void> {
+    await this.databaseService.query(`
+      ALTER TABLE pcmazing_printing_settings
+        ADD COLUMN IF NOT EXISTS show_warranty_policy BOOLEAN NOT NULL DEFAULT TRUE,
+        ADD COLUMN IF NOT EXISTS show_footer_note BOOLEAN NOT NULL DEFAULT TRUE,
+        ADD COLUMN IF NOT EXISTS show_thanks_message BOOLEAN NOT NULL DEFAULT TRUE;
+    `);
   }
 
   async get(): Promise<PrintingSettingsItem> {
@@ -146,6 +163,9 @@ export class PrintingSettingsService {
          warranty_policy,
          footer_note,
          thanks_message,
+         show_warranty_policy,
+         show_footer_note,
+         show_thanks_message,
          updated_at::text
        FROM pcmazing_printing_settings
        WHERE id = 1
@@ -214,6 +234,9 @@ export class PrintingSettingsService {
            warranty_policy = COALESCE($22, warranty_policy),
            footer_note = COALESCE($23, footer_note),
            thanks_message = COALESCE($24, thanks_message),
+           show_warranty_policy = COALESCE($25, show_warranty_policy),
+           show_footer_note = COALESCE($26, show_footer_note),
+           show_thanks_message = COALESCE($27, show_thanks_message),
            updated_at = NOW()
        WHERE id = 1`,
       [
@@ -241,6 +264,9 @@ export class PrintingSettingsService {
         dto.warrantyPolicy ?? null,
         dto.footerNote?.trim() ?? null,
         dto.thanksMessage?.trim() ?? null,
+        dto.showWarrantyPolicy ?? null,
+        dto.showFooterNote ?? null,
+        dto.showThanksMessage ?? null,
       ],
     );
 
@@ -397,6 +423,9 @@ export class PrintingSettingsService {
       warrantyPolicy: row.warranty_policy ?? '',
       footerNote: row.footer_note ?? '',
       thanksMessage: row.thanks_message ?? '',
+      showWarrantyPolicy: row.show_warranty_policy !== false,
+      showFooterNote: row.show_footer_note !== false,
+      showThanksMessage: row.show_thanks_message !== false,
       updatedAt: row.updated_at,
     };
   }

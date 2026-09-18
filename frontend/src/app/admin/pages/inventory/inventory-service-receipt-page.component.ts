@@ -49,6 +49,8 @@ type ReceiptLine = {
 
 const TEMPLATE_STORAGE_KEY = 'pcmazing.receipt.selectedTemplateId';
 const BUILTIN_TEMPLATE_VALUE = 0;
+/** Temporarily hide Store/Workstation/Date/Page on receipts; flip to true to restore. */
+const SHOW_RECEIPT_HEADER_EXTRAS = false;
 
 @Component({
   selector: 'app-inventory-service-receipt-page',
@@ -71,6 +73,8 @@ export class InventoryServiceReceiptPageComponent implements OnInit, OnDestroy {
   readonly autoPrint = signal(false);
   readonly autoReprint = signal(false);
   readonly showReprinted = signal(false);
+  /** Kept for future use — Store/Workstation/Date/Page header lines. */
+  readonly showReceiptHeaderExtras = SHOW_RECEIPT_HEADER_EXTRAS;
   readonly templates = signal<PrintingTemplateItem[]>([]);
   readonly printingSettings = signal<PrintingSettingsItem | null>(null);
   readonly selectedTemplateId = signal<number>(BUILTIN_TEMPLATE_VALUE);
@@ -619,6 +623,15 @@ flowFooterElementStyle(element: PrintLayoutElement): Record<string, string> {
     if (element.fieldKey === 'reprintedLabel' && !this.showReprinted()) {
       return true;
     }
+    if (
+      !SHOW_RECEIPT_HEADER_EXTRAS &&
+      (element.fieldKey === 'storeCode' ||
+        element.fieldKey === 'workstationNo' ||
+        element.fieldKey === 'printedDate' ||
+        element.fieldKey === 'pageNumber')
+    ) {
+      return true;
+    }
     if (element.fieldKey === 'pageNumber' && this.printingSettings()?.showPageNumbers === false) {
       return true;
     }
@@ -638,6 +651,16 @@ flowFooterElementStyle(element: PrintLayoutElement): Record<string, string> {
       return true;
     }
     if (element.fieldKey === 'customerAddress' && !this.fieldValues()['customerAddress']) {
+      return true;
+    }
+    const contentKey = receiptContentFieldKeyFor(element);
+    if (contentKey === 'warrantyPolicy' && !this.showWarrantyPolicy()) {
+      return true;
+    }
+    if (contentKey === 'footerNote' && !this.showFooterNote()) {
+      return true;
+    }
+    if (contentKey === 'thanksMessage' && !this.showThanksMessage()) {
       return true;
     }
     return false;
@@ -735,6 +758,18 @@ flowFooterElementStyle(element: PrintLayoutElement): Record<string, string> {
 
   thanksMessageText(): string {
     return compactReceiptText(this.printingSettings()?.thanksMessage || DEFAULT_THANKS_MESSAGE);
+  }
+
+  showWarrantyPolicy(): boolean {
+    return this.printingSettings()?.showWarrantyPolicy !== false;
+  }
+
+  showFooterNote(): boolean {
+    return this.printingSettings()?.showFooterNote !== false;
+  }
+
+  showThanksMessage(): boolean {
+    return this.printingSettings()?.showThanksMessage !== false;
   }
 
   private buildBarcodeBars(value: string): Array<{ width: number; filled: boolean }> {
