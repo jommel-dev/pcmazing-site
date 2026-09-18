@@ -32,6 +32,7 @@
         >
           Back to job
         </button>
+        @if (!isCancelled()) {
         <button
           type="button"
           class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
@@ -48,6 +49,7 @@
         >
           Re-print receipt
         </button>
+        }
       </div>
     </div>
   </div>
@@ -61,9 +63,64 @@
   } @else if (item(); as job) {
     @if (useCustomTemplate() && selectedTemplate(); as template) {
       <div class="receipt-sheet receipt-sheet-template mx-auto bg-white text-black shadow-sm" [ngStyle]="templateSheetStyle()">
-        @for (element of templateElements(); track element.id) {
+        @for (element of templateHeaderElements(); track element.id) {
+          <ng-container
+            [ngTemplateOutlet]="receiptElementTpl"
+            [ngTemplateOutletContext]="{ $implicit: element, style: elementStyle(element) }"
+          />
+        }
+
+        @if (templateTableElement(); as tableElement) {
+          <div class="template-flow-body" [ngStyle]="flowBodyStyle()">
+            <table class="template-line-items" [ngStyle]="flowTableStyle()">
+              <thead>
+                <tr>
+                  <th>Item Name</th>
+                  <th>Item Description</th>
+                  <th class="num">Qty</th>
+                  <th class="num">Price</th>
+                  <th class="num">Discount</th>
+                  <th class="num">Ext Price</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (line of lines(); track $index) {
+                  <tr>
+                    <td>{{ line.itemName }}</td>
+                    <td>{{ line.description }}</td>
+                    <td class="num">{{ line.isCustomDiscount ? '—' : (line.qty | number:'1.0-2') }}</td>
+                    <td class="num">{{ line.isCustomDiscount ? '—' : formatMoney(line.unitPrice) }}</td>
+                    <td class="num">{{ formatDiscount(line) }}</td>
+                    <td class="num">{{ line.isCustomDiscount ? '—' : formatMoney(line.extPrice) }}</td>
+                  </tr>
+                }
+                @if (job.notes) {
+                  <tr class="remarks-row">
+                    <td colspan="6">{{ job.notes }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+
+            <div class="template-flow-footer" [ngStyle]="flowFooterStyle()">
+              @for (element of templateFooterElements(); track element.id) {
+                <ng-container
+                  [ngTemplateOutlet]="receiptElementTpl"
+                  [ngTemplateOutletContext]="{ $implicit: element, style: flowFooterElementStyle(element) }"
+                />
+              }
+            </div>
+          </div>
+        }
+
+        <ng-template #receiptElementTpl let-element let-style="style">
           @if (!isHiddenElement(element)) {
-            <div class="template-print-element" [attr.data-type]="element.type" [ngStyle]="elementStyle(element)">
+            <div
+              class="template-print-element"
+              [class.wrap-content]="usesPreWrapField(element)"
+              [attr.data-type]="element.type"
+              [ngStyle]="style"
+            >
               @switch (element.type) {
                 @case ('line') {
                   <span class="template-line"></span>
@@ -75,71 +132,62 @@
                     [alt]="element.label || 'Logo'"
                   />
                 }
-                @case ('table') {
-                  <table class="template-line-items">
-                    <thead>
-                      <tr>
-                        <th>Item Name</th>
-                        <th>Item Description</th>
-                        <th class="num">Qty</th>
-                        <th class="num">Price</th>
-                        <th class="num">Discount</th>
-                        <th class="num">Ext Price</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      @for (line of lines(); track $index) {
-                        <tr>
-                          <td>{{ line.itemName }}</td>
-                          <td>{{ line.description }}</td>
-                          <td class="num">{{ line.isCustomDiscount ? '—' : (line.qty | number:'1.0-2') }}</td>
-                          <td class="num">{{ line.isCustomDiscount ? '—' : formatMoney(line.unitPrice) }}</td>
-                          <td class="num">{{ formatDiscount(line) }}</td>
-                          <td class="num">{{ line.isCustomDiscount ? '—' : formatMoney(line.extPrice) }}</td>
-                        </tr>
-                      }
-                    </tbody>
-                  </table>
-                }
                 @case ('field') {
                   @if (element.fieldKey === 'barcode') {
                     <div class="template-barcode-wrap" [ngStyle]="barcodeWrapStyle(element)">
                       <div class="receipt-barcode template-receipt-barcode" aria-hidden="true">
                         @for (bar of barcodeBars(); track $index) {
-                          <span [style.width.px]="bar.width" [class.filled]="bar.filled"></span>
+                          <span [ngStyle]="barcodeBarStyle(bar)" [class.filled]="bar.filled" [class.bar-on]="bar.filled"></span>
                         }
                       </div>
                       <p class="barcode-label">{{ receiptNo() }}</p>
                     </div>
                   } @else if (element.fieldKey === 'signatureLine') {
                     <span class="template-signature"></span>
+                  } @else if (element.fieldKey === 'billToLine') {
+                    <div class="receipt-bill-row">
+                      <span><strong>Bill To:</strong> {{ job.customerName }}</span>
+                      @if (job.customerContact) {
+                        <span class="receipt-bill-contact"><strong>Contact:</strong> {{ job.customerContact }}</span>
+                      }
+                    </div>
+                  } @else if (element.fieldKey === 'addressLine') {
+                    <span class="template-field-text">
+                      @if (job.customerAddress) {
+                        <strong>Address:</strong> {{ job.customerAddress }}
+                      }
+                    </span>
                   } @else {
-                    <span class="template-field-text" [class.pre-wrap]="usesPreWrapField(element.fieldKey)">
+                    <span class="template-field-text" [class.pre-wrap]="usesPreWrapField(element)">
                       {{ fieldValue(element) }}
                     </span>
                   }
                 }
                 @default {
-                  <span class="template-field-text">{{ fieldValue(element) }}</span>
+                  <span class="template-field-text" [class.pre-wrap]="usesPreWrapField(element)">{{ fieldValue(element) }}</span>
                 }
               }
             </div>
           }
-        }
+        </ng-template>
       </div>
     } @else {
-      <div class="receipt-sheet mx-auto bg-white text-black shadow-sm">
+      <div class="receipt-sheet job-order-builtin mx-auto bg-white text-black shadow-sm">
         <div class="receipt-meta">
           <div class="receipt-meta-left">
             <div>Printed: {{ printedAt() | date:'M/d/yyyy h:mm:ss a' }}</div>
-            <div>Store: {{ printingSettings()?.storeCode || '1' }}</div>
-            <div>Workstation: {{ printingSettings()?.workstationNo || '1' }}</div>
+            @if (showReceiptHeaderExtras) {
+              <div>Store: {{ printingSettings()?.storeCode || '1' }}</div>
+              <div>Workstation: {{ printingSettings()?.workstationNo || '1' }}</div>
+            }
           </div>
           <div class="receipt-meta-right">
             <div><strong>Sales Receipt #{{ receiptNo() }}</strong></div>
-            <div>Date: {{ printedAt() | date:'M/d/yyyy' }}</div>
+            @if (showReceiptHeaderExtras) {
+              <div>Date: {{ printedAt() | date:'M/d/yyyy' }}</div>
+            }
             <div>Cashier: {{ cashierName() }}</div>
-            @if (printingSettings()?.showPageNumbers !== false) {
+            @if (showReceiptHeaderExtras && printingSettings()?.showPageNumbers !== false) {
               <div>Page 1</div>
             }
           </div>
@@ -149,16 +197,23 @@
           @if (showReprinted()) {
             <p class="receipt-reprinted">REPRINTED</p>
           }
-          <img src="/images/logopcm.png" alt="PCmazing IT SERVICES" class="receipt-logo" />
-          <p class="receipt-company">{{ printingSettings()?.storeName || 'PCmazing' }}</p>
+          <img src="/images/logopcm.png" alt="PCmazing Information Technology Services" class="receipt-logo" />
+          <p class="receipt-company">{{ storeDisplayName() }}</p>
           <p class="receipt-address">
-            {{ printingSettings()?.storeAddress || 'Mabini Extension, Cabanatuan City, 3100' }}
+            {{ storeDisplayAddress() }}
           </p>
         </div>
 
         <div class="receipt-bill-to">
-          <p><strong>Bill To:</strong></p>
-          <p>{{ job.customerName }}</p>
+          <div class="receipt-bill-row">
+            <span><strong>Bill To:</strong> {{ job.customerName }}</span>
+            @if (job.customerContact) {
+              <span class="receipt-bill-contact"><strong>Contact:</strong> {{ job.customerContact }}</span>
+            }
+          </div>
+          @if (job.customerAddress) {
+            <p><strong>Address:</strong> {{ job.customerAddress }}</p>
+          }
         </div>
 
         <table class="receipt-table">
@@ -183,6 +238,11 @@
                 <td class="num">{{ line.isCustomDiscount ? '—' : formatMoney(line.extPrice) }}</td>
               </tr>
             }
+            @if (job.notes) {
+              <tr class="remarks-row">
+                <td colspan="6">{{ job.notes }}</td>
+              </tr>
+            }
           </tbody>
         </table>
 
@@ -199,24 +259,45 @@
               <span>RECEIPT TOTAL</span>
               <span>{{ formatMoney(receiptTotal()) }}</span>
             </div>
+            <div class="totals-row">
+              <span>Downpayment</span>
+              <span>{{ formatMoney(downpaymentAmount()) }}</span>
+            </div>
+            <div class="totals-row">
+              <span>Amount paid</span>
+              <span>{{ formatMoney(amountPaidNow()) }}</span>
+            </div>
+            <div class="totals-row totals-row-strong">
+              <span>Balance due</span>
+              <span>{{ formatMoney(balanceDueAmount()) }}</span>
+            </div>
+            @if (paymentMethodLabel()) {
+              <div class="totals-row">
+                <span>Payment method</span>
+                <span>{{ paymentMethodLabel() }}</span>
+              </div>
+            }
           </div>
         </div>
 
-        <div class="receipt-warranty">
-          <p class="warranty-text">{{ warrantyPolicyText() }}</p>
-        </div>
+        @if (showWarrantyPolicy()) {
+          <div class="receipt-warranty">
+            <p class="warranty-text">{{ warrantyPolicyText() }}</p>
+          </div>
+        }
 
         <div class="receipt-footer">
-          <p>{{ footerNoteText() }}</p>
-          <p class="thanks">{{ thanksMessageText() }}</p>
+          @if (showFooterNote()) {
+            <p>{{ footerNoteText() }}</p>
+          }
+          @if (showThanksMessage()) {
+            <p class="thanks">{{ thanksMessageText() }}</p>
+          }
 
           <div class="receipt-barcode-wrap">
             <div class="receipt-barcode" aria-hidden="true">
               @for (bar of barcodeBars(); track $index) {
-                <span
-                  [style.width.px]="bar.width"
-                  [class.filled]="bar.filled"
-                ></span>
+                <span [ngStyle]="barcodeBarStyle(bar)" [class.filled]="bar.filled" [class.bar-on]="bar.filled"></span>
               }
             </div>
             <p class="barcode-label">{{ receiptNo() }}</p>

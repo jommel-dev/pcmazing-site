@@ -272,6 +272,98 @@ export class PrintingTemplatesService {
     });
   }
 
+  async applyReceiptContentToAll(content: {
+    warrantyPolicy?: string;
+    footerNote?: string;
+    thanksMessage?: string;
+  }): Promise<number> {
+    const templates = await this.list();
+    let updatedCount = 0;
+
+    for (const template of templates) {
+      let changed = false;
+      const elements = template.layout.elements.map((element) => {
+        const fieldKey = this.receiptContentFieldKeyFor(element);
+        if (!fieldKey) {
+          return element;
+        }
+        const nextValue =
+          fieldKey === 'warrantyPolicy'
+            ? content.warrantyPolicy
+            : fieldKey === 'footerNote'
+              ? content.footerNote
+              : content.thanksMessage;
+        if (nextValue == null) {
+          return element;
+        }
+        const storedContent = fieldKey === 'warrantyPolicy' ? undefined : nextValue;
+        if (
+          element.type === 'field' &&
+          element.fieldKey === fieldKey &&
+          (fieldKey === 'warrantyPolicy' ? !element.content : element.content === storedContent)
+        ) {
+          return element;
+        }
+        changed = true;
+        return {
+          ...element,
+          type: 'field' as const,
+          fieldKey,
+          content: storedContent,
+        };
+      });
+
+      if (changed) {
+        await this.update(template.id, { layout: { elements } });
+        updatedCount += 1;
+      }
+    }
+
+    return updatedCount;
+  }
+
+  private receiptContentFieldKeyFor(
+    element: PrintLayoutElement,
+  ): 'warrantyPolicy' | 'footerNote' | 'thanksMessage' | null {
+    const fieldKey = String(element.fieldKey || '').trim();
+    if (fieldKey === 'warrantyPolicy' || fieldKey === 'footerNote' || fieldKey === 'thanksMessage') {
+      return fieldKey;
+    }
+
+    const idLabel = `${element.id || ''} ${element.label || ''}`.toLowerCase();
+    if (idLabel.includes('warranty')) {
+      return 'warrantyPolicy';
+    }
+    if (
+      idLabel.includes('footer_note') ||
+      idLabel.includes('footer-note') ||
+      idLabel.includes('footer note') ||
+      idLabel.includes('tax note')
+    ) {
+      return 'footerNote';
+    }
+    if (idLabel.includes('thanks') || idLabel.includes('thank-you') || idLabel.includes('thank you')) {
+      return 'thanksMessage';
+    }
+
+    const body = String(element.content || '').toLowerCase();
+    if (
+      body.includes('warranty policy') ||
+      body.includes('no receipt, no warranty') ||
+      body.includes('no receipt — no warranty')
+    ) {
+      return 'warrantyPolicy';
+    }
+    if (body.includes('not valid for input tax')) {
+      return 'footerNote';
+    }
+    if (body.includes('thanks for shopping')) {
+      return 'thanksMessage';
+    }
+
+    return null;
+  }
+
   private async setDefault(id: number): Promise<void> {
     await this.databaseService.query(
       `UPDATE pcmazing_printing_templates

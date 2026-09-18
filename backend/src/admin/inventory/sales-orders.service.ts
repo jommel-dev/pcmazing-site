@@ -11,6 +11,8 @@ import {
   tableExists,
 } from '../common/admin-table.util';
 import { CreateSalesOrderDto } from './dto/create-sales-order.dto';
+import { RefundSalesOrderDto } from './dto/refund-sales-order.dto';
+import { ensureSalesOrderRefundColumns } from './sales-order-refund.schema';
 
 export interface SalesOrderListItem {
   id: number;
@@ -22,6 +24,10 @@ export interface SalesOrderListItem {
   subtotal: number;
   discountTotal: number;
   totalAmount: number;
+  refundAmount: number;
+  netTotalAmount: number;
+  refundReason: string | null;
+  refundedAt: string | null;
   isVoid: boolean;
   voidedAt: string | null;
   saleDate: string | null;
@@ -37,6 +43,8 @@ export interface SalesOrderItem {
   materialCode: string | null;
   description: string | null;
   quantity: number;
+  refundedQuantity: number;
+  refundableQuantity: number;
   unitPrice: number;
   discountType: 'none' | 'senior' | 'pwd';
 }
@@ -56,12 +64,23 @@ export interface SalesOrderSummary {
 export class SalesOrdersService {
   constructor(private readonly databaseService: DatabaseService) {}
 
-  async list(pageRaw?: string, limitRaw?: string, search?: string, voidFilter?: string) {
+  async list(
+    pageRaw?: string,
+    limitRaw?: string,
+    search?: string,
+    voidFilter?: string,
+    sortByRaw?: string,
+    sortDirRaw?: string,
+    startDateRaw?: string,
+    endDateRaw?: string,
+  ) {
     if (!(await tableExists(this.databaseService, 'pcmazing_sales_orders'))) {
       throw new ServiceUnavailableException(
         'Sales orders table is not available. Apply migration 047_sales_orders.sql.',
       );
     }
+
+    await ensureSalesOrderRefundColumns(this.databaseService);
 
     const { page, limit, offset } = buildPagination(pageRaw, limitRaw);
     const params: unknown[] = [];
@@ -83,7 +102,19 @@ export class SalesOrdersService {
       conditions.push('o.is_void = FALSE');
     }
 
+    const startDate = this.parseDateBound(startDateRaw, false);
+    const endDate = this.parseDateBound(endDateRaw, true);
+    if (startDate) {
+      params.push(startDate);
+      conditions.push(`COALESCE(o.sale_date, o.created_at) >= $${params.length}::timestamptz`);
+    }
+    if (endDate) {
+      params.push(endDate);
+      conditions.push(`COALESCE(o.sale_date, o.created_at) <= $${params.length}::timestamptz`);
+    }
+
     const whereClause = `WHERE ${conditions.join(' AND ')}`;
+    const orderBy = this.buildListOrderBy(sortByRaw, sortDirRaw);
 
     const countResult = await this.databaseService.query<{ count: string }>(
       `SELECT COUNT(*)::text AS count
@@ -101,7 +132,12 @@ export class SalesOrdersService {
     }>(
       `SELECT
         COUNT(*)::text AS order_count,
-        COALESCE(SUM(CASE WHEN o.is_void THEN 0 ELSE o.total_amount END), 0)::text AS total_sales,
+        COALESCE(SUM(
+          CASE
+            WHEN o.is_void THEN 0
+            ELSE GREATEST(o.total_amount - COALESCE(o.refund_amount, 0), 0)
+          END
+        ), 0)::text AS total_sales,
         COALESCE(SUM(CASE WHEN o.is_void THEN 0 ELSE o.discount_total END), 0)::text AS total_discount,
         COALESCE(SUM(CASE WHEN o.is_void THEN 0 ELSE items.item_count END), 0)::text AS item_count
        FROM pcmazing_sales_orders o
@@ -126,6 +162,9 @@ export class SalesOrdersService {
       subtotal: string;
       discount_total: string;
       total_amount: string;
+      refund_amount: string;
+      refund_reason: string | null;
+      refunded_at: string | null;
       is_void: boolean;
       voided_at: string | null;
       sale_date: string | null;
@@ -143,6 +182,9 @@ export class SalesOrdersService {
         o.subtotal::text,
         o.discount_total::text,
         o.total_amount::text,
+        COALESCE(o.refund_amount, 0)::text AS refund_amount,
+        o.refund_reason,
+        o.refunded_at::text,
         o.is_void,
         o.voided_at::text,
         o.sale_date::text,
@@ -159,7 +201,7 @@ export class SalesOrdersService {
          WHERE i.sales_order_id = o.id AND i.deleted_at IS NULL
        ) items ON TRUE
        ${whereClause}
-       ORDER BY o.sale_date DESC, o.id DESC
+       ${orderBy}
        LIMIT $${limitIndex} OFFSET $${offsetIndex}`,
       [...params, limit, offset],
     );
@@ -183,6 +225,8 @@ export class SalesOrdersService {
       );
     }
 
+    await ensureSalesOrderRefundColumns(this.databaseService);
+
     const result = await this.databaseService.query<{
       id: number;
       reference_no: string | null;
@@ -193,6 +237,9 @@ export class SalesOrdersService {
       subtotal: string;
       discount_total: string;
       total_amount: string;
+      refund_amount: string;
+      refund_reason: string | null;
+      refunded_at: string | null;
       is_void: boolean;
       voided_at: string | null;
       sale_date: string | null;
@@ -210,6 +257,9 @@ export class SalesOrdersService {
         o.subtotal::text,
         o.discount_total::text,
         o.total_amount::text,
+        COALESCE(o.refund_amount, 0)::text AS refund_amount,
+        o.refund_reason,
+        o.refunded_at::text,
         o.is_void,
         o.voided_at::text,
         o.sale_date::text,
@@ -361,14 +411,130 @@ export class SalesOrdersService {
       );
 
       for (const item of existing.items) {
+        const restoreQty = Math.max(0, item.quantity - (item.refundedQuantity ?? 0));
+        if (restoreQty <= 0) {
+          continue;
+        }
         await client.query(
           `UPDATE tblmaterials
            SET on_hand_stock = COALESCE(on_hand_stock, 0) + $1,
                updated_at = NOW()
            WHERE id = $2 AND deleted_at IS NULL`,
-          [item.quantity, item.materialId],
+          [restoreQty, item.materialId],
         );
       }
+    });
+
+    return this.getById(id);
+  }
+
+  async refundOrder(
+    id: number,
+    dto: RefundSalesOrderDto,
+    refundedBy?: number,
+  ): Promise<SalesOrderDetail> {
+    await ensureSalesOrderRefundColumns(this.databaseService);
+
+    const existing = await this.getById(id);
+    if (existing.isVoid) {
+      throw new BadRequestException('Voided sales orders cannot be refunded.');
+    }
+
+    const refundReason = dto.refundReason?.trim();
+    if (!refundReason || refundReason.length < 3) {
+      throw new BadRequestException('Refund reason is required (at least 3 characters).');
+    }
+
+    const refundLines = dto.items ?? [];
+    if (!refundLines.length) {
+      throw new BadRequestException('Select at least one item to refund.');
+    }
+
+    const itemMap = new Map(existing.items.map((item) => [Number(item.id), item]));
+    const normalizedLines: Array<{
+      itemId: number;
+      quantity: number;
+      materialId: number;
+    }> = [];
+
+    for (const line of refundLines) {
+      const item = itemMap.get(Number(line.itemId));
+      if (!item) {
+        throw new BadRequestException(`Sales order item ${line.itemId} was not found.`);
+      }
+
+      const quantity = Number(line.quantity);
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        throw new BadRequestException(`Invalid refund quantity for item ${line.itemId}.`);
+      }
+
+      const remaining = Math.max(0, item.quantity - item.refundedQuantity);
+      if (quantity > remaining + 0.0001) {
+        const label = item.materialName || item.materialCode || `item ${item.id}`;
+        throw new BadRequestException(
+          `Refund quantity for "${label}" exceeds remaining quantity (${remaining}).`,
+        );
+      }
+
+      normalizedLines.push({
+        itemId: item.id,
+        quantity,
+        materialId: item.materialId,
+      });
+    }
+
+    const refundAmount = this.computeRefundAmountForLines(
+      existing.items,
+      normalizedLines,
+      existing.customDiscount,
+      existing.subtotal,
+    );
+
+    if (refundAmount <= 0) {
+      throw new BadRequestException('Refund amount must be greater than zero.');
+    }
+
+    const priorRefund = Math.max(0, existing.refundAmount);
+    const maxRefund = Math.max(0, existing.totalAmount - priorRefund);
+    if (refundAmount > maxRefund + 0.009) {
+      throw new BadRequestException(
+        `Refund amount cannot exceed ${maxRefund.toFixed(2)}.`,
+      );
+    }
+
+    const combinedReason = existing.refundReason?.trim()
+      ? `${existing.refundReason.trim()}; ${refundReason}`
+      : refundReason;
+
+    await this.databaseService.withTransaction(async (client) => {
+      for (const line of normalizedLines) {
+        await client.query(
+          `UPDATE pcmazing_sales_order_items
+           SET refunded_quantity = COALESCE(refunded_quantity, 0) + $1,
+               updated_at = NOW()
+           WHERE id = $2 AND sales_order_id = $3 AND deleted_at IS NULL`,
+          [line.quantity, line.itemId, id],
+        );
+
+        await client.query(
+          `UPDATE tblmaterials
+           SET on_hand_stock = COALESCE(on_hand_stock, 0) + $1,
+               updated_at = NOW()
+           WHERE id = $2 AND deleted_at IS NULL`,
+          [line.quantity, line.materialId],
+        );
+      }
+
+      await client.query(
+        `UPDATE pcmazing_sales_orders
+         SET refund_reason = $1,
+             refund_amount = COALESCE(refund_amount, 0) + $2::numeric,
+             refunded_at = NOW(),
+             refunded_by = $3,
+             updated_at = NOW()
+         WHERE id = $4 AND deleted_at IS NULL`,
+        [combinedReason, refundAmount, refundedBy ?? null, id],
+      );
     });
 
     return this.getById(id);
@@ -382,6 +548,7 @@ export class SalesOrdersService {
       material_code: string | null;
       description: string | null;
       quantity: string;
+      refunded_quantity: string;
       unit_price: string;
       discount_type: 'none' | 'senior' | 'pwd';
     }>(
@@ -392,6 +559,7 @@ export class SalesOrdersService {
         m.material_code,
         m.description,
         i.quantity::text,
+        COALESCE(i.refunded_quantity, 0)::text AS refunded_quantity,
         i.unit_price::text,
         i.discount_type
        FROM pcmazing_sales_order_items i
@@ -401,16 +569,47 @@ export class SalesOrdersService {
       [salesOrderId],
     );
 
-    return result.rows.map((row) => ({
-      id: row.id,
-      materialId: row.material_id,
-      materialName: row.material_name,
-      materialCode: row.material_code,
-      description: row.description,
-      quantity: Number(row.quantity ?? 0),
-      unitPrice: Number(row.unit_price ?? 0),
-      discountType: this.normalizeDiscountType(row.discount_type),
-    }));
+    return result.rows.map((row) => {
+      const quantity = Number(row.quantity ?? 0);
+      const refundedQuantity = Number(row.refunded_quantity ?? 0);
+      return {
+        id: Number(row.id),
+        materialId: Number(row.material_id),
+        materialName: row.material_name,
+        materialCode: row.material_code,
+        description: row.description,
+        quantity,
+        refundedQuantity,
+        refundableQuantity: Math.max(0, quantity - refundedQuantity),
+        unitPrice: Number(row.unit_price ?? 0),
+        discountType: this.normalizeDiscountType(row.discount_type),
+      };
+    });
+  }
+
+  private computeRefundAmountForLines(
+    orderItems: SalesOrderItem[],
+    refundLines: Array<{ itemId: number; quantity: number }>,
+    customDiscount: number,
+    orderSubtotal: number,
+  ): number {
+    const itemMap = new Map(orderItems.map((item) => [Number(item.id), item]));
+    let total = 0;
+
+    for (const line of refundLines) {
+      const item = itemMap.get(Number(line.itemId));
+      if (!item) {
+        continue;
+      }
+
+      const gross = line.quantity * item.unitPrice;
+      const lineDiscount = this.computeLineDiscount(gross, item.discountType);
+      const customShare =
+        orderSubtotal > 0 ? (gross / orderSubtotal) * Math.max(0, customDiscount) : 0;
+      total += Math.max(0, gross - lineDiscount - customShare);
+    }
+
+    return Math.round(total * 100) / 100;
   }
 
   private async normalizeItems(
@@ -557,6 +756,35 @@ export class SalesOrdersService {
     return `SO-${String(id).padStart(6, '0')}`;
   }
 
+  private buildListOrderBy(sortByRaw?: string, sortDirRaw?: string): string {
+    const direction = String(sortDirRaw ?? '').trim().toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+    const sortBy = String(sortByRaw ?? '').trim();
+    const sortMap: Record<string, string> = {
+      referenceNo: 'o.reference_no',
+      customer: 'o.customer_name',
+      items: 'COALESCE(items.item_count, 0)',
+      total: 'o.total_amount',
+      discount: 'o.discount_total',
+      saleDate: 'COALESCE(o.sale_date, o.created_at)',
+      createdAt: 'COALESCE(o.sale_date, o.created_at)',
+      status: 'o.is_void',
+    };
+    const column = sortMap[sortBy] ?? 'COALESCE(o.sale_date, o.created_at)';
+    return `ORDER BY ${column} ${direction} NULLS LAST, o.id DESC`;
+  }
+
+  private parseDateBound(value?: string, endOfDay = false): string | null {
+    const raw = String(value ?? '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      return null;
+    }
+    const parsed = new Date(`${raw}T${endOfDay ? '23:59:59.999' : '00:00:00'}`);
+    if (Number.isNaN(parsed.getTime())) {
+      return null;
+    }
+    return parsed.toISOString();
+  }
+
   private mapListRow(row: {
     id: number;
     reference_no: string | null;
@@ -567,6 +795,9 @@ export class SalesOrdersService {
     subtotal: string;
     discount_total: string;
     total_amount: string;
+    refund_amount?: string;
+    refund_reason?: string | null;
+    refunded_at?: string | null;
     is_void: boolean;
     voided_at: string | null;
     sale_date: string | null;
@@ -574,8 +805,10 @@ export class SalesOrdersService {
     items_summary: string | null;
     updated_at: string | null;
   }): SalesOrderListItem {
+    const totalAmount = Number(row.total_amount ?? 0);
+    const refundAmount = Number(row.refund_amount ?? 0);
     return {
-      id: row.id,
+      id: Number(row.id),
       referenceNo: row.reference_no,
       customerName: row.customer_name,
       customerPhone: row.customer_phone,
@@ -583,7 +816,11 @@ export class SalesOrdersService {
       customDiscount: Number(row.custom_discount ?? 0),
       subtotal: Number(row.subtotal ?? 0),
       discountTotal: Number(row.discount_total ?? 0),
-      totalAmount: Number(row.total_amount ?? 0),
+      totalAmount,
+      refundAmount,
+      netTotalAmount: Math.max(0, totalAmount - refundAmount),
+      refundReason: row.refund_reason ?? null,
+      refundedAt: row.refunded_at ?? null,
       isVoid: row.is_void,
       voidedAt: row.voided_at,
       saleDate: row.sale_date,

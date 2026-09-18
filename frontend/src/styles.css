@@ -37,33 +37,44 @@ layer(base);
   }
 }
 
+@layer components {
+  /* Mobile-friendly horizontal scroll for wide data tables/lists */
+  .table-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+}
+
 @media print {
   @page {
     size: A4;
-    margin: 0;
+    margin: 8mm;
   }
 
   html,
-  body {
-    width: 210mm;
-    height: 297mm;
+  body,
+  body.admin-shell-active {
+    width: auto !important;
+    height: auto !important;
+    overflow: visible !important;
     margin: 0 !important;
     padding: 0 !important;
-  }
-
-  body.admin-shell-active {
-    overflow: visible !important;
-    height: auto !important;
   }
 
   .admin-print-hide {
     display: none !important;
   }
 
+  .admin-print-root,
   .admin-print-main {
-    overflow: visible !important;
+    display: block !important;
     height: auto !important;
     max-height: none !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    position: static !important;
     margin: 0 !important;
     padding: 0 !important;
   }

@@ -1,4 +1,4 @@
-# Stage 1: Build Angular on Node 22
+# Stage 1: Build Angular (Node 22)
 FROM node:22-slim AS builder
 
 WORKDIR /app
@@ -8,21 +8,24 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
-
-# Use install if ci fails on older lockfiles; prefer ci when lock is in sync
 RUN npm ci --legacy-peer-deps || npm install --legacy-peer-deps
 
 COPY . .
 
-ENV NG_BUILD_MAX_WORKERS=1
-ENV UV_THREADPOOL_SIZE=1
-ENV NODE_OPTIONS=--max-old-space-size=4096
+# Baked into env.generated.ts at build time (browser calls public API host)
+ARG API_URL=https://v1-api.pcmazing.com
+ARG PUBLIC_SITE_URL=https://www.pcmazing.com
+ARG BUILD_ID=
+ENV API_URL=$API_URL \
+    PUBLIC_SITE_URL=$PUBLIC_SITE_URL \
+    BUILD_ID=$BUILD_ID \
+    NG_BUILD_MAX_WORKERS=1 \
+    UV_THREADPOOL_SIZE=1 \
+    NODE_OPTIONS=--max-old-space-size=4096
 
-# Pass configuration to ng via `--` so npm does not swallow it.
-# Works whether or not package.json defines build:prod.
 RUN npm run build -- --configuration=production
 
-# Stage 2: Serve with Nginx
+# Stage 2: Nginx on port 80 (Cloudflare tunnel → pcmazing_frontend_app:80)
 FROM nginx:alpine
 
 COPY --from=builder /app/dist/pcmazing-site/browser /usr/share/nginx/html

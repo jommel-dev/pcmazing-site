@@ -32,6 +32,7 @@ export class EmployeeWorkspaceService {
       return;
     }
     await ensureEmployeeWorkspaceTables(this.databaseService);
+    await this.payrollService.ensureReady();
     this.ready = true;
   }
 
@@ -48,68 +49,28 @@ export class EmployeeWorkspaceService {
     userId: number,
     source: UserSource,
     monthRaw?: string,
-  ): Promise<{
-    workDate: string;
-    month: string;
-    today: {
-      timeIn: string | null;
-      timeOut: string | null;
-      hoursWorked: number | null;
-      status: string;
-    };
-    monthSummary: {
-      totalHours: number;
-      daysPresent: number;
-      daysCompleted: number;
-      dayOffCount: number;
-    };
-    attendanceDays: Array<{
-      workDate: string;
-      timeIn: string | null;
-      timeOut: string | null;
-      hoursWorked: number | null;
-    }>;
-    dayOffs: Array<{ id: number; dayOffDate: string; reason: string | null }>;
-    todos: Array<{
-      id: number;
-      title: string;
-      notes: string | null;
-      dueDate: string;
-      isDone: boolean;
-    }>;
-    activities: Array<{
-      id: number;
-      actionType: string;
-      title: string;
-      details: string | null;
-      createdAt: string;
-    }>;
-    payslips: Array<{
-      id: string;
-      label: string;
-      dateFrom: string;
-      dateTo: string;
-      periodDays: number;
-      daysPresent: number;
-      daysCompleted: number;
-      totalHours: number;
-      salaryType: string;
-      salaryAmount: number | null;
-      estimatedPay: number;
-      payrollEnabled: boolean;
-    }>;
-  }> {
+  ) {
     await this.ensureReady();
+    const settings = await this.payrollService.getSettings();
     const workDate = manilaWorkDate();
     const month = this.normalizeMonth(monthRaw) ?? workDate.slice(0, 7);
     const { dateFrom, dateTo } = this.monthBounds(month);
 
     const attendanceResult = await this.databaseService.query<{
+      id: number;
       work_date: string;
       time_in: string | null;
       time_out: string | null;
+      overtime_hours: string | number | null;
+      overtime_status: string | null;
+      requested_time_out: string | null;
+      adjustment_status: string | null;
+      adjustment_note: string | null;
     }>(
-      `SELECT work_date::text AS work_date, time_in::text, time_out::text
+      `SELECT id, work_date::text AS work_date, time_in::text, time_out::text,
+              overtime_hours, overtime_status,
+              requested_time_out::text AS requested_time_out,
+              adjustment_status, adjustment_note
        FROM pcmazing_attendance
        WHERE user_id = $1
          AND user_source = $2
@@ -118,12 +79,34 @@ export class EmployeeWorkspaceService {
       [userId, source, dateFrom, dateTo],
     );
 
-    const attendanceDays = attendanceResult.rows.map((row) => ({
-      workDate: row.work_date,
-      timeIn: row.time_in,
-      timeOut: row.time_out,
-      hoursWorked: this.computeHours(row.time_in, row.time_out),
-    }));
+    const attendanceDays = attendanceResult.rows.map((row) => {
+      const hoursWorked = this.computeHours(row.time_in, row.time_out);
+      const overtimeHours = Number(row.overtime_hours ?? 0) || 0;
+      const overtimeStatus = this.normalizeOvertimeStatus(row.overtime_status);
+      const adjustmentStatus = this.normalizeOvertimeStatus(row.adjustment_status);
+      const canRequestOvertime =
+        overtimeHours > 0 && (overtimeStatus === 'none' || overtimeStatus === 'rejected');
+      const canRequestTimeOutAdjustment =
+        Boolean(row.time_in) &&
+        !row.time_out &&
+        (adjustmentStatus === 'none' || adjustmentStatus === 'rejected');
+
+      return {
+        id: row.id,
+        workDate: row.work_date,
+        timeIn: row.time_in,
+        timeOut: row.time_out,
+        hoursWorked,
+        dayPayLabel: this.dayPayLabel(hoursWorked, settings.undertimeGraceMinutes),
+        overtimeHours,
+        overtimeStatus,
+        canRequestOvertime,
+        requestedTimeOut: row.requested_time_out,
+        adjustmentStatus,
+        adjustmentNote: row.adjustment_note,
+        canRequestTimeOutAdjustment,
+      };
+    });
 
     const todayRow = attendanceDays.find((row) => row.workDate === workDate);
     let todayStatus = 'not_timed_in';
@@ -145,14 +128,28 @@ export class EmployeeWorkspaceService {
         attendanceDays.reduce((sum, row) => sum + (row.hoursWorked ?? 0), 0) * 100,
       ) / 100;
 
+    const overtimeEligible = attendanceDays.filter(
+      (row) => row.overtimeHours > 0 && (row.overtimeStatus === 'none' || row.overtimeStatus === 'rejected'),
+    );
+    const overtimePending = attendanceDays.filter((row) => row.overtimeStatus === 'pending');
+    const incompleteDays = attendanceDays.filter((row) => row.canRequestTimeOutAdjustment);
+    const adjustmentPending = attendanceDays.filter((row) => row.adjustmentStatus === 'pending');
+
     return {
       workDate,
       month,
+      undertimeGraceMinutes: settings.undertimeGraceMinutes,
       today: {
         timeIn: todayRow?.timeIn ?? null,
         timeOut: todayRow?.timeOut ?? null,
         hoursWorked: todayRow?.hoursWorked ?? null,
         status: todayStatus,
+        overtimeHours: todayRow?.overtimeHours ?? 0,
+        overtimeStatus: todayRow?.overtimeStatus ?? 'none',
+        canRequestOvertime: todayRow?.canRequestOvertime ?? false,
+        attendanceId: todayRow?.id ?? null,
+        canRequestTimeOutAdjustment: todayRow?.canRequestTimeOutAdjustment ?? false,
+        adjustmentStatus: todayRow?.adjustmentStatus ?? 'none',
       },
       monthSummary: {
         totalHours,
@@ -160,12 +157,86 @@ export class EmployeeWorkspaceService {
         daysCompleted,
         dayOffCount: dayOffs.length,
       },
+      overtimeNotice: {
+        eligibleCount: overtimeEligible.length,
+        pendingCount: overtimePending.length,
+        message:
+          overtimeEligible.length > 0
+            ? `You have ${overtimeEligible.length} day(s) with overtime (over 9 hours). Request approval so it can be paid.`
+            : overtimePending.length > 0
+              ? `${overtimePending.length} overtime request(s) waiting for admin approval.`
+              : null,
+      },
+      adjustmentNotice: {
+        eligibleCount: incompleteDays.length,
+        pendingCount: adjustmentPending.length,
+        message:
+          incompleteDays.length > 0
+            ? `You have ${incompleteDays.length} day(s) without a time out. Upload a photo and request approval.`
+            : adjustmentPending.length > 0
+              ? `${adjustmentPending.length} time-out adjustment(s) waiting for admin approval.`
+              : null,
+      },
       attendanceDays,
       dayOffs,
       todos,
       activities,
       payslips,
     };
+  }
+
+  async requestOvertime(userId: number, source: UserSource, attendanceId: number) {
+    await this.ensureReady();
+    const result = await this.payrollService.requestOvertime(userId, source, attendanceId);
+    await this.recordActivity(
+      userId,
+      source,
+      'overtime_requested',
+      `Requested overtime · ${result.workDate}`,
+      `${result.overtimeHours.toFixed(2)} h pending approval`,
+    );
+    return result;
+  }
+
+  async requestTimeOutAdjustment(
+    userId: number,
+    source: UserSource,
+    attendanceId: number,
+    selfie: Express.Multer.File | undefined,
+    requestedTimeOut: string,
+    note?: string,
+    undertimeCategory?: string,
+  ) {
+    await this.ensureReady();
+    const result = await this.payrollService.requestTimeOutAdjustment(
+      userId,
+      source,
+      attendanceId,
+      selfie as Express.Multer.File,
+      requestedTimeOut,
+      note,
+      undertimeCategory,
+    );
+    await this.recordActivity(
+      userId,
+      source,
+      'time_out_adjustment_requested',
+      `Requested time-out adjustment · ${result.workDate}`,
+      'Waiting for admin approval',
+    );
+    return result;
+  }
+
+  async getPayslipPdf(userId: number, source: UserSource, payslipId: string | number) {
+    await this.ensureReady();
+    return this.payrollService.buildEmployeePayslipPdf(payslipId, userId, source);
+  }
+
+  async getPayslipDetail(userId: number, source: UserSource, payslipId: string | number) {
+    await this.ensureReady();
+    const detail = await this.payrollService.getEmployeePayslipDetail(payslipId, userId, source);
+    const { pdfPayload: _pdfPayload, filename: _filename, ...rest } = detail;
+    return rest;
   }
 
   async listDayOffs(userId: number, source: UserSource, dateFrom: string, dateTo: string) {
@@ -541,5 +612,38 @@ export class EmployeeWorkspaceService {
       return null;
     }
     return Math.round(((end - start) / 3_600_000) * 100) / 100;
+  }
+
+  private dayPayLabel(hours: number | null, undertimeGraceMinutes = 30): string {
+    if (hours == null) {
+      return 'Incomplete';
+    }
+    const graceHours = Math.min(90, Math.max(0, undertimeGraceMinutes)) / 60;
+    const fullDayThreshold = Math.max(4, 9 - graceHours);
+    if (hours + 0.0001 >= fullDayThreshold && hours < 9) {
+      return `Undertime (paid, ≤${undertimeGraceMinutes}m)`;
+    }
+    if (hours >= 9) {
+      return 'Full day';
+    }
+    if (hours >= 4) {
+      return 'Half day';
+    }
+    return 'Below half day';
+  }
+
+  private normalizeOvertimeStatus(
+    value: string | null | undefined,
+  ): 'none' | 'pending' | 'approved' | 'rejected' {
+    switch ((value ?? '').trim().toLowerCase()) {
+      case 'pending':
+        return 'pending';
+      case 'approved':
+        return 'approved';
+      case 'rejected':
+        return 'rejected';
+      default:
+        return 'none';
+    }
   }
 }

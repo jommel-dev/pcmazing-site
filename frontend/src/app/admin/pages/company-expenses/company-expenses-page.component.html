@@ -1,0 +1,629 @@
+<section>
+  <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <div>
+      <p class="text-xs font-bold tracking-[0.2em] text-pcmazing-500 uppercase">Sales Operations</p>
+      <h2 class="mt-2 text-2xl font-bold text-slate-900 dark:text-white">Company Expenses</h2>
+      <p class="mt-2 max-w-3xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+        Track operational expenses on a calendar — salary, rent, bills, taxes, and maintenance.
+      </p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+        (click)="changeMonth(-1)"
+      >
+        Prev
+      </button>
+      <span class="min-w-36 text-center text-sm font-semibold text-slate-700 dark:text-slate-200">
+        {{ monthLabel() }}
+      </span>
+      <button
+        type="button"
+        class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+        (click)="changeMonth(1)"
+      >
+        Next
+      </button>
+      <button
+        type="button"
+        class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+        (click)="goToToday()"
+      >
+        Today
+      </button>
+      <button
+        type="button"
+        class="rounded-xl bg-pcmazing-500 px-4 py-2 text-sm font-bold text-white hover:bg-pcmazing-600"
+        (click)="openCreate()"
+      >
+        Add expense
+      </button>
+    </div>
+  </div>
+
+  @if (error()) {
+    <div class="mb-4 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+      {{ error() }}
+    </div>
+  }
+
+  @if (loading() && !calendar()) {
+    <div class="rounded-2xl border border-slate-200 bg-white px-6 py-16 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+      Loading expense calendar...
+    </div>
+  } @else if (calendar(); as data) {
+    <div class="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <p class="text-xs font-bold uppercase tracking-wide text-slate-400">Month total</p>
+        <p class="mt-2 text-2xl font-bold text-slate-900 dark:text-white">
+          {{ data.totals.amount | currency: 'PHP':'symbol-narrow':'1.0-0' }}
+        </p>
+      </div>
+      <div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 dark:border-emerald-900 dark:bg-emerald-950/30">
+        <p class="text-xs font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Paid</p>
+        <p class="mt-2 text-2xl font-bold text-emerald-900 dark:text-emerald-200">
+          {{ data.totals.paidAmount | currency: 'PHP':'symbol-narrow':'1.0-0' }}
+        </p>
+      </div>
+      <div class="rounded-2xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-900 dark:bg-amber-950/30">
+        <p class="text-xs font-bold uppercase tracking-wide text-amber-700 dark:text-amber-300">Planned</p>
+        <p class="mt-2 text-2xl font-bold text-amber-900 dark:text-amber-200">
+          {{ data.totals.plannedAmount | currency: 'PHP':'symbol-narrow':'1.0-0' }}
+        </p>
+      </div>
+      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <p class="text-xs font-bold uppercase tracking-wide text-slate-400">Entries</p>
+        <p class="mt-2 text-2xl font-bold text-slate-900 dark:text-white">{{ data.totals.count }}</p>
+      </div>
+    </div>
+
+    <div class="grid gap-6 xl:grid-cols-3">
+      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 xl:col-span-2">
+        <div class="grid grid-cols-7 gap-1 text-center text-[10px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+          <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+        </div>
+        <div class="mt-2 grid grid-cols-7 gap-1">
+          @for (cell of calendarDays(); track cell.isoDate) {
+            <button
+              type="button"
+              class="min-h-20 rounded-xl border px-1.5 py-1.5 text-left transition sm:min-h-24"
+              [class.opacity-30]="!cell.inMonth"
+              [ngClass]="
+                cell.isSelected
+                  ? 'border-pcmazing-500 bg-pcmazing-50 dark:border-pcmazing-400 dark:bg-pcmazing-500/20'
+                  : 'border-slate-200 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800'
+              "
+              (click)="selectDate(cell.isoDate)"
+            >
+              <span
+                class="inline-flex size-6 items-center justify-center rounded-full text-xs font-bold"
+                [class.bg-pcmazing-500]="cell.isToday"
+                [class.text-white]="cell.isToday"
+                [class.text-slate-700]="!cell.isToday"
+                [class.dark:text-slate-200]="!cell.isToday"
+              >
+                {{ cell.day }}
+              </span>
+              @if (cell.count > 0) {
+                <p class="mt-1 truncate text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+                  {{ formatCompact(cell.total) }}
+                </p>
+                <span class="mt-1 flex gap-0.5">
+                  @for (color of cell.colors; track color) {
+                    <span class="size-1.5 rounded-full" [style.background]="color"></span>
+                  }
+                </span>
+              }
+            </button>
+          }
+        </div>
+        @if (data.categories.length) {
+          <div class="mt-4 flex flex-wrap gap-2">
+            @for (item of data.categories; track item.key) {
+              <span class="inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                <span class="size-2 rounded-full" [style.background]="item.color"></span>
+                {{ item.label }}
+                {{ item.amount | currency: 'PHP':'symbol-narrow':'1.0-0' }}
+              </span>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <h3 class="text-lg font-bold text-slate-900 dark:text-white">
+              {{ selectedDate() | date: 'mediumDate' }}
+            </h3>
+            <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              @if (selectedDayExpenses().length) {
+                {{ selectedDayTotal() | currency: 'PHP':'symbol-narrow':'1.0-0' }}
+                · {{ selectedDayExpenses().length }}
+                {{ selectedDayExpenses().length === 1 ? 'entry' : 'entries' }}
+              } @else {
+                No expenses on this day.
+              }
+            </p>
+          </div>
+          <button
+            type="button"
+            class="rounded-xl bg-pcmazing-500 px-3 py-2 text-xs font-bold text-white hover:bg-pcmazing-600"
+            (click)="openCreate(selectedDate())"
+          >
+            Add
+          </button>
+        </div>
+
+        <div class="mt-4 space-y-3">
+          @for (item of selectedDayExpenses(); track item.id) {
+            <div class="rounded-xl border border-slate-200 px-3 py-3 dark:border-slate-700">
+              <div class="flex items-start justify-between gap-2">
+                <div class="min-w-0">
+                  <p class="truncate font-semibold text-slate-900 dark:text-white">{{ item.title }}</p>
+                  <p class="mt-0.5 text-xs text-slate-500">
+                    {{ item.categoryLabel }}
+                    @if (item.vendor) {
+                      · {{ item.vendor }}
+                    }
+                  </p>
+                </div>
+                <p class="shrink-0 text-sm font-bold text-slate-900 dark:text-white">
+                  {{ item.amount | currency: 'PHP':'symbol-narrow':'1.0-0' }}
+                </p>
+              </div>
+              <div class="mt-2 flex items-center justify-between gap-2">
+                <div class="flex items-center gap-2">
+                  <span
+                    class="inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase"
+                    [class.bg-emerald-50]="item.status === 'paid'"
+                    [class.text-emerald-700]="item.status === 'paid'"
+                    [class.bg-amber-50]="item.status === 'planned'"
+                    [class.text-amber-700]="item.status === 'planned'"
+                  >
+                    {{ item.status }}
+                  </span>
+                  @if (stackedPreviewImages(item); as previews) {
+                    @if (previews.length) {
+                      <button
+                        type="button"
+                        class="group relative flex h-9 w-11 items-center justify-start"
+                        [attr.aria-label]="'View ' + imageAttachments(item).length + ' receipt image(s)'"
+                        (click)="openGallery(item, 0)"
+                      >
+                        @for (preview of previews; track preview.id; let i = $index) {
+                          @if (attachmentUrl(preview.fileUrl); as url) {
+                            <span
+                              class="absolute overflow-hidden rounded-md border-2 border-white bg-slate-100 shadow-sm transition group-hover:shadow-md dark:border-slate-800 dark:bg-slate-700"
+                              [style.left.px]="i * 8"
+                              [style.z-index]="previews.length - i"
+                              [style.transform]="'rotate(' + (i - 1) * 4 + 'deg)'"
+                            >
+                              <img [src]="url" [alt]="preview.fileName" class="size-8 object-cover" />
+                            </span>
+                          }
+                        }
+                        @if (imageAttachments(item).length > 1) {
+                          <span
+                            class="absolute -right-1 -top-1 z-20 inline-flex min-w-4 items-center justify-center rounded-full bg-slate-900 px-1 text-[9px] font-bold text-white"
+                          >
+                            {{ imageAttachments(item).length }}
+                          </span>
+                        }
+                      </button>
+                    } @else if ((item.attachmentCount ?? 0) > 0) {
+                      <span class="text-[10px] font-semibold text-slate-400">
+                        {{ item.attachmentCount }} file{{ item.attachmentCount === 1 ? '' : 's' }}
+                      </span>
+                    }
+                  }
+                </div>
+                <div class="flex gap-2">
+                  <button
+                    type="button"
+                    class="text-xs font-bold text-pcmazing-600 hover:text-pcmazing-700"
+                    (click)="openEdit(item)"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    class="text-xs font-bold text-red-600 hover:text-red-700 disabled:opacity-50"
+                    [disabled]="deletingId() === item.id"
+                    (click)="remove(item)"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+  }
+</section>
+
+@if (formOpen()) {
+  <div class="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/50 p-4 sm:items-center" (click)="closeForm()">
+    <section
+      class="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-900"
+      (click)="$event.stopPropagation()"
+      (paste)="onFormPaste($event)"
+      tabindex="-1"
+    >
+      <div class="border-b border-slate-100 px-5 py-4 dark:border-slate-800">
+        <h3 class="text-lg font-bold text-slate-900 dark:text-white">
+          {{ isEditing() ? 'Edit expense' : 'Add expense' }}
+        </h3>
+        <p class="mt-1 text-sm text-slate-500">Operational expense for the company calendar.</p>
+      </div>
+      <form class="max-h-[80vh] space-y-4 overflow-y-auto px-5 py-4" (ngSubmit)="save()">
+        @if (formError()) {
+          <div class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {{ formError() }}
+          </div>
+        }
+        <div>
+          <label class="mb-1 block text-xs font-semibold text-slate-500" for="expense-title">Title</label>
+          <input
+            id="expense-title"
+            type="text"
+            class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-pcmazing-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+            [ngModel]="title()"
+            (ngModelChange)="title.set($event)"
+            name="title"
+            maxlength="180"
+            required
+          />
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="mb-1 block text-xs font-semibold text-slate-500" for="expense-amount">Amount (₱)</label>
+            <input
+              id="expense-amount"
+              type="number"
+              min="0"
+              step="0.01"
+              class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-pcmazing-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              [ngModel]="amount()"
+              (ngModelChange)="amount.set($event)"
+              name="amount"
+              required
+            />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold text-slate-500" for="expense-date">Date</label>
+            <input
+              id="expense-date"
+              type="date"
+              class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-pcmazing-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              [ngModel]="expenseDate()"
+              (ngModelChange)="expenseDate.set($event)"
+              name="expenseDate"
+              required
+            />
+          </div>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div class="relative">
+            <label class="mb-1 block text-xs font-semibold text-slate-500" for="expense-category">Category</label>
+            <input
+              id="expense-category"
+              type="text"
+              autocomplete="off"
+              class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-pcmazing-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              [ngModel]="categoryInput()"
+              (ngModelChange)="onCategoryInput($event)"
+              (focus)="openCategoryMenu()"
+              (blur)="closeCategoryMenuSoon()"
+              name="category"
+              maxlength="80"
+              placeholder="Type or choose a category"
+              required
+            />
+            @if (categoryMenuOpen()) {
+              <div class="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-950">
+                @for (option of filteredCategorySuggestions(); track option.key) {
+                  <button
+                    type="button"
+                    class="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-900"
+                    (mousedown)="pickCategory(option)"
+                  >
+                    <span>{{ option.label }}</span>
+                    @if (option.source === 'used') {
+                      <span class="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Used</span>
+                    }
+                  </button>
+                }
+                @if (showCreateCategoryOption()) {
+                  <button
+                    type="button"
+                    class="flex w-full items-center gap-2 border-t border-slate-100 px-3 py-2 text-left text-sm font-semibold text-pcmazing-600 hover:bg-pcmazing-50 dark:border-slate-800 dark:hover:bg-pcmazing-500/10"
+                    (mousedown)="useTypedCategory()"
+                  >
+                    Use “{{ categoryInput().trim() }}”
+                  </button>
+                }
+                @if (!filteredCategorySuggestions().length && !showCreateCategoryOption()) {
+                  <p class="px-3 py-2 text-sm text-slate-400">No matching categories</p>
+                }
+              </div>
+            }
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold text-slate-500" for="expense-status">Status</label>
+            <select
+              id="expense-status"
+              class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-pcmazing-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              [ngModel]="status()"
+              (ngModelChange)="status.set($event)"
+              name="status"
+            >
+              <option value="paid">Paid</option>
+              <option value="planned">Planned</option>
+            </select>
+          </div>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="mb-1 block text-xs font-semibold text-slate-500" for="expense-vendor">Vendor / payee</label>
+            <input
+              id="expense-vendor"
+              type="text"
+              class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-pcmazing-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              [ngModel]="vendor()"
+              (ngModelChange)="vendor.set($event)"
+              name="vendor"
+              maxlength="160"
+            />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold text-slate-500" for="expense-payment">Payment</label>
+            <select
+              id="expense-payment"
+              class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-pcmazing-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              [ngModel]="paymentMethod()"
+              (ngModelChange)="paymentMethod.set($event)"
+              name="paymentMethod"
+            >
+              @for (option of paymentOptions; track option.value) {
+                <option [value]="option.value">{{ option.label }}</option>
+              }
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="mb-1 block text-xs font-semibold text-slate-500" for="expense-notes">Notes</label>
+          <textarea
+            id="expense-notes"
+            rows="3"
+            class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-pcmazing-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+            [ngModel]="notes()"
+            (ngModelChange)="notes.set($event)"
+            name="notes"
+            maxlength="2000"
+          ></textarea>
+        </div>
+        <div>
+          <label class="mb-1 block text-xs font-semibold text-slate-500">Receipt / files</label>
+          <p class="mb-2 text-xs text-slate-500">
+            Upload images or PDF, drag &amp; drop, or paste a screenshot. Max 10MB each.
+          </p>
+          <div
+            class="rounded-xl border-2 border-dashed px-3 py-3 transition"
+            [class.border-slate-300]="!attachmentDropActive()"
+            [class.bg-slate-50]="!attachmentDropActive()"
+            [class.dark:border-slate-700]="!attachmentDropActive()"
+            [class.dark:bg-slate-950]="!attachmentDropActive()"
+            [class.border-pcmazing-500]="attachmentDropActive()"
+            [class.bg-pcmazing-50]="attachmentDropActive()"
+            [class.ring-2]="attachmentDropActive()"
+            [class.ring-pcmazing-200]="attachmentDropActive()"
+            (dragenter)="onAttachmentDropZoneDragOver($event)"
+            (dragover)="onAttachmentDropZoneDragOver($event)"
+            (dragleave)="onAttachmentDropZoneDragLeave($event)"
+            (drop)="onAttachmentDropZoneDrop($event)"
+          >
+            @if (existingAttachments().length || pendingAttachments().length) {
+              <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                @for (attachment of existingAttachments(); track attachment.id) {
+                  <div class="relative overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
+                    @if (isImageAttachment(attachment) && attachmentUrl(attachment.fileUrl); as url) {
+                      <img [src]="url" [alt]="attachment.fileName" class="h-24 w-full object-cover" />
+                    } @else {
+                      <div class="flex h-24 items-center justify-center bg-slate-100 px-2 text-center text-xs font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+                        {{ attachment.fileName }}
+                      </div>
+                    }
+                    <div class="flex items-center justify-between gap-1 px-2 py-1">
+                      <p class="truncate text-[10px] text-slate-500">{{ attachment.fileName }}</p>
+                      <button
+                        type="button"
+                        class="shrink-0 text-[10px] font-bold text-red-600 hover:text-red-700 disabled:opacity-50"
+                        [disabled]="deletingAttachmentId() === attachment.id || saving()"
+                        (click)="removeExistingAttachment(attachment)"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                }
+                @for (item of pendingAttachments(); track item.id) {
+                  <div class="relative overflow-hidden rounded-xl border border-dashed border-pcmazing-300 bg-white dark:border-pcmazing-500/40 dark:bg-slate-900">
+                    @if (item.isImage && item.previewUrl) {
+                      <img [src]="item.previewUrl" [alt]="item.file.name" class="h-24 w-full object-cover" />
+                    } @else {
+                      <div class="flex h-24 items-center justify-center bg-slate-100 px-2 text-center text-xs font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+                        {{ item.file.name }}
+                      </div>
+                    }
+                    <div class="flex items-center justify-between gap-1 px-2 py-1">
+                      <p class="truncate text-[10px] text-slate-500">{{ item.file.name }}</p>
+                      <button
+                        type="button"
+                        class="shrink-0 text-[10px] font-bold text-red-600 hover:text-red-700"
+                        [disabled]="saving()"
+                        (click)="removePendingAttachment(item.id)"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                }
+              </div>
+              <div class="mt-3 flex flex-col items-center gap-2 border-t border-dashed border-slate-200 pt-3 dark:border-slate-700">
+                <p class="text-center text-xs font-semibold text-slate-600 dark:text-slate-300">
+                  @if (attachmentDropActive()) {
+                    Drop to add more files
+                  } @else {
+                    Drop more files, paste, or browse
+                  }
+                </p>
+                <label class="cursor-pointer rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">
+                  Browse files
+                  <input
+                    type="file"
+                    class="hidden"
+                    accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
+                    multiple
+                    (change)="onAttachmentsSelected($event)"
+                    [disabled]="saving()"
+                  />
+                </label>
+              </div>
+            } @else {
+              <div class="flex flex-col items-center justify-center gap-2 px-3 py-8 text-center">
+                <p class="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  @if (attachmentDropActive()) {
+                    Drop files to attach them
+                  } @else {
+                    Drag &amp; drop files here
+                  }
+                </p>
+                <p class="text-xs text-slate-400">or paste a screenshot · JPEG, PNG, WebP, GIF, PDF</p>
+                <label class="cursor-pointer rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">
+                  Browse files
+                  <input
+                    type="file"
+                    class="hidden"
+                    accept="image/jpeg,image/png,image/webp,image/gif,application/pdf"
+                    multiple
+                    (change)="onAttachmentsSelected($event)"
+                    [disabled]="saving()"
+                  />
+                </label>
+              </div>
+            }
+          </div>
+          @if (attachmentError()) {
+            <div class="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              {{ attachmentError() }}
+            </div>
+          }
+        </div>
+        <div class="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
+          <button
+            type="button"
+            class="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+            (click)="closeForm()"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            class="rounded-xl bg-pcmazing-500 px-4 py-2 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:opacity-50"
+            [disabled]="saving()"
+          >
+            {{ saving() ? 'Saving...' : isEditing() ? 'Save changes' : 'Save expense' }}
+          </button>
+        </div>
+      </form>
+    </section>
+  </div>
+}
+
+@if (galleryOpen()) {
+  <div
+    class="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/85 p-4"
+    (click)="closeGallery()"
+  >
+    <div
+      class="relative flex w-full max-w-4xl flex-col gap-3"
+      (click)="$event.stopPropagation()"
+    >
+      <div class="flex items-center justify-between gap-3 text-white">
+        <div class="min-w-0">
+          <p class="truncate text-sm font-semibold">{{ galleryTitle() }}</p>
+          <p class="text-xs text-slate-300">
+            {{ galleryIndex() + 1 }} / {{ galleryImages().length }}
+            @if (galleryCurrent(); as current) {
+              · {{ current.fileName }}
+            }
+          </p>
+        </div>
+        <button
+          type="button"
+          class="rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 text-sm font-bold text-white hover:bg-white/20"
+          (click)="closeGallery()"
+        >
+          Close
+        </button>
+      </div>
+
+      <div class="relative flex min-h-[50vh] items-center justify-center rounded-2xl bg-black/40 px-12 py-6">
+        @if (galleryImages().length > 1) {
+          <button
+            type="button"
+            class="absolute left-2 top-1/2 z-10 flex size-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-black/50 text-xl font-bold text-white hover:bg-black/70 disabled:opacity-30"
+            [disabled]="!galleryHasPrev()"
+            (click)="galleryPrev()"
+            aria-label="Previous image"
+          >
+            ‹
+          </button>
+          <button
+            type="button"
+            class="absolute right-2 top-1/2 z-10 flex size-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-black/50 text-xl font-bold text-white hover:bg-black/70 disabled:opacity-30"
+            [disabled]="!galleryHasNext()"
+            (click)="galleryNext()"
+            aria-label="Next image"
+          >
+            ›
+          </button>
+        }
+
+        @if (galleryCurrent(); as current) {
+          @if (attachmentUrl(current.fileUrl); as url) {
+            <img
+              [src]="url"
+              [alt]="current.fileName"
+              class="max-h-[70vh] max-w-full rounded-lg object-contain shadow-2xl"
+            />
+          }
+        }
+      </div>
+
+      @if (galleryImages().length > 1) {
+        <div class="flex justify-center gap-2 overflow-x-auto pb-1">
+          @for (image of galleryImages(); track image.id; let i = $index) {
+            @if (attachmentUrl(image.fileUrl); as url) {
+              <button
+                type="button"
+                class="shrink-0 overflow-hidden rounded-lg border-2 transition"
+                [class.border-white]="galleryIndex() === i"
+                [class.border-transparent]="galleryIndex() !== i"
+                [class.opacity-100]="galleryIndex() === i"
+                [class.opacity-50]="galleryIndex() !== i"
+                (click)="galleryIndex.set(i)"
+              >
+                <img [src]="url" [alt]="image.fileName" class="size-12 object-cover" />
+              </button>
+            }
+          }
+        </div>
+      }
+    </div>
+  </div>
+}

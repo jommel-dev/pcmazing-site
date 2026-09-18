@@ -35,9 +35,54 @@ CREATE INDEX IF NOT EXISTS idx_pcmazing_attendance_work_date
 ALTER TABLE pcmazing_user_payroll
   ADD COLUMN IF NOT EXISTS salary_type VARCHAR(30) NOT NULL DEFAULT 'monthly';
 
+ALTER TABLE pcmazing_user_payroll
+  ADD COLUMN IF NOT EXISTS fixed_monthly_salary NUMERIC(12, 2),
+  ADD COLUMN IF NOT EXISTS payout_method VARCHAR(20) NOT NULL DEFAULT 'cash',
+  ADD COLUMN IF NOT EXISTS bank_details TEXT,
+  ADD COLUMN IF NOT EXISTS qr_image_url VARCHAR(500);
+
 ALTER TABLE pcmazing_attendance
   ADD COLUMN IF NOT EXISTS time_in_selfie_url VARCHAR(500),
   ADD COLUMN IF NOT EXISTS time_out_selfie_url VARCHAR(500);
+
+ALTER TABLE pcmazing_attendance
+  ADD COLUMN IF NOT EXISTS overtime_hours NUMERIC(10, 2) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS overtime_status VARCHAR(20) NOT NULL DEFAULT 'none',
+  ADD COLUMN IF NOT EXISTS overtime_reviewed_by BIGINT,
+  ADD COLUMN IF NOT EXISTS overtime_reviewed_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS overtime_review_note VARCHAR(255);
+
+CREATE INDEX IF NOT EXISTS idx_pcmazing_attendance_overtime_status
+  ON pcmazing_attendance (overtime_status, work_date DESC);
+
+ALTER TABLE pcmazing_attendance
+  ADD COLUMN IF NOT EXISTS adjustment_type VARCHAR(20),
+  ADD COLUMN IF NOT EXISTS requested_time_out TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS adjustment_selfie_url VARCHAR(500),
+  ADD COLUMN IF NOT EXISTS adjustment_note VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS adjustment_status VARCHAR(20) NOT NULL DEFAULT 'none',
+  ADD COLUMN IF NOT EXISTS adjustment_reviewed_by BIGINT,
+  ADD COLUMN IF NOT EXISTS adjustment_reviewed_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS adjustment_review_note VARCHAR(255);
+
+CREATE INDEX IF NOT EXISTS idx_pcmazing_attendance_adjustment_status
+  ON pcmazing_attendance (adjustment_status, work_date DESC);
+
+-- Recalculate OT using 9-hour full day. Eligible OT stays 'none' until employee requests approval.
+UPDATE pcmazing_attendance
+SET overtime_hours = CASE
+      WHEN EXTRACT(EPOCH FROM (time_out - time_in)) / 3600.0 > 9
+        THEN ROUND((EXTRACT(EPOCH FROM (time_out - time_in)) / 3600.0 - 9)::numeric, 2)
+      ELSE 0
+    END,
+    overtime_status = CASE
+      WHEN EXTRACT(EPOCH FROM (time_out - time_in)) / 3600.0 <= 9 THEN 'none'
+      WHEN overtime_status IN ('pending', 'approved', 'rejected') THEN overtime_status
+      ELSE 'none'
+    END,
+    updated_at = NOW()
+WHERE time_in IS NOT NULL
+  AND time_out IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS pcmazing_payroll_runs (
   id BIGSERIAL PRIMARY KEY,
@@ -76,6 +121,22 @@ CREATE TABLE IF NOT EXISTS pcmazing_generated_payslips (
 
 CREATE INDEX IF NOT EXISTS idx_pcmazing_generated_payslips_user
   ON pcmazing_generated_payslips (user_id, user_source, run_id DESC);
+
+CREATE TABLE IF NOT EXISTS pcmazing_payroll_settings (
+  id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  work_week VARCHAR(20) NOT NULL DEFAULT 'mon_fri',
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO pcmazing_payroll_settings (id, work_week)
+VALUES (1, 'mon_fri')
+ON CONFLICT (id) DO NOTHING;
+
+ALTER TABLE pcmazing_payroll_settings
+  ADD COLUMN IF NOT EXISTS undertime_grace_minutes SMALLINT NOT NULL DEFAULT 30;
+
+ALTER TABLE pcmazing_attendance
+  ADD COLUMN IF NOT EXISTS undertime_category VARCHAR(30);
 `;
 
 export async function ensurePayrollTables(databaseService: DatabaseService): Promise<void> {

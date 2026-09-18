@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -10,9 +11,14 @@ import {
   Put,
   Query,
   Req,
+  StreamableFile,
   UnauthorizedException,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import type { Request } from 'express';
 import { AdminJwtPayload, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
@@ -48,6 +54,78 @@ export class EmployeeWorkspaceController {
     const { userId, source } = this.actor(req);
     const data = await this.workspaceService.getDashboard(userId, source, month);
     return { success: true, data };
+  }
+
+  @Get('payslips/:id')
+  async payslipDetail(
+    @Req() req: Request & { user?: AdminJwtPayload },
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    const { userId, source } = this.actor(req);
+    const data = await this.workspaceService.getPayslipDetail(userId, source, id);
+    return { success: true, data };
+  }
+
+  @Get('payslips/:id/pdf')
+  async payslipPdf(
+    @Req() req: Request & { user?: AdminJwtPayload },
+    @Param('id', ParseIntPipe) id: number,
+    @Query('download') download?: string,
+  ) {
+    const { userId, source } = this.actor(req);
+    const { filename, buffer } = await this.workspaceService.getPayslipPdf(userId, source, id);
+    const forceDownload = download === '1' || download === 'true';
+    return new StreamableFile(buffer, {
+      type: 'application/pdf',
+      disposition: `${forceDownload ? 'attachment' : 'inline'}; filename="${filename}"`,
+    });
+  }
+
+  @Post('overtime/:id/request')
+  async requestOvertime(
+    @Req() req: Request & { user?: AdminJwtPayload },
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    const { userId, source } = this.actor(req);
+    const data = await this.workspaceService.requestOvertime(userId, source, id);
+    return { success: true, message: data.message, data };
+  }
+
+  @Post('attendance/:id/request-time-out')
+  @UseInterceptors(
+    FileInterceptor('selfie', {
+      storage: memoryStorage(),
+      limits: { fileSize: 2 * 1024 * 1024 },
+    }),
+  )
+  async requestTimeOutAdjustment(
+    @Req() req: Request & { user?: AdminJwtPayload },
+    @Param('id', ParseIntPipe) id: number,
+    @Body('requestedTimeOut') requestedTimeOut: string,
+    @Body('note') note: string,
+    @Body('undertimeCategory') undertimeCategory: string,
+    @UploadedFile() selfie?: Express.Multer.File,
+  ) {
+    const { userId, source } = this.actor(req);
+    if (!selfie) {
+      throw new BadRequestException('Upload a time-out photo before submitting.');
+    }
+    if (!requestedTimeOut?.trim()) {
+      throw new BadRequestException('Enter the time you actually left.');
+    }
+    if (!note?.trim()) {
+      throw new BadRequestException('Explain why you missed clocking out.');
+    }
+    const data = await this.workspaceService.requestTimeOutAdjustment(
+      userId,
+      source,
+      id,
+      selfie,
+      requestedTimeOut,
+      note,
+      undertimeCategory,
+    );
+    return { success: true, message: data.message, data };
   }
 
   @Put('day-offs')

@@ -3,13 +3,27 @@ import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { DashboardChartComponent } from '../../components/dashboard-chart/dashboard-chart.component';
+import { DashboardDetailsPanelComponent } from '../../components/dashboard-details-panel/dashboard-details-panel.component';
 import { DashboardKpiCardComponent } from '../../components/dashboard-kpi-card/dashboard-kpi-card.component';
-import { DashboardOverview, DashboardPeriod } from '../../data/dashboard.types';
+import { CompanyExpensesWidgetComponent } from '../../components/company-expenses-widget/company-expenses-widget.component';
+import {
+  DashboardDetailMetric,
+  DashboardDetails,
+  DashboardOverview,
+  DashboardPeriod,
+} from '../../data/dashboard.types';
 import { AdminApiService } from '../../services/admin-api.service';
 
 @Component({
   selector: 'app-admin-dashboard-page',
-  imports: [DatePipe, FormsModule, DashboardKpiCardComponent, DashboardChartComponent],
+  imports: [
+    DatePipe,
+    FormsModule,
+    DashboardKpiCardComponent,
+    DashboardChartComponent,
+    DashboardDetailsPanelComponent,
+    CompanyExpensesWidgetComponent,
+  ],
   templateUrl: './admin-dashboard-page.component.html',
 })
 export class AdminDashboardPageComponent implements OnInit {
@@ -18,6 +32,10 @@ export class AdminDashboardPageComponent implements OnInit {
   readonly loading = signal(true);
   readonly overview = signal<DashboardOverview | null>(null);
   readonly error = signal('');
+  readonly selectedMetric = signal<DashboardDetailMetric | null>(null);
+  readonly details = signal<DashboardDetails | null>(null);
+  readonly detailsLoading = signal(false);
+  readonly detailsError = signal('');
 
   readonly selectedPeriod = signal<DashboardPeriod>('weekly');
   readonly customStartDate = signal('');
@@ -48,7 +66,7 @@ export class AdminDashboardPageComponent implements OnInit {
       return [];
     }
 
-    const order = ['net', 'outstanding'];
+    const order = ['net', 'outstanding', 'discounts', 'refunds', 'operatingExpenses'];
     return order
       .map((key) => data.kpis.find((item) => item.key === key))
       .filter((item): item is NonNullable<typeof item> => Boolean(item));
@@ -89,6 +107,16 @@ export class AdminDashboardPageComponent implements OnInit {
     this.financialSplitValues().some((value) => value > 0),
   );
 
+  readonly expenseCategoryLabels = computed(
+    () => this.overview()?.charts.expenseCategories?.map((item) => item.label) ?? [],
+  );
+  readonly expenseCategoryValues = computed(
+    () => this.overview()?.charts.expenseCategories?.map((item) => item.value) ?? [],
+  );
+  readonly expenseCategoryColors = computed(
+    () => this.overview()?.charts.expenseCategories?.map((item) => item.color) ?? [],
+  );
+
   ngOnInit(): void {
     this.initializeCustomDates();
     void this.loadOverview();
@@ -108,6 +136,45 @@ export class AdminDashboardPageComponent implements OnInit {
     }
 
     void this.loadOverview();
+  }
+
+  openDetails(metric: string): void {
+    const next = metric as DashboardDetailMetric;
+    if (this.selectedMetric() === next) {
+      this.closeDetails();
+      return;
+    }
+
+    this.selectedMetric.set(next);
+    void this.loadDetails(next);
+  }
+
+  closeDetails(): void {
+    this.selectedMetric.set(null);
+    this.details.set(null);
+    this.detailsError.set('');
+  }
+
+  private async loadDetails(metric: DashboardDetailMetric): Promise<void> {
+    this.detailsLoading.set(true);
+    this.detailsError.set('');
+
+    try {
+      const response = await firstValueFrom(
+        this.adminApi.getDashboardDetails({
+          metric,
+          period: this.selectedPeriod(),
+          startDate: this.selectedPeriod() === 'custom' ? this.customStartDate() : undefined,
+          endDate: this.selectedPeriod() === 'custom' ? this.customEndDate() : undefined,
+        }),
+      );
+      this.details.set(response.data);
+    } catch {
+      this.details.set(null);
+      this.detailsError.set('Unable to load card details.');
+    } finally {
+      this.detailsLoading.set(false);
+    }
   }
 
   private initializeCustomDates(): void {
@@ -140,6 +207,9 @@ export class AdminDashboardPageComponent implements OnInit {
       );
 
       this.overview.set(response.data);
+      if (this.selectedMetric()) {
+        void this.loadDetails(this.selectedMetric()!);
+      }
     } catch {
       this.error.set('Unable to load dashboard insights.');
     } finally {

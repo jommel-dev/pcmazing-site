@@ -1,5 +1,7 @@
-import { Component } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Component, inject, OnDestroy, OnInit } from '@angular/core';
+import { Router, RouterLink } from '@angular/router';
+import { getRoleHomeRoute } from '../../admin/rbac/admin-roles';
+import { AdminAuthService } from '../../admin/services/admin-auth.service';
 
 export type PortalHubAppId = 'admin' | 'people' | 'time-clock';
 
@@ -8,7 +10,11 @@ export type PortalHubAppId = 'admin' | 'people' | 'time-clock';
   imports: [RouterLink],
   templateUrl: './portal-hub-page.component.html',
 })
-export class PortalHubPageComponent {
+export class PortalHubPageComponent implements OnInit, OnDestroy {
+  private readonly adminAuth = inject(AdminAuthService);
+  private readonly router = inject(Router);
+  private stopAuthWatch: (() => void) | null = null;
+
   readonly apps: Array<{
     id: PortalHubAppId;
     title: string;
@@ -34,4 +40,20 @@ export class PortalHubPageComponent {
       path: '/time-clock',
     },
   ];
+
+  ngOnInit(): void {
+    this.redirectIfAuthenticated();
+    this.stopAuthWatch = this.adminAuth.onAuthStorageChange(() => this.redirectIfAuthenticated());
+  }
+
+  ngOnDestroy(): void {
+    this.stopAuthWatch?.();
+  }
+
+  private redirectIfAuthenticated(): void {
+    if (!this.adminAuth.isAuthenticated()) {
+      return;
+    }
+    void this.router.navigateByUrl(getRoleHomeRoute(this.adminAuth.getStoredUser()?.role));
+  }
 }

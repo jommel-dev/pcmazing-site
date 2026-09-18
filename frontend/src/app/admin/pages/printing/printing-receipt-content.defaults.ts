@@ -1,3 +1,6 @@
+export const DEFAULT_STORE_NAME = 'PCmazing Information Technology Services';
+export const DEFAULT_STORE_ADDRESS = '10 Nori St. Purok 3, Mabini Extension, Cabanatuan City';
+
 export const DEFAULT_WARRANTY_POLICY = `"PCmazing Warranty Policy"
 Major PC Parts: 1-Year Warranty, 5-Day Replacement (Factory Defects Only)
 PC Accessories: 5-Day Replacement, 1-Month Warranty (Factory Defects Only)

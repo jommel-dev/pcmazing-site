@@ -1,5 +1,5 @@
 import { inject } from '@angular/core';
-import { CanActivateFn, Router } from '@angular/router';
+import { CanActivateFn, Router, UrlTree } from '@angular/router';
 import {
   AdminModuleKey,
   canAccessModule,
@@ -9,9 +9,18 @@ import {
 } from '../rbac/admin-roles';
 import { AdminAuthService } from '../services/admin-auth.service';
 
+function roleHomeTree(adminAuth: AdminAuthService, router: Router): UrlTree {
+  const role = adminAuth.getStoredUser()?.role;
+  return router.createUrlTree([getRoleHomeRoute(role)]);
+}
+
 export const staffGateGuard: CanActivateFn = () => {
   const adminAuth = inject(AdminAuthService);
   const router = inject(Router);
+
+  if (adminAuth.isAuthenticated()) {
+    return roleHomeTree(adminAuth, router);
+  }
 
   if (adminAuth.hasStaffGateAccess()) {
     return true;
@@ -28,8 +37,7 @@ export const adminGuestGuard: CanActivateFn = () => {
     return true;
   }
 
-  const role = adminAuth.getStoredUser()?.role;
-  return router.createUrlTree([getRoleHomeRoute(role)]);
+  return roleHomeTree(adminAuth, router);
 };
 
 export const adminAuthGuard: CanActivateFn = () => {

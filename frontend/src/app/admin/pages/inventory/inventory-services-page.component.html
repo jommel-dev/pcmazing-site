@@ -1,20 +1,72 @@
 <section class="min-w-0 max-w-full">
 
-  <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+  <div class="mb-6 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
     <div class="min-w-0">
       <h2 class="text-2xl font-bold text-slate-900">Job Orders</h2>
       <p class="mt-1 text-sm text-slate-500">Track service job orders, linked parts, assigned staff, and profitability.</p>
     </div>
-    <a
-      routerLink="/admin/job-order/new"
-      class="shrink-0 rounded-xl bg-pcmazing-500 px-4 py-2.5 text-center text-sm font-bold text-white hover:bg-pcmazing-600 sm:w-auto"
-    >
-      Add Service
-    </a>
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-end">
+      <div class="rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
+        <div class="flex flex-wrap gap-2">
+          @for (option of periodOptions; track option.value) {
+            <button
+              type="button"
+              class="rounded-xl px-4 py-2 text-sm font-semibold transition"
+              [class.bg-pcmazing-500]="selectedPeriod() === option.value"
+              [class.text-white]="selectedPeriod() === option.value"
+              [class.text-slate-600]="selectedPeriod() !== option.value"
+              [class.hover:bg-slate-100]="selectedPeriod() !== option.value"
+              (click)="selectPeriod(option.value)"
+            >
+              {{ option.label }}
+            </button>
+          }
+        </div>
+        @if (selectedPeriod() === 'custom') {
+          <div class="mt-3 flex flex-col gap-3 border-t border-slate-100 pt-3 sm:flex-row sm:items-end">
+            <div class="flex-1">
+              <label class="mb-1 block text-xs font-semibold text-slate-500" for="job-start-date">Start date</label>
+              <input
+                id="job-start-date"
+                type="date"
+                class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-pcmazing-500 focus:outline-none"
+                [ngModel]="startDate()"
+                (ngModelChange)="startDate.set($event)"
+                name="startDate"
+              />
+            </div>
+            <div class="flex-1">
+              <label class="mb-1 block text-xs font-semibold text-slate-500" for="job-end-date">End date</label>
+              <input
+                id="job-end-date"
+                type="date"
+                class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-pcmazing-500 focus:outline-none"
+                [ngModel]="endDate()"
+                (ngModelChange)="endDate.set($event)"
+                name="endDate"
+              />
+            </div>
+            <button
+              type="button"
+              class="rounded-xl bg-pcmazing-500 px-4 py-2 text-sm font-bold text-white hover:bg-pcmazing-600"
+              (click)="applyCustomRange()"
+            >
+              Apply
+            </button>
+          </div>
+        }
+      </div>
+      <a
+        routerLink="/admin/job-order/new"
+        class="shrink-0 rounded-xl bg-pcmazing-500 px-4 py-2.5 text-center text-sm font-bold text-white hover:bg-pcmazing-600 sm:w-auto"
+      >
+        Add Job
+      </a>
+    </div>
   </div>
 
   @if (summary(); as totals) {
-    <div class="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <div class="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
       <div class="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
         <p class="truncate text-[10px] font-bold tracking-[0.12em] text-slate-400 uppercase sm:text-[11px]">Total Costing</p>
         <p class="mt-1 truncate text-lg font-bold text-slate-900 sm:mt-2 sm:text-xl">{{ formatMoney(totals.totalCosting) }}</p>
@@ -22,6 +74,10 @@
       <div class="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
         <p class="truncate text-[10px] font-bold tracking-[0.12em] text-slate-400 uppercase sm:text-[11px]">Total Sales</p>
         <p class="mt-1 truncate text-lg font-bold text-slate-900 sm:mt-2 sm:text-xl">{{ formatMoney(totals.totalSales) }}</p>
+      </div>
+      <div class="min-w-0 rounded-2xl border border-amber-200 bg-amber-50 p-3 shadow-sm sm:p-4">
+        <p class="truncate text-[10px] font-bold tracking-[0.12em] text-amber-700 uppercase sm:text-[11px]">Total Discounts</p>
+        <p class="mt-1 truncate text-lg font-bold text-amber-700 sm:mt-2 sm:text-xl">{{ formatMoney(totals.totalDiscount || 0) }}</p>
       </div>
       <div class="min-w-0 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 shadow-sm sm:p-4">
         <p class="truncate text-[10px] font-bold tracking-[0.12em] text-emerald-700 uppercase sm:text-[11px]">Labor Sales</p>
@@ -39,7 +95,7 @@
       <div class="relative z-20 p-4">
       <div class="mb-4 flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <h3 class="min-w-0 truncate text-base font-bold text-slate-900 lg:text-lg">{{ sectionTitle() }}</h3>
-        <div class="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center lg:max-w-3xl lg:justify-end">
+        <div class="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center lg:max-w-5xl lg:justify-end">
           <label class="flex min-w-0 flex-1 flex-col gap-1 sm:max-w-[11rem]">
             <span class="text-[10px] font-bold tracking-[0.12em] text-slate-400 uppercase">Status</span>
             <select
@@ -84,8 +140,9 @@
             </summary>
             <div class="absolute right-0 z-50 mt-2 max-h-80 w-56 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3 shadow-lg">
               <p class="mb-2 text-xs font-bold tracking-[0.12em] text-slate-400 uppercase">Show Columns</p>
+              <p class="mb-2 text-[11px] leading-snug text-slate-500">Drag the handles on table headers to change column order.</p>
               <div class="space-y-2">
-                @for (column of columnOptions; track column.key) {
+                @for (column of orderedColumnOptions(); track column.key) {
                   <label class="flex items-center gap-2 text-sm text-slate-700">
                     <input
                       type="checkbox"
@@ -127,198 +184,168 @@
       } @else if (items().length === 0) {
         <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500">No services found.</div>
       } @else {
-        <div class="max-w-full overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div class="table-scroll max-w-full overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
           <table class="w-full min-w-[980px] text-[11px] leading-snug">
             <thead class="bg-slate-50">
               <tr>
-                @if (columnVisible('image')) {
-                  <th class="px-2 py-2 text-left font-bold whitespace-nowrap text-slate-600">Image</th>
-                }
-                <th class="px-2 py-2 text-left font-bold whitespace-nowrap text-slate-600">
-                  <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('referenceNo')">
-                    Ref No{{ sortIndicator('referenceNo') }}
-                  </button>
-                </th>
-                @if (columnVisible('customer')) {
-                  <th class="px-2 py-2 text-left font-bold whitespace-nowrap text-slate-600">
-                    <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('customer')">
-                      Customer{{ sortIndicator('customer') }}
-                    </button>
+                @for (column of orderedVisibleColumns(); track column) {
+                  <th
+                    [class]="columnHeaderClass(column)"
+                    [class.bg-sky-50]="dropTargetColumn() === column"
+                    [class.opacity-40]="draggingColumn() === column"
+                    (dragover)="onColumnDragOver($event, column)"
+                    (drop)="onColumnDrop($event, column)"
+                  >
+                    <div class="inline-flex items-center gap-1" [class.w-full]="isNumericColumn(column)" [class.justify-end]="isNumericColumn(column)">
+                      <span
+                        class="inline-flex cursor-grab text-slate-400 hover:text-slate-600 active:cursor-grabbing"
+                        draggable="true"
+                        title="Drag to reorder"
+                        (dragstart)="onColumnDragStart($event, column)"
+                        (dragend)="onColumnDragEnd()"
+                      >
+                        <svg class="size-3.5" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                          <circle cx="5" cy="3.5" r="1.15" />
+                          <circle cx="11" cy="3.5" r="1.15" />
+                          <circle cx="5" cy="8" r="1.15" />
+                          <circle cx="11" cy="8" r="1.15" />
+                          <circle cx="5" cy="12.5" r="1.15" />
+                          <circle cx="11" cy="12.5" r="1.15" />
+                        </svg>
+                      </span>
+                      @if (isSortableColumn(column)) {
+                        <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSortColumn(column)">
+                          {{ columnLabel(column) }}{{ sortIndicatorFor(column) }}
+                        </button>
+                      } @else {
+                        <span>{{ columnLabel(column) }}</span>
+                      }
+                    </div>
                   </th>
                 }
-                @if (columnVisible('serviceName')) {
-                  <th class="max-w-[180px] px-2 py-2 text-left font-bold text-slate-600 sm:max-w-[220px]">
-                    <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('serviceName')">
-                      Service Name{{ sortIndicator('serviceName') }}
-                    </button>
-                  </th>
-                }
-                @if (columnVisible('personInCharge')) {
-                  <th class="px-2 py-2 text-left font-bold whitespace-nowrap text-slate-600">
-                    <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('personInCharge')">
-                      Person In Charge{{ sortIndicator('personInCharge') }}
-                    </button>
-                  </th>
-                }
-                @if (columnVisible('type')) {
-                  <th class="px-2 py-2 text-left font-bold whitespace-nowrap text-slate-600">
-                    <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('type')">
-                      Type{{ sortIndicator('type') }}
-                    </button>
-                  </th>
-                }
-                @if (columnVisible('partsUsed')) {
-                  <th class="max-w-[220px] px-2 py-2 text-left font-bold text-slate-600 sm:max-w-[260px]">Parts Used</th>
-                }
-                @if (columnVisible('interval')) {
-                  <th class="px-2 py-2 text-left font-bold whitespace-nowrap text-slate-600">
-                    <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('interval')">
-                      Interval{{ sortIndicator('interval') }}
-                    </button>
-                  </th>
-                }
-                @if (columnVisible('cost')) {
-                  <th class="px-2 py-2 text-right font-bold whitespace-nowrap text-slate-600">
-                    <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('cost')">
-                      Cost{{ sortIndicator('cost') }}
-                    </button>
-                  </th>
-                }
-                @if (columnVisible('labor')) {
-                  <th class="px-2 py-2 text-right font-bold whitespace-nowrap text-slate-600">
-                    <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('labor')">
-                      Labor{{ sortIndicator('labor') }}
-                    </button>
-                  </th>
-                }
-                @if (columnVisible('totalCosting')) {
-                  <th class="px-2 py-2 text-right font-bold whitespace-nowrap text-emerald-700">
-                    <button type="button" class="inline-flex items-center gap-0.5 hover:text-emerald-800" (click)="toggleSort('totalCosting')">
-                      T.Costing{{ sortIndicator('totalCosting') }}
-                    </button>
-                  </th>
-                }
-                @if (columnVisible('totalSales')) {
-                  <th class="px-2 py-2 text-right font-bold whitespace-nowrap text-pcmazing-600">
-                    <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-700" (click)="toggleSort('totalSales')">
-                      T.Sales{{ sortIndicator('totalSales') }}
-                    </button>
-                  </th>
-                }
-                <th class="px-2 py-2 text-left font-bold whitespace-nowrap text-slate-600">
-                  <button type="button" class="inline-flex items-center gap-0.5 hover:text-pcmazing-600" (click)="toggleSort('status')">
-                    Status{{ sortIndicator('status') }}
-                  </button>
-                </th>
                 <th class="px-2 py-2 text-right font-bold whitespace-nowrap text-slate-600">Actions</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
               @for (item of items(); track item.id) {
                 <tr class="hover:bg-slate-50">
-                  @if (columnVisible('image')) {
-                    <td class="px-2 py-2" (click)="$event.stopPropagation()">
-                      <label
-                        class="group relative inline-flex size-8 cursor-pointer items-center justify-center overflow-hidden rounded-md border border-dashed border-slate-300 bg-slate-50 text-[9px] font-bold text-slate-400 transition hover:border-pcmazing-400 hover:bg-pcmazing-50 hover:text-pcmazing-600"
-                        [class.pointer-events-none]="imageUploadingId() === item.id"
-                        [class.opacity-60]="imageUploadingId() === item.id"
-                        [attr.title]="serviceImageUrl(item) ? 'Replace completion image' : 'Upload completion image'"
-                        [attr.aria-label]="(serviceImageUrl(item) ? 'Replace' : 'Upload') + ' completion image for ' + (item.referenceNo || item.serviceName)"
-                      >
-                        @if (imageUploadingId() === item.id) {
-                          <span class="size-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-pcmazing-500"></span>
-                        } @else if (serviceImageUrl(item); as imageUrl) {
-                          <img [src]="imageUrl" [alt]="imageAlt(item)" class="size-full object-cover" />
-                          <span class="absolute inset-0 flex items-center justify-center bg-slate-900/45 text-[8px] font-bold tracking-wide text-white uppercase opacity-0 transition group-hover:opacity-100">
-                            Edit
-                          </span>
-                        } @else {
-                          <span class="leading-none">Add</span>
-                        }
-                        <input
-                          type="file"
-                          class="sr-only"
-                          accept="image/*"
-                          [disabled]="imageUploadingId() === item.id"
-                          (change)="onTableImageSelected(item, $event)"
-                        />
-                      </label>
-                    </td>
-                  }
-                  <td class="px-2 py-2 font-medium whitespace-nowrap text-slate-700">
-                    <a [routerLink]="['/admin/job-order', item.id]" class="hover:text-pcmazing-600 hover:underline">
-                      {{ item.referenceNo || 'Pending' }}
-                    </a>
-                  </td>
-                  @if (columnVisible('customer')) {
-                    <td class="max-w-[180px] truncate px-2 py-2 text-slate-700 sm:max-w-[220px]" [title]="item.customerName">
-                      <a [routerLink]="['/admin/job-order', item.id]" class="hover:text-pcmazing-600 hover:underline">
-                        {{ item.customerName }}
-                      </a>
-                    </td>
-                  }
-                  @if (columnVisible('serviceName')) {
-                    <td class="max-w-[180px] truncate px-2 py-2 font-medium text-slate-900 sm:max-w-[220px]" [title]="item.serviceName">
-                      <a [routerLink]="['/admin/job-order', item.id]" class="hover:text-pcmazing-600 hover:underline">
-                        {{ item.serviceName }}
-                      </a>
-                    </td>
-                  }
-                  @if (columnVisible('personInCharge')) {
-                    <td class="max-w-[180px] truncate px-2 py-2 text-slate-600 sm:max-w-[220px]">{{ item.personInChargeName || 'Unassigned' }}</td>
-                  }
-                  @if (columnVisible('type')) {
-                    <td class="px-2 py-2 whitespace-nowrap text-slate-600">{{ item.type }}</td>
-                  }
-                  @if (columnVisible('partsUsed')) {
-                    <td class="max-w-[220px] truncate px-2 py-2 text-slate-600 sm:max-w-[260px]" [title]="partsUsedLabel(item)">{{ partsUsedLabel(item) }}</td>
-                  }
-                  @if (columnVisible('interval')) {
-                    <td class="min-w-[170px] px-2 py-2 text-slate-600">
-                      <div class="font-medium text-slate-700">{{ serviceIntervalLabel(item) }}</div>
-                      <div class="text-[10px] text-slate-500">{{ serviceDurationLabel(item) }}</div>
-                    </td>
-                  }
-                  @if (columnVisible('cost')) {
-                    <td class="px-2 py-2 text-right whitespace-nowrap text-slate-600">{{ formatMoney(item.cost) }}</td>
-                  }
-                  @if (columnVisible('labor')) {
-                    <td class="px-2 py-2 text-right whitespace-nowrap text-slate-600">{{ formatMoney(item.labor) }}</td>
-                  }
-                  @if (columnVisible('totalCosting')) {
-                    <td class="px-2 py-2 text-right whitespace-nowrap font-medium text-emerald-700">{{ formatMoney(item.totalCosting) }}</td>
-                  }
-                  @if (columnVisible('totalSales')) {
-                    <td class="px-2 py-2 text-right whitespace-nowrap font-medium text-pcmazing-600">{{ formatMoney(item.totalSales) }}</td>
-                  }
-                  <td class="px-2 py-2" (click)="$event.stopPropagation()">
-                    <select
-                      class="rounded-full border-0 px-2 py-0.5 text-[9px] font-bold uppercase focus:outline-none focus:ring-2 focus:ring-pcmazing-500 disabled:opacity-60"
-                      [ngClass]="statusPillClass(item.status)"
-                      [ngModel]="normalizeJobStatus(item.status)"
-                      [ngModelOptions]="{ standalone: true }"
-                      [disabled]="statusUpdatingId() === item.id"
-                      (ngModelChange)="onStatusChange(item, $event)"
-                      [attr.aria-label]="'Change status for ' + (item.referenceNo || item.serviceName)"
-                    >
-                      @for (status of statusOptions; track status) {
-                        <option [ngValue]="status">{{ status }}</option>
+                  @for (column of orderedVisibleColumns(); track column) {
+                    @switch (column) {
+                      @case ('referenceNo') {
+                        <td class="px-2 py-2 font-medium whitespace-nowrap text-slate-700">
+                          <a [routerLink]="['/admin/job-order', item.id]" class="hover:text-pcmazing-600 hover:underline">
+                            {{ item.referenceNo || 'Pending' }}
+                          </a>
+                        </td>
                       }
-                    </select>
-                  </td>
+                      @case ('createdAt') {
+                        <td class="px-2 py-2 whitespace-nowrap text-slate-600">{{ createdAtLabel(item) }}</td>
+                      }
+                      @case ('customer') {
+                        <td class="max-w-[180px] px-2 py-2 text-slate-700 sm:max-w-[220px]" [title]="item.customerName">
+                          <a [routerLink]="['/admin/job-order', item.id]" class="block truncate hover:text-pcmazing-600 hover:underline">
+                            {{ item.customerName }}
+                          </a>
+                          @if (item.customerContact) {
+                            <div class="truncate text-xs text-slate-500">{{ item.customerContact }}</div>
+                          }
+                        </td>
+                      }
+                      @case ('serviceName') {
+                        <td class="max-w-[180px] truncate px-2 py-2 font-medium text-slate-900 sm:max-w-[220px]" [title]="item.serviceName">
+                          <a [routerLink]="['/admin/job-order', item.id]" class="hover:text-pcmazing-600 hover:underline">
+                            {{ item.serviceName }}
+                          </a>
+                        </td>
+                      }
+                      @case ('personInCharge') {
+                        <td class="max-w-[180px] truncate px-2 py-2 text-slate-600 sm:max-w-[220px]">{{ item.personInChargeName || 'Unassigned' }}</td>
+                      }
+                      @case ('type') {
+                        <td class="px-2 py-2 whitespace-nowrap text-slate-600">{{ item.type }}</td>
+                      }
+                      @case ('partsUsed') {
+                        <td class="max-w-[220px] truncate px-2 py-2 text-slate-600 sm:max-w-[260px]" [title]="partsUsedLabel(item)">{{ partsUsedLabel(item) }}</td>
+                      }
+                      @case ('interval') {
+                        <td class="min-w-[170px] px-2 py-2 text-slate-600">
+                          <div class="font-medium text-slate-700">{{ serviceIntervalLabel(item) }}</div>
+                          <div class="text-[10px] text-slate-500">{{ serviceDurationLabel(item) }}</div>
+                        </td>
+                      }
+                      @case ('cost') {
+                        <td class="px-2 py-2 text-right whitespace-nowrap text-slate-600">{{ formatMoney(item.cost) }}</td>
+                      }
+                      @case ('labor') {
+                        <td class="px-2 py-2 text-right whitespace-nowrap text-slate-600">{{ formatMoney(item.labor) }}</td>
+                      }
+                      @case ('totalCosting') {
+                        <td class="px-2 py-2 text-right whitespace-nowrap font-medium text-emerald-700">{{ formatMoney(item.totalCosting) }}</td>
+                      }
+                      @case ('totalSales') {
+                        <td class="px-2 py-2 text-right whitespace-nowrap font-medium text-pcmazing-600">{{ formatMoney(item.totalSales) }}</td>
+                      }
+                      @case ('totalDiscount') {
+                        <td class="px-2 py-2 text-right whitespace-nowrap font-medium text-amber-700">{{ formatMoney(orderDiscount(item)) }}</td>
+                      }
+                      @case ('status') {
+                        <td class="px-2 py-2" (click)="$event.stopPropagation()">
+                          <select
+                            class="rounded-full border-0 px-2 py-0.5 text-[9px] font-bold uppercase focus:outline-none focus:ring-2 focus:ring-pcmazing-500 disabled:opacity-60"
+                            [ngClass]="statusPillClass(item.status)"
+                            [ngModel]="normalizeJobStatus(item.status)"
+                            [ngModelOptions]="{ standalone: true }"
+                            [disabled]="statusUpdatingId() === item.id"
+                            (ngModelChange)="onStatusChange(item, $event)"
+                            [attr.aria-label]="'Change status for ' + (item.referenceNo || item.serviceName)"
+                          >
+                            @for (status of statusOptions; track status) {
+                              <option [ngValue]="status">{{ status }}</option>
+                            }
+                          </select>
+                        </td>
+                      }
+                    }
+                  }
                   <td class="px-2 py-2 text-right" (click)="$event.stopPropagation()">
-                    <button
-                      type="button"
-                      class="inline-flex size-7 items-center justify-center rounded-lg text-red-600 hover:bg-red-50"
-                      title="Delete"
-                      aria-label="Delete job order"
-                      (click)="requestDelete(item, $event)"
-                    >
-                      <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m2 0v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7h12Z" />
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M10 11v6M14 11v6" />
-                      </svg>
-                    </button>
+                    <div class="inline-flex items-center justify-end gap-1">
+                      <a
+                        [routerLink]="['/admin/job-order', item.id, 'edit']"
+                        class="inline-flex size-7 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 hover:text-pcmazing-600"
+                        title="Edit"
+                        aria-label="Edit job order"
+                      >
+                        <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 3.5 20.5 7.5 8 20H4v-4L16.5 3.5Z" />
+                        </svg>
+                      </a>
+                      @if (normalizeJobStatus(item.status) !== 'Cancelled') {
+                      <button
+                        type="button"
+                        class="inline-flex size-7 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 hover:text-pcmazing-600"
+                        title="Print"
+                        aria-label="Print job order"
+                        (click)="printJob(item, $event)"
+                      >
+                        <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M6 9V4h12v5M6 14H5a2 2 0 0 1-2-2v-1a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v1a2 2 0 0 1-2 2h-1" />
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M6 14h12v6H6v-6Z" />
+                        </svg>
+                      </button>
+                      }
+                      <button
+                        type="button"
+                        class="inline-flex size-7 items-center justify-center rounded-lg text-red-600 hover:bg-red-50"
+                        title="Delete"
+                        aria-label="Delete job order"
+                        (click)="requestDelete(item, $event)"
+                      >
+                        <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M6 7h12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m2 0v12a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7h12Z" />
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M10 11v6M14 11v6" />
+                        </svg>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               }
@@ -481,6 +508,62 @@
               The completion image will be removed if one was uploaded.
             </p>
           }
+          @if (pending.nextStatus === 'Cancelled') {
+            <label class="mt-4 block">
+              <span class="mb-1 block text-sm font-semibold text-slate-800">Reason</span>
+              <textarea
+                rows="4"
+                class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 focus:border-pcmazing-500 focus:outline-none"
+                [ngModel]="cancelReason()"
+                (ngModelChange)="cancelReason.set($event); cancelReasonError.set('')"
+                name="cancelReason"
+                placeholder="Why is this job being cancelled?"
+              ></textarea>
+              @if (cancelReasonError()) {
+                <p class="mt-1 text-xs text-red-600">{{ cancelReasonError() }}</p>
+              }
+            </label>
+          }
+          @if (pending.nextStatus === 'Refunded') {
+            <label class="mt-4 block">
+              <span class="mb-1 block text-sm font-semibold text-slate-800">Refund reason</span>
+              <textarea
+                rows="3"
+                class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 focus:border-pcmazing-500 focus:outline-none"
+                [ngModel]="refundReason()"
+                (ngModelChange)="refundReason.set($event); refundReasonError.set('')"
+                name="refundReason"
+                placeholder="Why is this job being refunded?"
+              ></textarea>
+              @if (refundReasonError()) {
+                <p class="mt-1 text-xs text-red-600">{{ refundReasonError() }}</p>
+              }
+            </label>
+            <label class="mt-4 block">
+              <span class="mb-1 block text-sm font-semibold text-slate-800">Amount refunded</span>
+              <input
+                type="number"
+                min="0.01"
+                [max]="jobOrderMaxRefund(pending.item) || null"
+                step="0.01"
+                class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-800 focus:border-pcmazing-500 focus:outline-none"
+                [ngModel]="refundAmount()"
+                (ngModelChange)="refundAmount.set($event); refundAmountError.set('')"
+                name="refundAmount"
+                placeholder="0.00"
+              />
+              <button
+                type="button"
+                class="mt-2 text-sm font-semibold text-pcmazing-600 hover:text-pcmazing-700 hover:underline"
+                (click)="fillMaxRefundAmount()"
+              >
+                Max amount: {{ formatMoney(jobOrderMaxRefund(pending.item)) }}
+              </button>
+              @if (refundAmountError()) {
+                <p class="mt-1 text-xs text-red-600">{{ refundAmountError() }}</p>
+              }
+            </label>
+          }
         </div>
       </div>
 
@@ -494,10 +577,141 @@
         </button>
         <button
           type="button"
-          class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600"
+          class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:cursor-not-allowed disabled:opacity-60"
+          [disabled]="statusUpdatingId() !== null"
           (click)="confirmStatusChange()"
         >
-          Yes
+          @if (statusUpdatingId() !== null) {
+            Saving...
+          } @else {
+            Yes
+          }
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+@if (pendingSettlement(); as settlementItem) {
+  <div
+    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4"
+    (click)="cancelSettlement()"
+  >
+    <div
+      class="max-h-[90vh] w-full max-w-lg overflow-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-xl"
+      (click)="$event.stopPropagation()"
+    >
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <h3 class="text-lg font-bold text-slate-900">Settlement</h3>
+          <p class="mt-1 text-sm text-slate-500">
+            Collect the remaining balance to settle this job, then print the receipt.
+          </p>
+        </div>
+        <button
+          type="button"
+          class="rounded-lg px-2 py-1 text-sm font-semibold text-slate-500 hover:bg-slate-100"
+          [disabled]="statusUpdatingId() !== null"
+          (click)="cancelSettlement()"
+        >
+          Close
+        </button>
+      </div>
+
+      <div class="mt-4 space-y-3 text-sm text-slate-600">
+        <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <p class="font-semibold text-slate-800">{{ settlementItem.customerName || 'No customer name' }}</p>
+          <p class="mt-1 text-slate-500">{{ settlementItem.referenceNo || settlementItem.serviceName }}</p>
+        </div>
+
+        @if (settlementError()) {
+          <div class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {{ settlementError() }}
+          </div>
+        }
+
+        @if (settlementLoading()) {
+          <p class="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-center text-sm text-slate-500">
+            Loading settlement totals...
+          </p>
+        } @else {
+          <div class="flex items-center justify-between">
+            <span>Total to pay</span>
+            <span class="font-medium text-slate-800">₱{{ settlementTotalToPay() | number:'1.2-2' }}</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span>Downpayment</span>
+            <span class="font-medium text-slate-800">₱{{ settlementDownpayment() | number:'1.2-2' }}</span>
+          </div>
+          <div class="flex items-center justify-between border-t border-slate-200 pt-2 text-base font-bold text-slate-900">
+            <span>Balance due</span>
+            <span>₱{{ settlementBalanceDue() | number:'1.2-2' }}</span>
+          </div>
+          <div>
+            <p class="mb-2 font-medium text-slate-700">Payment method</p>
+            <div class="grid grid-cols-3 gap-2">
+              @for (method of settlementPaymentMethods; track method) {
+                <button
+                  type="button"
+                  class="rounded-xl border px-3 py-2.5 text-sm font-bold"
+                  [class.border-pcmazing-500]="settlementPaymentMethod() === method"
+                  [class.bg-pcmazing-50]="settlementPaymentMethod() === method"
+                  [class.text-pcmazing-700]="settlementPaymentMethod() === method"
+                  [class.border-slate-200]="settlementPaymentMethod() !== method"
+                  [class.bg-white]="settlementPaymentMethod() !== method"
+                  [class.text-slate-700]="settlementPaymentMethod() !== method"
+                  [disabled]="statusUpdatingId() !== null"
+                  (click)="selectSettlementPaymentMethod(method)"
+                >
+                  {{ method }}
+                </button>
+              }
+            </div>
+          </div>
+          <div class="flex items-center justify-between gap-4">
+            <label class="font-medium text-slate-700" for="list-settlement-received">Amount received</label>
+            <div class="flex items-center gap-1">
+              <span class="text-slate-500">₱</span>
+              <input
+                id="list-settlement-received"
+                type="number"
+                min="0"
+                step="0.01"
+                class="w-32 rounded-lg border border-slate-200 px-3 py-2 text-right text-sm font-medium text-slate-800 focus:border-pcmazing-500 focus:outline-none read-only:bg-slate-100"
+                [value]="settlementAmountReceived()"
+                [readOnly]="statusUpdatingId() !== null"
+                (input)="onSettlementAmountInput($any($event.target).value)"
+                placeholder="0.00"
+              />
+            </div>
+          </div>
+          <div class="flex items-center justify-between font-semibold text-slate-800">
+            <span>Change</span>
+            <span>₱{{ settlementChangeAmount() | number:'1.2-2' }}</span>
+          </div>
+        }
+      </div>
+
+      <div class="mt-6 flex justify-end gap-2">
+        <button
+          type="button"
+          class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+          [disabled]="statusUpdatingId() !== null"
+          (click)="cancelSettlement()"
+        >
+          Back
+        </button>
+        <button
+          type="button"
+          class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:opacity-60"
+          [disabled]="statusUpdatingId() !== null || settlementLoading() || !canConfirmSettlement()"
+          (click)="confirmSettlement()"
+        >
+          @if (statusUpdatingId() !== null) {
+            Settling...
+          } @else {
+            Confirm Settlement & Print
+          }
         </button>
       </div>
     </div>

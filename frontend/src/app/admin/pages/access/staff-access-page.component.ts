@@ -1,7 +1,8 @@
-import { Component, inject, OnInit, signal } from '@angular/core';
+import { Component, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
+import { getRoleHomeRoute } from '../../rbac/admin-roles';
 import { AdminAuthService } from '../../services/admin-auth.service';
 import { APP_CONFIG } from '../../../core/config/app-config';
 
@@ -10,10 +11,11 @@ import { APP_CONFIG } from '../../../core/config/app-config';
   imports: [FormsModule, RouterLink],
   templateUrl: './staff-access-page.component.html',
 })
-export class StaffAccessPageComponent implements OnInit {
+export class StaffAccessPageComponent implements OnInit, OnDestroy {
   private readonly adminAuth = inject(AdminAuthService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+  private stopAuthWatch: (() => void) | null = null;
 
   readonly passcode = signal('');
   readonly loading = signal(false);
@@ -21,10 +23,24 @@ export class StaffAccessPageComponent implements OnInit {
   readonly notice = signal('');
 
   ngOnInit(): void {
+    this.redirectIfAuthenticated();
+    this.stopAuthWatch = this.adminAuth.onAuthStorageChange(() => this.redirectIfAuthenticated());
+
     const reason = this.route.snapshot.queryParamMap.get('reason');
     if (reason === 'staff-gate-expired') {
       this.notice.set('Your staff access session expired. Enter the passcode again to continue.');
     }
+  }
+
+  ngOnDestroy(): void {
+    this.stopAuthWatch?.();
+  }
+
+  private redirectIfAuthenticated(): void {
+    if (!this.adminAuth.isAuthenticated()) {
+      return;
+    }
+    void this.router.navigateByUrl(getRoleHomeRoute(this.adminAuth.getStoredUser()?.role));
   }
 
   async submit(): Promise<void> {
@@ -49,18 +65,32 @@ export class StaffAccessPageComponent implements OnInit {
   }
 
   private extractErrorMessage(error: unknown): string {
-    if (error && typeof error === 'object' && 'error' in error) {
-      const payload = (error as { error?: { message?: string | string[] } }).error;
+    const unreachable = `Unable to reach the admin API at ${APP_CONFIG.apiUrl}. Make sure the backend is running.`;
 
-      if (Array.isArray(payload?.message)) {
-        return payload.message.join(', ');
-      }
-
-      if (typeof payload?.message === 'string' && payload.message.trim()) {
-        return payload.message;
-      }
+    if (!error || typeof error !== 'object') {
+      return unreachable;
     }
 
-    return `Unable to reach the admin API at ${APP_CONFIG.apiUrl}. Make sure the backend is running.`;
+    const httpError = error as {
+      status?: number;
+      error?: { message?: string | string[] };
+    };
+
+    if (httpError.status === 0) {
+      return unreachable;
+    }
+
+    const payload = httpError.error;
+    const message = Array.isArray(payload?.message)
+      ? payload.message.join(', ')
+      : typeof payload?.message === 'string'
+        ? payload.message
+        : '';
+
+    if (!message.trim() || /failed to fetch|networkerror|load failed/i.test(message)) {
+      return unreachable;
+    }
+
+    return message;
   }
 }

@@ -33,6 +33,7 @@ export class UserManagementPageComponent implements OnInit {
   readonly rbacStatus = signal<RbacStatus | null>(null);
   readonly formOpen = signal(false);
   readonly formMode = signal<FormMode>('create');
+  readonly viewOpen = signal(false);
   readonly selectedUser = signal<AdminUser | null>(null);
   readonly passwordOpen = signal(false);
   readonly passwordSaving = signal(false);
@@ -40,11 +41,18 @@ export class UserManagementPageComponent implements OnInit {
   readonly actionMessage = signal('');
   readonly profilePreviewUrl = signal<string | null>(null);
   readonly pendingProfileFile = signal<File | null>(null);
+  readonly qrPreviewUrl = signal<string | null>(null);
+  readonly pendingQrFile = signal<File | null>(null);
+  readonly qrLightboxUrl = signal<string | null>(null);
   readonly salaryTypeOptions = [
     { value: 'weekly', label: 'Weekly' },
-    { value: 'semi_monthly', label: 'Semi-Monthly (15/30)' },
+    { value: 'semi_monthly', label: 'Semi-Monthly' },
     { value: 'monthly', label: 'Monthly' },
     { value: 'cutoff', label: 'By Cutoff' },
+  ] as const;
+  readonly payoutMethodOptions = [
+    { value: 'cash', label: 'Cash' },
+    { value: 'online', label: 'Online' },
   ] as const;
 
   readonly userForm = this.formBuilder.nonNullable.group({
@@ -59,6 +67,9 @@ export class UserManagementPageComponent implements OnInit {
     positionTitle: [''],
     salaryType: ['monthly' as 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff'],
     monthlySalary: [''],
+    fixedMonthlySalary: [''],
+    payoutMethod: ['cash' as 'cash' | 'online'],
+    bankDetails: [''],
     payrollEnabled: [false],
   });
 
@@ -122,6 +133,8 @@ export class UserManagementPageComponent implements OnInit {
     this.selectedUser.set(null);
     this.formError.set('');
     this.clearProfileSelection();
+    this.clearQrSelection();
+    this.userForm.enable({ emitEvent: false });
     this.userForm.reset({
       username: '',
       fullName: '',
@@ -134,6 +147,9 @@ export class UserManagementPageComponent implements OnInit {
       positionTitle: '',
       salaryType: 'monthly',
       monthlySalary: '',
+      fixedMonthlySalary: '',
+      payoutMethod: 'cash',
+      bankDetails: '',
       payrollEnabled: false,
     });
     this.userForm.controls.username.enable();
@@ -142,36 +158,41 @@ export class UserManagementPageComponent implements OnInit {
     this.formOpen.set(true);
   }
 
-  openEditForm(user: AdminUser): void {
-    this.formMode.set('edit');
+  openViewForm(user: AdminUser): void {
     this.selectedUser.set(user);
-    this.formError.set('');
-    this.clearProfileSelection();
-    this.profilePreviewUrl.set(this.adminApi.resolveProfileImageUrl(user.profileImageUrl));
-    this.userForm.reset({
-      username: user.username,
-      fullName: user.fullName,
-      email: user.email ?? '',
-      role: user.role,
-      isActive: user.isActive,
-      password: '',
-      employeeCode: user.employeeCode ?? '',
-      department: user.department ?? '',
-      positionTitle: user.positionTitle ?? '',
-      salaryType: user.salaryType ?? 'monthly',
-      monthlySalary: user.monthlySalary != null ? String(user.monthlySalary) : '',
-      payrollEnabled: user.payrollEnabled ?? false,
-    });
-    this.userForm.controls.username.disable();
+    this.viewOpen.set(true);
+  }
+
+  closeViewForm(): void {
+    this.viewOpen.set(false);
+    this.qrLightboxUrl.set(null);
+  }
+
+  openEditForm(user: AdminUser): void {
+    this.viewOpen.set(false);
+    this.populateUserForm(user);
+    this.formMode.set('edit');
+    this.userForm.enable({ emitEvent: false });
+    this.userForm.controls.username.disable({ emitEvent: false });
     this.userForm.controls.password.clearValidators();
     this.userForm.controls.password.updateValueAndValidity();
     this.formOpen.set(true);
   }
 
+  startEditFromView(): void {
+    const user = this.selectedUser();
+    if (!user) {
+      return;
+    }
+    this.openEditForm(user);
+  }
+
   closeForm(): void {
     this.formOpen.set(false);
     this.formError.set('');
+    this.userForm.enable({ emitEvent: false });
     this.clearProfileSelection();
+    this.clearQrSelection();
   }
 
   onProfileImageSelected(event: Event): void {
@@ -229,6 +250,101 @@ export class UserManagementPageComponent implements OnInit {
     this.pendingProfileFile.set(null);
   }
 
+  onQrImageSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      this.formError.set('Please choose a QR or payout image.');
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      this.formError.set('QR image must be 2MB or smaller.');
+      return;
+    }
+
+    this.pendingQrFile.set(file);
+    this.qrPreviewUrl.set(URL.createObjectURL(file));
+    this.formError.set('');
+  }
+
+  async removeQrImage(): Promise<void> {
+    const user = this.selectedUser();
+    if (!user) {
+      this.clearQrSelection();
+      return;
+    }
+
+    if (user.qrImageUrl) {
+      try {
+        const response = await firstValueFrom(this.adminApi.removeUserPayrollQr(user.id));
+        this.selectedUser.set(response.data);
+        this.actionMessage.set('Payroll QR image removed.');
+        await this.load();
+      } catch {
+        this.formError.set('Unable to remove payroll QR image.');
+        return;
+      }
+    }
+
+    this.clearQrSelection();
+  }
+
+  clearQrSelection(): void {
+    const preview = this.qrPreviewUrl();
+    if (preview?.startsWith('blob:')) {
+      URL.revokeObjectURL(preview);
+    }
+
+    this.qrPreviewUrl.set(null);
+    this.pendingQrFile.set(null);
+  }
+
+  isOnlinePayout(): boolean {
+    return this.userForm.controls.payoutMethod.value === 'online';
+  }
+
+  salaryTypeLabel(value: string | null | undefined): string {
+    return this.salaryTypeOptions.find((option) => option.value === value)?.label || 'Monthly';
+  }
+
+  payoutMethodLabel(value: string | null | undefined): string {
+    return value === 'online' ? 'Online' : 'Cash';
+  }
+
+  formatMoney(value: number | null | undefined): string {
+    if (value == null) {
+      return '—';
+    }
+    return new Intl.NumberFormat('en-PH', {
+      style: 'currency',
+      currency: 'PHP',
+      maximumFractionDigits: 2,
+    }).format(value);
+  }
+
+  displayValue(value: string | null | undefined): string {
+    const text = value?.trim();
+    return text ? text : '—';
+  }
+
+  qrImageFor(user: AdminUser): string | null {
+    return this.adminApi.resolveProfileImageUrl(user.qrImageUrl);
+  }
+
+  openQrLightbox(url: string, event?: Event): void {
+    event?.stopPropagation();
+    this.qrLightboxUrl.set(url);
+  }
+
+  closeQrLightbox(): void {
+    this.qrLightboxUrl.set(null);
+  }
+
   openPasswordForm(user: AdminUser): void {
     this.selectedUser.set(user);
     this.passwordError.set('');
@@ -263,6 +379,9 @@ export class UserManagementPageComponent implements OnInit {
       positionTitle,
       salaryType,
       monthlySalary,
+      fixedMonthlySalary,
+      payoutMethod,
+      bankDetails,
       payrollEnabled,
     } = this.userForm.getRawValue();
 
@@ -274,12 +393,23 @@ export class UserManagementPageComponent implements OnInit {
       return;
     }
 
+    const fixedText = fixedMonthlySalary == null ? '' : String(fixedMonthlySalary).trim();
+    const fixedValue = fixedText === '' ? null : Number(fixedText);
+    if (fixedText !== '' && (Number.isNaN(fixedValue) || (fixedValue ?? 0) < 0)) {
+      this.formError.set('Fixed monthly salary must be a valid number.');
+      this.saving.set(false);
+      return;
+    }
+
     const payrollPayload = {
       employeeCode: employeeCode.trim() || undefined,
       department: department.trim() || undefined,
       positionTitle: positionTitle.trim() || undefined,
       salaryType,
       ...(salaryValue == null ? {} : { monthlySalary: salaryValue }),
+      fixedMonthlySalary: fixedValue,
+      payoutMethod,
+      bankDetails: bankDetails.trim() || null,
       payrollEnabled,
     };
 
@@ -305,6 +435,10 @@ export class UserManagementPageComponent implements OnInit {
           );
           this.syncCurrentUserProfile(uploadResponse.data);
         }
+        const qrFile = this.pendingQrFile();
+        if (qrFile) {
+          await firstValueFrom(this.adminApi.uploadUserPayrollQr(createdUser.id, qrFile));
+        }
 
         this.actionMessage.set('User created successfully.');
       } else {
@@ -322,6 +456,7 @@ export class UserManagementPageComponent implements OnInit {
             isActive,
             ...payrollPayload,
             monthlySalary: salaryValue,
+            fixedMonthlySalary: fixedValue,
           }),
         );
 
@@ -330,6 +465,13 @@ export class UserManagementPageComponent implements OnInit {
         if (profileFile) {
           const uploadResponse = await firstValueFrom(
             this.adminApi.uploadUserProfileImage(user.id, profileFile),
+          );
+          updatedUser = uploadResponse.data;
+        }
+        const qrFile = this.pendingQrFile();
+        if (qrFile) {
+          const uploadResponse = await firstValueFrom(
+            this.adminApi.uploadUserPayrollQr(user.id, qrFile),
           );
           updatedUser = uploadResponse.data;
         }
@@ -419,6 +561,10 @@ export class UserManagementPageComponent implements OnInit {
     return this.profilePreviewUrl();
   }
 
+  qrPreview(): string | null {
+    return this.qrPreviewUrl();
+  }
+
   userInitials(name: string): string {
     const parts = name.trim().split(/\s+/).filter(Boolean);
     if (parts.length === 0) {
@@ -430,6 +576,34 @@ export class UserManagementPageComponent implements OnInit {
     }
 
     return `${parts[0][0] ?? ''}${parts[parts.length - 1][0] ?? ''}`.toUpperCase();
+  }
+
+  private populateUserForm(user: AdminUser): void {
+    this.selectedUser.set(user);
+    this.formError.set('');
+    this.clearProfileSelection();
+    this.clearQrSelection();
+    this.profilePreviewUrl.set(this.adminApi.resolveProfileImageUrl(user.profileImageUrl));
+    this.qrPreviewUrl.set(this.adminApi.resolveProfileImageUrl(user.qrImageUrl));
+    this.userForm.reset({
+      username: user.username,
+      fullName: user.fullName,
+      email: user.email ?? '',
+      role: user.role,
+      isActive: user.isActive,
+      password: '',
+      employeeCode: user.employeeCode ?? '',
+      department: user.department ?? '',
+      positionTitle: user.positionTitle ?? '',
+      salaryType: user.salaryType ?? 'monthly',
+      monthlySalary: user.monthlySalary != null ? String(user.monthlySalary) : '',
+      fixedMonthlySalary: user.fixedMonthlySalary != null ? String(user.fixedMonthlySalary) : '',
+      payoutMethod: user.payoutMethod ?? 'cash',
+      bankDetails: user.bankDetails ?? '',
+      payrollEnabled: user.payrollEnabled ?? false,
+    });
+    this.userForm.controls.password.clearValidators();
+    this.userForm.controls.password.updateValueAndValidity();
   }
 
   private syncCurrentUserProfile(user: AdminUser): void {

@@ -17,6 +17,35 @@ export interface DashboardChartPoint {
   value: number;
 }
 
+export type DashboardDetailMetric =
+  | 'activeJobs'
+  | 'completedJobs'
+  | 'inquiries'
+  | 'projects'
+  | 'net'
+  | 'outstanding'
+  | 'discounts'
+  | 'refunds'
+  | 'operatingExpenses';
+
+export interface DashboardDetailRow {
+  id: number;
+  title: string;
+  subtitle: string;
+  status: string | null;
+  amount: number | null;
+  date: string | null;
+  href: string;
+}
+
+export interface DashboardDetails {
+  metric: DashboardDetailMetric;
+  title: string;
+  description: string;
+  viewAllHref: string;
+  rows: DashboardDetailRow[];
+}
+
 export interface DashboardOverview {
   generatedAt: string;
   period: {
@@ -33,5 +62,6 @@ export interface DashboardOverview {
     jobStatus: Array<{ label: string; value: number; color: string }>;
     inquiriesTrend: DashboardChartPoint[];
     financialSplit: { net: number; outstanding: number; gross: number };
+    expenseCategories?: Array<{ label: string; value: number; color: string }>;
   };
 }

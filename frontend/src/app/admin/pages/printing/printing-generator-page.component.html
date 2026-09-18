@@ -87,6 +87,7 @@
 
         <div class="subpanel">
           <h4>Margins (mm)</h4>
+          <p class="subpanel-hint">0 is the minimum print margin.</p>
           <div class="form-grid four-col">
             <label><span>Top</span><input type="number" min="0" step="0.5" formControlName="marginTopMm" /></label>
             <label><span>Right</span><input type="number" min="0" step="0.5" formControlName="marginRightMm" /></label>
@@ -213,25 +214,46 @@
         <div class="panel-heading">
           <h3>Receipt content</h3>
           <p>
-            Edit the text blocks used on receipts for warranty policy, footer note, and thank-you message.
-            These values are used by both built-in and custom receipt templates.
+            Choose which text blocks appear on receipts, then edit the wording.
+            Changes apply to both built-in and custom receipt templates.
           </p>
         </div>
 
-        <div class="form-grid">
-          <label class="span-2">
-            <span>Warranty policy</span>
-            <textarea rows="10" formControlName="warrantyPolicy"></textarea>
-            <span class="field-hint">Use separate lines for each bullet or paragraph.</span>
-          </label>
-          <label class="span-2">
-            <span>Footer note</span>
-            <input type="text" formControlName="footerNote" />
-          </label>
-          <label class="span-2">
-            <span>Thank-you message</span>
-            <input type="text" formControlName="thanksMessage" />
-          </label>
+        <div class="form-grid content-blocks">
+          <div class="content-block span-2">
+            <label class="checkbox-row content-toggle">
+              <input type="checkbox" formControlName="showWarrantyPolicy" />
+              <span>Include warranty policy</span>
+            </label>
+            <label>
+              <span>Warranty policy text</span>
+              <textarea rows="10" formControlName="warrantyPolicy"></textarea>
+              <span class="field-hint">Use separate lines for each bullet or paragraph. Uncheck above to hide this block on printouts.</span>
+            </label>
+          </div>
+
+          <div class="content-block span-2">
+            <label class="checkbox-row content-toggle">
+              <input type="checkbox" formControlName="showFooterNote" />
+              <span>Include footer note</span>
+            </label>
+            <label>
+              <span>Footer note</span>
+              <input type="text" formControlName="footerNote" />
+              <span class="field-hint">Usually the VAT / BIR disclaimer line under totals.</span>
+            </label>
+          </div>
+
+          <div class="content-block span-2">
+            <label class="checkbox-row content-toggle">
+              <input type="checkbox" formControlName="showThanksMessage" />
+              <span>Include thank-you message</span>
+            </label>
+            <label>
+              <span>Thank-you message</span>
+              <input type="text" formControlName="thanksMessage" />
+            </label>
+          </div>
         </div>
 
         <div class="actions">
@@ -337,6 +359,7 @@
                 [marginRightMm]="settingsForm.controls.marginRightMm.value"
                 [marginBottomMm]="settingsForm.controls.marginBottomMm.value"
                 [marginLeftMm]="settingsForm.controls.marginLeftMm.value"
+                [fieldPreview]="fieldPreview()"
                 [selectedElementId]="selectedElementId()"
                 (elementsChange)="onCanvasElementsChange($event)"
                 (elementSelect)="selectedElementId.set($event)"

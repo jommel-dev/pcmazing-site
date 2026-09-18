@@ -59,11 +59,28 @@ export class ServiceTypesService {
            FROM pcmazing_service_types t
            LEFT JOIN LATERAL (
              SELECT
-               COUNT(*)::bigint AS usage_count,
-               COALESCE(SUM(COALESCE(s.labor, 0)), 0) AS total_labor_collected
-             FROM pcmazing_services s
-             WHERE s.deleted_at IS NULL
-               AND LOWER(TRIM(s.service_type)) = LOWER(TRIM(t.name))
+               COUNT(DISTINCT usage_rows.id)::bigint AS usage_count,
+               COALESCE(SUM(usage_rows.labor_amt), 0) AS total_labor_collected
+             FROM (
+               SELECT s.id, COALESCE(sp.labor, 0) AS labor_amt
+               FROM pcmazing_service_parts sp
+               JOIN pcmazing_services s ON s.id = sp.service_id
+               WHERE s.deleted_at IS NULL
+                 AND sp.deleted_at IS NULL
+                 AND sp.service_type_id = t.id
+               UNION ALL
+               SELECT s.id, COALESCE(s.labor, 0) AS labor_amt
+               FROM pcmazing_services s
+               WHERE s.deleted_at IS NULL
+                 AND LOWER(TRIM(s.service_type)) = LOWER(TRIM(t.name))
+                 AND NOT EXISTS (
+                   SELECT 1
+                   FROM pcmazing_service_parts sp
+                   WHERE sp.service_id = s.id
+                     AND sp.deleted_at IS NULL
+                     AND sp.service_type_id IS NOT NULL
+                 )
+             ) usage_rows
            ) usage ON TRUE
            WHERE t.deleted_at IS NULL
              ${activeOnly ? 'AND t.is_active = TRUE' : ''}

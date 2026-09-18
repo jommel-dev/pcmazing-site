@@ -9,12 +9,13 @@ import {
   viewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { TimeClockApiService, TimeClockStatus } from '../../../core/services/time-clock-api.service';
 
 @Component({
   selector: 'app-time-clock-page',
-  imports: [FormsModule],
+  imports: [FormsModule, RouterLink],
   templateUrl: './time-clock-page.component.html',
 })
 export class TimeClockPageComponent implements OnInit, OnDestroy {

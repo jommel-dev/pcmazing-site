@@ -1,7 +1,12 @@
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { APP_CONFIG } from '../../core/config/app-config';
-import { DashboardOverview, DashboardPeriod } from '../data/dashboard.types';
+import {
+  DashboardDetailMetric,
+  DashboardDetails,
+  DashboardOverview,
+  DashboardPeriod,
+} from '../data/dashboard.types';
 import { AdminAuthService } from './admin-auth.service';
 
 export interface PaginationMeta {
@@ -68,6 +73,76 @@ export interface DemoRequest {
   updatedAt: string;
 }
 
+export type CompanyExpenseCategory = string;
+
+export type CompanyExpensePaymentMethod = 'cash' | 'bank' | 'gcash' | 'card' | 'other';
+
+export type CompanyExpenseStatus = 'planned' | 'paid';
+
+export interface CompanyExpenseAttachment {
+  id: number;
+  expenseId: number;
+  fileName: string;
+  fileUrl: string;
+  mimeType: string;
+  fileSize: number;
+  kind: 'receipt' | 'file';
+  createdAt: string;
+}
+
+export interface CompanyExpense {
+  id: number;
+  title: string;
+  amount: number;
+  expenseDate: string;
+  category: CompanyExpenseCategory;
+  categoryLabel: string;
+  vendor: string | null;
+  paymentMethod: CompanyExpensePaymentMethod;
+  status: CompanyExpenseStatus;
+  notes: string | null;
+  createdBy: number | null;
+  createdAt: string;
+  updatedAt: string;
+  attachments?: CompanyExpenseAttachment[];
+  attachmentCount?: number;
+}
+
+export interface CompanyExpenseCalendar {
+  items: CompanyExpense[];
+  totals: {
+    amount: number;
+    paidAmount: number;
+    plannedAmount: number;
+    count: number;
+  };
+  categories: Array<{
+    key: CompanyExpenseCategory;
+    label: string;
+    amount: number;
+    count: number;
+    color: string;
+  }>;
+  range: { from: string; to: string };
+}
+
+export interface CompanyExpenseCategorySuggestion {
+  key: string;
+  label: string;
+  source: 'preset' | 'used';
+}
+
+export interface CompanyExpensePayload {
+  title: string;
+  amount: number;
+  expenseDate: string;
+  category: string;
+  vendor?: string;
+  paymentMethod?: CompanyExpensePaymentMethod;
+  status?: CompanyExpenseStatus;
+  notes?: string;
+}
+
 export interface MaterialItem {
   id: number;
   materialCode: string | null;
@@ -101,6 +176,7 @@ export interface InventoryServiceSummary {
   totalSales: number;
   totalLaborSales: number;
   totalPartsCost: number;
+  totalDiscount?: number;
   itemCount: number;
 }
 
@@ -109,10 +185,33 @@ export interface InventoryServiceFilterOption {
   count: number;
 }
 
+export interface JobOrderCustomerSuggestion {
+  name: string;
+  email: string | null;
+  contact: string | null;
+  address: string | null;
+}
+
+export interface JobOrderStatusHistoryItem {
+  id: number;
+  fromStatus: string | null;
+  toStatus: string;
+  reason: string | null;
+  changedBy: number | null;
+  changedByName: string | null;
+  createdAt: string;
+}
+
 export interface InventoryServiceItem {
   id: number;
   referenceNo: string | null;
   customerName: string;
+  customerEmail?: string | null;
+  customerContact?: string | null;
+  customerAddress?: string | null;
+  deviceBrand?: string | null;
+  deviceModel?: string | null;
+  deviceSerial?: string | null;
   serviceName: string;
   personInChargeUserId: number | null;
   personInChargeSource: 'tblusers' | 'pcmazing_admin_users';
@@ -125,44 +224,68 @@ export interface InventoryServiceItem {
   imageUrl: string | null;
   totalCosting: number;
   totalSales: number;
+  totalDiscount?: number;
   startedAt: string | null;
   endedAt: string | null;
   durationMinutes: number | null;
   notes?: string | null;
+  cancelReason?: string | null;
+  refundReason?: string | null;
+  refundAmount?: number;
+  statusHistory?: JobOrderStatusHistoryItem[];
   laborDiscountType?: 'none' | 'senior' | 'pwd';
   customDiscount?: number;
+  downpayment?: number;
+  paymentMethod?: string | null;
   parts?: Array<{
     materialId?: number;
+    serviceTypeId?: number;
     materialName?: string | null;
     materialCode?: string | null;
     description?: string | null;
     customItemName?: string;
+    brandName?: string | null;
     quantity: number;
     unitPrice?: number;
     labor?: number;
     discountType?: 'none' | 'senior' | 'pwd';
+    discountAmount?: number;
   }>;
+  createdAt?: string | null;
   updatedAt: string | null;
 }
 
 export interface CreateInventoryServicePayload {
   customerName: string;
+  customerEmail?: string;
+  customerContact?: string;
+  customerAddress?: string;
+  deviceBrand?: string;
+  deviceModel?: string;
+  deviceSerial?: string;
   serviceName: string;
   personInChargeUserId?: number;
   personInChargeSource?: 'tblusers' | 'pcmazing_admin_users';
   type: string;
   parts?: Array<{
     materialId?: number;
+    serviceTypeId?: number;
     customItemName?: string;
+    brandName?: string;
     quantity: number;
     unitPrice?: number;
     labor?: number;
     discountType?: 'none' | 'senior' | 'pwd';
+    discountAmount?: number;
+    createCatalogService?: boolean;
+    createInventoryMaterial?: boolean;
   }>;
   cost?: number;
   labor?: number;
   laborDiscountType?: 'none' | 'senior' | 'pwd';
   customDiscount?: number;
+  downpayment?: number;
+  paymentMethod?: string;
   status?: string;
   notes?: string;
   startedAt?: string;
@@ -183,6 +306,8 @@ export interface SalesOrderItem {
   materialCode: string | null;
   description: string | null;
   quantity: number;
+  refundedQuantity: number;
+  refundableQuantity: number;
   unitPrice: number;
   discountType: 'none' | 'senior' | 'pwd';
 }
@@ -197,12 +322,24 @@ export interface SalesOrderListItem {
   subtotal: number;
   discountTotal: number;
   totalAmount: number;
+  refundAmount: number;
+  netTotalAmount: number;
+  refundReason: string | null;
+  refundedAt: string | null;
   isVoid: boolean;
   voidedAt: string | null;
   saleDate: string | null;
   itemCount: number;
   itemsSummary: string[];
   updatedAt: string | null;
+}
+
+export interface RefundSalesOrderPayload {
+  refundReason: string;
+  items: Array<{
+    itemId: number;
+    quantity: number;
+  }>;
 }
 
 export interface SalesOrderDetail extends SalesOrderListItem {
@@ -284,6 +421,9 @@ export interface PrintingSettingsItem {
   warrantyPolicy?: string;
   footerNote?: string;
   thanksMessage?: string;
+  showWarrantyPolicy?: boolean;
+  showFooterNote?: boolean;
+  showThanksMessage?: boolean;
   updatedAt?: string | null;
 }
 
@@ -395,8 +535,11 @@ export interface CreatePurchasePayload {
   }>;
 }
 
+export type QuotationSource = 'pcmazing' | 'legacy';
+
 export interface QuotationListItem {
   id: number;
+  source: QuotationSource;
   quoteNo: string | null;
   quoteDate: string | null;
   customerName: string | null;
@@ -407,6 +550,23 @@ export interface QuotationListItem {
   createdAt: string | null;
 }
 
+export interface QuotationItem {
+  id: number;
+  materialId: number | null;
+  materialName: string | null;
+  productId: number | null;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  sellPrice: number | null;
+  discountType: 'none' | 'senior' | 'pwd';
+  discountPrice: number | null;
+  totalSetQty: number | null;
+  lineTotal: number;
+  remarks: string | null;
+  metadata: Record<string, unknown> | null;
+}
+
 export interface QuotationDetail extends QuotationListItem {
   customerAddress?: string | null;
   customerContactPerson?: string | null;
@@ -414,17 +574,28 @@ export interface QuotationDetail extends QuotationListItem {
   customerEmail?: string | null;
   validityDays?: number | null;
   remarks?: string | null;
+  customDiscount?: number;
+  subtotal?: number;
+  discountTotal?: number;
+  items: QuotationItem[];
+}
+
+export interface CreateQuotationPayload {
+  customerName: string;
+  customerPhone?: string;
+  customerEmail?: string;
+  customerAddress?: string;
+  remarks?: string;
+  customDiscount?: number;
+  quoteDate?: string;
+  validityDays?: number;
+  status?: 'draft' | 'finalized';
   items: Array<{
-    id: number;
-    materialId: number | null;
-    productId: number | null;
-    unitPrice: number | null;
-    sellPrice: number | null;
-    discountPrice: number | null;
-    totalSetQty: number | null;
-    lineTotal: number | null;
-    remarks: string | null;
-    metadata: Record<string, unknown> | null;
+    materialId?: number | null;
+    description?: string;
+    quantity: number;
+    unitPrice?: number;
+    discountType?: 'none' | 'senior' | 'pwd';
   }>;
 }
 
@@ -445,8 +616,14 @@ export interface AdminUser {
   positionTitle?: string | null;
   salaryType?: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
   monthlySalary?: number | null;
+  fixedMonthlySalary?: number | null;
+  payoutMethod?: 'cash' | 'online';
+  bankDetails?: string | null;
+  qrImageUrl?: string | null;
   payrollEnabled?: boolean;
 }
+
+export type PayrollOvertimeStatus = 'none' | 'pending' | 'approved' | 'rejected';
 
 export interface PayrollAttendanceItem {
   id: number;
@@ -463,6 +640,49 @@ export interface PayrollAttendanceItem {
   department: string | null;
   timeInSelfieUrl?: string | null;
   timeOutSelfieUrl?: string | null;
+  overtimeHours?: number;
+  overtimeStatus?: PayrollOvertimeStatus;
+  adjustmentStatus?: PayrollOvertimeStatus;
+}
+
+export interface PayrollOvertimeItem {
+  id: number;
+  userId: number;
+  userSource: 'pcmazing_admin_users' | 'tblusers';
+  username: string;
+  fullName: string;
+  workDate: string;
+  timeIn: string | null;
+  timeOut: string | null;
+  hoursWorked: number | null;
+  overtimeHours: number;
+  overtimeStatus: PayrollOvertimeStatus;
+  employeeCode: string | null;
+  department: string | null;
+  overtimeReviewedAt: string | null;
+  overtimeReviewNote: string | null;
+}
+
+export interface PayrollAdjustmentItem {
+  id: number;
+  userId: number;
+  userSource: 'pcmazing_admin_users' | 'tblusers';
+  username: string;
+  fullName: string;
+  workDate: string;
+  timeIn: string | null;
+  timeOut: string | null;
+  requestedTimeOut: string | null;
+  hoursWorked: number | null;
+  employeeCode: string | null;
+  department: string | null;
+  timeInSelfieUrl: string | null;
+  adjustmentSelfieUrl: string | null;
+  adjustmentNote: string | null;
+  undertimeCategory: 'emergency' | 'appointment' | 'event' | 'other' | null;
+  adjustmentStatus: PayrollOvertimeStatus;
+  adjustmentReviewedAt: string | null;
+  adjustmentReviewNote: string | null;
 }
 
 export interface EmployeeDayOffItem {
@@ -502,14 +722,66 @@ export interface EmployeePayslipItem {
   payrollEnabled: boolean;
 }
 
+export interface EmployeePayslipDetail {
+  id: string;
+  label: string;
+  dateFrom: string;
+  dateTo: string;
+  generatedAt: string;
+  employee: {
+    fullName: string;
+    positionTitle: string | null;
+    username: string;
+    employeeCode: string | null;
+    department: string | null;
+  };
+  days: Array<{
+    workDate: string;
+    timeInLabel: string;
+    timeOutLabel: string;
+    hoursWorked: number;
+    dayType: string;
+    paidUnits: number;
+    dayPay: number;
+    overtimeHours: number;
+    overtimeStatus: string;
+    overtimePay: number;
+  }>;
+  totals: {
+    daysPresent: number;
+    daysCompleted: number;
+    paidDayUnits: number;
+    totalHours: number;
+    approvedOvertimeHours: number;
+    pendingOvertimeHours: number;
+    basePay: number;
+    overtimePay: number;
+    estimatedPay: number;
+    periodDays?: number;
+    salaryTypeLabel?: string;
+    payBasis?: string;
+  };
+  isPreview?: boolean;
+  salaryType?: string;
+  userId?: number;
+  userSource?: string;
+}
+
 export interface EmployeeWorkspaceDashboard {
   workDate: string;
   month: string;
+  undertimeGraceMinutes?: number;
   today: {
     timeIn: string | null;
     timeOut: string | null;
     hoursWorked: number | null;
     status: string;
+    overtimeHours?: number;
+    overtimeStatus?: PayrollOvertimeStatus;
+    canRequestOvertime?: boolean;
+    attendanceId?: number | null;
+    canRequestTimeOutAdjustment?: boolean;
+    adjustmentStatus?: PayrollOvertimeStatus;
   };
   monthSummary: {
     totalHours: number;
@@ -517,11 +789,30 @@ export interface EmployeeWorkspaceDashboard {
     daysCompleted: number;
     dayOffCount: number;
   };
+  overtimeNotice?: {
+    eligibleCount: number;
+    pendingCount: number;
+    message: string | null;
+  };
+  adjustmentNotice?: {
+    eligibleCount: number;
+    pendingCount: number;
+    message: string | null;
+  };
   attendanceDays: Array<{
+    id?: number;
     workDate: string;
     timeIn: string | null;
     timeOut: string | null;
     hoursWorked: number | null;
+    dayPayLabel?: string;
+    overtimeHours?: number;
+    overtimeStatus?: PayrollOvertimeStatus;
+    canRequestOvertime?: boolean;
+    requestedTimeOut?: string | null;
+    adjustmentStatus?: PayrollOvertimeStatus;
+    adjustmentNote?: string | null;
+    canRequestTimeOutAdjustment?: boolean;
   }>;
   dayOffs: EmployeeDayOffItem[];
   todos: EmployeeTodoItem[];
@@ -549,6 +840,8 @@ export interface PayrollEmployeeItem {
   positionTitle: string | null;
   salaryType: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
   monthlySalary: number | null;
+  fixedMonthlySalary?: number | null;
+  payoutMethod?: 'cash' | 'online';
   payrollEnabled: boolean;
   todayStatus: 'not_started' | 'timed_in' | 'completed' | 'absent';
   todayTimeIn: string | null;
@@ -564,21 +857,46 @@ export interface PayrollPeriodItem {
   department: string | null;
   salaryType: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
   salaryAmount: number | null;
+  fixedMonthlySalary?: number | null;
   daysPresent: number;
   daysCompleted: number;
+  paidDayUnits?: number;
   totalHours: number;
+  approvedOvertimeHours: number;
+  pendingOvertimeHours: number;
   estimatedPay: number;
+  payslipPeriod?: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
+  periodDateFrom?: string;
+  periodDateTo?: string;
+}
+
+export interface PayrollOverlapItem {
+  userId: number;
+  userSource: string;
+  fullName: string;
+  estimatedPay: number;
+  runId: number;
+  label: string;
+  dateFrom: string;
+  dateTo: string;
+  exactMatch: boolean;
 }
 
 export interface PayrollPeriodMeta {
   dateFrom: string;
   dateTo: string;
+  periodType?: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
+  workWeek?: 'mon_fri' | 'mon_sat' | 'day_off_basis';
+  undertimeGraceMinutes?: number;
   periodDays: number;
   totals: {
     employees: number;
     totalHours: number;
+    approvedOvertimeHours?: number;
+    pendingOvertimeHours?: number;
     estimatedPay: number;
   };
+  overlaps?: PayrollOverlapItem[];
 }
 
 export interface PayrollGenerateResult {
@@ -591,6 +909,8 @@ export interface PayrollGenerateResult {
   totals: {
     employees: number;
     totalHours: number;
+    approvedOvertimeHours?: number;
+    pendingOvertimeHours?: number;
     estimatedPay: number;
   };
   replaced: boolean;
@@ -1163,6 +1483,8 @@ export class AdminApiService {
     status = '',
     sortBy = '',
     sortDir: 'asc' | 'desc' = 'desc',
+    startDate = '',
+    endDate = '',
   ) {
     let params = this.listParams(page, limit, search);
     if (type.trim()) {
@@ -1177,6 +1499,12 @@ export class AdminApiService {
     if (sortDir) {
       params = params.set('sortDir', sortDir);
     }
+    if (startDate.trim()) {
+      params = params.set('startDate', startDate.trim());
+    }
+    if (endDate.trim()) {
+      params = params.set('endDate', endDate.trim());
+    }
 
     return this.http.get<
       ListResponse<InventoryServiceItem> & {
@@ -1190,6 +1518,17 @@ export class AdminApiService {
       headers: this.headers(),
       params,
     });
+  }
+
+  searchJobOrderCustomers(search = '') {
+    let params = new HttpParams();
+    if (search.trim()) {
+      params = params.set('search', search.trim());
+    }
+    return this.http.get<ItemResponse<JobOrderCustomerSuggestion[]>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/services/customer-names`,
+      { headers: this.headers(), params },
+    );
   }
 
   createInventoryService(payload: CreateInventoryServicePayload) {
@@ -1215,10 +1554,23 @@ export class AdminApiService {
     );
   }
 
-  updateInventoryServiceStatus(id: number, status: string) {
+  updateInventoryServiceStatus(
+    id: number,
+    status: string,
+    paymentMethod?: string,
+    cancelReason?: string,
+    refundReason?: string,
+    refundAmount?: number,
+  ) {
     return this.http.patch<ItemResponse<InventoryServiceItem>>(
       `${APP_CONFIG.apiUrl}/admin/inventory/services/${id}/status`,
-      { status },
+      {
+        status,
+        ...(paymentMethod ? { paymentMethod } : {}),
+        ...(cancelReason ? { cancelReason } : {}),
+        ...(refundReason ? { refundReason } : {}),
+        ...(refundAmount != null && refundAmount > 0 ? { refundAmount } : {}),
+      },
       { headers: this.headers() },
     );
   }
@@ -1241,10 +1593,31 @@ export class AdminApiService {
     );
   }
 
-  listSalesOrders(page = 1, limit = 20, search = '', voidFilter = '') {
+  listSalesOrders(
+    page = 1,
+    limit = 20,
+    search = '',
+    voidFilter = '',
+    sortBy = '',
+    sortDir: 'asc' | 'desc' = 'desc',
+    startDate = '',
+    endDate = '',
+  ) {
     let params = this.listParams(page, limit, search);
     if (voidFilter.trim()) {
       params = params.set('void', voidFilter.trim());
+    }
+    if (sortBy.trim()) {
+      params = params.set('sortBy', sortBy.trim());
+    }
+    if (sortDir) {
+      params = params.set('sortDir', sortDir);
+    }
+    if (startDate.trim()) {
+      params = params.set('startDate', startDate.trim());
+    }
+    if (endDate.trim()) {
+      params = params.set('endDate', endDate.trim());
     }
 
     return this.http.get<
@@ -1274,6 +1647,14 @@ export class AdminApiService {
     return this.http.patch<ItemResponse<SalesOrderDetail>>(
       `${APP_CONFIG.apiUrl}/admin/inventory/sales-orders/${id}/void`,
       {},
+      { headers: this.headers() },
+    );
+  }
+
+  refundSalesOrder(id: number, payload: RefundSalesOrderPayload) {
+    return this.http.patch<ItemResponse<SalesOrderDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/sales-orders/${id}/refund`,
+      payload,
       { headers: this.headers() },
     );
   }
@@ -1447,9 +1828,30 @@ export class AdminApiService {
     );
   }
 
-  getQuotation(id: number) {
+  getQuotation(id: number, source?: QuotationSource | string) {
+    let params = new HttpParams();
+    if (source?.trim()) {
+      params = params.set('source', source.trim());
+    }
+
     return this.http.get<ItemResponse<QuotationDetail>>(
       `${APP_CONFIG.apiUrl}/admin/quotations/${id}`,
+      { headers: this.headers(), params },
+    );
+  }
+
+  createQuotation(payload: CreateQuotationPayload) {
+    return this.http.post<ItemResponse<QuotationDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/quotations`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  updateQuotation(id: number, payload: CreateQuotationPayload) {
+    return this.http.patch<ItemResponse<QuotationDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/quotations/${id}`,
+      payload,
       { headers: this.headers() },
     );
   }
@@ -1474,6 +1876,110 @@ export class AdminApiService {
     return this.http.get<ItemResponse<DashboardOverview>>(
       `${APP_CONFIG.apiUrl}/admin/dashboard/overview`,
       { headers: this.headers(), params },
+    );
+  }
+
+  getDashboardDetails(options: {
+    metric: DashboardDetailMetric;
+    period?: DashboardPeriod;
+    startDate?: string;
+    endDate?: string;
+  }) {
+    let params = new HttpParams().set('metric', options.metric);
+
+    if (options.period) {
+      params = params.set('period', options.period);
+    }
+    if (options.startDate) {
+      params = params.set('startDate', options.startDate);
+    }
+    if (options.endDate) {
+      params = params.set('endDate', options.endDate);
+    }
+
+    return this.http.get<ItemResponse<DashboardDetails>>(
+      `${APP_CONFIG.apiUrl}/admin/dashboard/details`,
+      { headers: this.headers(), params },
+    );
+  }
+
+  listCompanyExpenses(options: {
+    from?: string;
+    to?: string;
+    category?: string;
+    status?: string;
+  } = {}) {
+    let params = new HttpParams();
+    if (options.from) {
+      params = params.set('from', options.from);
+    }
+    if (options.to) {
+      params = params.set('to', options.to);
+    }
+    if (options.category) {
+      params = params.set('category', options.category);
+    }
+    if (options.status) {
+      params = params.set('status', options.status);
+    }
+
+    return this.http.get<ItemResponse<CompanyExpenseCalendar>>(
+      `${APP_CONFIG.apiUrl}/admin/company-expenses`,
+      { headers: this.headers(), params },
+    );
+  }
+
+  listCompanyExpenseCategorySuggestions() {
+    return this.http.get<ItemResponse<CompanyExpenseCategorySuggestion[]>>(
+      `${APP_CONFIG.apiUrl}/admin/company-expenses/category-suggestions`,
+      { headers: this.headers() },
+    );
+  }
+
+  getCompanyExpense(id: number) {
+    return this.http.get<ItemResponse<CompanyExpense>>(
+      `${APP_CONFIG.apiUrl}/admin/company-expenses/${id}`,
+      { headers: this.headers() },
+    );
+  }
+
+  createCompanyExpense(payload: CompanyExpensePayload) {
+    return this.http.post<ItemResponse<CompanyExpense>>(
+      `${APP_CONFIG.apiUrl}/admin/company-expenses`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  updateCompanyExpense(id: number, payload: Partial<CompanyExpensePayload>) {
+    return this.http.patch<ItemResponse<CompanyExpense>>(
+      `${APP_CONFIG.apiUrl}/admin/company-expenses/${id}`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  uploadCompanyExpenseAttachment(id: number, file: File) {
+    const formData = new FormData();
+    formData.append('file', file, file.name || `expense-attachment-${Date.now()}`);
+    return this.http.post<ItemResponse<CompanyExpenseAttachment>>(
+      `${APP_CONFIG.apiUrl}/admin/company-expenses/${id}/attachments`,
+      formData,
+      { headers: this.headers() },
+    );
+  }
+
+  deleteCompanyExpenseAttachment(id: number, attachmentId: number) {
+    return this.http.delete<ItemResponse<unknown>>(
+      `${APP_CONFIG.apiUrl}/admin/company-expenses/${id}/attachments/${attachmentId}`,
+      { headers: this.headers() },
+    );
+  }
+
+  deleteCompanyExpense(id: number) {
+    return this.http.delete<ItemResponse<CompanyExpense>>(
+      `${APP_CONFIG.apiUrl}/admin/company-expenses/${id}`,
+      { headers: this.headers() },
     );
   }
 
@@ -1512,6 +2018,9 @@ export class AdminApiService {
     positionTitle?: string;
     salaryType?: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
     monthlySalary?: number | null;
+    fixedMonthlySalary?: number | null;
+    payoutMethod?: 'cash' | 'online';
+    bankDetails?: string | null;
     payrollEnabled?: boolean;
   }) {
     return this.http.post<MessageResponse<AdminUser>>(
@@ -1533,6 +2042,9 @@ export class AdminApiService {
       positionTitle?: string;
       salaryType?: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
       monthlySalary?: number | null;
+      fixedMonthlySalary?: number | null;
+      payoutMethod?: 'cash' | 'online';
+      bankDetails?: string | null;
       payrollEnabled?: boolean;
     },
   ) {
@@ -1576,6 +2088,24 @@ export class AdminApiService {
     );
   }
 
+  uploadUserPayrollQr(id: number, file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    return this.http.post<MessageResponse<AdminUser>>(
+      `${APP_CONFIG.apiUrl}/admin/users/${id}/payroll-qr`,
+      formData,
+      { headers: this.headers() },
+    );
+  }
+
+  removeUserPayrollQr(id: number) {
+    return this.http.delete<MessageResponse<AdminUser>>(
+      `${APP_CONFIG.apiUrl}/admin/users/${id}/payroll-qr`,
+      { headers: this.headers() },
+    );
+  }
+
   listPayrollAttendance(page = 1, limit = 50, workDate = '') {
     let params = this.listParams(page, limit, '');
     if (workDate.trim()) {
@@ -1612,13 +2142,20 @@ export class AdminApiService {
     );
   }
 
-  getPayrollPeriod(dateFrom = '', dateTo = '') {
+  getPayrollPeriod(
+    dateFrom = '',
+    dateTo = '',
+    periodType?: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff',
+  ) {
     let params = new HttpParams();
     if (dateFrom.trim()) {
       params = params.set('dateFrom', dateFrom.trim());
     }
     if (dateTo.trim()) {
       params = params.set('dateTo', dateTo.trim());
+    }
+    if (periodType) {
+      params = params.set('periodType', periodType);
     }
 
     return this.http.get<{ success: boolean; data: PayrollPeriodItem[]; meta: PayrollPeriodMeta }>(
@@ -1627,13 +2164,119 @@ export class AdminApiService {
     );
   }
 
-  generatePayrollPeriod(dateFrom = '', dateTo = '') {
+  generatePayrollPeriod(
+    dateFrom = '',
+    dateTo = '',
+    periodType?: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff',
+    confirmOverlap = false,
+  ) {
     return this.http.post<ItemResponse<PayrollGenerateResult>>(
       `${APP_CONFIG.apiUrl}/admin/payroll/period/generate`,
       {
         dateFrom: dateFrom.trim() || undefined,
         dateTo: dateTo.trim() || undefined,
+        periodType,
+        confirmOverlap: confirmOverlap || undefined,
       },
+      { headers: this.headers() },
+    );
+  }
+
+  previewPayrollPeriod(
+    dateFrom = '',
+    dateTo = '',
+    periodType?: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff',
+  ) {
+    return this.http.post<
+      ItemResponse<{
+        dateFrom: string;
+        dateTo: string;
+        overlaps?: PayrollOverlapItem[];
+        items: EmployeePayslipDetail[];
+      }>
+    >(
+      `${APP_CONFIG.apiUrl}/admin/payroll/period/preview`,
+      {
+        dateFrom: dateFrom.trim() || undefined,
+        dateTo: dateTo.trim() || undefined,
+        periodType,
+      },
+      { headers: this.headers() },
+    );
+  }
+
+  getPayrollSettings() {
+    return this.http.get<
+      ItemResponse<{ workWeek: 'mon_fri' | 'mon_sat' | 'day_off_basis'; undertimeGraceMinutes: number }>
+    >(
+      `${APP_CONFIG.apiUrl}/admin/payroll/settings`,
+      { headers: this.headers() },
+    );
+  }
+
+  updatePayrollSettings(payload: {
+    workWeek?: 'mon_fri' | 'mon_sat' | 'day_off_basis';
+    undertimeGraceMinutes?: number;
+  }) {
+    return this.http.patch<
+      ItemResponse<{ workWeek: 'mon_fri' | 'mon_sat' | 'day_off_basis'; undertimeGraceMinutes: number }>
+    >(
+      `${APP_CONFIG.apiUrl}/admin/payroll/settings`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  listPayrollOvertime(status: PayrollOvertimeStatus | 'pending' = 'pending', page = 1, limit = 50) {
+    let params = this.listParams(page, limit, '');
+    params = params.set('status', status);
+
+    return this.http.get<ListResponse<PayrollOvertimeItem> & { status: PayrollOvertimeStatus }>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/overtime`,
+      { headers: this.headers(), params },
+    );
+  }
+
+  reviewPayrollOvertime(id: number, status: 'approved' | 'rejected', note = '') {
+    return this.http.patch<
+      ItemResponse<{
+        id: number;
+        overtimeHours: number;
+        overtimeStatus: PayrollOvertimeStatus;
+        overtimeReviewedAt: string | null;
+        overtimeReviewNote: string | null;
+      }>
+    >(
+      `${APP_CONFIG.apiUrl}/admin/payroll/overtime/${id}`,
+      { status, ...(note.trim() ? { note: note.trim() } : {}) },
+      { headers: this.headers() },
+    );
+  }
+
+  listPayrollAdjustments(status: PayrollOvertimeStatus | 'pending' = 'pending', page = 1, limit = 50) {
+    let params = this.listParams(page, limit, '');
+    params = params.set('status', status);
+
+    return this.http.get<ListResponse<PayrollAdjustmentItem> & { status: PayrollOvertimeStatus }>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/adjustments`,
+      { headers: this.headers(), params },
+    );
+  }
+
+  reviewPayrollAdjustment(id: number, status: 'approved' | 'rejected', note = '') {
+    return this.http.patch<
+      ItemResponse<{
+        id: number;
+        timeOut: string | null;
+        requestedTimeOut: string | null;
+        adjustmentStatus: PayrollOvertimeStatus;
+        adjustmentReviewedAt: string | null;
+        adjustmentReviewNote: string | null;
+        adjustmentSelfieUrl: string | null;
+      }>
+    >(
+      `${APP_CONFIG.apiUrl}/admin/payroll/adjustments/${id}`,
+      { status, ...(note.trim() ? { note: note.trim() } : {}) },
       { headers: this.headers() },
     );
   }
@@ -1790,6 +2433,10 @@ export class AdminApiService {
   }
 
   resolveProjectUploadUrl(uploadUrl: string | null | undefined): string | null {
+    return this.resolveUploadUrl(uploadUrl);
+  }
+
+  resolveCompanyExpenseUploadUrl(uploadUrl: string | null | undefined): string | null {
     return this.resolveUploadUrl(uploadUrl);
   }
 
@@ -2137,6 +2784,68 @@ export class AdminApiService {
     return this.http.get<ItemResponse<EmployeeWorkspaceDashboard>>(
       `${APP_CONFIG.apiUrl}/admin/employee-workspace/dashboard`,
       { headers: this.headers(), params },
+    );
+  }
+
+  requestEmployeeOvertime(attendanceId: number) {
+    return this.http.post<
+      ItemResponse<{
+        id: number;
+        workDate: string;
+        overtimeHours: number;
+        overtimeStatus: PayrollOvertimeStatus;
+        message: string;
+      }> & { message?: string }
+    >(
+      `${APP_CONFIG.apiUrl}/admin/employee-workspace/overtime/${attendanceId}/request`,
+      {},
+      { headers: this.headers() },
+    );
+  }
+
+  requestEmployeeTimeOutAdjustment(
+    attendanceId: number,
+    selfie: File,
+    requestedTimeOut: string,
+    note = '',
+    undertimeCategory: 'emergency' | 'appointment' | 'event' | 'other' = 'other',
+  ) {
+    const formData = new FormData();
+    formData.append('selfie', selfie);
+    formData.append('requestedTimeOut', requestedTimeOut);
+    formData.append('note', note.trim());
+    formData.append('undertimeCategory', undertimeCategory);
+    return this.http.post<
+      ItemResponse<{
+        id: number;
+        workDate: string;
+        requestedTimeOut: string | null;
+        adjustmentStatus: PayrollOvertimeStatus;
+        message: string;
+      }> & { message?: string }
+    >(
+      `${APP_CONFIG.apiUrl}/admin/employee-workspace/attendance/${attendanceId}/request-time-out`,
+      formData,
+      { headers: this.headers() },
+    );
+  }
+
+  downloadEmployeePayslipPdf(payslipId: string | number, download = false) {
+    let params = new HttpParams();
+    if (download) {
+      params = params.set('download', '1');
+    }
+    return this.http.get(`${APP_CONFIG.apiUrl}/admin/employee-workspace/payslips/${payslipId}/pdf`, {
+      headers: this.headers(),
+      params,
+      responseType: 'blob',
+    });
+  }
+
+  getEmployeePayslipDetail(payslipId: string | number) {
+    return this.http.get<ItemResponse<EmployeePayslipDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/employee-workspace/payslips/${payslipId}`,
+      { headers: this.headers() },
     );
   }
 

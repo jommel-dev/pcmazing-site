@@ -1,4 +1,5 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { AdminApiService } from '../../services/admin-api.service';
@@ -23,6 +24,10 @@ import {
   DEFAULT_THANKS_MESSAGE,
   DEFAULT_WARRANTY_POLICY,
 } from './printing-receipt-content.defaults';
+import {
+  applyLiveReceiptContentLayout,
+  layoutBottomMm,
+} from './printing-receipt-content.util';
 
 type TabKey = 'settings' | 'content' | 'templates';
 
@@ -87,8 +92,11 @@ export class PrintingGeneratorPageComponent implements OnInit {
   });
 
   readonly contentForm = this.formBuilder.nonNullable.group({
+    showWarrantyPolicy: [true],
     warrantyPolicy: [DEFAULT_WARRANTY_POLICY, [Validators.maxLength(8000)]],
+    showFooterNote: [true],
     footerNote: [DEFAULT_FOOTER_NOTE, [Validators.maxLength(500)]],
+    showThanksMessage: [true],
     thanksMessage: [DEFAULT_THANKS_MESSAGE, [Validators.maxLength(500)]],
   });
 
@@ -96,7 +104,7 @@ export class PrintingGeneratorPageComponent implements OnInit {
     name: ['', [Validators.required, Validators.maxLength(180)]],
     documentType: ['sales_receipt' as PrintDocumentType, [Validators.required]],
     paperWidthMm: [210, [Validators.required, Validators.min(40), Validators.max(500)]],
-    paperHeightMm: [297, [Validators.required, Validators.min(40), Validators.max(500)]],
+    paperHeightMm: [297, [Validators.required, Validators.min(40), Validators.max(2000)]],
     isDefault: [false],
     isActive: [true],
   });
@@ -112,6 +120,19 @@ export class PrintingGeneratorPageComponent implements OnInit {
   readonly selectedElement = computed(() =>
     this.draftElements().find((element) => element.id === this.selectedElementId()) ?? null,
   );
+
+  readonly fieldPreview = signal({
+    warrantyPolicy: DEFAULT_WARRANTY_POLICY,
+    footerNote: DEFAULT_FOOTER_NOTE,
+    thanksMessage: DEFAULT_THANKS_MESSAGE,
+  });
+
+  constructor() {
+    this.contentForm.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => {
+      this.syncContentEditorState();
+      this.syncContentPreview();
+    });
+  }
 
   readonly paperPresetOptions = Object.entries(PAPER_SIZE_PRESETS).map(([key, value]) => ({
     key: key as PrintingSettings['paperSize'],
@@ -159,10 +180,15 @@ export class PrintingGeneratorPageComponent implements OnInit {
         printerAutoPrint: settings.printerAutoPrint ?? false,
       });
       this.contentForm.patchValue({
+        showWarrantyPolicy: settings.showWarrantyPolicy !== false,
         warrantyPolicy: settings.warrantyPolicy || DEFAULT_WARRANTY_POLICY,
+        showFooterNote: settings.showFooterNote !== false,
         footerNote: settings.footerNote || DEFAULT_FOOTER_NOTE,
+        showThanksMessage: settings.showThanksMessage !== false,
         thanksMessage: settings.thanksMessage || DEFAULT_THANKS_MESSAGE,
       });
+      this.syncContentEditorState();
+      this.syncContentPreview();
       this.applyPrinterTestState(settings);
 
       this.templates.set(templatesResponse.data);
@@ -276,9 +302,21 @@ export class PrintingGeneratorPageComponent implements OnInit {
           warrantyPolicy: value.warrantyPolicy,
           footerNote: value.footerNote.trim(),
           thanksMessage: value.thanksMessage.trim(),
+          showWarrantyPolicy: value.showWarrantyPolicy,
+          showFooterNote: value.showFooterNote,
+          showThanksMessage: value.showThanksMessage,
         }),
       );
-      this.success.set('Receipt content saved.');
+      const templatesResponse = await firstValueFrom(this.adminApi.listPrintingTemplates());
+      this.templates.set(templatesResponse.data);
+      const selectedId = this.selectedTemplateId();
+      if (selectedId) {
+        const refreshed = templatesResponse.data.find((template) => template.id === selectedId);
+        if (refreshed) {
+          this.setDraftElements(structuredClone(refreshed.layout.elements));
+        }
+      }
+      this.success.set('Receipt content saved and applied to all print templates.');
     } catch (err: unknown) {
       this.error.set(this.readError(err, 'Unable to save receipt content.'));
     } finally {
@@ -389,7 +427,7 @@ export class PrintingGeneratorPageComponent implements OnInit {
       isDefault: template.isDefault,
       isActive: template.isActive,
     });
-    this.draftElements.set(sanitizeLayoutElements(structuredClone(template.layout.elements)));
+    this.setDraftElements(structuredClone(template.layout.elements));
     this.clearMessages();
   }
 
@@ -404,7 +442,7 @@ export class PrintingGeneratorPageComponent implements OnInit {
       isDefault: true,
       isActive: true,
     });
-    this.draftElements.set(sanitizeLayoutElements(jobOrderSalesReceiptLayout().elements));
+    this.setDraftElements(jobOrderSalesReceiptLayout().elements);
     this.clearMessages();
   }
 
@@ -417,7 +455,7 @@ export class PrintingGeneratorPageComponent implements OnInit {
     if (!this.templateForm.controls.name.value.trim()) {
       this.templateForm.controls.name.setValue('Job Order Sales Receipt');
     }
-    this.draftElements.set(sanitizeLayoutElements(jobOrderSalesReceiptLayout().elements));
+    this.setDraftElements(jobOrderSalesReceiptLayout().elements);
     this.selectedElementId.set(null);
     this.success.set('Loaded the current Job Order sales receipt layout.');
   }
@@ -431,6 +469,55 @@ export class PrintingGeneratorPageComponent implements OnInit {
 
   onCanvasElementsChange(elements: PrintLayoutElement[]): void {
     this.draftElements.set(sanitizeLayoutElements(elements));
+  }
+
+  private syncContentPreview(): void {
+    const value = this.contentForm.getRawValue();
+    const preview = {
+      warrantyPolicy: value.showWarrantyPolicy ? value.warrantyPolicy : '',
+      footerNote: value.showFooterNote ? value.footerNote : '',
+      thanksMessage: value.showThanksMessage ? value.thanksMessage : '',
+    };
+    this.fieldPreview.set(preview);
+    const current = this.draftElements();
+    if (current.length) {
+      this.growPaperIfNeeded(applyLiveReceiptContentLayout(current, preview));
+    }
+  }
+
+  private syncContentEditorState(): void {
+    const value = this.contentForm.getRawValue();
+    this.toggleContentControl('warrantyPolicy', value.showWarrantyPolicy);
+    this.toggleContentControl('footerNote', value.showFooterNote);
+    this.toggleContentControl('thanksMessage', value.showThanksMessage);
+  }
+
+  private toggleContentControl(
+    controlName: 'warrantyPolicy' | 'footerNote' | 'thanksMessage',
+    enabled: boolean,
+  ): void {
+    const control = this.contentForm.controls[controlName];
+    if (enabled) {
+      if (control.disabled) {
+        control.enable({ emitEvent: false });
+      }
+    } else if (control.enabled) {
+      control.disable({ emitEvent: false });
+    }
+  }
+
+  private setDraftElements(elements: PrintLayoutElement[]): void {
+    const fitted = applyLiveReceiptContentLayout(elements, this.fieldPreview());
+    this.draftElements.set(sanitizeLayoutElements(fitted));
+    this.growPaperIfNeeded(fitted);
+  }
+
+  private growPaperIfNeeded(elements: PrintLayoutElement[]): void {
+    const needed = Math.ceil(layoutBottomMm(elements) + 10);
+    const current = Number(this.templateForm.controls.paperHeightMm.value) || 297;
+    if (needed > current) {
+      this.templateForm.controls.paperHeightMm.setValue(needed);
+    }
   }
 
   addElement(type: PrintLayoutElement['type'], fieldKey?: string): void {
@@ -514,7 +601,11 @@ export class PrintingGeneratorPageComponent implements OnInit {
       documentType: value.documentType,
       paperWidthMm: Number(value.paperWidthMm),
       paperHeightMm: Number(value.paperHeightMm),
-      layout: { elements: sanitizeLayoutElements(this.draftElements()) },
+      layout: {
+        elements: sanitizeLayoutElements(
+          applyLiveReceiptContentLayout(this.draftElements(), this.fieldPreview()),
+        ),
+      },
       isDefault: value.isDefault,
       isActive: value.isActive,
     };

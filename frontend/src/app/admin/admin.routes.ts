@@ -22,6 +22,7 @@ import { SalesOrderCreatePageComponent } from './pages/inventory/sales-order-cre
 import { SalesOrderReceiptPageComponent } from './pages/inventory/sales-order-receipt-page.component';
 import { SalesOrdersPageComponent } from './pages/inventory/sales-orders-page.component';
 import { InventoryServiceCreatePageComponent } from './pages/inventory/inventory-service-create-page.component';
+import { InventoryServiceViewPageComponent } from './pages/inventory/inventory-service-view-page.component';
 import { InventoryServiceReceiptPageComponent } from './pages/inventory/inventory-service-receipt-page.component';
 import { InventoryServicesPageComponent } from './pages/inventory/inventory-services-page.component';
 import { InventoryServiceTypesPageComponent } from './pages/inventory/inventory-service-types-page.component';
@@ -32,6 +33,8 @@ import { ProductCreatePageComponent } from './pages/inventory/product-create-pag
 import { ProductEditPageComponent } from './pages/inventory/product-edit-page.component';
 import { QuotationsPageComponent } from './pages/quotations/quotations-page.component';
 import { QuotationDetailPageComponent } from './pages/quotations/quotation-detail-page.component';
+import { QuotationCreatePageComponent } from './pages/quotations/quotation-create-page.component';
+import { QuotationPrintPageComponent } from './pages/quotations/quotation-print-page.component';
 import { UserManagementPageComponent } from './pages/user-management/user-management-page.component';
 import { LeadGenerationPageComponent } from './pages/marketing/lead-generation-page.component';
 import { LeadProspectViewPageComponent } from './pages/marketing/lead-prospect-view-page.component';
@@ -46,6 +49,7 @@ import { ProjectTasksPageComponent } from './pages/projects/project-tasks-page.c
 import { KanbanHubPageComponent } from './pages/projects/kanban-hub-page.component';
 import { AdminModulePlaceholderPageComponent } from './pages/modules/admin-module-placeholder-page.component';
 import { PrintingGeneratorPageComponent } from './pages/printing/printing-generator-page.component';
+import { CompanyExpensesPageComponent } from './pages/company-expenses/company-expenses-page.component';
 
 export const adminRoutes: Routes = [
   {
@@ -63,7 +67,7 @@ export const adminRoutes: Routes = [
     path: 'login',
     component: AdminLoginPageComponent,
     title: 'Admin Login | PCMazing',
-    canActivate: [staffGateGuard, adminGuestGuard],
+    canActivate: [adminGuestGuard, staffGateGuard],
   },
   {
     path: '',
@@ -154,6 +158,13 @@ export const adminRoutes: Routes = [
         data: { module: 'inventory' },
       },
       {
+        path: 'company-expenses',
+        component: CompanyExpensesPageComponent,
+        title: 'Company Expenses | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'company_expenses' },
+      },
+      {
         path: 'inventory/service-types',
         component: InventoryServiceTypesPageComponent,
         title: 'Service Types | PCMazing Admin',
@@ -198,7 +209,7 @@ export const adminRoutes: Routes = [
       {
         path: 'job-order/new',
         component: InventoryServiceCreatePageComponent,
-        title: 'Add Service | PCMazing Admin',
+        title: 'Add Job | PCMazing Admin',
         canActivate: [adminRoleGuard],
         data: { module: 'job_order' },
       },
@@ -210,9 +221,16 @@ export const adminRoutes: Routes = [
         data: { module: 'job_order' },
       },
       {
-        path: 'job-order/:id',
+        path: 'job-order/:id/edit',
         component: InventoryServiceCreatePageComponent,
-        title: 'Edit Service | PCMazing Admin',
+        title: 'Edit Job Order | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'job_order' },
+      },
+      {
+        path: 'job-order/:id',
+        component: InventoryServiceViewPageComponent,
+        title: 'View Job Order | PCMazing Admin',
         canActivate: [adminRoleGuard],
         data: { module: 'job_order' },
       },
@@ -276,6 +294,27 @@ export const adminRoutes: Routes = [
         path: 'quotations',
         component: QuotationsPageComponent,
         title: 'Quotations | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'quotation' },
+      },
+      {
+        path: 'quotations/new',
+        component: QuotationCreatePageComponent,
+        title: 'New Quotation | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'quotation' },
+      },
+      {
+        path: 'quotations/:id/edit',
+        component: QuotationCreatePageComponent,
+        title: 'Edit Quotation | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'quotation' },
+      },
+      {
+        path: 'quotations/:id/print',
+        component: QuotationPrintPageComponent,
+        title: 'Print Quotation | PCMazing Admin',
         canActivate: [adminRoleGuard],
         data: { module: 'quotation' },
       },

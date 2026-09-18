@@ -94,6 +94,9 @@ export class UsersService {
       positionTitle: dto.positionTitle,
       salaryType: dto.salaryType,
       monthlySalary: dto.monthlySalary,
+      fixedMonthlySalary: dto.fixedMonthlySalary,
+      payoutMethod: dto.payoutMethod,
+      bankDetails: dto.bankDetails,
       payrollEnabled: dto.payrollEnabled ?? false,
     });
 
@@ -118,6 +121,9 @@ export class UsersService {
       dto.positionTitle !== undefined ||
       dto.salaryType !== undefined ||
       dto.monthlySalary !== undefined ||
+      dto.fixedMonthlySalary !== undefined ||
+      dto.payoutMethod !== undefined ||
+      dto.bankDetails !== undefined ||
       dto.payrollEnabled !== undefined
     ) {
       await this.payrollService.upsertProfile(user.id, user.source, {
@@ -126,6 +132,9 @@ export class UsersService {
         positionTitle: dto.positionTitle,
         salaryType: dto.salaryType,
         monthlySalary: dto.monthlySalary,
+        fixedMonthlySalary: dto.fixedMonthlySalary,
+        payoutMethod: dto.payoutMethod,
+        bankDetails: dto.bankDetails,
         payrollEnabled: dto.payrollEnabled,
       });
     }
@@ -266,6 +275,18 @@ export class UsersService {
     );
 
     return this.attachPayrollProfile(this.mapPcmazingUser(result.rows[0]));
+  }
+
+  async uploadPayrollQr(id: number, file: Express.Multer.File) {
+    const existing = await this.getById(id);
+    await this.payrollService.uploadQrImage(existing.id, existing.source, file);
+    return this.getById(id);
+  }
+
+  async removePayrollQr(id: number) {
+    const existing = await this.getById(id);
+    await this.payrollService.removeQrImage(existing.id, existing.source);
+    return this.getById(id);
   }
 
   private async listTblusers(pageRaw?: string, limitRaw?: string, search?: string) {
@@ -658,6 +679,10 @@ export class UsersService {
         positionTitle: profile?.positionTitle ?? null,
         salaryType: profile?.salaryType ?? 'monthly',
         monthlySalary: profile?.monthlySalary ?? null,
+        fixedMonthlySalary: profile?.fixedMonthlySalary ?? null,
+        payoutMethod: profile?.payoutMethod ?? 'cash',
+        bankDetails: profile?.bankDetails ?? null,
+        qrImageUrl: profile?.qrImageUrl ?? null,
         payrollEnabled: profile?.payrollEnabled ?? false,
       };
     });

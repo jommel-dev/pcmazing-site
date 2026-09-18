@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -12,9 +13,17 @@ import {
 } from '../users/tblusers.util';
 import { ensureUserManagementTable } from '../users/user-management.schema';
 import { AdminUserRecord } from '../users/users.types';
-import { PayrollProfileFieldsDto, PayrollSalaryType } from './dto/payroll-profile-fields.dto';
+import { GeneratePayslipEmployeeDto } from './dto/generate-payslips.dto';
+import {
+  PayrollPayoutMethod,
+  PayrollProfileFieldsDto,
+  PayrollSalaryType,
+} from './dto/payroll-profile-fields.dto';
+import { PAYROLL_WORK_WEEKS, PayrollWorkWeek, UNDERTIME_CATEGORIES, UndertimeCategory } from './dto/payroll-settings.dto';
 import { saveAttendanceSelfieFile } from './attendance-selfie.util';
+import { deletePayrollQrImageFile, savePayrollQrImageFile } from './payroll-qr-image.util';
 import { ensurePayrollTables, manilaWorkDate } from './payroll.schema';
+import { buildPayslipPdfBuffer, PayslipDayBreakdownRow, PayslipPdfPayload } from './payslip-pdf.util';
 
 export interface PayrollProfile {
   employeeCode: string | null;
@@ -22,8 +31,15 @@ export interface PayrollProfile {
   positionTitle: string | null;
   salaryType: PayrollSalaryType;
   monthlySalary: number | null;
+  fixedMonthlySalary: number | null;
+  payoutMethod: PayrollPayoutMethod;
+  bankDetails: string | null;
+  qrImageUrl: string | null;
   payrollEnabled: boolean;
 }
+
+export type OvertimeStatus = 'none' | 'pending' | 'approved' | 'rejected';
+export type AdjustmentStatus = OvertimeStatus;
 
 export interface AttendanceRecord {
   id: number;
@@ -40,6 +56,49 @@ export interface AttendanceRecord {
   department: string | null;
   timeInSelfieUrl: string | null;
   timeOutSelfieUrl: string | null;
+  overtimeHours: number;
+  overtimeStatus: OvertimeStatus;
+  adjustmentStatus: AdjustmentStatus;
+}
+
+export interface AdjustmentRecord {
+  id: number;
+  userId: number;
+  userSource: 'pcmazing_admin_users' | 'tblusers';
+  username: string;
+  fullName: string;
+  workDate: string;
+  timeIn: string | null;
+  timeOut: string | null;
+  requestedTimeOut: string | null;
+  hoursWorked: number | null;
+  employeeCode: string | null;
+  department: string | null;
+  timeInSelfieUrl: string | null;
+  adjustmentSelfieUrl: string | null;
+  adjustmentNote: string | null;
+  undertimeCategory: UndertimeCategory | null;
+  adjustmentStatus: AdjustmentStatus;
+  adjustmentReviewedAt: string | null;
+  adjustmentReviewNote: string | null;
+}
+
+export interface OvertimeRecord {
+  id: number;
+  userId: number;
+  userSource: 'pcmazing_admin_users' | 'tblusers';
+  username: string;
+  fullName: string;
+  workDate: string;
+  timeIn: string | null;
+  timeOut: string | null;
+  hoursWorked: number | null;
+  overtimeHours: number;
+  overtimeStatus: OvertimeStatus;
+  employeeCode: string | null;
+  department: string | null;
+  overtimeReviewedAt: string | null;
+  overtimeReviewNote: string | null;
 }
 
 export interface PayrollEmployeeRecord {
@@ -53,6 +112,10 @@ export interface PayrollEmployeeRecord {
   positionTitle: string | null;
   salaryType: PayrollSalaryType;
   monthlySalary: number | null;
+  fixedMonthlySalary: number | null;
+  payoutMethod: PayrollPayoutMethod;
+  bankDetails: string | null;
+  qrImageUrl: string | null;
   payrollEnabled: boolean;
   todayStatus: 'not_started' | 'timed_in' | 'completed' | 'absent';
   todayTimeIn: string | null;
@@ -77,10 +140,35 @@ export interface PayrollPeriodRow {
   department: string | null;
   salaryType: PayrollSalaryType;
   salaryAmount: number | null;
+  fixedMonthlySalary: number | null;
   daysPresent: number;
   daysCompleted: number;
+  /** Full days count as 1; half days (4–&lt;9h) count as 0.5. */
+  paidDayUnits: number;
   totalHours: number;
+  approvedOvertimeHours: number;
+  pendingOvertimeHours: number;
   estimatedPay: number;
+  payslipPeriod: PayrollSalaryType;
+  periodDateFrom: string;
+  periodDateTo: string;
+}
+
+export interface PayrollOverlapItem {
+  userId: number;
+  userSource: string;
+  fullName: string;
+  estimatedPay: number;
+  runId: number;
+  label: string;
+  dateFrom: string;
+  dateTo: string;
+  exactMatch: boolean;
+}
+
+export interface PayrollSettings {
+  workWeek: PayrollWorkWeek;
+  undertimeGraceMinutes: number;
 }
 
 export interface EmployeePayslipItem {
@@ -111,7 +199,16 @@ export interface TimeClockStatus {
   message: string;
   /** Authoritative server timestamp (ISO). Never use device clock for punches. */
   serverNow: string;
+  /** Minutes before 9h that still count as a full paid day. */
+  undertimeGraceMinutes: number;
 }
+
+/** Hours required for a full paid day (and OT threshold). */
+const FULL_DAY_HOURS = 9;
+/** Minimum hours for half-day pay (half of daily amount). */
+const HALF_DAY_MIN_HOURS = 4;
+/** Ordinary overtime multiplier (Philippines Labor Code default for regular OT). */
+const OVERTIME_MULTIPLIER = 1.25;
 
 const EMPTY_PAYROLL: PayrollProfile = {
   employeeCode: null,
@@ -119,6 +216,10 @@ const EMPTY_PAYROLL: PayrollProfile = {
   positionTitle: null,
   salaryType: 'monthly',
   monthlySalary: null,
+  fixedMonthlySalary: null,
+  payoutMethod: 'cash',
+  bankDetails: null,
+  qrImageUrl: null,
   payrollEnabled: false,
 };
 
@@ -128,6 +229,43 @@ export class PayrollService {
 
   async ensureReady(): Promise<void> {
     await ensurePayrollTables(this.databaseService);
+  }
+
+  async getSettings(): Promise<PayrollSettings> {
+    await this.ensureReady();
+    const result = await this.databaseService.query<{
+      work_week: string;
+      undertime_grace_minutes: string | number | null;
+    }>(
+      `SELECT work_week, undertime_grace_minutes
+       FROM pcmazing_payroll_settings WHERE id = 1 LIMIT 1`,
+    );
+    return {
+      workWeek: this.normalizeWorkWeek(result.rows[0]?.work_week),
+      undertimeGraceMinutes: this.normalizeUndertimeGrace(result.rows[0]?.undertime_grace_minutes),
+    };
+  }
+
+  async updateSettings(input: {
+    workWeek?: string;
+    undertimeGraceMinutes?: number;
+  }): Promise<PayrollSettings> {
+    await this.ensureReady();
+    const current = await this.getSettings();
+    const workWeek = this.normalizeWorkWeek(input.workWeek ?? current.workWeek);
+    const undertimeGraceMinutes = this.normalizeUndertimeGrace(
+      input.undertimeGraceMinutes ?? current.undertimeGraceMinutes,
+    );
+    await this.databaseService.query(
+      `INSERT INTO pcmazing_payroll_settings (id, work_week, undertime_grace_minutes, updated_at)
+       VALUES (1, $1, $2, NOW())
+       ON CONFLICT (id) DO UPDATE SET
+         work_week = EXCLUDED.work_week,
+         undertime_grace_minutes = EXCLUDED.undertime_grace_minutes,
+         updated_at = NOW()`,
+      [workWeek, undertimeGraceMinutes],
+    );
+    return { workWeek, undertimeGraceMinutes };
   }
 
   async getProfilesForUsers(
@@ -154,10 +292,15 @@ export class PayrollService {
       position_title: string | null;
       salary_type: string | null;
       monthly_salary: string | null;
+      fixed_monthly_salary: string | null;
+      payout_method: string | null;
+      bank_details: string | null;
+      qr_image_url: string | null;
       payroll_enabled: boolean;
     }>(
       `SELECT user_id, user_source, employee_code, department, position_title, salary_type,
-              monthly_salary, payroll_enabled
+              monthly_salary, fixed_monthly_salary, payout_method, bank_details, qr_image_url,
+              payroll_enabled
        FROM pcmazing_user_payroll
        WHERE (user_id, user_source) IN (${tuples.join(', ')})`,
       params,
@@ -178,9 +321,14 @@ export class PayrollService {
       position_title: string | null;
       salary_type: string | null;
       monthly_salary: string | null;
+      fixed_monthly_salary: string | null;
+      payout_method: string | null;
+      bank_details: string | null;
+      qr_image_url: string | null;
       payroll_enabled: boolean;
     }>(
-      `SELECT employee_code, department, position_title, salary_type, monthly_salary, payroll_enabled
+      `SELECT employee_code, department, position_title, salary_type, monthly_salary,
+              fixed_monthly_salary, payout_method, bank_details, qr_image_url, payroll_enabled
        FROM pcmazing_user_payroll
        WHERE user_id = $1 AND user_source = $2
        LIMIT 1`,
@@ -212,6 +360,20 @@ export class PayrollService {
           ? null
           : Number(dto.monthlySalary)
         : existing.monthlySalary;
+    const fixedMonthlySalary =
+      dto.fixedMonthlySalary !== undefined
+        ? dto.fixedMonthlySalary == null
+          ? null
+          : Number(dto.fixedMonthlySalary)
+        : existing.fixedMonthlySalary;
+    const payoutMethod =
+      dto.payoutMethod !== undefined
+        ? this.normalizePayoutMethod(dto.payoutMethod)
+        : existing.payoutMethod;
+    const bankDetails =
+      dto.bankDetails !== undefined
+        ? dto.bankDetails?.trim() || null
+        : existing.bankDetails;
     const payrollEnabled =
       dto.payrollEnabled !== undefined ? Boolean(dto.payrollEnabled) : existing.payrollEnabled;
 
@@ -221,20 +383,29 @@ export class PayrollService {
       position_title: string | null;
       salary_type: string | null;
       monthly_salary: string | null;
+      fixed_monthly_salary: string | null;
+      payout_method: string | null;
+      bank_details: string | null;
+      qr_image_url: string | null;
       payroll_enabled: boolean;
     }>(
       `INSERT INTO pcmazing_user_payroll (
-         user_id, user_source, employee_code, department, position_title, salary_type, monthly_salary, payroll_enabled
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         user_id, user_source, employee_code, department, position_title, salary_type, monthly_salary,
+         fixed_monthly_salary, payout_method, bank_details, payroll_enabled
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        ON CONFLICT (user_id, user_source) DO UPDATE SET
          employee_code = EXCLUDED.employee_code,
          department = EXCLUDED.department,
          position_title = EXCLUDED.position_title,
          salary_type = EXCLUDED.salary_type,
          monthly_salary = EXCLUDED.monthly_salary,
+         fixed_monthly_salary = EXCLUDED.fixed_monthly_salary,
+         payout_method = EXCLUDED.payout_method,
+         bank_details = EXCLUDED.bank_details,
          payroll_enabled = EXCLUDED.payroll_enabled,
          updated_at = NOW()
-       RETURNING employee_code, department, position_title, salary_type, monthly_salary, payroll_enabled`,
+       RETURNING employee_code, department, position_title, salary_type, monthly_salary,
+                 fixed_monthly_salary, payout_method, bank_details, qr_image_url, payroll_enabled`,
       [
         userId,
         userSource,
@@ -243,11 +414,54 @@ export class PayrollService {
         positionTitle,
         salaryType,
         monthlySalary,
+        fixedMonthlySalary,
+        payoutMethod,
+        bankDetails,
         payrollEnabled,
       ],
     );
 
     return this.mapProfile(result.rows[0]);
+  }
+
+  async uploadQrImage(
+    userId: number,
+    userSource: AdminUserRecord['source'],
+    file: Express.Multer.File,
+  ): Promise<PayrollProfile> {
+    await this.ensureReady();
+    const existing = await this.getProfile(userId, userSource);
+    const qrImageUrl = await savePayrollQrImageFile(userId, file);
+    await deletePayrollQrImageFile(existing.qrImageUrl);
+
+    await this.databaseService.query(
+      `INSERT INTO pcmazing_user_payroll (user_id, user_source, qr_image_url, payroll_enabled)
+       VALUES ($1, $2, $3, FALSE)
+       ON CONFLICT (user_id, user_source) DO UPDATE SET
+         qr_image_url = EXCLUDED.qr_image_url,
+         updated_at = NOW()`,
+      [userId, userSource, qrImageUrl],
+    );
+
+    return this.getProfile(userId, userSource);
+  }
+
+  async removeQrImage(
+    userId: number,
+    userSource: AdminUserRecord['source'],
+  ): Promise<PayrollProfile> {
+    await this.ensureReady();
+    const existing = await this.getProfile(userId, userSource);
+    await deletePayrollQrImageFile(existing.qrImageUrl);
+
+    await this.databaseService.query(
+      `UPDATE pcmazing_user_payroll
+       SET qr_image_url = NULL, updated_at = NOW()
+       WHERE user_id = $1 AND user_source = $2`,
+      [userId, userSource],
+    );
+
+    return this.getProfile(userId, userSource);
   }
 
   async listAttendance(pageRaw?: string, limitRaw?: string, workDate?: string) {
@@ -275,12 +489,16 @@ export class PayrollService {
       time_out: string | null;
       time_in_selfie_url: string | null;
       time_out_selfie_url: string | null;
+      overtime_hours: string | number | null;
+      overtime_status: string | null;
+      adjustment_status: string | null;
       employee_code: string | null;
       department: string | null;
     }>(
       `SELECT a.id, a.user_id, a.user_source, a.username, a.work_date::text AS work_date,
               a.time_in::text AS time_in, a.time_out::text AS time_out,
               a.time_in_selfie_url, a.time_out_selfie_url,
+              a.overtime_hours, a.overtime_status, a.adjustment_status,
               p.employee_code, p.department
        FROM pcmazing_attendance a
        LEFT JOIN pcmazing_user_payroll p
@@ -313,6 +531,9 @@ export class PayrollService {
         department: row.department,
         timeInSelfieUrl: row.time_in_selfie_url,
         timeOutSelfieUrl: row.time_out_selfie_url,
+        overtimeHours: Number(row.overtime_hours ?? 0) || 0,
+        overtimeStatus: this.normalizeOvertimeStatus(row.overtime_status),
+        adjustmentStatus: this.normalizeOvertimeStatus(row.adjustment_status),
       });
     }
 
@@ -325,6 +546,369 @@ export class PayrollService {
         totalPages: Math.max(1, Math.ceil(total / limit)),
       },
       workDate: date,
+    };
+  }
+
+  async listOvertime(statusRaw?: string, pageRaw?: string, limitRaw?: string) {
+    await this.ensureReady();
+
+    const page = Math.max(1, Number(pageRaw) || 1);
+    const limit = Math.min(100, Math.max(1, Number(limitRaw) || 50));
+    const offset = (page - 1) * limit;
+    const status = this.normalizeOvertimeStatus(statusRaw || 'pending');
+    const filterStatus = status === 'none' ? 'pending' : status;
+
+    const countResult = await this.databaseService.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+       FROM pcmazing_attendance
+       WHERE overtime_status = $1
+         AND overtime_hours > 0`,
+      [filterStatus],
+    );
+    const total = Number(countResult.rows[0]?.count ?? 0);
+
+    const result = await this.databaseService.query<{
+      id: number;
+      user_id: number;
+      user_source: 'pcmazing_admin_users' | 'tblusers';
+      username: string;
+      work_date: string;
+      time_in: string | null;
+      time_out: string | null;
+      overtime_hours: string | number;
+      overtime_status: string;
+      overtime_reviewed_at: string | null;
+      overtime_review_note: string | null;
+      employee_code: string | null;
+      department: string | null;
+    }>(
+      `SELECT a.id, a.user_id, a.user_source, a.username, a.work_date::text AS work_date,
+              a.time_in::text AS time_in, a.time_out::text AS time_out,
+              a.overtime_hours, a.overtime_status,
+              a.overtime_reviewed_at::text AS overtime_reviewed_at,
+              a.overtime_review_note,
+              p.employee_code, p.department
+       FROM pcmazing_attendance a
+       LEFT JOIN pcmazing_user_payroll p
+         ON p.user_id = a.user_id AND p.user_source = a.user_source
+       WHERE a.overtime_status = $1
+         AND a.overtime_hours > 0
+       ORDER BY a.work_date DESC, a.id DESC
+       LIMIT $2 OFFSET $3`,
+      [filterStatus, limit, offset],
+    );
+
+    const items: OvertimeRecord[] = [];
+    for (const row of result.rows) {
+      const fullName = await this.resolveFullName(row.user_id, row.user_source, row.username);
+      items.push({
+        id: row.id,
+        userId: row.user_id,
+        userSource: row.user_source,
+        username: row.username,
+        fullName,
+        workDate: row.work_date,
+        timeIn: row.time_in,
+        timeOut: row.time_out,
+        hoursWorked: this.computeHours(row.time_in, row.time_out),
+        overtimeHours: Number(row.overtime_hours) || 0,
+        overtimeStatus: this.normalizeOvertimeStatus(row.overtime_status),
+        employeeCode: row.employee_code,
+        department: row.department,
+        overtimeReviewedAt: row.overtime_reviewed_at,
+        overtimeReviewNote: row.overtime_review_note,
+      });
+    }
+
+    return {
+      items,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
+      status: filterStatus,
+    };
+  }
+
+  async reviewOvertime(
+    attendanceId: number,
+    status: 'approved' | 'rejected',
+    note?: string,
+    reviewedByUserId?: number,
+  ) {
+    await this.ensureReady();
+
+    if (!Number.isFinite(attendanceId) || attendanceId <= 0) {
+      throw new BadRequestException('Invalid attendance id.');
+    }
+
+    const existing = await this.databaseService.query<{
+      id: number;
+      overtime_hours: string | number;
+      overtime_status: string;
+    }>(
+      `SELECT id, overtime_hours, overtime_status
+       FROM pcmazing_attendance
+       WHERE id = $1
+       LIMIT 1`,
+      [attendanceId],
+    );
+    const row = existing.rows[0];
+    if (!row) {
+      throw new NotFoundException('Attendance record not found.');
+    }
+    if ((Number(row.overtime_hours) || 0) <= 0) {
+      throw new BadRequestException('This attendance record has no overtime to review.');
+    }
+
+    const result = await this.databaseService.query<{
+      id: number;
+      overtime_status: string;
+      overtime_hours: string | number;
+      overtime_reviewed_at: string | null;
+      overtime_review_note: string | null;
+    }>(
+      `UPDATE pcmazing_attendance
+       SET overtime_status = $2,
+           overtime_reviewed_by = $3,
+           overtime_reviewed_at = NOW(),
+           overtime_review_note = $4,
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING id, overtime_status, overtime_hours,
+                 overtime_reviewed_at::text AS overtime_reviewed_at,
+                 overtime_review_note`,
+      [attendanceId, status, reviewedByUserId ?? null, note?.trim() || null],
+    );
+
+    const updated = result.rows[0];
+    return {
+      id: updated.id,
+      overtimeHours: Number(updated.overtime_hours) || 0,
+      overtimeStatus: this.normalizeOvertimeStatus(updated.overtime_status),
+      overtimeReviewedAt: updated.overtime_reviewed_at,
+      overtimeReviewNote: updated.overtime_review_note,
+    };
+  }
+
+  async listAdjustments(statusRaw?: string, pageRaw?: string, limitRaw?: string) {
+    await this.ensureReady();
+
+    const page = Math.max(1, Number(pageRaw) || 1);
+    const limit = Math.min(100, Math.max(1, Number(limitRaw) || 50));
+    const offset = (page - 1) * limit;
+    const status = this.normalizeOvertimeStatus(statusRaw || 'pending');
+    const filterStatus = status === 'none' ? 'pending' : status;
+
+    const countResult = await this.databaseService.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+       FROM pcmazing_attendance
+       WHERE adjustment_status = $1`,
+      [filterStatus],
+    );
+    const total = Number(countResult.rows[0]?.count ?? 0);
+
+    const result = await this.databaseService.query<{
+      id: number;
+      user_id: number;
+      user_source: 'pcmazing_admin_users' | 'tblusers';
+      username: string;
+      work_date: string;
+      time_in: string | null;
+      time_out: string | null;
+      requested_time_out: string | null;
+      time_in_selfie_url: string | null;
+      adjustment_selfie_url: string | null;
+      adjustment_note: string | null;
+      undertime_category: string | null;
+      adjustment_status: string;
+      adjustment_reviewed_at: string | null;
+      adjustment_review_note: string | null;
+      employee_code: string | null;
+      department: string | null;
+    }>(
+      `SELECT a.id, a.user_id, a.user_source, a.username, a.work_date::text AS work_date,
+              a.time_in::text AS time_in, a.time_out::text AS time_out,
+              a.requested_time_out::text AS requested_time_out,
+              a.time_in_selfie_url, a.adjustment_selfie_url, a.adjustment_note,
+              a.undertime_category, a.adjustment_status,
+              a.adjustment_reviewed_at::text AS adjustment_reviewed_at,
+              a.adjustment_review_note,
+              p.employee_code, p.department
+       FROM pcmazing_attendance a
+       LEFT JOIN pcmazing_user_payroll p
+         ON p.user_id = a.user_id AND p.user_source = a.user_source
+       WHERE a.adjustment_status = $1
+       ORDER BY a.work_date DESC, a.id DESC
+       LIMIT $2 OFFSET $3`,
+      [filterStatus, limit, offset],
+    );
+
+    const items: AdjustmentRecord[] = [];
+    for (const row of result.rows) {
+      const fullName = await this.resolveFullName(row.user_id, row.user_source, row.username);
+      items.push({
+        id: row.id,
+        userId: row.user_id,
+        userSource: row.user_source,
+        username: row.username,
+        fullName,
+        workDate: row.work_date,
+        timeIn: row.time_in,
+        timeOut: row.time_out,
+        requestedTimeOut: row.requested_time_out,
+        hoursWorked: this.computeHours(row.time_in, row.requested_time_out ?? row.time_out),
+        employeeCode: row.employee_code,
+        department: row.department,
+        timeInSelfieUrl: row.time_in_selfie_url,
+        adjustmentSelfieUrl: row.adjustment_selfie_url,
+        adjustmentNote: row.adjustment_note,
+        undertimeCategory: this.normalizeUndertimeCategory(row.undertime_category),
+        adjustmentStatus: this.normalizeOvertimeStatus(row.adjustment_status),
+        adjustmentReviewedAt: row.adjustment_reviewed_at,
+        adjustmentReviewNote: row.adjustment_review_note,
+      });
+    }
+
+    return {
+      items,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
+      status: filterStatus,
+    };
+  }
+
+  async reviewAdjustment(
+    attendanceId: number,
+    status: 'approved' | 'rejected',
+    note?: string,
+    reviewedByUserId?: number,
+  ) {
+    await this.ensureReady();
+
+    if (!Number.isFinite(attendanceId) || attendanceId <= 0) {
+      throw new BadRequestException('Invalid attendance id.');
+    }
+
+    const existing = await this.databaseService.query<{
+      id: number;
+      time_in: string | null;
+      time_out: string | null;
+      requested_time_out: string | null;
+      adjustment_selfie_url: string | null;
+      adjustment_status: string;
+    }>(
+      `SELECT id, time_in::text AS time_in, time_out::text AS time_out,
+              requested_time_out::text AS requested_time_out,
+              adjustment_selfie_url, adjustment_status
+       FROM pcmazing_attendance
+       WHERE id = $1
+       LIMIT 1`,
+      [attendanceId],
+    );
+    const row = existing.rows[0];
+    if (!row) {
+      throw new NotFoundException('Attendance record not found.');
+    }
+
+    const currentStatus = this.normalizeOvertimeStatus(row.adjustment_status);
+    if (currentStatus !== 'pending' && currentStatus !== 'approved' && currentStatus !== 'rejected') {
+      throw new BadRequestException('There is no time-out adjustment to review.');
+    }
+
+    if (status === 'approved') {
+      if (row.time_out) {
+        throw new BadRequestException('This day already has a time out. Reject the request instead.');
+      }
+      if (!row.requested_time_out) {
+        throw new BadRequestException('This request is missing the claimed time out.');
+      }
+
+      const result = await this.databaseService.query<{
+        id: number;
+        time_in: string | null;
+        time_out: string | null;
+        requested_time_out: string | null;
+        adjustment_status: string;
+        adjustment_reviewed_at: string | null;
+        adjustment_review_note: string | null;
+        adjustment_selfie_url: string | null;
+      }>(
+        `UPDATE pcmazing_attendance
+         SET time_out = requested_time_out,
+             time_out_selfie_url = COALESCE(adjustment_selfie_url, time_out_selfie_url),
+             adjustment_status = 'approved',
+             adjustment_reviewed_by = $2,
+             adjustment_reviewed_at = NOW(),
+             adjustment_review_note = $3,
+             updated_at = NOW()
+         WHERE id = $1
+           AND time_out IS NULL
+           AND requested_time_out IS NOT NULL
+         RETURNING id, time_in::text AS time_in, time_out::text AS time_out,
+                   requested_time_out::text AS requested_time_out,
+                   adjustment_status,
+                   adjustment_reviewed_at::text AS adjustment_reviewed_at,
+                   adjustment_review_note, adjustment_selfie_url`,
+        [attendanceId, reviewedByUserId ?? null, note?.trim() || null],
+      );
+
+      const updated = result.rows[0];
+      if (!updated) {
+        throw new BadRequestException('Unable to approve this time-out adjustment.');
+      }
+
+      await this.syncOvertimeAfterTimeOut(updated.id, updated.time_in, updated.time_out);
+      return {
+        id: updated.id,
+        timeOut: updated.time_out,
+        requestedTimeOut: updated.requested_time_out,
+        adjustmentStatus: this.normalizeOvertimeStatus(updated.adjustment_status),
+        adjustmentReviewedAt: updated.adjustment_reviewed_at,
+        adjustmentReviewNote: updated.adjustment_review_note,
+        adjustmentSelfieUrl: updated.adjustment_selfie_url,
+      };
+    }
+
+    const rejected = await this.databaseService.query<{
+      id: number;
+      time_out: string | null;
+      requested_time_out: string | null;
+      adjustment_status: string;
+      adjustment_reviewed_at: string | null;
+      adjustment_review_note: string | null;
+      adjustment_selfie_url: string | null;
+    }>(
+      `UPDATE pcmazing_attendance
+       SET adjustment_status = 'rejected',
+           adjustment_reviewed_by = $2,
+           adjustment_reviewed_at = NOW(),
+           adjustment_review_note = $3,
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING id, time_out::text AS time_out,
+                 requested_time_out::text AS requested_time_out,
+                 adjustment_status,
+                 adjustment_reviewed_at::text AS adjustment_reviewed_at,
+                 adjustment_review_note, adjustment_selfie_url`,
+      [attendanceId, reviewedByUserId ?? null, note?.trim() || null],
+    );
+
+    const updated = rejected.rows[0];
+    return {
+      id: updated.id,
+      timeOut: updated.time_out,
+      requestedTimeOut: updated.requested_time_out,
+      adjustmentStatus: this.normalizeOvertimeStatus(updated.adjustment_status),
+      adjustmentReviewedAt: updated.adjustment_reviewed_at,
+      adjustmentReviewNote: updated.adjustment_review_note,
+      adjustmentSelfieUrl: updated.adjustment_selfie_url,
     };
   }
 
@@ -376,10 +960,15 @@ export class PayrollService {
       position_title: string | null;
       salary_type: string | null;
       monthly_salary: string | null;
+      fixed_monthly_salary: string | null;
+      payout_method: string | null;
+      bank_details: string | null;
+      qr_image_url: string | null;
       payroll_enabled: boolean;
     }>(
       `SELECT user_id, user_source, employee_code, department, position_title, salary_type,
-              monthly_salary, payroll_enabled
+              monthly_salary, fixed_monthly_salary, payout_method, bank_details, qr_image_url,
+              payroll_enabled
        FROM pcmazing_user_payroll
        WHERE payroll_enabled = TRUE
        ORDER BY employee_code NULLS LAST, user_id ASC`,
@@ -412,6 +1001,11 @@ export class PayrollService {
         positionTitle: row.position_title,
         salaryType: this.normalizeSalaryType(row.salary_type),
         monthlySalary: row.monthly_salary == null ? null : Number(row.monthly_salary),
+        fixedMonthlySalary:
+          row.fixed_monthly_salary == null ? null : Number(row.fixed_monthly_salary),
+        payoutMethod: this.normalizePayoutMethod(row.payout_method),
+        bankDetails: row.bank_details,
+        qrImageUrl: row.qr_image_url,
         payrollEnabled: Boolean(row.payroll_enabled),
         todayStatus,
         todayTimeIn: attendance?.time_in ?? null,
@@ -439,16 +1033,23 @@ export class PayrollService {
     return items;
   }
 
-  async getPeriodSummary(dateFromRaw?: string, dateToRaw?: string) {
-    await this.ensureReady();
-
-    const today = manilaWorkDate();
-    const dateFrom = dateFromRaw?.trim() || today.slice(0, 8) + '01';
-    const dateTo = dateToRaw?.trim() || today;
-    if (dateFrom > dateTo) {
-      throw new BadRequestException('dateFrom must be on or before dateTo.');
+  private payTypeForRun(
+    employee: PayrollEmployeeRecord,
+    periodType: PayrollSalaryType,
+  ): PayrollSalaryType {
+    if (employee.fixedMonthlySalary != null && employee.fixedMonthlySalary > 0) {
+      return periodType;
     }
+    return employee.salaryType;
+  }
 
+  private async computeRunRows(
+    dateFrom: string,
+    dateTo: string,
+    periodType: PayrollSalaryType,
+    workWeek: PayrollWorkWeek,
+    undertimeGraceMinutes = 30,
+  ) {
     const employees = await this.listEmployees('');
     const attendance = await this.databaseService.query<{
       user_id: number;
@@ -456,9 +1057,12 @@ export class PayrollService {
       work_date: string;
       time_in: string | null;
       time_out: string | null;
+      overtime_hours: string | number | null;
+      overtime_status: string | null;
     }>(
       `SELECT user_id, user_source, work_date::text AS work_date,
-              time_in::text AS time_in, time_out::text AS time_out
+              time_in::text AS time_in, time_out::text AS time_out,
+              overtime_hours, overtime_status
        FROM pcmazing_attendance
        WHERE work_date BETWEEN $1::date AND $2::date
          AND time_in IS NOT NULL
@@ -474,144 +1078,396 @@ export class PayrollService {
       byUser.set(key, list);
     }
 
+    const dayOffsByUser = await this.loadDayOffDatesByUser(dateFrom, dateTo);
     const periodDays = this.countInclusiveDays(dateFrom, dateTo);
+    const calendarDays = this.eachIsoDate(dateFrom, dateTo);
+
     const rows: PayrollPeriodRow[] = employees.map((employee) => {
-      const punches = byUser.get(`${employee.userSource}:${employee.userId}`) ?? [];
-      let totalHours = 0;
-      let daysCompleted = 0;
-
-      for (const punch of punches) {
-        const hours = this.computeHours(punch.time_in, punch.time_out);
-        if (hours != null) {
-          totalHours += hours;
-          daysCompleted += 1;
-        } else if (punch.time_in) {
-          totalHours += 0;
-        }
-      }
-
-      const daysPresent = punches.length;
-      const estimatedPay = this.estimatePay({
-        salaryType: employee.salaryType,
-        salaryAmount: employee.monthlySalary,
-        totalHours,
-        daysCompleted,
-        periodDays,
-      });
-
-      return {
-        userId: employee.userId,
-        userSource: employee.userSource,
-        username: employee.username,
-        fullName: employee.fullName,
-        employeeCode: employee.employeeCode,
-        department: employee.department,
-        salaryType: employee.salaryType,
-        salaryAmount: employee.monthlySalary,
-        daysPresent,
-        daysCompleted,
-        totalHours: Math.round(totalHours * 100) / 100,
-        estimatedPay: Math.round(estimatedPay * 100) / 100,
-      };
+      const key = `${employee.userSource}:${employee.userId}`;
+      const punches = byUser.get(key) ?? [];
+      const dayOffDates = dayOffsByUser.get(key) ?? new Set<string>();
+      const restDayCount = calendarDays.filter((day) => this.isRestDay(day, workWeek, dayOffDates)).length;
+      const weeklyHourBase = this.weeklyHourBase(workWeek, periodDays, restDayCount);
+      const payType = this.payTypeForRun(employee, periodType);
+      return this.buildPeriodRow(
+        employee,
+        punches,
+        payType,
+        dateFrom,
+        dateTo,
+        weeklyHourBase,
+        undertimeGraceMinutes,
+      );
     });
 
     rows.sort((a, b) => a.fullName.localeCompare(b.fullName));
 
     return {
-      dateFrom,
-      dateTo,
-      periodDays,
-      items: rows,
+      rows,
       totals: {
         employees: rows.length,
         totalHours: Math.round(rows.reduce((sum, row) => sum + row.totalHours, 0) * 100) / 100,
+        approvedOvertimeHours:
+          Math.round(rows.reduce((sum, row) => sum + row.approvedOvertimeHours, 0) * 100) / 100,
+        pendingOvertimeHours:
+          Math.round(rows.reduce((sum, row) => sum + row.pendingOvertimeHours, 0) * 100) / 100,
         estimatedPay: Math.round(rows.reduce((sum, row) => sum + row.estimatedPay, 0) * 100) / 100,
       },
     };
   }
 
+  private async findOverlappingPayslips(
+    dateFrom: string,
+    dateTo: string,
+  ): Promise<PayrollOverlapItem[]> {
+    const result = await this.databaseService.query<{
+      user_id: number;
+      user_source: string;
+      full_name: string;
+      estimated_pay: string;
+      run_id: number;
+      label: string;
+      date_from: string;
+      date_to: string;
+    }>(
+      `SELECT p.user_id, p.user_source, p.full_name, p.estimated_pay::text AS estimated_pay,
+              r.id AS run_id, r.label, r.date_from::text AS date_from, r.date_to::text AS date_to
+       FROM pcmazing_generated_payslips p
+       INNER JOIN pcmazing_payroll_runs r ON r.id = p.run_id
+       WHERE r.date_from <= $2::date
+         AND r.date_to >= $1::date
+       ORDER BY p.full_name ASC, r.date_from ASC`,
+      [dateFrom, dateTo],
+    );
+
+    return result.rows.map((row) => ({
+      userId: Number(row.user_id),
+      userSource: row.user_source,
+      fullName: row.full_name,
+      estimatedPay: Math.round(Number(row.estimated_pay || 0) * 100) / 100,
+      runId: Number(row.run_id),
+      label: row.label,
+      dateFrom: String(row.date_from).slice(0, 10),
+      dateTo: String(row.date_to).slice(0, 10),
+      exactMatch:
+        String(row.date_from).slice(0, 10) === dateFrom && String(row.date_to).slice(0, 10) === dateTo,
+    }));
+  }
+
+  async getPeriodSummary(dateFromRaw?: string, dateToRaw?: string, periodTypeRaw?: string) {
+    await this.ensureReady();
+
+    const today = manilaWorkDate();
+    const dateFrom = dateFromRaw?.trim() || today.slice(0, 8) + '01';
+    const dateTo = dateToRaw?.trim() || today;
+    if (dateFrom > dateTo) {
+      throw new BadRequestException('dateFrom must be on or before dateTo.');
+    }
+
+    const periodType = this.normalizeSalaryType(periodTypeRaw || 'cutoff');
+    const settings = await this.getSettings();
+    const computed = await this.computeRunRows(
+      dateFrom,
+      dateTo,
+      periodType,
+      settings.workWeek,
+      settings.undertimeGraceMinutes,
+    );
+    const overlaps = await this.findOverlappingPayslips(dateFrom, dateTo);
+
+    return {
+      dateFrom,
+      dateTo,
+      periodType,
+      workWeek: settings.workWeek,
+      undertimeGraceMinutes: settings.undertimeGraceMinutes,
+      periodDays: this.countInclusiveDays(dateFrom, dateTo),
+      items: computed.rows,
+      totals: computed.totals,
+      overlaps,
+    };
+  }
+
   /**
    * Persist period pay as generated payslips so employees can see them in ESS.
-   * Re-generating the same date range replaces the previous run.
+   * Dates come from the payroll run (Period Type). Pay formula uses each employee's profile.
+   * Fixed monthly is split by the run period type (weekly / 4, semi / 2, monthly full).
    */
   async generatePayslips(
     dateFromRaw?: string,
     dateToRaw?: string,
     generatedBy?: { userId: number; username: string },
+    _employeePeriods?: GeneratePayslipEmployeeDto[],
+    periodTypeRaw?: string,
+    confirmOverlap?: boolean,
   ) {
-    const summary = await this.getPeriodSummary(dateFromRaw, dateToRaw);
-    const label = this.formatPeriodLabel(summary.dateFrom, summary.dateTo);
-
-    const existing = await this.databaseService.query<{ id: number }>(
-      `SELECT id FROM pcmazing_payroll_runs
-       WHERE date_from = $1::date AND date_to = $2::date
-       LIMIT 1`,
-      [summary.dateFrom, summary.dateTo],
-    );
-    const existingId = existing.rows[0]?.id;
-    if (existingId != null) {
-      await this.databaseService.query(`DELETE FROM pcmazing_payroll_runs WHERE id = $1`, [
-        existingId,
-      ]);
+    const today = manilaWorkDate();
+    const dateFrom = dateFromRaw?.trim() || today.slice(0, 8) + '01';
+    const dateTo = dateToRaw?.trim() || today;
+    if (dateFrom > dateTo) {
+      throw new BadRequestException('dateFrom must be on or before dateTo.');
     }
 
-    const run = await this.databaseService.query<{ id: number }>(
-      `INSERT INTO pcmazing_payroll_runs (
-         date_from, date_to, period_days, label, generated_by_user_id, generated_by_username
-       ) VALUES ($1::date, $2::date, $3, $4, $5, $6)
-       RETURNING id`,
-      [
-        summary.dateFrom,
-        summary.dateTo,
-        summary.periodDays,
-        label,
-        generatedBy?.userId ?? null,
-        generatedBy?.username ?? null,
-      ],
-    );
-    const runId = Number(run.rows[0]?.id);
-    if (!Number.isFinite(runId) || runId <= 0) {
-      throw new BadRequestException('Unable to create payroll run.');
+    const periodType = this.normalizeSalaryType(periodTypeRaw || 'cutoff');
+    const overlaps = await this.findOverlappingPayslips(dateFrom, dateTo);
+    const blocking = overlaps.filter((item) => !item.exactMatch);
+    if (blocking.length > 0 && !confirmOverlap) {
+      throw new ConflictException({
+        message:
+          'These dates overlap existing payslips. Confirm to generate anyway, or pick a period that is not already paid.',
+        overlaps: blocking,
+      });
     }
 
-    for (const item of summary.items) {
-      await this.databaseService.query(
-        `INSERT INTO pcmazing_generated_payslips (
-           run_id, user_id, user_source, username, full_name, employee_code, department,
-           salary_type, salary_amount, days_present, days_completed, total_hours,
-           estimated_pay, payroll_enabled
-         ) VALUES (
-           $1, $2, $3, $4, $5, $6, $7,
-           $8, $9, $10, $11, $12,
-           $13, TRUE
-         )`,
-        [
-          runId,
-          item.userId,
-          item.userSource,
-          item.username,
-          item.fullName,
-          item.employeeCode,
-          item.department,
-          item.salaryType,
-          item.salaryAmount,
-          item.daysPresent,
-          item.daysCompleted,
-          item.totalHours,
-          item.estimatedPay,
-        ],
+    const settings = await this.getSettings();
+    const computed = await this.computeRunRows(
+      dateFrom,
+      dateTo,
+      periodType,
+      settings.workWeek,
+      settings.undertimeGraceMinutes,
+    );
+    const rows = computed.rows;
+
+    const grouped = new Map<string, PayrollPeriodRow[]>();
+    for (const row of rows) {
+      const key = `${row.periodDateFrom}|${row.periodDateTo}`;
+      const list = grouped.get(key) ?? [];
+      list.push(row);
+      grouped.set(key, list);
+    }
+
+    let runId = 0;
+    let replaced = false;
+    for (const group of grouped.values()) {
+      const groupFrom = group[0].periodDateFrom;
+      const groupTo = group[0].periodDateTo;
+      const periodDays = this.countInclusiveDays(groupFrom, groupTo);
+      const label = this.formatPeriodLabel(groupFrom, groupTo);
+      const existing = await this.databaseService.query<{ id: number }>(
+        `SELECT id FROM pcmazing_payroll_runs
+         WHERE date_from = $1::date AND date_to = $2::date
+         LIMIT 1`,
+        [groupFrom, groupTo],
       );
+      let groupRunId = existing.rows[0]?.id ?? null;
+      if (groupRunId == null) {
+        const created = await this.databaseService.query<{ id: number }>(
+          `INSERT INTO pcmazing_payroll_runs (
+             date_from, date_to, period_days, label, generated_by_user_id, generated_by_username
+           ) VALUES ($1::date, $2::date, $3, $4, $5, $6)
+           RETURNING id`,
+          [
+            groupFrom,
+            groupTo,
+            periodDays,
+            label,
+            generatedBy?.userId ?? null,
+            generatedBy?.username ?? null,
+          ],
+        );
+        groupRunId = Number(created.rows[0]?.id);
+      } else {
+        replaced = true;
+        await this.databaseService.query(
+          `UPDATE pcmazing_payroll_runs
+           SET period_days = $2, label = $3, generated_by_user_id = $4, generated_by_username = $5
+           WHERE id = $1`,
+          [groupRunId, periodDays, label, generatedBy?.userId ?? null, generatedBy?.username ?? null],
+        );
+      }
+
+      if (!Number.isFinite(Number(groupRunId)) || Number(groupRunId) <= 0) {
+        throw new BadRequestException('Unable to create payroll run.');
+      }
+
+      runId = Number(groupRunId);
+      for (const item of group) {
+        await this.databaseService.query(
+          `INSERT INTO pcmazing_generated_payslips (
+             run_id, user_id, user_source, username, full_name, employee_code, department,
+             salary_type, salary_amount, days_present, days_completed, total_hours,
+             estimated_pay, payroll_enabled
+           ) VALUES (
+             $1, $2, $3, $4, $5, $6, $7,
+             $8, $9, $10, $11, $12,
+             $13, TRUE
+           )
+           ON CONFLICT (run_id, user_id, user_source) DO UPDATE SET
+             username = EXCLUDED.username,
+             full_name = EXCLUDED.full_name,
+             employee_code = EXCLUDED.employee_code,
+             department = EXCLUDED.department,
+             salary_type = EXCLUDED.salary_type,
+             salary_amount = EXCLUDED.salary_amount,
+             days_present = EXCLUDED.days_present,
+             days_completed = EXCLUDED.days_completed,
+             total_hours = EXCLUDED.total_hours,
+             estimated_pay = EXCLUDED.estimated_pay,
+             payroll_enabled = TRUE`,
+          [
+            groupRunId,
+            item.userId,
+            item.userSource,
+            item.username,
+            item.fullName,
+            item.employeeCode,
+            item.department,
+            item.payslipPeriod,
+            item.fixedMonthlySalary ?? item.salaryAmount,
+            item.daysPresent,
+            item.daysCompleted,
+            item.totalHours,
+            item.estimatedPay,
+          ],
+        );
+      }
     }
 
+    const first = rows[0];
     return {
       runId,
-      label,
-      dateFrom: summary.dateFrom,
-      dateTo: summary.dateTo,
-      periodDays: summary.periodDays,
-      employeeCount: summary.items.length,
-      totals: summary.totals,
-      replaced: existingId != null,
+      label: first
+        ? this.formatPeriodLabel(first.periodDateFrom, first.periodDateTo)
+        : this.formatPeriodLabel(dateFrom, dateTo),
+      dateFrom,
+      dateTo,
+      periodDays: this.countInclusiveDays(dateFrom, dateTo),
+      employeeCount: rows.length,
+      totals: {
+        employees: rows.length,
+        totalHours: Math.round(rows.reduce((sum, row) => sum + row.totalHours, 0) * 100) / 100,
+        approvedOvertimeHours:
+          Math.round(rows.reduce((sum, row) => sum + row.approvedOvertimeHours, 0) * 100) / 100,
+        pendingOvertimeHours:
+          Math.round(rows.reduce((sum, row) => sum + row.pendingOvertimeHours, 0) * 100) / 100,
+        estimatedPay: Math.round(rows.reduce((sum, row) => sum + row.estimatedPay, 0) * 100) / 100,
+      },
+      replaced,
+      overlaps,
+    };
+  }
+
+  /**
+   * Draft payslips for the selected cutoff — same figures employees will see after generate,
+   * without persisting a payroll run.
+   */
+  async previewPayslips(
+    dateFromRaw?: string,
+    dateToRaw?: string,
+    employeePeriods?: GeneratePayslipEmployeeDto[],
+    periodTypeRaw?: string,
+  ) {
+    await this.ensureReady();
+
+    const today = manilaWorkDate();
+    const dateFrom = dateFromRaw?.trim() || today.slice(0, 8) + '01';
+    const dateTo = dateToRaw?.trim() || today;
+    if (dateFrom > dateTo) {
+      throw new BadRequestException('dateFrom must be on or before dateTo.');
+    }
+
+    const periodType = this.normalizeSalaryType(periodTypeRaw || 'cutoff');
+    const settings = await this.getSettings();
+    const employees = await this.listEmployees('');
+    const onlySpecified =
+      Array.isArray(employeePeriods) && employeePeriods.length > 0
+        ? new Set(employeePeriods.map((item) => `${item.userSource}:${item.userId}`))
+        : null;
+    const selectedEmployees = onlySpecified
+      ? employees.filter((employee) => onlySpecified.has(`${employee.userSource}:${employee.userId}`))
+      : employees;
+
+    if (selectedEmployees.length === 0) {
+      throw new BadRequestException('No employees selected for payslip preview.');
+    }
+
+    const attendance = await this.databaseService.query<{
+      user_id: number;
+      user_source: 'pcmazing_admin_users' | 'tblusers';
+      work_date: string;
+      time_in: string | null;
+      time_out: string | null;
+      overtime_hours: string | number | null;
+      overtime_status: string | null;
+    }>(
+      `SELECT user_id, user_source, work_date::text AS work_date,
+              time_in::text AS time_in, time_out::text AS time_out,
+              overtime_hours, overtime_status
+       FROM pcmazing_attendance
+       WHERE work_date BETWEEN $1::date AND $2::date
+         AND time_in IS NOT NULL
+       ORDER BY work_date ASC`,
+      [dateFrom, dateTo],
+    );
+
+    const byUser = new Map<string, typeof attendance.rows>();
+    for (const row of attendance.rows) {
+      const key = `${row.user_source}:${row.user_id}`;
+      const list = byUser.get(key) ?? [];
+      list.push(row);
+      byUser.set(key, list);
+    }
+
+    const dayOffsByUser = await this.loadDayOffDatesByUser(dateFrom, dateTo);
+    const overlaps = await this.findOverlappingPayslips(dateFrom, dateTo);
+    const generatedAt = new Date().toLocaleString('en-PH', {
+      timeZone: 'Asia/Manila',
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    });
+    const periodDays = this.countInclusiveDays(dateFrom, dateTo);
+    const label = this.formatPeriodLabel(dateFrom, dateTo);
+
+    const items = selectedEmployees
+      .map((employee) => {
+        const key = `${employee.userSource}:${employee.userId}`;
+        const payType = this.payTypeForRun(employee, periodType);
+        const punches = byUser.get(key) ?? [];
+        const dayOffDates = dayOffsByUser.get(key) ?? new Set<string>();
+        const { days, totals } = this.buildPayslipDaysAndTotals({
+          salaryType: payType,
+          salaryAmount: employee.monthlySalary,
+          fixedMonthlySalary: employee.fixedMonthlySalary,
+          periodDays,
+          punches,
+          dateFrom,
+          dateTo,
+          dayOffDates,
+          workWeek: settings.workWeek,
+          undertimeGraceMinutes: settings.undertimeGraceMinutes,
+        });
+
+        return {
+          id: `preview:${employee.userSource}:${employee.userId}`,
+          label,
+          dateFrom,
+          dateTo,
+          generatedAt,
+          isPreview: true as const,
+          salaryType: employee.salaryType,
+          userId: employee.userId,
+          userSource: employee.userSource,
+          employee: {
+            fullName: employee.fullName,
+            positionTitle: employee.positionTitle,
+            username: employee.username,
+            employeeCode: employee.employeeCode,
+            department: employee.department,
+          },
+          days,
+          totals,
+        };
+      })
+      .sort((a, b) => a.employee.fullName.localeCompare(b.employee.fullName));
+
+    return {
+      dateFrom,
+      dateTo,
+      periodType,
+      workWeek: settings.workWeek,
+      overlaps,
+      items,
     };
   }
 
@@ -674,6 +1530,461 @@ export class PayrollService {
     }));
   }
 
+  async getEmployeePayslipDetail(
+    payslipIdRaw: string | number,
+    userId: number,
+    userSource: AdminUserRecord['source'],
+  ) {
+    await this.ensureReady();
+
+    const payslipId = Number(payslipIdRaw);
+    if (!Number.isFinite(payslipId) || payslipId <= 0) {
+      throw new BadRequestException('Invalid payslip id.');
+    }
+
+    const slipResult = await this.databaseService.query<{
+      id: number;
+      username: string;
+      full_name: string;
+      employee_code: string | null;
+      department: string | null;
+      position_title: string | null;
+      salary_type: string | null;
+      salary_amount: string | null;
+      fixed_monthly_salary: string | null;
+      days_present: number;
+      days_completed: number;
+      total_hours: string;
+      estimated_pay: string;
+      label: string;
+      date_from: string;
+      date_to: string;
+      period_days: number;
+      created_at: string;
+    }>(
+      `SELECT p.id, p.username, p.full_name, p.employee_code, p.department,
+              pay.position_title,
+              p.salary_type, p.salary_amount::text AS salary_amount,
+              pay.fixed_monthly_salary::text AS fixed_monthly_salary,
+              p.days_present, p.days_completed, p.total_hours::text AS total_hours,
+              p.estimated_pay::text AS estimated_pay,
+              r.label, r.date_from::text AS date_from, r.date_to::text AS date_to,
+              r.period_days, p.created_at::text AS created_at
+       FROM pcmazing_generated_payslips p
+       INNER JOIN pcmazing_payroll_runs r ON r.id = p.run_id
+       LEFT JOIN pcmazing_user_payroll pay
+         ON pay.user_id = p.user_id AND pay.user_source = p.user_source
+       WHERE p.id = $1
+         AND p.user_id = $2
+         AND p.user_source = $3
+       LIMIT 1`,
+      [payslipId, userId, userSource],
+    );
+
+    const slip = slipResult.rows[0];
+    if (!slip) {
+      throw new NotFoundException('Payslip not found.');
+    }
+
+    const salaryType = this.normalizeSalaryType(slip.salary_type);
+    const salaryAmount = slip.salary_amount == null ? null : Number(slip.salary_amount);
+    const fixedMonthlySalary =
+      slip.fixed_monthly_salary == null ? null : Number(slip.fixed_monthly_salary);
+    const periodDays = Number(slip.period_days) || 0;
+
+    const attendance = await this.databaseService.query<{
+      work_date: string;
+      time_in: string | null;
+      time_out: string | null;
+      overtime_hours: string | number | null;
+      overtime_status: string | null;
+    }>(
+      `SELECT work_date::text AS work_date,
+              time_in::text AS time_in,
+              time_out::text AS time_out,
+              overtime_hours,
+              overtime_status
+       FROM pcmazing_attendance
+       WHERE user_id = $1
+         AND user_source = $2
+         AND work_date BETWEEN $3::date AND $4::date
+         AND time_in IS NOT NULL
+       ORDER BY work_date ASC`,
+      [userId, userSource, slip.date_from, slip.date_to],
+    );
+
+    const settings = await this.getSettings();
+    const { days, totals } = this.buildPayslipDaysAndTotals({
+      salaryType,
+      salaryAmount,
+      fixedMonthlySalary,
+      periodDays,
+      punches: attendance.rows,
+      dateFrom: String(slip.date_from).slice(0, 10),
+      dateTo: String(slip.date_to).slice(0, 10),
+      dayOffDates: await this.loadDayOffDates(userId, userSource, slip.date_from, slip.date_to),
+      workWeek: settings.workWeek,
+      undertimeGraceMinutes: settings.undertimeGraceMinutes,
+    });
+
+    const generatedAt = new Date(slip.created_at).toLocaleString('en-PH', {
+      timeZone: 'Asia/Manila',
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    });
+
+    const pdfPayload: PayslipPdfPayload = {
+      companyName: 'PCmazing',
+      label: slip.label,
+      dateFrom: slip.date_from,
+      dateTo: slip.date_to,
+      generatedAt,
+      employee: {
+        fullName: slip.full_name,
+        positionTitle: slip.position_title,
+      },
+      days,
+      totals,
+    };
+
+    const safeLabel = slip.label.replace(/[^\w\-]+/g, '_').replace(/_+/g, '_');
+    return {
+      id: String(slip.id),
+      label: slip.label,
+      dateFrom: slip.date_from,
+      dateTo: slip.date_to,
+      generatedAt,
+      employee: {
+        fullName: slip.full_name,
+        positionTitle: slip.position_title,
+        username: slip.username,
+        employeeCode: slip.employee_code,
+        department: slip.department,
+      },
+      days: pdfPayload.days,
+      totals: pdfPayload.totals,
+      filename: `payslip-${safeLabel}-${slip.username}.pdf`,
+      pdfPayload,
+    };
+  }
+
+  async buildEmployeePayslipPdf(
+    payslipIdRaw: string | number,
+    userId: number,
+    userSource: AdminUserRecord['source'],
+  ): Promise<{ filename: string; buffer: Buffer }> {
+    const detail = await this.getEmployeePayslipDetail(payslipIdRaw, userId, userSource);
+    const buffer = await buildPayslipPdfBuffer(detail.pdfPayload);
+    return {
+      filename: detail.filename,
+      buffer,
+    };
+  }
+
+  private buildPayslipDaysAndTotals(input: {
+    salaryType: PayrollSalaryType;
+    salaryAmount: number | null;
+    fixedMonthlySalary: number | null;
+    periodDays: number;
+    punches: Array<{
+      work_date: string;
+      time_in: string | null;
+      time_out: string | null;
+      overtime_hours: string | number | null;
+      overtime_status: string | null;
+    }>;
+    dateFrom: string;
+    dateTo: string;
+    dayOffDates?: Set<string>;
+    workWeek?: PayrollWorkWeek;
+    undertimeGraceMinutes?: number;
+  }): {
+    days: PayslipDayBreakdownRow[];
+    totals: PayslipPdfPayload['totals'];
+  } {
+    const fixedMonthly = input.fixedMonthlySalary;
+    const usesFixedSalary = fixedMonthly != null && fixedMonthly > 0;
+    const calendarDays = this.eachIsoDate(input.dateFrom, input.dateTo);
+    const dayOffDates = input.dayOffDates ?? new Set<string>();
+    const workWeek = this.normalizeWorkWeek(input.workWeek);
+    const undertimeGraceMinutes = this.normalizeUndertimeGrace(input.undertimeGraceMinutes);
+    const restDayCount = calendarDays.filter((day) => this.isRestDay(day, workWeek, dayOffDates)).length;
+    const weeklyHourBase = this.weeklyHourBase(workWeek, input.periodDays, restDayCount);
+
+    const { dailyRate, hourlyRate } = usesFixedSalary
+      ? {
+          dailyRate: 0,
+          hourlyRate: (fixedMonthly / 22) / FULL_DAY_HOURS,
+        }
+      : this.resolvePayRates(input.salaryType, input.salaryAmount, input.periodDays, weeklyHourBase);
+
+    let paidDayUnits = 0;
+    let regularHours = 0;
+    let totalHours = 0;
+    let daysCompleted = 0;
+    let approvedOvertimeHours = 0;
+    let pendingOvertimeHours = 0;
+    let overtimePayTotal = 0;
+
+    const punchByDate = new Map(
+      input.punches.map((row) => [String(row.work_date).slice(0, 10), row]),
+    );
+
+    const days = calendarDays.map((workDate) => {
+      const row = punchByDate.get(workDate);
+      if (!row) {
+        const rest = this.isRestDay(workDate, workWeek, dayOffDates);
+        return {
+          workDate,
+          timeInLabel: '—',
+          timeOutLabel: '—',
+          hoursWorked: 0,
+          dayType: rest ? (dayOffDates.has(workDate) ? 'Day off' : 'Rest day') : 'Absent',
+          paidUnits: 0,
+          dayPay: 0,
+          overtimeHours: 0,
+          overtimeStatus: 'none',
+          overtimePay: 0,
+        };
+      }
+
+      const hours = this.computeHours(row.time_in, row.time_out);
+      const units = this.dayPayUnits(hours, undertimeGraceMinutes);
+      const otHours = Number(row.overtime_hours ?? 0) || 0;
+      const otStatus = this.normalizeOvertimeStatus(row.overtime_status);
+      const dayPay = Math.round(units * dailyRate * 100) / 100;
+      const overtimePay =
+        otHours > 0 && otStatus === 'approved'
+          ? Math.round(otHours * hourlyRate * OVERTIME_MULTIPLIER * 100) / 100
+          : 0;
+
+      if (hours != null) {
+        daysCompleted += 1;
+        totalHours += hours;
+        paidDayUnits += units;
+        regularHours += Math.min(hours, FULL_DAY_HOURS);
+        if (otHours > 0 && otStatus === 'approved') {
+          approvedOvertimeHours += otHours;
+          overtimePayTotal += overtimePay;
+        } else if (otHours > 0 && otStatus === 'pending') {
+          pendingOvertimeHours += otHours;
+        }
+      }
+
+      return {
+        workDate,
+        timeInLabel: this.formatPunchLabel(row.time_in),
+        timeOutLabel: this.formatPunchLabel(row.time_out),
+        hoursWorked: hours ?? 0,
+        dayType: this.dayPayLabel(units, hours, undertimeGraceMinutes),
+        paidUnits: units,
+        dayPay,
+        overtimeHours: otHours,
+        overtimeStatus: otStatus,
+        overtimePay,
+      };
+    });
+
+    const basePay =
+      Math.round(
+        this.estimatePay({
+          salaryType: input.salaryType,
+          salaryAmount: input.salaryAmount,
+          fixedMonthlySalary: input.fixedMonthlySalary,
+          regularHours,
+          paidDayUnits,
+          periodDays: input.periodDays,
+          approvedOvertimeHours: 0,
+          weeklyHourBase,
+        }) * 100,
+      ) / 100;
+    const estimatedPay =
+      Math.round(
+        this.estimatePay({
+          salaryType: input.salaryType,
+          salaryAmount: input.salaryAmount,
+          fixedMonthlySalary: input.fixedMonthlySalary,
+          regularHours,
+          paidDayUnits,
+          periodDays: input.periodDays,
+          approvedOvertimeHours,
+          weeklyHourBase,
+        }) * 100,
+      ) / 100;
+
+    return {
+      days,
+      totals: {
+        daysPresent: input.punches.length,
+        daysCompleted,
+        paidDayUnits: Math.round(paidDayUnits * 100) / 100,
+        totalHours: Math.round(totalHours * 100) / 100,
+        approvedOvertimeHours: Math.round(approvedOvertimeHours * 100) / 100,
+        pendingOvertimeHours: Math.round(pendingOvertimeHours * 100) / 100,
+        basePay,
+        overtimePay: Math.round(overtimePayTotal * 100) / 100,
+        estimatedPay,
+        periodDays: input.periodDays,
+        salaryTypeLabel: this.salaryTypeLabel(input.salaryType),
+        payBasis: this.describePayBasis(input.salaryType, input.salaryAmount, input.fixedMonthlySalary),
+      },
+    };
+  }
+
+  private describePayBasis(
+    salaryType: PayrollSalaryType,
+    salaryAmount: number | null,
+    fixedMonthlySalary: number | null,
+  ): string {
+    if (fixedMonthlySalary != null && fixedMonthlySalary > 0) {
+      const periodPay = this.scheduledFixedPay(fixedMonthlySalary, salaryType);
+      return `Fixed monthly PHP ${fixedMonthlySalary.toLocaleString('en-PH', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })} · ${this.salaryTypeLabel(salaryType)} PHP ${periodPay.toLocaleString('en-PH', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`;
+    }
+
+    const amount = salaryAmount == null || salaryAmount <= 0 ? 0 : salaryAmount;
+    const amountLabel = `PHP ${amount.toLocaleString('en-PH', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+    switch (salaryType) {
+      case 'weekly':
+        return `Daily rate ${amountLabel} (weekly)`;
+      case 'semi_monthly':
+        return `Daily rate ${amountLabel} (semi-monthly)`;
+      case 'cutoff':
+        return `Cutoff amount ${amountLabel}`;
+      default:
+        return `Monthly rate ${amountLabel}`;
+    }
+  }
+
+  private eachIsoDate(dateFrom: string, dateTo: string): string[] {
+    const from = String(dateFrom).slice(0, 10);
+    const to = String(dateTo).slice(0, 10);
+    if (!from || !to || from > to) {
+      return [];
+    }
+
+    const days: string[] = [];
+    let current = from;
+    while (current <= to) {
+      days.push(current);
+      current = this.shiftIsoDate(current, 1);
+      if (days.length > 62) {
+        break;
+      }
+    }
+    return days;
+  }
+
+  private async loadDayOffDates(
+    userId: number,
+    userSource: string,
+    dateFrom: string,
+    dateTo: string,
+  ): Promise<Set<string>> {
+    const grouped = await this.loadDayOffDatesByUser(dateFrom, dateTo);
+    return grouped.get(`${userSource}:${userId}`) ?? new Set();
+  }
+
+  private async loadDayOffDatesByUser(
+    dateFrom: string,
+    dateTo: string,
+  ): Promise<Map<string, Set<string>>> {
+    const grouped = new Map<string, Set<string>>();
+    try {
+      const result = await this.databaseService.query<{
+        user_id: number;
+        user_source: string;
+        day_off_date: string;
+      }>(
+        `SELECT user_id, user_source, day_off_date::text AS day_off_date
+         FROM pcmazing_employee_day_offs
+         WHERE day_off_date BETWEEN $1::date AND $2::date`,
+        [dateFrom, dateTo],
+      );
+      for (const row of result.rows) {
+        const key = `${row.user_source}:${row.user_id}`;
+        const dates = grouped.get(key) ?? new Set<string>();
+        dates.add(String(row.day_off_date).slice(0, 10));
+        grouped.set(key, dates);
+      }
+    } catch {
+      return grouped;
+    }
+    return grouped;
+  }
+
+  private resolvePayRates(
+    salaryType: PayrollSalaryType,
+    salaryAmount: number | null,
+    periodDays: number,
+    weeklyHourBase = 40,
+  ): { dailyRate: number; hourlyRate: number } {
+    const amount = salaryAmount == null || salaryAmount <= 0 ? 0 : salaryAmount;
+    switch (salaryType) {
+      case 'weekly':
+      case 'semi_monthly':
+        return { dailyRate: amount, hourlyRate: amount / FULL_DAY_HOURS };
+      case 'cutoff': {
+        const dailyRate = periodDays > 0 ? amount / periodDays : 0;
+        return { dailyRate, hourlyRate: dailyRate / FULL_DAY_HOURS };
+      }
+      case 'monthly':
+      default: {
+        const dailyRate = amount / 22;
+        return { dailyRate, hourlyRate: dailyRate / FULL_DAY_HOURS };
+      }
+    }
+  }
+
+  private dayPayLabel(units: number, hours: number | null, undertimeGraceMinutes = 30): string {
+    if (hours == null) {
+      return 'Incomplete';
+    }
+    if (units >= 1 && hours < FULL_DAY_HOURS) {
+      return `Undertime (paid, ≤${undertimeGraceMinutes}m)`;
+    }
+    if (units >= 1) {
+      return 'Full day';
+    }
+    if (units >= 0.5) {
+      return 'Half day';
+    }
+    return 'Unpaid';
+  }
+
+  private salaryTypeLabel(value: PayrollSalaryType): string {
+    switch (value) {
+      case 'weekly':
+        return 'Weekly';
+      case 'semi_monthly':
+        return 'Semi-Monthly';
+      case 'cutoff':
+        return 'By Cutoff';
+      default:
+        return 'Monthly';
+    }
+  }
+
+  private formatPunchLabel(value: string | null): string {
+    if (!value) {
+      return '—';
+    }
+    return new Date(value).toLocaleTimeString('en-PH', {
+      timeZone: 'Asia/Manila',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+  }
+
   private formatPeriodLabel(dateFrom: string, dateTo: string): string {
     const [fromYear, fromMonth, fromDay] = dateFrom.split('-').map(Number);
     const [, , toDay] = dateTo.split('-').map(Number);
@@ -722,8 +2033,10 @@ export class PayrollService {
   async getTimeClockStatus(usernameRaw: string): Promise<TimeClockStatus> {
     await this.ensureReady();
     const clock = await this.getServerClock();
+    const settings = await this.getSettings();
     const workDate = clock.workDate;
     const username = usernameRaw.trim();
+    const undertimeGraceMinutes = settings.undertimeGraceMinutes;
 
     const user = await this.findActiveUserByUsername(username);
     if (!user) {
@@ -739,6 +2052,7 @@ export class PayrollService {
         status: 'not_found',
         message: 'Username not found.',
         serverNow: clock.serverNow,
+        undertimeGraceMinutes,
       };
     }
 
@@ -755,6 +2069,7 @@ export class PayrollService {
         status: 'inactive',
         message: 'This account is inactive.',
         serverNow: clock.serverNow,
+        undertimeGraceMinutes,
       };
     }
 
@@ -772,6 +2087,7 @@ export class PayrollService {
         status: 'not_enrolled',
         message: 'This user is not enabled for payroll time clock.',
         serverNow: clock.serverNow,
+        undertimeGraceMinutes,
       };
     }
 
@@ -789,6 +2105,7 @@ export class PayrollService {
         status: 'ready',
         message: 'Ready to time in.',
         serverNow: clock.serverNow,
+        undertimeGraceMinutes,
       };
     }
 
@@ -805,6 +2122,7 @@ export class PayrollService {
         status: 'timed_in',
         message: 'Already timed in. Use time out when leaving.',
         serverNow: clock.serverNow,
+        undertimeGraceMinutes,
       };
     }
 
@@ -820,6 +2138,7 @@ export class PayrollService {
       status: 'completed',
       message: 'Time in and time out are already recorded for today.',
       serverNow: clock.serverNow,
+      undertimeGraceMinutes,
     };
   }
 
@@ -875,7 +2194,11 @@ export class PayrollService {
 
     const selfieUrl = await saveAttendanceSelfieFile('out', user.username, selfie);
     const workDate = status.workDate;
-    const result = await this.databaseService.query<{ id: number }>(
+    const result = await this.databaseService.query<{
+      id: number;
+      time_in: string | null;
+      time_out: string | null;
+    }>(
       `UPDATE pcmazing_attendance
        SET time_out = NOW(),
            time_out_selfie_url = $4,
@@ -885,15 +2208,277 @@ export class PayrollService {
          AND work_date = $3::date
          AND time_in IS NOT NULL
          AND time_out IS NULL
-       RETURNING id`,
+       RETURNING id, time_in::text AS time_in, time_out::text AS time_out`,
       [user.id, user.source, workDate, selfieUrl],
     );
 
-    if (!result.rows[0]) {
+    const punched = result.rows[0];
+    if (!punched) {
       throw new BadRequestException('Unable to record time out.');
     }
 
+    await this.syncOvertimeAfterTimeOut(punched.id, punched.time_in, punched.time_out);
+    await this.clearPendingAdjustment(punched.id);
+
     return this.getTimeClockStatus(user.username);
+  }
+
+  async requestOvertime(
+    userId: number,
+    userSource: AdminUserRecord['source'],
+    attendanceId: number,
+  ) {
+    await this.ensureReady();
+
+    if (!Number.isFinite(attendanceId) || attendanceId <= 0) {
+      throw new BadRequestException('Invalid attendance id.');
+    }
+
+    const existing = await this.databaseService.query<{
+      id: number;
+      overtime_hours: string | number;
+      overtime_status: string;
+      time_in: string | null;
+      time_out: string | null;
+      work_date: string;
+    }>(
+      `SELECT id, overtime_hours, overtime_status,
+              time_in::text AS time_in, time_out::text AS time_out,
+              work_date::text AS work_date
+       FROM pcmazing_attendance
+       WHERE id = $1
+         AND user_id = $2
+         AND user_source = $3
+       LIMIT 1`,
+      [attendanceId, userId, userSource],
+    );
+
+    const row = existing.rows[0];
+    if (!row) {
+      throw new NotFoundException('Attendance record not found.');
+    }
+
+    const hours = this.computeHours(row.time_in, row.time_out) ?? 0;
+    const overtimeHours =
+      hours > FULL_DAY_HOURS
+        ? Math.round((hours - FULL_DAY_HOURS) * 100) / 100
+        : Number(row.overtime_hours) || 0;
+
+    if (overtimeHours <= 0) {
+      throw new BadRequestException(
+        `Overtime can only be requested when you work more than ${FULL_DAY_HOURS} hours.`,
+      );
+    }
+
+    const currentStatus = this.normalizeOvertimeStatus(row.overtime_status);
+    if (currentStatus === 'pending') {
+      throw new BadRequestException('Overtime approval is already pending.');
+    }
+    if (currentStatus === 'approved') {
+      throw new BadRequestException('Overtime for this day is already approved.');
+    }
+
+    const result = await this.databaseService.query<{
+      id: number;
+      overtime_hours: string | number;
+      overtime_status: string;
+      work_date: string;
+    }>(
+      `UPDATE pcmazing_attendance
+       SET overtime_hours = $2,
+           overtime_status = 'pending',
+           overtime_reviewed_by = NULL,
+           overtime_reviewed_at = NULL,
+           overtime_review_note = NULL,
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING id, overtime_hours, overtime_status, work_date::text AS work_date`,
+      [attendanceId, overtimeHours],
+    );
+
+    const updated = result.rows[0];
+    return {
+      id: updated.id,
+      workDate: updated.work_date,
+      overtimeHours: Number(updated.overtime_hours) || 0,
+      overtimeStatus: this.normalizeOvertimeStatus(updated.overtime_status),
+      message: 'Overtime request submitted. Waiting for admin approval.',
+    };
+  }
+
+  async requestTimeOutAdjustment(
+    userId: number,
+    userSource: AdminUserRecord['source'],
+    attendanceId: number,
+    selfie: Express.Multer.File,
+    requestedTimeOutRaw: string,
+    note?: string,
+    undertimeCategoryRaw?: string,
+  ) {
+    await this.ensureReady();
+
+    if (!Number.isFinite(attendanceId) || attendanceId <= 0) {
+      throw new BadRequestException('Invalid attendance id.');
+    }
+    if (!selfie) {
+      throw new BadRequestException('Upload a time-out photo before submitting.');
+    }
+
+    const existing = await this.databaseService.query<{
+      id: number;
+      username: string;
+      time_in: string | null;
+      time_out: string | null;
+      work_date: string;
+      adjustment_status: string | null;
+    }>(
+      `SELECT id, username, time_in::text AS time_in, time_out::text AS time_out,
+              work_date::text AS work_date, adjustment_status
+       FROM pcmazing_attendance
+       WHERE id = $1
+         AND user_id = $2
+         AND user_source = $3
+       LIMIT 1`,
+      [attendanceId, userId, userSource],
+    );
+
+    const row = existing.rows[0];
+    if (!row) {
+      throw new NotFoundException('Attendance record not found.');
+    }
+    if (!row.time_in) {
+      throw new BadRequestException('Time in is required before requesting a time-out adjustment.');
+    }
+    if (row.time_out) {
+      throw new BadRequestException('This day already has a time out.');
+    }
+
+    const currentStatus = this.normalizeOvertimeStatus(row.adjustment_status);
+    if (currentStatus === 'pending') {
+      throw new BadRequestException('A time-out adjustment is already waiting for admin approval.');
+    }
+    if (currentStatus === 'approved') {
+      throw new BadRequestException('This time-out adjustment is already approved.');
+    }
+
+    const requestedTimeOut = this.parseManilaDateTime(requestedTimeOutRaw);
+    const timeInMs = new Date(row.time_in).getTime();
+    if (requestedTimeOut.getTime() <= timeInMs) {
+      throw new BadRequestException('Time out must be after time in.');
+    }
+    if (requestedTimeOut.getTime() > Date.now() + 60_000) {
+      throw new BadRequestException('Time out cannot be in the future.');
+    }
+
+    const requestedDate = requestedTimeOut.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+    const nextDay = this.shiftIsoDate(row.work_date, 1);
+    if (requestedDate !== row.work_date && requestedDate !== nextDay) {
+      throw new BadRequestException(
+        'Time out must be on the same work date, or the next morning for an overnight shift.',
+      );
+    }
+
+    const reason = note?.trim() ?? '';
+    if (reason.length < 8) {
+      throw new BadRequestException('Explain why you missed clocking out (at least 8 characters).');
+    }
+    const undertimeCategory = this.normalizeUndertimeCategory(undertimeCategoryRaw);
+    if (!undertimeCategory) {
+      throw new BadRequestException('Select why you left early: emergency, appointment, event, or other.');
+    }
+
+    const selfieUrl = await saveAttendanceSelfieFile('out', row.username, selfie);
+    const result = await this.databaseService.query<{
+      id: number;
+      work_date: string;
+      requested_time_out: string | null;
+      adjustment_status: string;
+    }>(
+      `UPDATE pcmazing_attendance
+       SET adjustment_type = 'time_out',
+           requested_time_out = $2::timestamptz,
+           adjustment_selfie_url = $3,
+           adjustment_note = $4,
+           undertime_category = $5,
+           adjustment_status = 'pending',
+           adjustment_reviewed_by = NULL,
+           adjustment_reviewed_at = NULL,
+           adjustment_review_note = NULL,
+           updated_at = NOW()
+       WHERE id = $1
+         AND time_out IS NULL
+       RETURNING id, work_date::text AS work_date,
+                 requested_time_out::text AS requested_time_out,
+                 adjustment_status`,
+      [attendanceId, requestedTimeOut.toISOString(), selfieUrl, reason.slice(0, 255), undertimeCategory],
+    );
+
+    const updated = result.rows[0];
+    if (!updated) {
+      throw new BadRequestException('Unable to submit time-out adjustment.');
+    }
+
+    return {
+      id: updated.id,
+      workDate: updated.work_date,
+      requestedTimeOut: updated.requested_time_out,
+      adjustmentStatus: this.normalizeOvertimeStatus(updated.adjustment_status),
+      message: 'Time-out adjustment submitted. Waiting for admin approval.',
+    };
+  }
+
+  private async syncOvertimeAfterTimeOut(
+    attendanceId: number,
+    timeIn: string | null,
+    timeOut: string | null,
+  ): Promise<void> {
+    const hours = this.computeHours(timeIn, timeOut) ?? 0;
+    const overtimeHours =
+      hours > FULL_DAY_HOURS ? Math.round((hours - FULL_DAY_HOURS) * 100) / 100 : 0;
+
+    await this.databaseService.query(
+      `UPDATE pcmazing_attendance
+       SET overtime_hours = $2,
+           overtime_status = 'none',
+           overtime_reviewed_by = NULL,
+           overtime_reviewed_at = NULL,
+           overtime_review_note = NULL,
+           updated_at = NOW()
+       WHERE id = $1`,
+      [attendanceId, overtimeHours],
+    );
+  }
+
+  private async clearPendingAdjustment(attendanceId: number): Promise<void> {
+    await this.databaseService.query(
+      `UPDATE pcmazing_attendance
+       SET adjustment_status = CASE
+             WHEN adjustment_status = 'pending' THEN 'none'
+             ELSE adjustment_status
+           END,
+           requested_time_out = CASE
+             WHEN adjustment_status = 'pending' THEN NULL
+             ELSE requested_time_out
+           END,
+           updated_at = NOW()
+       WHERE id = $1`,
+      [attendanceId],
+    );
+  }
+
+  private parseManilaDateTime(value: string): Date {
+    const trimmed = (value ?? '').trim();
+    const match = trimmed.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})(?::(\d{2}))?/);
+    if (!match) {
+      throw new BadRequestException('Enter the time you actually left.');
+    }
+
+    const seconds = match[3] ?? '00';
+    const parsed = new Date(`${match[1]}T${match[2]}:${seconds}+08:00`);
+    if (!Number.isFinite(parsed.getTime())) {
+      throw new BadRequestException('Enter a valid time out.');
+    }
+    return parsed;
   }
 
   private async getTodayAttendance(
@@ -1021,6 +2606,10 @@ export class PayrollService {
     position_title: string | null;
     salary_type?: string | null;
     monthly_salary: string | null;
+    fixed_monthly_salary?: string | null;
+    payout_method?: string | null;
+    bank_details?: string | null;
+    qr_image_url?: string | null;
     payroll_enabled: boolean;
   }): PayrollProfile {
     return {
@@ -1029,8 +2618,17 @@ export class PayrollService {
       positionTitle: row.position_title,
       salaryType: this.normalizeSalaryType(row.salary_type),
       monthlySalary: row.monthly_salary == null ? null : Number(row.monthly_salary),
+      fixedMonthlySalary:
+        row.fixed_monthly_salary == null ? null : Number(row.fixed_monthly_salary),
+      payoutMethod: this.normalizePayoutMethod(row.payout_method),
+      bankDetails: row.bank_details ?? null,
+      qrImageUrl: row.qr_image_url ?? null,
       payrollEnabled: Boolean(row.payroll_enabled),
     };
+  }
+
+  private normalizePayoutMethod(value?: string | null): PayrollPayoutMethod {
+    return (value ?? '').trim().toLowerCase() === 'online' ? 'online' : 'cash';
   }
 
   private normalizeSalaryType(value?: string | null): PayrollSalaryType {
@@ -1048,6 +2646,49 @@ export class PayrollService {
     }
   }
 
+  private normalizeWorkWeek(value?: string | null): PayrollWorkWeek {
+    const normalized = (value ?? '').trim().toLowerCase();
+    if ((PAYROLL_WORK_WEEKS as readonly string[]).includes(normalized)) {
+      return normalized as PayrollWorkWeek;
+    }
+    return 'mon_fri';
+  }
+
+  private weeklyHourBase(workWeek: PayrollWorkWeek, periodDays: number, restDayCount: number): number {
+    switch (workWeek) {
+      case 'mon_fri':
+        return 5 * FULL_DAY_HOURS;
+      case 'mon_sat':
+        return 6 * FULL_DAY_HOURS;
+      case 'day_off_basis':
+      default: {
+        const workingDays = Math.max(1, periodDays - restDayCount);
+        return workingDays * FULL_DAY_HOURS;
+      }
+    }
+  }
+
+  private weekdayUtc(isoDate: string): number {
+    const [year, month, day] = String(isoDate).slice(0, 10).split('-').map(Number);
+    return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+  }
+
+  private isRestDay(isoDate: string, workWeek: PayrollWorkWeek, dayOffDates: Set<string>): boolean {
+    if (dayOffDates.has(isoDate)) {
+      return true;
+    }
+    const weekday = this.weekdayUtc(isoDate);
+    switch (workWeek) {
+      case 'mon_fri':
+        return weekday === 0 || weekday === 6;
+      case 'mon_sat':
+        return weekday === 0;
+      case 'day_off_basis':
+      default:
+        return false;
+    }
+  }
+
   private computeHours(timeIn: string | null, timeOut: string | null): number | null {
     if (!timeIn || !timeOut) {
       return null;
@@ -1060,6 +2701,135 @@ export class PayrollService {
     }
 
     return Math.round(((end - start) / 3_600_000) * 100) / 100;
+  }
+
+  private buildPeriodRow(
+    employee: PayrollEmployeeRecord,
+    punches: Array<{
+      work_date: string;
+      time_in: string | null;
+      time_out: string | null;
+      overtime_hours: string | number | null;
+      overtime_status: string | null;
+    }>,
+    payslipPeriod: PayrollSalaryType,
+    periodDateFrom: string,
+    periodDateTo: string,
+    weeklyHourBase = 40,
+    undertimeGraceMinutes = 30,
+  ): PayrollPeriodRow {
+    let totalHours = 0;
+    let regularHours = 0;
+    let daysCompleted = 0;
+    let paidDayUnits = 0;
+    let approvedOvertimeHours = 0;
+    let pendingOvertimeHours = 0;
+
+    for (const punch of punches) {
+      const hours = this.computeHours(punch.time_in, punch.time_out);
+      if (hours != null) {
+        totalHours += hours;
+        daysCompleted += 1;
+        const units = this.dayPayUnits(hours, undertimeGraceMinutes);
+        paidDayUnits += units;
+        regularHours += Math.min(hours, FULL_DAY_HOURS);
+        const otHours = Number(punch.overtime_hours ?? 0) || 0;
+        const otStatus = this.normalizeOvertimeStatus(punch.overtime_status);
+        if (otHours > 0 && otStatus === 'approved') {
+          approvedOvertimeHours += otHours;
+        } else if (otHours > 0 && otStatus === 'pending') {
+          pendingOvertimeHours += otHours;
+        }
+      }
+    }
+
+    const periodDays = this.countInclusiveDays(periodDateFrom, periodDateTo);
+    const estimatedPay = this.estimatePay({
+      salaryType: payslipPeriod,
+      salaryAmount: employee.monthlySalary,
+      fixedMonthlySalary: employee.fixedMonthlySalary,
+      regularHours,
+      paidDayUnits,
+      periodDays,
+      approvedOvertimeHours,
+      weeklyHourBase,
+    });
+
+    return {
+      userId: employee.userId,
+      userSource: employee.userSource,
+      username: employee.username,
+      fullName: employee.fullName,
+      employeeCode: employee.employeeCode,
+      department: employee.department,
+      salaryType: employee.salaryType,
+      salaryAmount: employee.monthlySalary,
+      fixedMonthlySalary: employee.fixedMonthlySalary,
+      daysPresent: punches.length,
+      daysCompleted,
+      paidDayUnits: Math.round(paidDayUnits * 100) / 100,
+      totalHours: Math.round(totalHours * 100) / 100,
+      approvedOvertimeHours: Math.round(approvedOvertimeHours * 100) / 100,
+      pendingOvertimeHours: Math.round(pendingOvertimeHours * 100) / 100,
+      estimatedPay: Math.round(estimatedPay * 100) / 100,
+      payslipPeriod,
+      periodDateFrom,
+      periodDateTo,
+    };
+  }
+
+  private resolvePayslipRange(
+    period: PayrollSalaryType,
+    dateFrom: string,
+    dateTo: string,
+  ): { dateFrom: string; dateTo: string } {
+    const ref = dateTo || dateFrom;
+    const [year, month, day] = ref.split('-').map(Number);
+    const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    const pad = (value: number) => String(value).padStart(2, '0');
+    const yearMonth = `${year}-${pad(month)}`;
+
+    switch (period) {
+      case 'weekly': {
+        const utc = Date.UTC(year, month - 1, day);
+        const weekday = new Date(utc).getUTCDay();
+        const mondayOffset = weekday === 0 ? -6 : 1 - weekday;
+        return {
+          dateFrom: this.shiftIsoDate(ref, mondayOffset),
+          dateTo: this.shiftIsoDate(ref, mondayOffset + 6),
+        };
+      }
+      case 'semi_monthly':
+        if (day <= 15) {
+          return { dateFrom: `${yearMonth}-01`, dateTo: `${yearMonth}-15` };
+        }
+        return { dateFrom: `${yearMonth}-16`, dateTo: `${yearMonth}-${pad(lastDay)}` };
+      case 'monthly':
+        return { dateFrom: `${yearMonth}-01`, dateTo: `${yearMonth}-${pad(lastDay)}` };
+      case 'cutoff':
+      default:
+        return { dateFrom, dateTo };
+    }
+  }
+
+  private scheduledFixedPay(monthly: number, period: PayrollSalaryType): number {
+    switch (period) {
+      case 'weekly':
+        return Math.round((monthly / 4) * 100) / 100;
+      case 'semi_monthly':
+        return Math.round((monthly / 2) * 100) / 100;
+      case 'cutoff':
+      case 'monthly':
+      default:
+        return Math.round(monthly * 100) / 100;
+    }
+  }
+
+  private shiftIsoDate(value: string, days: number): string {
+    const [year, month, day] = value.split('-').map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    date.setUTCDate(date.getUTCDate() + days);
+    return date.toISOString().slice(0, 10);
   }
 
   private countInclusiveDays(dateFrom: string, dateTo: string): number {
@@ -1075,23 +2845,44 @@ export class PayrollService {
   private estimatePay(input: {
     salaryType: PayrollSalaryType;
     salaryAmount: number | null;
-    totalHours: number;
-    daysCompleted: number;
+    fixedMonthlySalary?: number | null;
+    regularHours: number;
+    paidDayUnits: number;
     periodDays: number;
+    approvedOvertimeHours: number;
+    weeklyHourBase?: number;
   }): number {
+    const fixedMonthly =
+      input.fixedMonthlySalary != null && input.fixedMonthlySalary > 0
+        ? input.fixedMonthlySalary
+        : null;
+
+    if (fixedMonthly != null) {
+      const basePay = this.scheduledFixedPay(fixedMonthly, input.salaryType);
+      const hourlyRate = (fixedMonthly / 22) / FULL_DAY_HOURS;
+      const overtimePay =
+        input.approvedOvertimeHours > 0 && hourlyRate > 0
+          ? input.approvedOvertimeHours * hourlyRate * OVERTIME_MULTIPLIER
+          : 0;
+      return basePay + overtimePay;
+    }
+
     const amount = input.salaryAmount;
     if (amount == null || amount <= 0) {
       return 0;
     }
 
+    let basePay = 0;
+    let hourlyRate = 0;
+
     switch (input.salaryType) {
-      case 'weekly': {
-        const hourly = amount / 40;
-        return input.totalHours * hourly;
-      }
+      case 'weekly':
       case 'semi_monthly': {
-        const daily = amount / 11;
-        return input.daysCompleted * daily;
+        // Weekly and semi-monthly salary amount is the daily rate.
+        // Full day (9h+) = 1×, half day (4–<9h) = 0.5×.
+        basePay = input.paidDayUnits * amount;
+        hourlyRate = amount / FULL_DAY_HOURS;
+        break;
       }
       case 'cutoff': {
         // Salary amount is the full pay for the selected cutoff date range.
@@ -1099,13 +2890,73 @@ export class PayrollService {
           return 0;
         }
         const daily = amount / input.periodDays;
-        return input.daysCompleted * daily;
+        basePay = input.paidDayUnits * daily;
+        hourlyRate = daily / FULL_DAY_HOURS;
+        break;
       }
       case 'monthly':
       default: {
         const daily = amount / 22;
-        return input.daysCompleted * daily;
+        basePay = input.paidDayUnits * daily;
+        hourlyRate = daily / FULL_DAY_HOURS;
+        break;
       }
+    }
+
+    const overtimePay =
+      input.approvedOvertimeHours > 0 && hourlyRate > 0
+        ? input.approvedOvertimeHours * hourlyRate * OVERTIME_MULTIPLIER
+        : 0;
+
+    return basePay + overtimePay;
+  }
+
+  /**
+   * Full day (≥9h, or within owner-agreed undertime grace) = 1.0 unit.
+   * Half day (≥4h and below the full-day threshold) = 0.5 unit.
+   * Below 4h = unpaid.
+   */
+  private dayPayUnits(hours: number | null | undefined, undertimeGraceMinutes = 30): number {
+    if (hours == null || !Number.isFinite(hours) || hours <= 0) {
+      return 0;
+    }
+    const graceHours = this.normalizeUndertimeGrace(undertimeGraceMinutes) / 60;
+    const fullDayThreshold = Math.max(HALF_DAY_MIN_HOURS, FULL_DAY_HOURS - graceHours);
+    if (hours + 0.0001 >= fullDayThreshold) {
+      return 1;
+    }
+    if (hours >= HALF_DAY_MIN_HOURS) {
+      return 0.5;
+    }
+    return 0;
+  }
+
+  private normalizeUndertimeGrace(value: string | number | null | undefined): number {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) {
+      return 30;
+    }
+    return Math.min(90, Math.max(0, Math.round(parsed)));
+  }
+
+  private normalizeUndertimeCategory(value?: string | null): UndertimeCategory | null {
+    const normalized = (value ?? '').trim().toLowerCase();
+    if ((UNDERTIME_CATEGORIES as readonly string[]).includes(normalized)) {
+      return normalized as UndertimeCategory;
+    }
+    return null;
+  }
+
+  private normalizeOvertimeStatus(value: string | null | undefined): OvertimeStatus {
+    switch ((value ?? '').trim().toLowerCase()) {
+      case 'pending':
+        return 'pending';
+      case 'approved':
+        return 'approved';
+      case 'rejected':
+        return 'rejected';
+      default:
+        return 'none';
     }
   }
 
