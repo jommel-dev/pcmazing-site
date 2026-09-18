@@ -92,8 +92,11 @@ export class PrintingGeneratorPageComponent implements OnInit {
   });
 
   readonly contentForm = this.formBuilder.nonNullable.group({
+    showWarrantyPolicy: [true],
     warrantyPolicy: [DEFAULT_WARRANTY_POLICY, [Validators.maxLength(8000)]],
+    showFooterNote: [true],
     footerNote: [DEFAULT_FOOTER_NOTE, [Validators.maxLength(500)]],
+    showThanksMessage: [true],
     thanksMessage: [DEFAULT_THANKS_MESSAGE, [Validators.maxLength(500)]],
   });
 
@@ -126,6 +129,7 @@ export class PrintingGeneratorPageComponent implements OnInit {
 
   constructor() {
     this.contentForm.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => {
+      this.syncContentEditorState();
       this.syncContentPreview();
     });
   }
@@ -176,10 +180,14 @@ export class PrintingGeneratorPageComponent implements OnInit {
         printerAutoPrint: settings.printerAutoPrint ?? false,
       });
       this.contentForm.patchValue({
+        showWarrantyPolicy: settings.showWarrantyPolicy !== false,
         warrantyPolicy: settings.warrantyPolicy || DEFAULT_WARRANTY_POLICY,
+        showFooterNote: settings.showFooterNote !== false,
         footerNote: settings.footerNote || DEFAULT_FOOTER_NOTE,
+        showThanksMessage: settings.showThanksMessage !== false,
         thanksMessage: settings.thanksMessage || DEFAULT_THANKS_MESSAGE,
       });
+      this.syncContentEditorState();
       this.syncContentPreview();
       this.applyPrinterTestState(settings);
 
@@ -294,6 +302,9 @@ export class PrintingGeneratorPageComponent implements OnInit {
           warrantyPolicy: value.warrantyPolicy,
           footerNote: value.footerNote.trim(),
           thanksMessage: value.thanksMessage.trim(),
+          showWarrantyPolicy: value.showWarrantyPolicy,
+          showFooterNote: value.showFooterNote,
+          showThanksMessage: value.showThanksMessage,
         }),
       );
       const templatesResponse = await firstValueFrom(this.adminApi.listPrintingTemplates());
@@ -463,14 +474,35 @@ export class PrintingGeneratorPageComponent implements OnInit {
   private syncContentPreview(): void {
     const value = this.contentForm.getRawValue();
     const preview = {
-      warrantyPolicy: value.warrantyPolicy,
-      footerNote: value.footerNote,
-      thanksMessage: value.thanksMessage,
+      warrantyPolicy: value.showWarrantyPolicy ? value.warrantyPolicy : '',
+      footerNote: value.showFooterNote ? value.footerNote : '',
+      thanksMessage: value.showThanksMessage ? value.thanksMessage : '',
     };
     this.fieldPreview.set(preview);
     const current = this.draftElements();
     if (current.length) {
       this.growPaperIfNeeded(applyLiveReceiptContentLayout(current, preview));
+    }
+  }
+
+  private syncContentEditorState(): void {
+    const value = this.contentForm.getRawValue();
+    this.toggleContentControl('warrantyPolicy', value.showWarrantyPolicy);
+    this.toggleContentControl('footerNote', value.showFooterNote);
+    this.toggleContentControl('thanksMessage', value.showThanksMessage);
+  }
+
+  private toggleContentControl(
+    controlName: 'warrantyPolicy' | 'footerNote' | 'thanksMessage',
+    enabled: boolean,
+  ): void {
+    const control = this.contentForm.controls[controlName];
+    if (enabled) {
+      if (control.disabled) {
+        control.enable({ emitEvent: false });
+      }
+    } else if (control.enabled) {
+      control.disable({ emitEvent: false });
     }
   }
 

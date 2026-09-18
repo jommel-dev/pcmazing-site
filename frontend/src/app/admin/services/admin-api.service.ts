@@ -73,18 +73,22 @@ export interface DemoRequest {
   updatedAt: string;
 }
 
-export type CompanyExpenseCategory =
-  | 'salary'
-  | 'rent'
-  | 'electric_bill'
-  | 'water_bill'
-  | 'internet_bill'
-  | 'taxes'
-  | 'maintenance';
+export type CompanyExpenseCategory = string;
 
 export type CompanyExpensePaymentMethod = 'cash' | 'bank' | 'gcash' | 'card' | 'other';
 
 export type CompanyExpenseStatus = 'planned' | 'paid';
+
+export interface CompanyExpenseAttachment {
+  id: number;
+  expenseId: number;
+  fileName: string;
+  fileUrl: string;
+  mimeType: string;
+  fileSize: number;
+  kind: 'receipt' | 'file';
+  createdAt: string;
+}
 
 export interface CompanyExpense {
   id: number;
@@ -100,6 +104,8 @@ export interface CompanyExpense {
   createdBy: number | null;
   createdAt: string;
   updatedAt: string;
+  attachments?: CompanyExpenseAttachment[];
+  attachmentCount?: number;
 }
 
 export interface CompanyExpenseCalendar {
@@ -120,11 +126,17 @@ export interface CompanyExpenseCalendar {
   range: { from: string; to: string };
 }
 
+export interface CompanyExpenseCategorySuggestion {
+  key: string;
+  label: string;
+  source: 'preset' | 'used';
+}
+
 export interface CompanyExpensePayload {
   title: string;
   amount: number;
   expenseDate: string;
-  category: CompanyExpenseCategory;
+  category: string;
   vendor?: string;
   paymentMethod?: CompanyExpensePaymentMethod;
   status?: CompanyExpenseStatus;
@@ -409,6 +421,9 @@ export interface PrintingSettingsItem {
   warrantyPolicy?: string;
   footerNote?: string;
   thanksMessage?: string;
+  showWarrantyPolicy?: boolean;
+  showFooterNote?: boolean;
+  showThanksMessage?: boolean;
   updatedAt?: string | null;
 }
 
@@ -1914,6 +1929,20 @@ export class AdminApiService {
     );
   }
 
+  listCompanyExpenseCategorySuggestions() {
+    return this.http.get<ItemResponse<CompanyExpenseCategorySuggestion[]>>(
+      `${APP_CONFIG.apiUrl}/admin/company-expenses/category-suggestions`,
+      { headers: this.headers() },
+    );
+  }
+
+  getCompanyExpense(id: number) {
+    return this.http.get<ItemResponse<CompanyExpense>>(
+      `${APP_CONFIG.apiUrl}/admin/company-expenses/${id}`,
+      { headers: this.headers() },
+    );
+  }
+
   createCompanyExpense(payload: CompanyExpensePayload) {
     return this.http.post<ItemResponse<CompanyExpense>>(
       `${APP_CONFIG.apiUrl}/admin/company-expenses`,
@@ -1926,6 +1955,23 @@ export class AdminApiService {
     return this.http.patch<ItemResponse<CompanyExpense>>(
       `${APP_CONFIG.apiUrl}/admin/company-expenses/${id}`,
       payload,
+      { headers: this.headers() },
+    );
+  }
+
+  uploadCompanyExpenseAttachment(id: number, file: File) {
+    const formData = new FormData();
+    formData.append('file', file, file.name || `expense-attachment-${Date.now()}`);
+    return this.http.post<ItemResponse<CompanyExpenseAttachment>>(
+      `${APP_CONFIG.apiUrl}/admin/company-expenses/${id}/attachments`,
+      formData,
+      { headers: this.headers() },
+    );
+  }
+
+  deleteCompanyExpenseAttachment(id: number, attachmentId: number) {
+    return this.http.delete<ItemResponse<unknown>>(
+      `${APP_CONFIG.apiUrl}/admin/company-expenses/${id}/attachments/${attachmentId}`,
       { headers: this.headers() },
     );
   }
@@ -2387,6 +2433,10 @@ export class AdminApiService {
   }
 
   resolveProjectUploadUrl(uploadUrl: string | null | undefined): string | null {
+    return this.resolveUploadUrl(uploadUrl);
+  }
+
+  resolveCompanyExpenseUploadUrl(uploadUrl: string | null | undefined): string | null {
     return this.resolveUploadUrl(uploadUrl);
   }
 

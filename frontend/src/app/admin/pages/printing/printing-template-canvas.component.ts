@@ -287,10 +287,8 @@ export class PrintingTemplateCanvasComponent {
   previewValue(element: PrintLayoutElement): string {
     const contentKey = receiptContentFieldKeyFor(element);
     if (contentKey) {
-      const liveValue = this.fieldPreview()[contentKey];
-      if (liveValue?.trim()) {
-        return liveValue;
-      }
+      const liveValue = this.fieldPreview()[contentKey] ?? '';
+      return liveValue.trim() ? liveValue : '(Hidden on printouts)';
     }
     if (element.type === 'text') {
       return element.content || 'Text';

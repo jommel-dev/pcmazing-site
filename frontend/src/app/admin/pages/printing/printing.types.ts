@@ -75,6 +75,9 @@ export interface PrintingSettings {
   warrantyPolicy?: string;
   footerNote?: string;
   thanksMessage?: string;
+  showWarrantyPolicy?: boolean;
+  showFooterNote?: boolean;
+  showThanksMessage?: boolean;
   updatedAt?: string | null;
 }
 

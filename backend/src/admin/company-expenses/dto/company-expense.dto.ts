@@ -21,9 +21,10 @@ export const COMPANY_EXPENSE_CATEGORIES = [
   'maintenance',
 ] as const;
 
-export type CompanyExpenseCategory = (typeof COMPANY_EXPENSE_CATEGORIES)[number];
+export type CompanyExpensePresetCategory = (typeof COMPANY_EXPENSE_CATEGORIES)[number];
+export type CompanyExpenseCategory = string;
 
-export const COMPANY_EXPENSE_CATEGORY_LABELS: Record<CompanyExpenseCategory, string> = {
+export const COMPANY_EXPENSE_CATEGORY_LABELS: Record<string, string> = {
   salary: 'Salary',
   rent: 'Rent',
   electric_bill: 'Electric Bill',
@@ -33,7 +34,7 @@ export const COMPANY_EXPENSE_CATEGORY_LABELS: Record<CompanyExpenseCategory, str
   maintenance: 'Maintenance',
 };
 
-export const COMPANY_EXPENSE_CATEGORY_COLORS: Record<CompanyExpenseCategory, string> = {
+export const COMPANY_EXPENSE_CATEGORY_COLORS: Record<string, string> = {
   salary: '#64748b',
   rent: '#7c3aed',
   electric_bill: '#f59e0b',
@@ -73,8 +74,10 @@ export class CreateCompanyExpenseDto {
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   expenseDate!: string;
 
-  @IsIn([...COMPANY_EXPENSE_CATEGORIES])
-  category!: CompanyExpenseCategory;
+  @IsString()
+  @MinLength(1)
+  @MaxLength(80)
+  category!: string;
 
   @IsOptional()
   @IsString()
@@ -115,8 +118,10 @@ export class UpdateCompanyExpenseDto {
   expenseDate?: string;
 
   @IsOptional()
-  @IsIn([...COMPANY_EXPENSE_CATEGORIES])
-  category?: CompanyExpenseCategory;
+  @IsString()
+  @MinLength(1)
+  @MaxLength(80)
+  category?: string;
 
   @IsOptional()
   @IsString()

@@ -19,6 +19,7 @@ import {
   ProjectTaskStatus,
   ProjectUserSummary,
 } from '../../services/admin-api.service';
+import { AdminAuthService } from '../../services/admin-auth.service';
 import {
   addPendingTaskAttachments,
   dataTransferHasOsFiles,
@@ -48,6 +49,7 @@ type TaskDetailTab = 'details' | 'history';
 })
 export class ProjectTasksPageComponent implements OnInit {
   private readonly adminApi = inject(AdminApiService);
+  private readonly adminAuth = inject(AdminAuthService);
   private readonly route = inject(ActivatedRoute);
 
   readonly loading = signal(true);
@@ -955,6 +957,25 @@ export class ProjectTasksPageComponent implements OnInit {
       for (const member of project.teamMembers) {
         allowed.set(`${member.source}:${member.id}`, member);
       }
+
+      // Allow the signed-in user to assign tasks to themselves even if they are
+      // not listed as PM / team member (e.g. admin accessing the board).
+      const me = this.adminAuth.getStoredUser();
+      if (me?.id && me.source) {
+        const meKey = `${me.source}:${me.id}`;
+        if (!allowed.has(meKey)) {
+          allowed.set(meKey, {
+            id: me.id,
+            source: me.source,
+            username: me.username,
+            fullName: me.fullName || me.username,
+            role: me.role,
+            email: me.email,
+            isActive: true,
+          });
+        }
+      }
+
       this.assignees.set([...allowed.values()]);
     } catch {
       this.error.set('Unable to load project tasks.');

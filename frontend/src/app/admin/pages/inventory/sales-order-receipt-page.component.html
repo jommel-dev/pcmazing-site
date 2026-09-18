@@ -119,14 +119,18 @@
         <div class="receipt-meta">
           <div class="receipt-meta-left">
             <div>Printed: {{ printedAt() | date:'M/d/yyyy h:mm:ss a' }}</div>
-            <div>Store: {{ printingSettings()?.storeCode || '1' }}</div>
-            <div>Workstation: {{ printingSettings()?.workstationNo || '1' }}</div>
+            @if (showReceiptHeaderExtras) {
+              <div>Store: {{ printingSettings()?.storeCode || '1' }}</div>
+              <div>Workstation: {{ printingSettings()?.workstationNo || '1' }}</div>
+            }
           </div>
           <div class="receipt-meta-right">
             <div><strong>Sales Receipt #{{ receiptNo() }}</strong></div>
-            <div>Date: {{ printedAt() | date:'M/d/yyyy' }}</div>
+            @if (showReceiptHeaderExtras) {
+              <div>Date: {{ printedAt() | date:'M/d/yyyy' }}</div>
+            }
             <div>Cashier: {{ cashierName() }}</div>
-            @if (printingSettings()?.showPageNumbers !== false) {
+            @if (showReceiptHeaderExtras && printingSettings()?.showPageNumbers !== false) {
               <div>Page 1</div>
             }
           </div>
@@ -199,13 +203,19 @@
           </div>
         }
 
-        <div class="receipt-warranty">
-          <p class="warranty-text">{{ warrantyPolicyText() }}</p>
-        </div>
+        @if (showWarrantyPolicy()) {
+          <div class="receipt-warranty">
+            <p class="warranty-text">{{ warrantyPolicyText() }}</p>
+          </div>
+        }
 
         <div class="receipt-footer">
-          <p>{{ footerNoteText() }}</p>
-          <p class="thanks">{{ thanksMessageText() }}</p>
+          @if (showFooterNote()) {
+            <p>{{ footerNoteText() }}</p>
+          }
+          @if (showThanksMessage()) {
+            <p class="thanks">{{ thanksMessageText() }}</p>
+          }
           <div class="receipt-barcode-wrap">
             <div class="receipt-barcode" aria-hidden="true">
               @for (bar of barcodeBars(); track $index) {

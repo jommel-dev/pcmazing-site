@@ -41,6 +41,7 @@ import {
   deleteProjectTaskAttachmentFile,
   saveProjectTaskAttachmentFile,
 } from './task-attachment.util';
+import { ProjectTaskNotificationService } from './project-task-notification.service';
 
 type UserSource = 'pcmazing_admin_users' | 'tblusers';
 type BoardStatus = (typeof PROJECT_BOARD_STATUSES)[number];
@@ -198,7 +199,10 @@ export interface ProjectPhaseItem {
 export class ProjectsService {
   private schemaReady = false;
 
-  constructor(private readonly databaseService: DatabaseService) {}
+  constructor(
+    private readonly databaseService: DatabaseService,
+    private readonly taskNotifications: ProjectTaskNotificationService,
+  ) {}
 
   async ensureReady(): Promise<void> {
     if (this.schemaReady) {
@@ -1424,7 +1428,13 @@ export class ProjectsService {
     }
 
     await this.syncEpicAfterTaskChange(projectId, dto.epicId);
-    return this.getTaskById(projectId, taskId);
+    const created = await this.getTaskById(projectId, taskId);
+    void this.taskNotifications.notifyTaskAssigned({
+      project,
+      task: created,
+      actor: actor ?? null,
+    });
+    return created;
   }
 
   async updateTask(
@@ -1549,6 +1559,18 @@ export class ProjectsService {
     for (const epicId of epicIds) {
       await this.syncEpicAfterTaskChange(projectId, epicId);
     }
+
+    if (dto.status !== undefined && dto.status !== existing.status) {
+      const project = await this.getById(projectId);
+      void this.taskNotifications.notifyTaskStatusChanged({
+        project,
+        task: updated,
+        fromStatus: existing.status,
+        toStatus: updated.status,
+        actor: actor ?? null,
+      });
+    }
+
     return updated;
   }
 
@@ -1677,7 +1699,20 @@ export class ProjectsService {
     if (task.epicId) {
       await this.syncEpicAfterTaskChange(projectId, task.epicId);
     }
-    return this.getTaskById(projectId, taskId);
+    const moved = await this.getTaskById(projectId, taskId);
+
+    if (task.status !== dto.status) {
+      const project = await this.getById(projectId);
+      void this.taskNotifications.notifyTaskStatusChanged({
+        project,
+        task: moved,
+        fromStatus: task.status,
+        toStatus: moved.status,
+        actor: actor ?? null,
+      });
+    }
+
+    return moved;
   }
 
   async deleteTask(

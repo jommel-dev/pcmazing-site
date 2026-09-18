@@ -9,8 +9,12 @@ import {
   Post,
   Query,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import type { Request } from 'express';
 import { AdminJwtPayload, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../rbac/roles.decorator';
@@ -32,6 +36,15 @@ export class CompanyExpensesController {
     @Query('status') status?: string,
   ) {
     return this.companyExpensesService.listCalendar(from, to, category, status).then((data) => ({
+      success: true,
+      data,
+    }));
+  }
+
+  @Get('category-suggestions')
+  @Roles('admin', 'sales')
+  categorySuggestions() {
+    return this.companyExpensesService.listCategorySuggestions().then((data) => ({
       success: true,
       data,
     }));
@@ -71,6 +84,43 @@ export class CompanyExpensesController {
       success: true,
       message: 'Expense updated.',
       data,
+    }));
+  }
+
+  @Post(':id/attachments')
+  @Roles('admin', 'sales')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 10 * 1024 * 1024 },
+    }),
+  )
+  uploadAttachment(
+    @Param('id', ParseIntPipe) id: number,
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: Request & { user?: AdminJwtPayload },
+  ) {
+    const createdBy =
+      req.user?.sub != null && Number.isFinite(Number(req.user.sub))
+        ? Number(req.user.sub)
+        : undefined;
+
+    return this.companyExpensesService.uploadAttachment(id, file, createdBy).then((data) => ({
+      success: true,
+      message: 'Attachment uploaded.',
+      data,
+    }));
+  }
+
+  @Delete(':id/attachments/:attachmentId')
+  @Roles('admin', 'sales')
+  deleteAttachment(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('attachmentId', ParseIntPipe) attachmentId: number,
+  ) {
+    return this.companyExpensesService.deleteAttachment(id, attachmentId).then(() => ({
+      success: true,
+      message: 'Attachment deleted.',
     }));
   }
 
