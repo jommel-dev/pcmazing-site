@@ -26,6 +26,7 @@ import { PrintingSettingsService } from './printing/printing-settings.service';
 import { PrintingTemplatesController } from './printing/printing-templates.controller';
 import { PrintingTemplatesService } from './printing/printing-templates.service';
 import { QuotationController } from './quotation/quotation.controller';
+import { PublicQuotationsController } from './quotation/public-quotations.controller';
 import { QuotationService } from './quotation/quotation.service';
 import { RbacService } from './rbac/rbac.service';
 import { RolesGuard } from './rbac/roles.guard';
@@ -59,6 +60,7 @@ import { PartsPriceSearchService } from './parts-price-search/parts-price-search
     ServiceTypesController,
     PurchaseController,
     QuotationController,
+    PublicQuotationsController,
     PartsPriceSearchController,
     UsersController,
     PayrollController,

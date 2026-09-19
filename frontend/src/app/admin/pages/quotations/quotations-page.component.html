@@ -1,5 +1,5 @@
 <section>
-      <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+  <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
     <div>
       <h2 class="text-2xl font-bold text-slate-900">Quotations</h2>
       <p class="mt-1 text-sm text-slate-500">Create, review, and track customer quotations.</p>
@@ -23,10 +23,15 @@
     }
   </div>
 
+  @if (actionMessage()) {
+    <div class="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-sm text-emerald-700">{{ actionMessage() }}</div>
+  }
+  @if (error()) {
+    <div class="mb-4 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{{ error() }}</div>
+  }
+
   @if (loading()) {
     <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500">Loading quotations...</div>
-  } @else if (error()) {
-    <div class="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{{ error() }}</div>
   } @else if (items().length === 0) {
     <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500">No quotations found.</div>
   } @else {
@@ -34,29 +39,117 @@
       <table class="min-w-full divide-y divide-slate-200 text-sm">
         <thead class="bg-slate-50">
           <tr>
-            <th class="px-4 py-3 text-left font-bold text-slate-600">Quote No</th>
-            <th class="px-4 py-3 text-left font-bold text-slate-600">Date</th>
-            <th class="px-4 py-3 text-left font-bold text-slate-600">Customer</th>
-            <th class="px-4 py-3 text-left font-bold text-slate-600">Amount</th>
-            <th class="px-4 py-3 text-left font-bold text-slate-600">Status</th>
-            <th class="px-4 py-3 text-left font-bold text-slate-600">Expires</th>
-            <th class="px-4 py-3 text-left font-bold text-slate-600">Action</th>
+            <th class="px-4 py-3 text-left">
+              <button type="button" class="font-bold text-slate-600 hover:text-pcmazing-600" (click)="toggleSort('quoteNo')">
+                Quote No{{ sortIndicator('quoteNo') }}
+              </button>
+            </th>
+            <th class="px-4 py-3 text-left">
+              <button type="button" class="font-bold text-slate-600 hover:text-pcmazing-600" (click)="toggleSort('quoteDate')">
+                Date{{ sortIndicator('quoteDate') }}
+              </button>
+            </th>
+            <th class="px-4 py-3 text-left">
+              <button type="button" class="font-bold text-slate-600 hover:text-pcmazing-600" (click)="toggleSort('customerName')">
+                Customer{{ sortIndicator('customerName') }}
+              </button>
+            </th>
+            <th class="px-4 py-3 text-left">
+              <button type="button" class="font-bold text-slate-600 hover:text-pcmazing-600" (click)="toggleSort('totalAmount')">
+                Amount{{ sortIndicator('totalAmount') }}
+              </button>
+            </th>
+            <th class="px-4 py-3 text-left">
+              <button type="button" class="font-bold text-slate-600 hover:text-pcmazing-600" (click)="toggleSort('status')">
+                Status{{ sortIndicator('status') }}
+              </button>
+            </th>
+            <th class="px-4 py-3 text-left">
+              <button type="button" class="font-bold text-slate-600 hover:text-pcmazing-600" (click)="toggleSort('expiresAt')">
+                Expires{{ sortIndicator('expiresAt') }}
+              </button>
+            </th>
+            <th class="px-4 py-3 text-left font-bold text-slate-600">Actions</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100">
-          @for (item of items(); track item.id) {
+          @for (item of items(); track item.source + '-' + item.id) {
             <tr class="hover:bg-slate-50">
               <td class="px-4 py-3 font-medium text-slate-900">{{ item.quoteNo || '—' }}</td>
               <td class="px-4 py-3 text-slate-600">{{ formatDate(item.quoteDate) }}</td>
               <td class="px-4 py-3 text-slate-600">{{ item.customerName || '—' }}</td>
-              <td class="px-4 py-3 text-slate-600">{{ item.totalAmount ?? '—' }}</td>
-              <td class="px-4 py-3 capitalize text-slate-600">{{ item.status || '—' }}</td>
+              <td class="px-4 py-3 text-slate-600">{{ formatMoney(item.totalAmount) }}</td>
+              <td class="px-4 py-3">
+                <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-bold capitalize {{ statusClass(item.status) }}">
+                  {{ item.status || '—' }}
+                </span>
+              </td>
               <td class="px-4 py-3 text-slate-600">{{ formatDate(item.expiresAt) }}</td>
               <td class="px-4 py-3">
-                <div class="flex flex-wrap gap-3">
-                  <a [routerLink]="['/admin/quotations', item.id]" [queryParams]="viewQuery(item)" class="font-bold text-pcmazing-500 hover:text-pcmazing-600">View</a>
-                  @if (canEdit(item)) {
-                    <a [routerLink]="['/admin/quotations', item.id, 'edit']" class="font-bold text-pcmazing-500 hover:text-pcmazing-600">Edit</a>
+                <div class="flex flex-wrap items-center gap-1">
+                  <a
+                    [routerLink]="['/admin/quotations', item.id]"
+                    [queryParams]="viewQuery(item)"
+                    class="inline-flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-pcmazing-600"
+                    title="View"
+                    aria-label="View quotation"
+                  >
+                    <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  </a>
+                  @if (canManage(item)) {
+                    <a
+                      [routerLink]="['/admin/quotations', item.id, 'edit']"
+                      class="inline-flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-pcmazing-600"
+                      title="Edit"
+                      aria-label="Edit quotation"
+                    >
+                      <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 3.5 20.5 7.5 8 20H4v-4L16.5 3.5Z" />
+                      </svg>
+                    </a>
+                    <button
+                      type="button"
+                      class="inline-flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-pcmazing-600 disabled:opacity-40"
+                      title="Duplicate"
+                      aria-label="Duplicate quotation"
+                      [disabled]="busyId() === item.id"
+                      (click)="duplicate(item)"
+                    >
+                      <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <rect x="9" y="9" width="11" height="11" rx="2" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 15V5a2 2 0 0 1 2-2h10" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      class="inline-flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-pcmazing-600 disabled:opacity-40"
+                      title="Share"
+                      aria-label="Copy share link"
+                      [disabled]="busyId() === item.id"
+                      (click)="share(item)"
+                    >
+                      <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <circle cx="18" cy="5" r="3" />
+                        <circle cx="6" cy="12" r="3" />
+                        <circle cx="18" cy="19" r="3" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      class="inline-flex size-8 items-center justify-center rounded-lg text-red-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
+                      title="Delete"
+                      aria-label="Delete quotation"
+                      [disabled]="busyId() === item.id"
+                      (click)="remove(item)"
+                    >
+                      <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                      </svg>
+                    </button>
                   }
                 </div>
               </td>

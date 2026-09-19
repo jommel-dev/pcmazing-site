@@ -1,0 +1,78 @@
+<section class="public-quote-page">
+  @if (loading()) {
+    <div class="public-quote-card message">Loading quotation...</div>
+  } @else if (error()) {
+    <div class="public-quote-card message error">{{ error() }}</div>
+  } @else if (quotation(); as quote) {
+    <div class="public-quote-card">
+      <div class="watermark" aria-hidden="true">
+        {{ quote.quoteNo || ('#' + quote.id) }} · Confidential — do not distribute
+      </div>
+
+      <header class="public-quote-header">
+        <img src="/images/logopcm.png" alt="PCmazing" class="logo" />
+        <div>
+          <p class="eyebrow">Quotation</p>
+          <h1>{{ quote.quoteNo || ('#' + quote.id) }}</h1>
+          <p class="meta">Date {{ formatDate(quote.quoteDate) }} · Valid until {{ formatDate(quote.expiresAt) }}</p>
+        </div>
+      </header>
+
+      <div class="bill-to">
+        <p class="label">Bill To</p>
+        <p class="name">{{ quote.customerName || '—' }}</p>
+        @if (quote.customerContactNumber) {
+          <p>{{ quote.customerContactNumber }}</p>
+        }
+        @if (quote.customerEmail) {
+          <p>{{ quote.customerEmail }}</p>
+        }
+        @if (quote.customerAddress) {
+          <p class="address">{{ quote.customerAddress }}</p>
+        }
+      </div>
+
+      <table class="lines">
+        <thead>
+          <tr>
+            <th>Item Description</th>
+            <th class="num">Qty</th>
+            <th class="num">Price</th>
+            <th class="num">Discount</th>
+            <th class="num">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (item of quote.items; track item.id) {
+            <tr>
+              <td>{{ lineDescription(item) }}</td>
+              <td class="num">{{ item.quantity }}</td>
+              <td class="num">{{ formatMoney(item.unitPrice) }}</td>
+              <td class="num">{{ discountLabel(item.discountType) }}</td>
+              <td class="num">{{ formatMoney(item.lineTotal) }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+
+      <div class="totals">
+        <div class="row"><span>Subtotal</span><span>{{ formatMoney(quote.subtotal ?? quote.totalAmount) }}</span></div>
+        @if ((quote.discountTotal ?? 0) > 0) {
+          <div class="row"><span>Discounts</span><span>-{{ formatMoney(quote.discountTotal) }}</span></div>
+        }
+        <div class="row strong"><span>Total</span><span>{{ formatMoney(quote.totalAmount) }}</span></div>
+      </div>
+
+      @if (quote.remarks) {
+        <div class="remarks">
+          <p class="label">Remarks</p>
+          <p>{{ quote.remarks }}</p>
+        </div>
+      }
+
+      <p class="disclaimer">
+        View-only link. Printing, saving, and copying are restricted. Screenshots and external capture cannot be fully prevented.
+      </p>
+    </div>
+  }
+</section>

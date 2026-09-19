@@ -1,0 +1,183 @@
+.public-quote-page {
+  min-height: 100vh;
+  padding: 1.5rem 1rem 3rem;
+  background: linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.public-quote-card {
+  position: relative;
+  max-width: 880px;
+  margin: 0 auto;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 1rem;
+  background: #fff;
+  padding: 1.75rem;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+}
+
+.public-quote-card.message {
+  text-align: center;
+  color: #64748b;
+}
+
+.public-quote-card.message.error {
+  color: #b91c1c;
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.watermark {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  transform: rotate(-24deg);
+  font-size: clamp(1rem, 3vw, 1.6rem);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: rgba(15, 23, 42, 0.06);
+  text-align: center;
+  padding: 2rem;
+}
+
+.public-quote-header {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.public-quote-header .logo {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #0ea5e9;
+}
+
+.public-quote-header h1 {
+  margin: 0.2rem 0;
+  font-size: 1.6rem;
+  color: #0f172a;
+}
+
+.meta,
+.bill-to p,
+.remarks p,
+.disclaimer {
+  margin: 0.15rem 0;
+  color: #475569;
+  font-size: 0.9rem;
+}
+
+.bill-to {
+  margin-bottom: 1.25rem;
+}
+
+.label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.bill-to .name {
+  font-weight: 700;
+  color: #0f172a;
+  font-size: 1rem;
+}
+
+.address {
+  white-space: pre-line;
+}
+
+.lines {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.lines th,
+.lines td {
+  padding: 0.65rem 0.4rem;
+  border-bottom: 1px solid #e2e8f0;
+  text-align: left;
+  color: #334155;
+}
+
+.lines th {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+}
+
+.lines .num,
+.totals .row {
+  text-align: right;
+}
+
+.totals {
+  margin-top: 1rem;
+  margin-left: auto;
+  max-width: 240px;
+}
+
+.totals .row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.25rem 0;
+  color: #475569;
+  font-size: 0.9rem;
+}
+
+.totals .strong {
+  margin-top: 0.35rem;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 0.5rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.remarks {
+  margin-top: 1.25rem;
+  white-space: pre-line;
+}
+
+.disclaimer {
+  margin-top: 1.5rem;
+  font-size: 0.75rem;
+  color: #94a3b8;
+  font-style: italic;
+}
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+
+  body::before {
+    content: 'Printing is not allowed for shared quotations.';
+    visibility: visible !important;
+    display: block;
+    padding: 2rem;
+    font-size: 1.1rem;
+  }
+}
+
+:host-context(body.public-quote-lock) {
+  user-select: none;
+}
