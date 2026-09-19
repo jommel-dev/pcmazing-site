@@ -102,12 +102,6 @@ export class QuotationCreatePageComponent implements OnInit {
       this.materials.set(materialsResponse.data.map((item) => this.normalizeMaterial(item)));
 
       if (quoteResponse?.data) {
-        if (quoteResponse.data.status !== 'draft') {
-          await this.router.navigate(['/admin/quotations', quoteResponse.data.id], {
-            queryParams: { source: 'pcmazing' },
-          });
-          return;
-        }
         this.populateFromQuote(quoteResponse.data);
       } else {
         this.addMaterialItem();
@@ -147,7 +141,7 @@ export class QuotationCreatePageComponent implements OnInit {
           discountType: [normalizePhDiscountType(item.discountType)],
         }),
       );
-      this.partQueries.update((queries) => [...queries, isCustom ? '' : item.materialName || item.description || '']);
+      this.partQueries.update((queries) => [...queries, item.materialName || item.description || '']);
     }
   }
 
@@ -165,20 +159,6 @@ export class QuotationCreatePageComponent implements OnInit {
     this.partQueries.update((queries) => [...queries, '']);
   }
 
-  addCustomItem(): void {
-    this.itemsArray.push(
-      this.formBuilder.nonNullable.group({
-        itemKind: ['custom' as QuoteItemKind],
-        materialId: [''],
-        description: ['', [Validators.required, Validators.maxLength(500)]],
-        quantity: [1, [Validators.required, Validators.min(0.01)]],
-        unitPrice: [0, [Validators.required, Validators.min(0)]],
-        discountType: ['none' as PhDiscountType],
-      }),
-    );
-    this.partQueries.update((queries) => [...queries, '']);
-  }
-
   removeItem(index: number): void {
     this.itemsArray.removeAt(index);
     this.partQueries.update((queries) => queries.filter((_, itemIndex) => itemIndex !== index));
@@ -187,18 +167,11 @@ export class QuotationCreatePageComponent implements OnInit {
     this.webSearchErrors.update((current) => this.reindexRecord(current, index));
   }
 
-  isCustomItem(index: number): boolean {
-    return (this.itemsArray.at(index)?.getRawValue() as { itemKind?: QuoteItemKind })?.itemKind === 'custom';
-  }
-
   partQuery(index: number): string {
     return this.partQueries()[index] ?? '';
   }
 
   openPartSearch(index: number): void {
-    if (this.isCustomItem(index)) {
-      return;
-    }
     if (this.partSearchCloseTimer) {
       clearTimeout(this.partSearchCloseTimer);
       this.partSearchCloseTimer = null;
@@ -231,8 +204,24 @@ export class QuotationCreatePageComponent implements OnInit {
       if (materialId) {
         const selectedName = this.materialName(materialId);
         if (value.trim() !== selectedName) {
-          group.patchValue({ materialId: '', unitPrice: 0 }, { emitEvent: false });
+          group.patchValue(
+            {
+              itemKind: 'custom' as QuoteItemKind,
+              materialId: '',
+              description: value.trim().slice(0, 500),
+              unitPrice: 0,
+            },
+            { emitEvent: false },
+          );
         }
+      } else {
+        group.patchValue(
+          {
+            itemKind: 'custom' as QuoteItemKind,
+            description: value.trim().slice(0, 500),
+          },
+          { emitEvent: false },
+        );
       }
     }
 
@@ -344,9 +333,38 @@ export class QuotationCreatePageComponent implements OnInit {
       },
       { emitEvent: false },
     );
-    group.get('description')?.setValidators([Validators.required, Validators.maxLength(500)]);
-    group.get('description')?.updateValueAndValidity({ emitEvent: false });
 
+    this.partQueries.update((items) => {
+      const next = [...items];
+      next[index] = description;
+      return next;
+    });
+    this.openPartSearchIndex.set(null);
+  }
+
+  selectCustomDescription(index: number): void {
+    const group = this.itemsArray.at(index);
+    if (!group) {
+      return;
+    }
+    if (this.partSearchCloseTimer) {
+      clearTimeout(this.partSearchCloseTimer);
+      this.partSearchCloseTimer = null;
+    }
+
+    const description = this.partQuery(index).trim().slice(0, 500);
+    if (!description) {
+      return;
+    }
+
+    group.patchValue(
+      {
+        itemKind: 'custom' as QuoteItemKind,
+        materialId: '',
+        description,
+      },
+      { emitEvent: false },
+    );
     this.partQueries.update((items) => {
       const next = [...items];
       next[index] = description;
@@ -365,6 +383,12 @@ export class QuotationCreatePageComponent implements OnInit {
     event.preventDefault();
     event.stopPropagation();
     this.selectWebPart(index, hit);
+  }
+
+  onCustomDescriptionPointerDown(event: Event, index: number): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.selectCustomDescription(index);
   }
 
   webPartsFor(index: number): PartsPriceHit[] {
@@ -574,24 +598,20 @@ export class QuotationCreatePageComponent implements OnInit {
       return;
     }
 
-    const invalidItemIndex = this.itemsArray.controls.findIndex((control) => {
+    const invalidItemIndex = this.itemsArray.controls.findIndex((control, index) => {
       const item = control.getRawValue() as {
         itemKind?: QuoteItemKind;
         materialId: string;
         description: string;
       };
-      if (item.itemKind === 'custom') {
-        return !item.description.trim();
-      }
       const materialId = Number(item.materialId);
-      return !Number.isFinite(materialId) || materialId <= 0;
+      const hasMaterial = Number.isFinite(materialId) && materialId > 0;
+      const description = (item.description || this.partQuery(index) || '').trim();
+      return !hasMaterial && !description;
     });
     if (invalidItemIndex >= 0) {
-      const kind = (this.itemsArray.at(invalidItemIndex)?.getRawValue() as { itemKind?: QuoteItemKind }).itemKind;
       this.formError.set(
-        kind === 'custom'
-          ? `Enter a description for custom row ${invalidItemIndex + 1}.`
-          : `Select an inventory item for row ${invalidItemIndex + 1}.`,
+        `Select an inventory/web item or enter a custom description for row ${invalidItemIndex + 1}.`,
       );
       return;
     }
@@ -607,7 +627,7 @@ export class QuotationCreatePageComponent implements OnInit {
       quoteDate: value.quoteDate ? new Date(value.quoteDate).toISOString() : undefined,
       validityDays: Number(value.validityDays) || 7,
       status,
-      items: this.itemsArray.controls.map((control) => {
+      items: this.itemsArray.controls.map((control, index) => {
         const item = control.getRawValue() as {
           itemKind?: QuoteItemKind;
           materialId: string;
@@ -617,11 +637,11 @@ export class QuotationCreatePageComponent implements OnInit {
           discountType?: PhDiscountType;
         };
         const materialId = Number(item.materialId);
-        const hasMaterial =
-          item.itemKind !== 'custom' && Number.isFinite(materialId) && materialId > 0;
+        const hasMaterial = Number.isFinite(materialId) && materialId > 0;
+        const description = (item.description || this.partQuery(index) || '').trim();
         return {
           ...(hasMaterial ? { materialId } : {}),
-          description: item.description.trim() || undefined,
+          description: description || undefined,
           quantity: Number(item.quantity),
           unitPrice: Number(item.unitPrice),
           discountType: normalizePhDiscountType(item.discountType),

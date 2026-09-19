@@ -53,7 +53,12 @@
               <td class="px-4 py-3 capitalize text-slate-600">{{ item.status || '—' }}</td>
               <td class="px-4 py-3 text-slate-600">{{ formatDate(item.expiresAt) }}</td>
               <td class="px-4 py-3">
-                <a [routerLink]="['/admin/quotations', item.id]" [queryParams]="viewQuery(item)" class="font-bold text-pcmazing-500 hover:text-pcmazing-600">View</a>
+                <div class="flex flex-wrap gap-3">
+                  <a [routerLink]="['/admin/quotations', item.id]" [queryParams]="viewQuery(item)" class="font-bold text-pcmazing-500 hover:text-pcmazing-600">View</a>
+                  @if (canEdit(item)) {
+                    <a [routerLink]="['/admin/quotations', item.id, 'edit']" class="font-bold text-pcmazing-500 hover:text-pcmazing-600">Edit</a>
+                  }
+                </div>
               </td>
             </tr>
           }

@@ -64,7 +64,7 @@ export class QuotationController {
   ) {
     return this.quotationService.updateDraft(id, dto).then((item) => ({
       success: true,
-      message: item.status === 'finalized' ? 'Quotation finalized.' : 'Draft quotation updated.',
+      message: item.status === 'finalized' ? 'Quotation finalized.' : 'Quotation saved as draft.',
       data: item,
     }));
   }

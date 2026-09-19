@@ -63,8 +63,7 @@
                   <table class="template-line-items">
                     <thead>
                       <tr>
-                        <th>Item</th>
-                        <th>Description</th>
+                        <th>Item Description</th>
                         <th class="num">Qty</th>
                         <th class="num">Price</th>
                         <th class="num">Discount</th>
@@ -75,7 +74,6 @@
                       @for (line of lines(); track $index) {
                         <tr>
                           <td>{{ line.itemName }}</td>
-                          <td>{{ line.description }}</td>
                           <td class="num">{{ line.isCustomDiscount ? '—' : (line.qty | number:'1.0-2') }}</td>
                           <td class="num">{{ line.isCustomDiscount ? '—' : formatMoney(line.unitPrice) }}</td>
                           <td class="num">{{ formatDiscount(line) }}</td>
@@ -107,9 +105,6 @@
         <div class="receipt-meta">
           <div class="receipt-meta-left">
             <div>Printed: {{ printedAt() | date:'M/d/yyyy h:mm:ss a' }}</div>
-            @if (printingSettings()?.showPageNumbers !== false) {
-              <div>Page 1</div>
-            }
           </div>
           <div class="receipt-meta-right">
             <div><strong>Quotation {{ quotationNo() }}</strong></div>
@@ -143,8 +138,7 @@
         <table class="receipt-table">
           <thead>
             <tr>
-              <th>Item</th>
-              <th>Description</th>
+              <th>Item Description</th>
               <th class="num">Qty</th>
               <th class="num">Price</th>
               <th class="num">Discount</th>
@@ -155,7 +149,6 @@
             @for (line of lines(); track $index) {
               <tr>
                 <td>{{ line.itemName }}</td>
-                <td>{{ line.description }}</td>
                 <td class="num">{{ line.isCustomDiscount ? '—' : (line.qty | number:'1.0-2') }}</td>
                 <td class="num">{{ line.isCustomDiscount ? '—' : formatMoney(line.unitPrice) }}</td>
                 <td class="num">{{ formatDiscount(line) }}</td>
@@ -175,6 +168,9 @@
                 <p><strong>Remarks:</strong></p>
                 <p>{{ current.remarks }}</p>
               </div>
+            }
+            @if (validityNote(); as note) {
+              <p class="receipt-validity-note">{{ note }}</p>
             }
           </div>
           <div class="receipt-totals-right">
