@@ -11,3 +11,4 @@ COMMENT ON COLUMN pcmazing_printing_settings.show_footer_note IS
 
 COMMENT ON COLUMN pcmazing_printing_settings.show_thanks_message IS
   'When false, thank-you message is omitted from receipt printouts.';
+n

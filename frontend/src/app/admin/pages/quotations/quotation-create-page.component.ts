@@ -8,6 +8,7 @@ import {
   CreateQuotationPayload,
   JobOrderCustomerSuggestion,
   MaterialItem,
+  PartsPriceHit,
   QuotationDetail,
 } from '../../services/admin-api.service';
 import {
@@ -48,6 +49,9 @@ export class QuotationCreatePageComponent implements OnInit {
   readonly materials = signal<MaterialItem[]>([]);
   readonly partQueries = signal<string[]>([]);
   readonly materialSearchResults = signal<Record<number, MaterialItem[]>>({});
+  readonly webSearchResults = signal<Record<number, PartsPriceHit[]>>({});
+  readonly webSearchErrors = signal<Record<number, string[]>>({});
+  readonly webSearchLoading = signal(false);
   readonly openPartSearchIndex = signal<number | null>(null);
   readonly partSearchLoading = signal(false);
   readonly quotationId = signal<number | null>(null);
@@ -178,18 +182,9 @@ export class QuotationCreatePageComponent implements OnInit {
   removeItem(index: number): void {
     this.itemsArray.removeAt(index);
     this.partQueries.update((queries) => queries.filter((_, itemIndex) => itemIndex !== index));
-    this.materialSearchResults.update((current) => {
-      const next: Record<number, MaterialItem[]> = {};
-      for (const [key, value] of Object.entries(current)) {
-        const itemIndex = Number(key);
-        if (itemIndex < index) {
-          next[itemIndex] = value;
-        } else if (itemIndex > index) {
-          next[itemIndex - 1] = value;
-        }
-      }
-      return next;
-    });
+    this.materialSearchResults.update((current) => this.reindexRecord(current, index));
+    this.webSearchResults.update((current) => this.reindexRecord(current, index));
+    this.webSearchErrors.update((current) => this.reindexRecord(current, index));
   }
 
   isCustomItem(index: number): boolean {
@@ -210,6 +205,7 @@ export class QuotationCreatePageComponent implements OnInit {
     }
     this.openPartSearchIndex.set(index);
     void this.searchMaterialsForPart(index, this.partQuery(index));
+    void this.searchWebPartsForPart(index, this.partQuery(index));
   }
 
   scheduleClosePartSearch(): void {
@@ -251,6 +247,7 @@ export class QuotationCreatePageComponent implements OnInit {
     }
     const timer = setTimeout(() => {
       void this.searchMaterialsForPart(index, value);
+      void this.searchWebPartsForPart(index, value);
     }, 250);
     this.materialSearchTimers.set(index, timer);
   }
@@ -267,6 +264,40 @@ export class QuotationCreatePageComponent implements OnInit {
     }
   }
 
+  private async searchWebPartsForPart(index: number, value: string): Promise<void> {
+    const query = value.trim();
+    if (query.length < 3) {
+      this.webSearchResults.update((current) => ({ ...current, [index]: [] }));
+      this.webSearchErrors.update((current) => ({ ...current, [index]: [] }));
+      return;
+    }
+
+    this.webSearchLoading.set(true);
+    try {
+      const response = await firstValueFrom(
+        this.adminApi.searchPartsPrices(query, { limit: 8 }),
+      );
+      this.webSearchResults.update((current) => ({
+        ...current,
+        [index]: response.data.items ?? [],
+      }));
+      this.webSearchErrors.update((current) => ({
+        ...current,
+        [index]: (response.data.sourceErrors ?? []).map(
+          (error) => `${error.sourceLabel}: ${error.message}`,
+        ),
+      }));
+    } catch {
+      this.webSearchResults.update((current) => ({ ...current, [index]: [] }));
+      this.webSearchErrors.update((current) => ({
+        ...current,
+        [index]: ['Unable to search web stores right now.'],
+      }));
+    } finally {
+      this.webSearchLoading.set(false);
+    }
+  }
+
   selectPartMaterial(index: number, item: MaterialItem): void {
     const group = this.itemsArray.at(index);
     if (!group) {
@@ -278,6 +309,7 @@ export class QuotationCreatePageComponent implements OnInit {
     }
     group.patchValue(
       {
+        itemKind: 'material' as QuoteItemKind,
         materialId: String(item.id),
         unitPrice: this.resolveMaterialUnitPrice(item),
         description: item.materialName,
@@ -292,10 +324,55 @@ export class QuotationCreatePageComponent implements OnInit {
     this.openPartSearchIndex.set(null);
   }
 
+  selectWebPart(index: number, hit: PartsPriceHit): void {
+    const group = this.itemsArray.at(index);
+    if (!group) {
+      return;
+    }
+    if (this.partSearchCloseTimer) {
+      clearTimeout(this.partSearchCloseTimer);
+      this.partSearchCloseTimer = null;
+    }
+
+    const description = hit.title.trim().slice(0, 500);
+    group.patchValue(
+      {
+        itemKind: 'custom' as QuoteItemKind,
+        materialId: '',
+        description,
+        unitPrice: Number(hit.pricePhp) || 0,
+      },
+      { emitEvent: false },
+    );
+    group.get('description')?.setValidators([Validators.required, Validators.maxLength(500)]);
+    group.get('description')?.updateValueAndValidity({ emitEvent: false });
+
+    this.partQueries.update((items) => {
+      const next = [...items];
+      next[index] = description;
+      return next;
+    });
+    this.openPartSearchIndex.set(null);
+  }
+
   onPartSuggestionPointerDown(event: Event, index: number, item: MaterialItem): void {
     event.preventDefault();
     event.stopPropagation();
     this.selectPartMaterial(index, item);
+  }
+
+  onWebPartSuggestionPointerDown(event: Event, index: number, hit: PartsPriceHit): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.selectWebPart(index, hit);
+  }
+
+  webPartsFor(index: number): PartsPriceHit[] {
+    return this.webSearchResults()[index] ?? [];
+  }
+
+  webErrorsFor(index: number): string[] {
+    return this.webSearchErrors()[index] ?? [];
   }
 
   filteredMaterials(index: number): MaterialItem[] {
@@ -595,6 +672,19 @@ export class QuotationCreatePageComponent implements OnInit {
       }
       return Array.from(map.values());
     });
+  }
+
+  private reindexRecord<T>(current: Record<number, T>, removedIndex: number): Record<number, T> {
+    const next: Record<number, T> = {};
+    for (const [key, value] of Object.entries(current)) {
+      const itemIndex = Number(key);
+      if (itemIndex < removedIndex) {
+        next[itemIndex] = value;
+      } else if (itemIndex > removedIndex) {
+        next[itemIndex - 1] = value;
+      }
+    }
+    return next;
   }
 
   private toLocalDateTimeInputValue(date: Date): string {
