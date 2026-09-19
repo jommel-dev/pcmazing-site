@@ -102,6 +102,9 @@
       </div>
     } @else {
       <div class="receipt-sheet mx-auto bg-white text-black shadow-sm">
+        <div class="receipt-watermark" aria-hidden="true">
+          {{ quotationNo() }} · Confidential — do not distribute
+        </div>
         <div class="receipt-meta">
           <div class="receipt-meta-left">
             <div>Printed: {{ printedAt() | date:'M/d/yyyy h:mm:ss a' }}</div>
@@ -117,8 +120,8 @@
 
         <div class="receipt-brand">
           <img src="/images/logopcm.png" alt="PCmazing IT SERVICES" class="receipt-logo" />
-          <p class="receipt-company">{{ printingSettings()?.storeName || 'PCmazing' }}</p>
-          <p class="receipt-address">{{ printingSettings()?.storeAddress || 'Mabini Extension, Cabanatuan City, 3100' }}</p>
+          <p class="receipt-company">{{ storeDisplayName() }}</p>
+          <p class="receipt-address">{{ storeDisplayAddress() }}</p>
         </div>
 
         <div class="receipt-bill-to">

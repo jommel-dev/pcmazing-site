@@ -27,6 +27,7 @@
 }
 
 .receipt-sheet {
+  position: relative;
   width: 210mm;
   max-width: 100%;
   padding: 8mm;
@@ -37,6 +38,28 @@
   font-size: 12px;
   line-height: 1.35;
   color: #111;
+  overflow: hidden;
+}
+
+.receipt-watermark {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: grid;
+  place-items: center;
+  transform: rotate(-24deg);
+  font-size: clamp(0.95rem, 2.4vw, 1.45rem);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: rgba(15, 23, 42, 0.07);
+  text-align: center;
+  padding: 1.5rem;
+}
+
+.receipt-sheet > *:not(.receipt-watermark) {
+  position: relative;
+  z-index: 1;
 }
 
 .receipt-sheet-template {
@@ -165,6 +188,8 @@
   display: inline-block;
   height: 54px;
   width: auto;
+  max-width: 160px;
+  object-fit: contain;
   margin: 0 auto 0.35rem;
 }
 
@@ -346,7 +371,19 @@
   .receipt-sheet:not(.receipt-sheet-template) {
     width: 100%;
     min-height: 0;
-    overflow: visible;
+    overflow: hidden;
+  }
+
+  .receipt-watermark {
+    color: rgba(15, 23, 42, 0.08) !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .receipt-logo {
+    height: 54px !important;
+    width: auto !important;
+    max-width: 160px !important;
   }
 
   .receipt-warranty,

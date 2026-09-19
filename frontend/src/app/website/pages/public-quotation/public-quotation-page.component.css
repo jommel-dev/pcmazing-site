@@ -1,20 +1,36 @@
+:host {
+  display: block;
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: clip;
+}
+
 .public-quote-page {
+  box-sizing: border-box;
   min-height: 100vh;
-  padding: 1.5rem 1rem 3rem;
+  min-height: 100dvh;
+  width: 100%;
+  max-width: 100%;
+  padding: 1rem 0.75rem calc(2rem + env(safe-area-inset-bottom, 0px));
+  padding-left: max(0.75rem, env(safe-area-inset-left, 0px));
+  padding-right: max(0.75rem, env(safe-area-inset-right, 0px));
   background: linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
   user-select: none;
   -webkit-user-select: none;
+  overflow-x: hidden;
 }
 
 .public-quote-card {
   position: relative;
+  box-sizing: border-box;
+  width: 100%;
   max-width: 880px;
   margin: 0 auto;
-  overflow: hidden;
+  overflow: visible;
   border: 1px solid #e2e8f0;
   border-radius: 1rem;
   background: #fff;
-  padding: 1.75rem;
+  padding: 1.25rem;
   box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
 }
 
@@ -36,25 +52,33 @@
   display: grid;
   place-items: center;
   transform: rotate(-24deg);
-  font-size: clamp(1rem, 3vw, 1.6rem);
+  font-size: clamp(0.85rem, 3.5vw, 1.6rem);
   font-weight: 700;
   letter-spacing: 0.04em;
   color: rgba(15, 23, 42, 0.06);
   text-align: center;
-  padding: 2rem;
+  padding: 1.5rem;
+  overflow: hidden;
 }
 
 .public-quote-header {
   display: flex;
-  gap: 1rem;
-  align-items: center;
-  margin-bottom: 1.5rem;
+  gap: 0.85rem;
+  align-items: flex-start;
+  margin-bottom: 1.25rem;
+  min-width: 0;
 }
 
 .public-quote-header .logo {
-  width: 64px;
-  height: 64px;
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
   object-fit: contain;
+}
+
+.header-text {
+  min-width: 0;
+  flex: 1;
 }
 
 .eyebrow {
@@ -68,8 +92,10 @@
 
 .public-quote-header h1 {
   margin: 0.2rem 0;
-  font-size: 1.6rem;
+  font-size: clamp(1.25rem, 5vw, 1.6rem);
+  line-height: 1.2;
   color: #0f172a;
+  word-break: break-word;
 }
 
 .meta,
@@ -79,10 +105,13 @@
   margin: 0.15rem 0;
   color: #475569;
   font-size: 0.9rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .bill-to {
   margin-bottom: 1.25rem;
+  min-width: 0;
 }
 
 .label {
@@ -99,14 +128,25 @@
   font-size: 1rem;
 }
 
-.address {
+.address,
+.email {
   white-space: pre-line;
+}
+
+.lines-scroll {
+  display: none;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .lines {
   width: 100%;
+  min-width: 560px;
   border-collapse: collapse;
   font-size: 0.9rem;
+  table-layout: fixed;
 }
 
 .lines th,
@@ -115,6 +155,14 @@
   border-bottom: 1px solid #e2e8f0;
   text-align: left;
   color: #334155;
+  vertical-align: top;
+}
+
+.lines th:first-child,
+.lines td:first-child {
+  width: 42%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .lines th {
@@ -124,15 +172,69 @@
   color: #64748b;
 }
 
-.lines .num,
-.totals .row {
+.lines .num {
   text-align: right;
+  white-space: nowrap;
+}
+
+.lines-mobile {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.line-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 0.85rem;
+  background: #f8fafc;
+  padding: 0.85rem 0.9rem;
+}
+
+.line-card-title {
+  margin: 0 0 0.65rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #0f172a;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.line-card-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.55rem 0.75rem;
+  margin: 0;
+}
+
+.line-card-meta div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.line-card-meta dt {
+  margin: 0;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.line-card-meta dd {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #334155;
+  overflow-wrap: anywhere;
 }
 
 .totals {
   margin-top: 1rem;
   margin-left: auto;
-  max-width: 240px;
+  width: 100%;
+  max-width: 280px;
 }
 
 .totals .row {
@@ -142,6 +244,7 @@
   padding: 0.25rem 0;
   color: #475569;
   font-size: 0.9rem;
+  text-align: right;
 }
 
 .totals .strong {
@@ -155,6 +258,7 @@
 .remarks {
   margin-top: 1.25rem;
   white-space: pre-line;
+  min-width: 0;
 }
 
 .disclaimer {
@@ -162,6 +266,33 @@
   font-size: 0.75rem;
   color: #94a3b8;
   font-style: italic;
+}
+
+@media (min-width: 720px) {
+  .public-quote-page {
+    padding: 1.5rem 1rem 3rem;
+  }
+
+  .public-quote-card {
+    padding: 1.75rem;
+  }
+
+  .public-quote-header .logo {
+    width: 64px;
+    height: 64px;
+  }
+
+  .lines-scroll {
+    display: block;
+  }
+
+  .lines-mobile {
+    display: none;
+  }
+
+  .totals {
+    max-width: 240px;
+  }
 }
 
 @media print {

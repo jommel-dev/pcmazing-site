@@ -11,7 +11,7 @@
 
       <header class="public-quote-header">
         <img src="/images/logopcm.png" alt="PCmazing" class="logo" />
-        <div>
+        <div class="header-text">
           <p class="eyebrow">Quotation</p>
           <h1>{{ quote.quoteNo || ('#' + quote.id) }}</h1>
           <p class="meta">Date {{ formatDate(quote.quoteDate) }} · Valid until {{ formatDate(quote.expiresAt) }}</p>
@@ -25,35 +25,51 @@
           <p>{{ quote.customerContactNumber }}</p>
         }
         @if (quote.customerEmail) {
-          <p>{{ quote.customerEmail }}</p>
+          <p class="email">{{ quote.customerEmail }}</p>
         }
         @if (quote.customerAddress) {
           <p class="address">{{ quote.customerAddress }}</p>
         }
       </div>
 
-      <table class="lines">
-        <thead>
-          <tr>
-            <th>Item Description</th>
-            <th class="num">Qty</th>
-            <th class="num">Price</th>
-            <th class="num">Discount</th>
-            <th class="num">Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          @for (item of quote.items; track item.id) {
+      <div class="lines-scroll" aria-hidden="false">
+        <table class="lines lines-desktop">
+          <thead>
             <tr>
-              <td>{{ lineDescription(item) }}</td>
-              <td class="num">{{ item.quantity }}</td>
-              <td class="num">{{ formatMoney(item.unitPrice) }}</td>
-              <td class="num">{{ discountLabel(item.discountType) }}</td>
-              <td class="num">{{ formatMoney(item.lineTotal) }}</td>
+              <th>Item Description</th>
+              <th class="num">Qty</th>
+              <th class="num">Price</th>
+              <th class="num">Discount</th>
+              <th class="num">Amount</th>
             </tr>
-          }
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            @for (item of quote.items; track item.id) {
+              <tr>
+                <td>{{ lineDescription(item) }}</td>
+                <td class="num">{{ item.quantity }}</td>
+                <td class="num">{{ formatMoney(item.unitPrice) }}</td>
+                <td class="num">{{ discountLabel(item.discountType) }}</td>
+                <td class="num">{{ formatMoney(item.lineTotal) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <div class="lines-mobile">
+        @for (item of quote.items; track item.id) {
+          <article class="line-card">
+            <p class="line-card-title">{{ lineDescription(item) }}</p>
+            <dl class="line-card-meta">
+              <div><dt>Qty</dt><dd>{{ item.quantity }}</dd></div>
+              <div><dt>Price</dt><dd>{{ formatMoney(item.unitPrice) }}</dd></div>
+              <div><dt>Discount</dt><dd>{{ discountLabel(item.discountType) }}</dd></div>
+              <div><dt>Amount</dt><dd>{{ formatMoney(item.lineTotal) }}</dd></div>
+            </dl>
+          </article>
+        }
+      </div>
 
       <div class="totals">
         <div class="row"><span>Subtotal</span><span>{{ formatMoney(quote.subtotal ?? quote.totalAmount) }}</span></div>
