@@ -226,6 +226,14 @@
   min-width: 220px;
 }
 
+.receipt-validity-note {
+  margin: 0.75rem 0 0;
+  max-width: 28rem;
+  font-size: 11px;
+  font-style: italic;
+  color: #333;
+}
+
 .totals-row {
   display: flex;
   justify-content: space-between;

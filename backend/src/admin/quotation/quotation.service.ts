@@ -280,9 +280,6 @@ export class QuotationService {
     if (!existing) {
       throw new NotFoundException(`Quotation ${id} was not found.`);
     }
-    if (existing.status !== 'draft') {
-      throw new BadRequestException('Only draft quotations can be edited.');
-    }
 
     const payload = await this.normalizeHeader(dto);
     const items = await this.normalizeItems(dto.items ?? []);

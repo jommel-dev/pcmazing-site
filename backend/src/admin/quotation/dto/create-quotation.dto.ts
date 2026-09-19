@@ -54,6 +54,7 @@ export class CreateQuotationDto {
   customerName!: string;
 
   @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' && !value.trim() ? undefined : value))
   @IsString()
   @MaxLength(60)
   customerPhone?: string;
@@ -65,11 +66,13 @@ export class CreateQuotationDto {
   customerEmail?: string;
 
   @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' && !value.trim() ? undefined : value))
   @IsString()
   @MaxLength(2000)
   customerAddress?: string;
 
   @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' && !value.trim() ? undefined : value))
   @IsString()
   @MaxLength(2000)
   remarks?: string;

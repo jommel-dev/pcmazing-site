@@ -42,7 +42,7 @@ export class QuotationDetailPageComponent implements OnInit {
 
   canEdit(): boolean {
     const quote = this.quotation();
-    return quote?.source === 'pcmazing' && quote.status === 'draft';
+    return quote?.source === 'pcmazing';
   }
 
   lineDescription(item: QuotationDetail['items'][number]): string {

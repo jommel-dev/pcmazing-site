@@ -71,4 +71,8 @@ export class QuotationsPageComponent implements OnInit {
   viewQuery(item: QuotationListItem): Record<string, string> {
     return item.source ? { source: item.source } : {};
   }
+
+  canEdit(item: QuotationListItem): boolean {
+    return item.source === 'pcmazing';
+  }
 }
