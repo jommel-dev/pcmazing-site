@@ -578,6 +578,13 @@ export interface QuotationDetail extends QuotationListItem {
   subtotal?: number;
   discountTotal?: number;
   items: QuotationItem[];
+  hasShareToken?: boolean;
+}
+
+export interface QuotationShareLink {
+  token: string;
+  path: string;
+  expiresAt: string | null;
 }
 
 export interface CreateQuotationPayload {
@@ -1839,10 +1846,23 @@ export class AdminApiService {
     );
   }
 
-  listQuotations(page = 1, limit = 20, search = '', status = '') {
+  listQuotations(
+    page = 1,
+    limit = 20,
+    search = '',
+    status = '',
+    sortBy = 'quoteDate',
+    sortDir: 'asc' | 'desc' = 'desc',
+  ) {
     let params = this.listParams(page, limit, search);
     if (status) {
       params = params.set('status', status);
+    }
+    if (sortBy) {
+      params = params.set('sortBy', sortBy);
+    }
+    if (sortDir) {
+      params = params.set('sortDir', sortDir);
     }
 
     return this.http.get<ListResponse<QuotationListItem>>(
@@ -1876,6 +1896,43 @@ export class AdminApiService {
       `${APP_CONFIG.apiUrl}/admin/quotations/${id}`,
       payload,
       { headers: this.headers() },
+    );
+  }
+
+  duplicateQuotation(id: number) {
+    return this.http.post<ItemResponse<QuotationDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/quotations/${id}/duplicate`,
+      {},
+      { headers: this.headers() },
+    );
+  }
+
+  deleteQuotation(id: number) {
+    return this.http.delete<{ success: boolean; message?: string }>(
+      `${APP_CONFIG.apiUrl}/admin/quotations/${id}`,
+      { headers: this.headers() },
+    );
+  }
+
+  ensureQuotationShareLink(id: number) {
+    return this.http.post<ItemResponse<QuotationShareLink>>(
+      `${APP_CONFIG.apiUrl}/admin/quotations/${id}/share-link`,
+      {},
+      { headers: this.headers() },
+    );
+  }
+
+  regenerateQuotationShareLink(id: number) {
+    return this.http.post<ItemResponse<QuotationShareLink>>(
+      `${APP_CONFIG.apiUrl}/admin/quotations/${id}/share-link/regenerate`,
+      {},
+      { headers: this.headers() },
+    );
+  }
+
+  getPublicQuotation(token: string) {
+    return this.http.get<ItemResponse<QuotationDetail>>(
+      `${APP_CONFIG.apiUrl}/public/quotations/${encodeURIComponent(token)}`,
     );
   }
 

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
@@ -26,8 +27,10 @@ export class QuotationController {
     @Query('limit') limit?: string,
     @Query('search') search?: string,
     @Query('status') status?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortDir') sortDir?: string,
   ) {
-    return this.quotationService.list(page, limit, search, status).then((result) => ({
+    return this.quotationService.list(page, limit, search, status, sortBy, sortDir).then((result) => ({
       success: true,
       data: result.items,
       meta: result.meta,
@@ -43,6 +46,36 @@ export class QuotationController {
       success: true,
       message: item.status === 'finalized' ? 'Quotation finalized.' : 'Quotation saved as draft.',
       data: item,
+    }));
+  }
+
+  @Post(':id/duplicate')
+  duplicate(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() request: Request & { user?: AdminJwtPayload },
+  ) {
+    return this.quotationService.duplicate(id, request.user?.sub).then((item) => ({
+      success: true,
+      message: 'Quotation duplicated as draft.',
+      data: item,
+    }));
+  }
+
+  @Post(':id/share-link')
+  ensureShareLink(@Param('id', ParseIntPipe) id: number) {
+    return this.quotationService.ensureShareLink(id).then((data) => ({
+      success: true,
+      message: 'Share link ready.',
+      data,
+    }));
+  }
+
+  @Post(':id/share-link/regenerate')
+  regenerateShareLink(@Param('id', ParseIntPipe) id: number) {
+    return this.quotationService.regenerateShareLink(id).then((data) => ({
+      success: true,
+      message: 'Share link regenerated. Previous links no longer work.',
+      data,
     }));
   }
 
@@ -66,6 +99,14 @@ export class QuotationController {
       success: true,
       message: item.status === 'finalized' ? 'Quotation finalized.' : 'Quotation saved as draft.',
       data: item,
+    }));
+  }
+
+  @Delete(':id')
+  softDelete(@Param('id', ParseIntPipe) id: number) {
+    return this.quotationService.softDelete(id).then(() => ({
+      success: true,
+      message: 'Quotation deleted.',
     }));
   }
 }
