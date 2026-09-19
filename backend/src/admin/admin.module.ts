@@ -43,6 +43,8 @@ import { ProjectsController } from './projects/projects.controller';
 import { ProjectsModule } from './projects/projects.module';
 import { CompanyExpensesController } from './company-expenses/company-expenses.controller';
 import { CompanyExpensesService } from './company-expenses/company-expenses.service';
+import { PartsPriceSearchController } from './parts-price-search/parts-price-search.controller';
+import { PartsPriceSearchService } from './parts-price-search/parts-price-search.service';
 
 @Module({
   imports: [DatabaseModule, AuthModule, PayrollModule, ProjectsModule],
@@ -57,6 +59,7 @@ import { CompanyExpensesService } from './company-expenses/company-expenses.serv
     ServiceTypesController,
     PurchaseController,
     QuotationController,
+    PartsPriceSearchController,
     UsersController,
     PayrollController,
     TimeClockController,
@@ -79,6 +82,7 @@ import { CompanyExpensesService } from './company-expenses/company-expenses.serv
     ServiceTypesService,
     PurchaseService,
     QuotationService,
+    PartsPriceSearchService,
     RbacService,
     RolesGuard,
     UsersService,

@@ -599,6 +599,29 @@ export interface CreateQuotationPayload {
   }>;
 }
 
+export interface PartsPriceHit {
+  sourceId: string;
+  sourceLabel: string;
+  title: string;
+  pricePhp: number;
+  currency: 'PHP';
+  url: string;
+  imageUrl?: string | null;
+  inStock?: boolean | null;
+}
+
+export interface PartsPriceSourceError {
+  sourceId: string;
+  sourceLabel: string;
+  message: string;
+}
+
+export interface PartsPriceSearchResult {
+  query: string;
+  items: PartsPriceHit[];
+  sourceErrors: PartsPriceSourceError[];
+}
+
 export interface AdminUser {
   id: number;
   username: string;
@@ -1853,6 +1876,20 @@ export class AdminApiService {
       `${APP_CONFIG.apiUrl}/admin/quotations/${id}`,
       payload,
       { headers: this.headers() },
+    );
+  }
+
+  searchPartsPrices(query: string, options: { sources?: string; limit?: number } = {}) {
+    let params = new HttpParams().set('q', query.trim());
+    if (options.sources?.trim()) {
+      params = params.set('sources', options.sources.trim());
+    }
+    if (options.limit != null) {
+      params = params.set('limit', String(options.limit));
+    }
+    return this.http.get<ItemResponse<PartsPriceSearchResult>>(
+      `${APP_CONFIG.apiUrl}/admin/parts-price-search`,
+      { headers: this.headers(), params },
     );
   }
 
