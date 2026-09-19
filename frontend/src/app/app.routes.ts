@@ -10,6 +10,7 @@ import { ScheduleDemoPageComponent } from './website/pages/schedule-demo/schedul
 import { LeaveReviewPageComponent } from './website/pages/leave-review/leave-review-page.component';
 import { SetupPageComponent } from './website/pages/setup/setup-page.component';
 import { TimeClockPageComponent } from './website/pages/time-clock/time-clock-page.component';
+import { PublicQuotationPageComponent } from './website/pages/public-quotation/public-quotation-page.component';
 import { setupAvailableGuard } from './core/guards/setup-available.guard';
 import { adminRoutes } from './admin/admin.routes';
 import { userRoutes } from './user/user.routes';
@@ -27,6 +28,11 @@ export const routes: Routes = [
     path: 'time-clock',
     component: TimeClockPageComponent,
     title: 'Time Clock | PCmazing',
+  },
+  {
+    path: 'q/:token',
+    component: PublicQuotationPageComponent,
+    title: 'Quotation | PCmazing',
   },
   {
     path: '',

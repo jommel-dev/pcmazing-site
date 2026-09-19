@@ -15,6 +15,9 @@ export class QuotationDetailPageComponent implements OnInit {
 
   readonly loading = signal(true);
   readonly error = signal('');
+  readonly shareMessage = signal('');
+  readonly shareBusy = signal(false);
+  readonly shareUrl = signal('');
   readonly quotation = signal<QuotationDetail | null>(null);
   readonly source = signal<QuotationSource | undefined>(undefined);
 
@@ -43,6 +46,73 @@ export class QuotationDetailPageComponent implements OnInit {
   canEdit(): boolean {
     const quote = this.quotation();
     return quote?.source === 'pcmazing';
+  }
+
+  canShare(): boolean {
+    const quote = this.quotation();
+    if (!quote || quote.source !== 'pcmazing') {
+      return false;
+    }
+    if (!quote.expiresAt) {
+      return true;
+    }
+    const expires = new Date(quote.expiresAt).getTime();
+    return Number.isFinite(expires) && expires > Date.now();
+  }
+
+  async copyShareLink(): Promise<void> {
+    const quote = this.quotation();
+    if (!quote || !this.canShare() || this.shareBusy()) {
+      return;
+    }
+    this.shareBusy.set(true);
+    this.shareMessage.set('');
+    this.error.set('');
+    try {
+      const response = await firstValueFrom(this.adminApi.ensureQuotationShareLink(quote.id));
+      const url = `${window.location.origin}${response.data.path}`;
+      this.shareUrl.set(url);
+      await navigator.clipboard.writeText(url);
+      this.shareMessage.set('Share link copied to clipboard.');
+      this.quotation.update((current) => (current ? { ...current, hasShareToken: true } : current));
+    } catch (err: unknown) {
+      const message =
+        err && typeof err === 'object' && 'error' in err
+          ? String((err as { error?: { message?: string } }).error?.message ?? '')
+          : '';
+      this.error.set(message || 'Unable to create share link.');
+    } finally {
+      this.shareBusy.set(false);
+    }
+  }
+
+  async regenerateShareLink(): Promise<void> {
+    const quote = this.quotation();
+    if (!quote || !this.canShare() || this.shareBusy()) {
+      return;
+    }
+    if (!window.confirm('Regenerate share link? The previous link will stop working.')) {
+      return;
+    }
+    this.shareBusy.set(true);
+    this.shareMessage.set('');
+    this.error.set('');
+    try {
+      const response = await firstValueFrom(this.adminApi.regenerateQuotationShareLink(quote.id));
+      const url = `${window.location.origin}${response.data.path}`;
+      this.shareUrl.set(url);
+      await navigator.clipboard.writeText(url);
+      this.shareMessage.set('New share link copied. Previous links are invalid.');
+      this.quotation.update((current) => (current ? { ...current, hasShareToken: true } : current));
+    } catch (err: unknown) {
+      const message =
+        err && typeof err === 'object' && 'error' in err
+          ? String((err as { error?: { message?: string } }).error?.message ?? '')
+          : '';
+      this.error.set(message || 'Unable to regenerate share link.');
+    } finally {
+      this.shareBusy.set(false);
+    }
   }
 
   lineDescription(item: QuotationDetail['items'][number]): string {

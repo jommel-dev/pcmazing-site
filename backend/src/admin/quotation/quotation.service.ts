@@ -4,6 +4,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import { DatabaseService } from '../../database/database.service';
 import {
   buildPagination,
@@ -15,6 +16,20 @@ import { CreateQuotationDto } from './dto/create-quotation.dto';
 export type QuotationSource = 'pcmazing' | 'legacy';
 export type QuotationStatus = 'draft' | 'finalized' | 'expired' | 'converted';
 export type QuotationDiscountType = 'none' | 'senior' | 'pwd';
+export type QuotationSortBy =
+  | 'quoteNo'
+  | 'quoteDate'
+  | 'customerName'
+  | 'totalAmount'
+  | 'status'
+  | 'expiresAt';
+export type QuotationSortDir = 'asc' | 'desc';
+
+export interface QuotationShareLink {
+  token: string;
+  path: string;
+  expiresAt: string | null;
+}
 
 export interface QuotationListItem {
   id: number;
@@ -57,6 +72,7 @@ export interface QuotationDetail extends QuotationListItem {
   subtotal: number;
   discountTotal: number;
   items: QuotationItem[];
+  hasShareToken?: boolean;
 }
 
 type NormalizedQuoteItem = {
@@ -68,11 +84,27 @@ type NormalizedQuoteItem = {
   lineTotal: number;
 };
 
+const SORT_COLUMN_MAP: Record<QuotationSortBy, string> = {
+  quoteNo: 'quotes.quote_no',
+  quoteDate: 'quotes.quote_date',
+  customerName: 'quotes.customer_name',
+  totalAmount: 'quotes.total_amount',
+  status: 'quotes.status',
+  expiresAt: 'quotes.expires_at',
+};
+
 @Injectable()
 export class QuotationService {
   constructor(private readonly databaseService: DatabaseService) {}
 
-  async list(pageRaw?: string, limitRaw?: string, search?: string, status?: string) {
+  async list(
+    pageRaw?: string,
+    limitRaw?: string,
+    search?: string,
+    status?: string,
+    sortByRaw?: string,
+    sortDirRaw?: string,
+  ) {
     const ownedExists = await tableExists(this.databaseService, 'pcmazing_quotations');
     const legacyExists = await tableExists(this.databaseService, 'tblquotation');
 
@@ -151,6 +183,10 @@ export class QuotationService {
     const limitIndex = params.length + 1;
     const offsetIndex = params.length + 2;
 
+    const sortBy = this.normalizeSortBy(sortByRaw);
+    const sortDir = this.normalizeSortDir(sortDirRaw);
+    const orderColumn = SORT_COLUMN_MAP[sortBy];
+
     const result = await this.databaseService.query<{
       source: QuotationSource;
       id: number;
@@ -176,7 +212,7 @@ export class QuotationService {
         quotes.created_at
        ${fromClause}
        ${whereClause}
-       ORDER BY quotes.created_at DESC NULLS LAST, quotes.id DESC
+       ORDER BY ${orderColumn} ${sortDir} NULLS LAST, quotes.id DESC
        LIMIT $${limitIndex} OFFSET $${offsetIndex}`,
       listParams,
     );
@@ -334,6 +370,225 @@ export class QuotationService {
     return this.getById(id, 'pcmazing');
   }
 
+  async duplicate(id: number, createdBy?: number): Promise<QuotationDetail> {
+    const existing = await this.getOwnedById(id);
+    if (!existing) {
+      throw new NotFoundException(`Quotation ${id} was not found.`);
+    }
+
+    const quoteDate = new Date();
+    const validityDays = Math.min(365, Math.max(1, Number(existing.validityDays) || 7));
+    const expiresAt = new Date(quoteDate.getTime() + validityDays * 24 * 60 * 60 * 1000);
+    const items: NormalizedQuoteItem[] = existing.items.map((item) => ({
+      materialId: item.materialId,
+      description: item.description || item.materialName || 'Item',
+      quantity: Number(item.quantity) || 0,
+      unitPrice: Number(item.unitPrice) || 0,
+      discountType: this.normalizeDiscountType(item.discountType),
+      lineTotal: Number(item.lineTotal) || 0,
+    }));
+    const totals = this.calculateTotals(items, existing.customDiscount ?? 0);
+
+    const newId = await this.databaseService.withTransaction(async (client) => {
+      const insertResult = await client.query<{ id: number }>(
+        `INSERT INTO pcmazing_quotations (
+          quote_date,
+          customer_name,
+          customer_address,
+          customer_contact_number,
+          customer_email,
+          remarks,
+          custom_discount,
+          subtotal,
+          discount_total,
+          total_amount,
+          status,
+          validity_days,
+          expires_at,
+          created_by
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'draft', $11, $12, $13)
+        RETURNING id`,
+        [
+          quoteDate.toISOString(),
+          existing.customerName,
+          existing.customerAddress,
+          existing.customerContactNumber,
+          existing.customerEmail,
+          existing.remarks,
+          totals.customDiscount,
+          totals.subtotal,
+          totals.discountTotal,
+          totals.totalAmount,
+          validityDays,
+          expiresAt.toISOString(),
+          createdBy ?? null,
+        ],
+      );
+
+      const quotationId = insertResult.rows[0]?.id;
+      if (!quotationId) {
+        throw new ServiceUnavailableException('Unable to duplicate quotation.');
+      }
+
+      await client.query(
+        `UPDATE pcmazing_quotations
+         SET quote_no = $1
+         WHERE id = $2`,
+        [this.buildQuoteNo(quotationId), quotationId],
+      );
+
+      await this.insertItems(client, quotationId, items);
+      return quotationId;
+    });
+
+    return this.getById(newId, 'pcmazing');
+  }
+
+  async softDelete(id: number): Promise<void> {
+    const existing = await this.getOwnedById(id);
+    if (!existing) {
+      throw new NotFoundException(`Quotation ${id} was not found.`);
+    }
+
+    await this.databaseService.query(
+      `UPDATE pcmazing_quotations
+       SET deleted_at = NOW(),
+           share_token = NULL,
+           share_token_created_at = NULL,
+           updated_at = NOW()
+       WHERE id = $1 AND deleted_at IS NULL`,
+      [id],
+    );
+  }
+
+  async ensureShareLink(id: number): Promise<QuotationShareLink> {
+    const existing = await this.getOwnedRawForShare(id);
+    this.assertShareable(existing);
+
+    if (existing.share_token) {
+      return {
+        token: existing.share_token,
+        path: `/q/${existing.share_token}`,
+        expiresAt: existing.expires_at,
+      };
+    }
+
+    const token = this.generateShareToken();
+    await this.databaseService.query(
+      `UPDATE pcmazing_quotations
+       SET share_token = $1,
+           share_token_created_at = NOW(),
+           updated_at = NOW()
+       WHERE id = $2 AND deleted_at IS NULL`,
+      [token, id],
+    );
+
+    return {
+      token,
+      path: `/q/${token}`,
+      expiresAt: existing.expires_at,
+    };
+  }
+
+  async regenerateShareLink(id: number): Promise<QuotationShareLink> {
+    const existing = await this.getOwnedRawForShare(id);
+    this.assertShareable(existing);
+
+    const token = this.generateShareToken();
+    await this.databaseService.query(
+      `UPDATE pcmazing_quotations
+       SET share_token = $1,
+           share_token_created_at = NOW(),
+           updated_at = NOW()
+       WHERE id = $2 AND deleted_at IS NULL`,
+      [token, id],
+    );
+
+    return {
+      token,
+      path: `/q/${token}`,
+      expiresAt: existing.expires_at,
+    };
+  }
+
+  async getByShareToken(tokenRaw: string): Promise<QuotationDetail> {
+    const token = String(tokenRaw ?? '').trim();
+    if (!token) {
+      throw new NotFoundException('Quotation was not found.');
+    }
+
+    if (!(await tableExists(this.databaseService, 'pcmazing_quotations'))) {
+      throw new NotFoundException('Quotation was not found.');
+    }
+
+    const headerResult = await this.databaseService.query<{ id: number }>(
+      `SELECT id
+       FROM pcmazing_quotations
+       WHERE share_token = $1
+         AND deleted_at IS NULL
+         AND (expires_at IS NULL OR expires_at > NOW())
+       LIMIT 1`,
+      [token],
+    );
+
+    const id = headerResult.rows[0]?.id;
+    if (!id) {
+      throw new NotFoundException('Quotation was not found or the link has expired.');
+    }
+
+    const detail = await this.getOwnedById(id);
+    if (!detail) {
+      throw new NotFoundException('Quotation was not found or the link has expired.');
+    }
+
+    return detail;
+  }
+
+  private async getOwnedRawForShare(id: number): Promise<{
+    id: number;
+    share_token: string | null;
+    expires_at: string | null;
+    quote_no: string | null;
+  }> {
+    if (!(await tableExists(this.databaseService, 'pcmazing_quotations'))) {
+      throw new ServiceUnavailableException(
+        'Quotations table is not available. Apply migration 064_quotations.sql.',
+      );
+    }
+
+    const result = await this.databaseService.query<{
+      id: number;
+      share_token: string | null;
+      expires_at: string | null;
+      quote_no: string | null;
+    }>(
+      `SELECT id, share_token, expires_at::text, quote_no
+       FROM pcmazing_quotations
+       WHERE id = $1 AND deleted_at IS NULL
+       LIMIT 1`,
+      [id],
+    );
+
+    const row = result.rows[0];
+    if (!row) {
+      throw new NotFoundException(`Quotation ${id} was not found.`);
+    }
+    return row;
+  }
+
+  private assertShareable(row: { expires_at: string | null }): void {
+    if (row.expires_at) {
+      const expires = new Date(row.expires_at);
+      if (!Number.isNaN(expires.getTime()) && expires.getTime() <= Date.now()) {
+        throw new BadRequestException('This quotation has expired and cannot be shared.');
+      }
+    }
+  }
+
+  private generateShareToken(): string {
+    return randomBytes(32).toString('base64url');
+  }
+
   private async getOwnedById(id: number): Promise<QuotationDetail | null> {
     if (!(await tableExists(this.databaseService, 'pcmazing_quotations'))) {
       return null;
@@ -357,6 +612,7 @@ export class QuotationService {
       converted_sales_id: number | null;
       remarks: string | null;
       created_at: string | null;
+      share_token: string | null;
     }>(
       `SELECT
         id,
@@ -375,7 +631,8 @@ export class QuotationService {
         expires_at::text,
         converted_sales_id,
         remarks,
-        created_at::text
+        created_at::text,
+        share_token
        FROM pcmazing_quotations
        WHERE id = $1 AND deleted_at IS NULL
        LIMIT 1`,
@@ -458,6 +715,7 @@ export class QuotationService {
       subtotal: Number(header.subtotal ?? 0),
       discountTotal: Number(header.discount_total ?? 0),
       items,
+      hasShareToken: !!header.share_token,
     };
   }
 
@@ -785,6 +1043,18 @@ export class QuotationService {
 
   private buildQuoteNo(id: number): string {
     return `QT-${String(id).padStart(6, '0')}`;
+  }
+
+  private normalizeSortBy(value?: string): QuotationSortBy {
+    const normalized = String(value ?? '').trim();
+    if (normalized in SORT_COLUMN_MAP) {
+      return normalized as QuotationSortBy;
+    }
+    return 'quoteDate';
+  }
+
+  private normalizeSortDir(value?: string): QuotationSortDir {
+    return String(value ?? '').trim().toLowerCase() === 'asc' ? 'asc' : 'desc';
   }
 
   private derivedStatusSql(statusColumn: string, expiresColumn: string): string {
