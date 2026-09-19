@@ -18,6 +18,10 @@ import {
   receiptPrintPageCss,
 } from '../printing/printing-print-page.util';
 import { applyPhSpecialDiscount, normalizePhDiscountType, PhDiscountType } from '../inventory/ph-discount.util';
+import {
+  DEFAULT_STORE_ADDRESS,
+  DEFAULT_STORE_NAME,
+} from '../printing/printing-receipt-content.defaults';
 
 type QuoteLine = {
   itemName: string;
@@ -149,7 +153,7 @@ export class QuotationPrintPageComponent implements OnInit, OnDestroy {
 
   readonly fieldValues = computed<Record<string, string>>(() => {
     const current = this.quotation();
-    const settings = this.printingSettings();
+    this.printingSettings();
     const printed = this.printedAt();
     const printedAtLabel = printed.toLocaleString('en-US', {
       month: 'numeric',
@@ -169,8 +173,8 @@ export class QuotationPrintPageComponent implements OnInit, OnDestroy {
       printedDate: `Date: ${printedDateLabel}`,
       pageNumber: '',
       storeLogo: '/images/logopcm.png',
-      storeName: settings?.storeName || 'PCmazing',
-      storeAddress: settings?.storeAddress || 'Mabini Extension, Cabanatuan City, 3100',
+      storeName: this.storeDisplayName(),
+      storeAddress: this.storeDisplayAddress(),
       customerName: current?.customerName || '',
       customerEmail: current?.customerEmail || '',
       customerAddress: current?.customerAddress || '',
@@ -370,6 +374,22 @@ export class QuotationPrintPageComponent implements OnInit, OnDestroy {
       return `${weeks} ${weeks === 1 ? 'week' : 'weeks'}`;
     }
     return `${totalDays} ${totalDays === 1 ? 'day' : 'days'}`;
+  }
+
+  storeDisplayName(): string {
+    const value = this.printingSettings()?.storeName?.trim();
+    if (!value || value === 'PCmazing') {
+      return DEFAULT_STORE_NAME;
+    }
+    return value;
+  }
+
+  storeDisplayAddress(): string {
+    const value = this.printingSettings()?.storeAddress?.trim();
+    if (!value || value === 'Mabini Extension, Cabanatuan City, 3100') {
+      return DEFAULT_STORE_ADDRESS;
+    }
+    return value;
   }
 
   private resolveInitialTemplateId(
