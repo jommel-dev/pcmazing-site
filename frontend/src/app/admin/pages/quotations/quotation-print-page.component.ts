@@ -114,6 +114,27 @@ export class QuotationPrintPageComponent implements OnInit, OnDestroy {
   readonly discountTotal = computed(() => this.lines().reduce((sum, line) => sum + line.discountAmount, 0));
   readonly quoteTotal = computed(() => this.subtotal() - this.discountTotal());
 
+  readonly validityNote = computed(() => {
+    const current = this.quotation();
+    if (!current) {
+      return '';
+    }
+    let days = Number(current.validityDays);
+    if (!Number.isFinite(days) || days <= 0) {
+      if (current.quoteDate && current.expiresAt) {
+        const start = new Date(current.quoteDate).getTime();
+        const end = new Date(current.expiresAt).getTime();
+        if (Number.isFinite(start) && Number.isFinite(end) && end >= start) {
+          days = Math.max(1, Math.round((end - start) / (24 * 60 * 60 * 1000)));
+        }
+      }
+    }
+    if (!Number.isFinite(days) || days <= 0) {
+      return '';
+    }
+    return `Note: *This quotation is valid for ${this.formatValidityDuration(days)}.`;
+  });
+
   readonly selectedTemplate = computed(() => {
     const id = this.selectedTemplateId();
     if (!id) {
@@ -146,7 +167,7 @@ export class QuotationPrintPageComponent implements OnInit, OnDestroy {
     return {
       printedAt: `Printed: ${printedAtLabel}`,
       printedDate: `Date: ${printedDateLabel}`,
-      pageNumber: settings?.showPageNumbers === false ? '' : 'Page 1',
+      pageNumber: '',
       storeLogo: '/images/logopcm.png',
       storeName: settings?.storeName || 'PCmazing',
       storeAddress: settings?.storeAddress || 'Mabini Extension, Cabanatuan City, 3100',
@@ -315,7 +336,7 @@ export class QuotationPrintPageComponent implements OnInit, OnDestroy {
   }
 
   isHiddenElement(element: PrintLayoutElement): boolean {
-    if (element.fieldKey === 'pageNumber' && this.printingSettings()?.showPageNumbers === false) {
+    if (element.fieldKey === 'pageNumber') {
       return true;
     }
     if (element.fieldKey === 'customerEmail' && !this.fieldValues()['customerEmail']) {
@@ -332,6 +353,23 @@ export class QuotationPrintPageComponent implements OnInit, OnDestroy {
 
   usesPreWrapField(element: PrintLayoutElement): boolean {
     return element.fieldKey === 'customerAddress' || element.fieldKey === 'storeAddress';
+  }
+
+  formatValidityDuration(days: number): string {
+    const totalDays = Math.max(1, Math.floor(days));
+    const months = Math.floor(totalDays / 30);
+    const rem = totalDays % 30;
+    if (months > 0 && rem === 0) {
+      return `${months} ${months === 1 ? 'month' : 'months'}`;
+    }
+    if (months > 0 && rem > 0) {
+      return `${months} ${months === 1 ? 'month' : 'months'} and ${rem} ${rem === 1 ? 'day' : 'days'}`;
+    }
+    if (totalDays % 7 === 0 && totalDays >= 14) {
+      const weeks = totalDays / 7;
+      return `${weeks} ${weeks === 1 ? 'week' : 'weeks'}`;
+    }
+    return `${totalDays} ${totalDays === 1 ? 'day' : 'days'}`;
   }
 
   private resolveInitialTemplateId(
