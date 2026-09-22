@@ -1148,10 +1148,11 @@ export class PayrollService {
       time_out: string | null;
       overtime_hours: string | number | null;
       overtime_status: string | null;
+      work_location_type: string | null;
     }>(
       `SELECT user_id, user_source, work_date::text AS work_date,
               time_in::text AS time_in, time_out::text AS time_out,
-              overtime_hours, overtime_status
+              overtime_hours, overtime_status, work_location_type
        FROM pcmazing_attendance
        WHERE work_date BETWEEN $1::date AND $2::date
          AND time_in IS NOT NULL
@@ -1480,10 +1481,11 @@ export class PayrollService {
       time_out: string | null;
       overtime_hours: string | number | null;
       overtime_status: string | null;
+      work_location_type: string | null;
     }>(
       `SELECT user_id, user_source, work_date::text AS work_date,
               time_in::text AS time_in, time_out::text AS time_out,
-              overtime_hours, overtime_status
+              overtime_hours, overtime_status, work_location_type
        FROM pcmazing_attendance
        WHERE work_date BETWEEN $1::date AND $2::date
          AND time_in IS NOT NULL
@@ -1696,12 +1698,14 @@ export class PayrollService {
       time_out: string | null;
       overtime_hours: string | number | null;
       overtime_status: string | null;
+      work_location_type: string | null;
     }>(
       `SELECT work_date::text AS work_date,
               time_in::text AS time_in,
               time_out::text AS time_out,
               overtime_hours,
-              overtime_status
+              overtime_status,
+              work_location_type
        FROM pcmazing_attendance
        WHERE user_id = $1
          AND user_source = $2
@@ -1794,6 +1798,7 @@ export class PayrollService {
       time_out: string | null;
       overtime_hours: string | number | null;
       overtime_status: string | null;
+      work_location_type: string | null;
     }>;
     dateFrom: string;
     dateTo: string;
@@ -1851,11 +1856,7 @@ export class PayrollService {
         };
       }
 
-      const expected = resolveExpectedLocation(
-        input.weeklyLocationSchedule,
-        workWeek,
-        workDate,
-      );
+      const punchedType = this.normalizeStoredLocationType(row.work_location_type);
       const hours = this.computeHours(row.time_in, row.time_out);
       const otHours = Number(row.overtime_hours ?? 0) || 0;
       const otStatus = this.normalizeOvertimeStatus(row.overtime_status);
@@ -1866,23 +1867,29 @@ export class PayrollService {
       let hourlyRate = 0;
 
       if (usesFixedSalary && fixedRates) {
-        // Location amounts unused for fixed pay; Off still contributes 0 paid units / OT pay.
-        if (expected === 'off') {
+        // Location amounts unused for fixed pay; null/off punch type → 0 units / OT pay.
+        if (punchedType == null || punchedType === 'off') {
           units = 0;
         }
         hourlyRate = fixedRates.hourlyRate;
         dayPay = Math.round(units * fixedRates.dailyRate * 100) / 100;
         overtimePay =
-          expected !== 'off' && otHours > 0 && otStatus === 'approved'
+          punchedType != null &&
+          punchedType !== 'off' &&
+          otHours > 0 &&
+          otStatus === 'approved'
             ? Math.round(otHours * hourlyRate * OVERTIME_MULTIPLIER * 100) / 100
             : 0;
       } else {
-        const amount = pickSalaryAmountForLocation(
-          expected,
-          input.salaryAmount,
-          input.wfhSalary,
-        );
-        if (amount == null || expected === 'off') {
+        const amount =
+          punchedType == null || punchedType === 'off'
+            ? null
+            : pickSalaryAmountForLocation(
+                punchedType,
+                input.salaryAmount,
+                input.wfhSalary,
+              );
+        if (amount == null) {
           units = 0;
           dayPay = 0;
           overtimePay = 0;
@@ -1909,8 +1916,8 @@ export class PayrollService {
         regularHours += Math.min(hours, FULL_DAY_HOURS);
         dayPayTotal += dayPay;
         if (otHours > 0 && otStatus === 'approved') {
-          // Off days: hours may still show on the row, but do not add to payable OT.
-          if (expected !== 'off') {
+          // Null/off punch type: hours may still show, but do not add to payable OT.
+          if (punchedType != null && punchedType !== 'off') {
             approvedOvertimeHours += otHours;
             overtimePayTotal += overtimePay;
           }
@@ -1926,7 +1933,7 @@ export class PayrollService {
         hoursWorked: hours ?? 0,
         dayType:
           this.dayPayLabel(units, hours, undertimeGraceMinutes) +
-          locationPayLabelSuffix(expected),
+          locationPayLabelSuffix(punchedType ?? 'off'),
         paidUnits: units,
         dayPay,
         overtimeHours: otHours,
@@ -2992,6 +2999,7 @@ export class PayrollService {
       time_out: string | null;
       overtime_hours: string | number | null;
       overtime_status: string | null;
+      work_location_type: string | null;
     }>,
     payslipPeriod: PayrollSalaryType,
     periodDateFrom: string,
@@ -3010,7 +3018,6 @@ export class PayrollService {
     let overtimePayTotal = 0;
 
     const periodDays = this.countInclusiveDays(periodDateFrom, periodDateTo);
-    const normalizedWorkWeek = this.normalizeWorkWeek(workWeek);
     const usesFixedSalary =
       employee.fixedMonthlySalary != null && employee.fixedMonthlySalary > 0;
 
@@ -3020,29 +3027,27 @@ export class PayrollService {
         continue;
       }
 
-      const workDate = String(punch.work_date).slice(0, 10);
-      const expected = resolveExpectedLocation(
-        employee.weeklyLocationSchedule,
-        normalizedWorkWeek,
-        workDate,
-      );
+      const punchedType = this.normalizeStoredLocationType(punch.work_location_type);
       const otHours = Number(punch.overtime_hours ?? 0) || 0;
       const otStatus = this.normalizeOvertimeStatus(punch.overtime_status);
 
       let units = this.dayPayUnits(hours, undertimeGraceMinutes);
 
       if (usesFixedSalary) {
-        // Location amounts unused for fixed pay; Off still contributes 0 paid units / OT pay.
-        if (expected === 'off') {
+        // Location amounts unused for fixed pay; null/off punch type → 0 units / OT pay.
+        if (punchedType == null || punchedType === 'off') {
           units = 0;
         }
       } else {
-        const amount = pickSalaryAmountForLocation(
-          expected,
-          employee.monthlySalary,
-          employee.wfhSalary,
-        );
-        if (amount == null || expected === 'off') {
+        const amount =
+          punchedType == null || punchedType === 'off'
+            ? null
+            : pickSalaryAmountForLocation(
+                punchedType,
+                employee.monthlySalary,
+                employee.wfhSalary,
+              );
+        if (amount == null) {
           units = 0;
         } else {
           const rates = this.resolvePayRates(
@@ -3067,8 +3072,8 @@ export class PayrollService {
       paidDayUnits += units;
       regularHours += Math.min(hours, FULL_DAY_HOURS);
       if (otHours > 0 && otStatus === 'approved') {
-        // Off days: do not add approved OT hours to payable OT totals.
-        if (expected !== 'off') {
+        // Null/off punch type: do not add approved OT hours to payable OT totals.
+        if (punchedType != null && punchedType !== 'off') {
           approvedOvertimeHours += otHours;
         }
       } else if (otHours > 0 && otStatus === 'pending') {
