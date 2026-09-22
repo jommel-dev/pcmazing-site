@@ -38,6 +38,7 @@ export class TimeClockPageComponent implements OnInit, OnDestroy {
   readonly locationCoords = signal<{ lat: number; lng: number } | null>(null);
   readonly locationStatus = signal('');
   readonly requestingLocation = signal(false);
+  readonly pickedLocation = signal<'office' | 'wfh' | null>(null);
 
   private mediaStream: MediaStream | null = null;
   private clockTimer: ReturnType<typeof setInterval> | null = null;
@@ -160,7 +161,14 @@ export class TimeClockPageComponent implements OnInit, OnDestroy {
       );
       this.locationStatus.set('');
 
-      if (response.data.canTimeIn && response.data.expectedLocation === 'wfh') {
+      const expected = response.data.expectedLocation;
+      if (expected === 'office' || expected === 'wfh') {
+        this.pickedLocation.set(expected);
+      } else {
+        this.pickedLocation.set(null);
+      }
+
+      if (response.data.canTimeIn && this.pickedLocation() === 'wfh') {
         void this.requestGeolocation();
       }
 
@@ -331,13 +339,18 @@ export class TimeClockPageComponent implements OnInit, OnDestroy {
       return;
     }
 
+    const pick = this.pickedLocation();
+    if (kind === 'in' && pick == null) {
+      this.error.set('Choose Office or Work from home before time in.');
+      return;
+    }
+
     this.submitting.set(true);
     this.error.set('');
     this.success.set('');
 
-    const current = this.status();
     let location =
-      kind === 'in' && current?.expectedLocation === 'wfh'
+      kind === 'in' && pick === 'wfh'
         ? {
             locationLat: this.locationCoords()?.lat ?? null,
             locationLng: this.locationCoords()?.lng ?? null,
@@ -345,7 +358,7 @@ export class TimeClockPageComponent implements OnInit, OnDestroy {
           }
         : null;
 
-    if (kind === 'in' && current?.expectedLocation === 'wfh' && !this.locationCoords() && !this.requestingLocation()) {
+    if (kind === 'in' && pick === 'wfh' && !this.locationCoords() && !this.requestingLocation()) {
       await this.requestGeolocation();
       location = {
         locationLat: this.locationCoords()?.lat ?? null,
@@ -357,7 +370,7 @@ export class TimeClockPageComponent implements OnInit, OnDestroy {
     try {
       const response = await firstValueFrom(
         kind === 'in'
-          ? this.timeClockApi.timeIn(value, selfie, location)
+          ? this.timeClockApi.timeIn(value, selfie, pick!, location)
           : this.timeClockApi.timeOut(value, selfie),
       );
       this.status.set(response.data);

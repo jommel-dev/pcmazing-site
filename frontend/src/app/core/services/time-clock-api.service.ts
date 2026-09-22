@@ -53,10 +53,16 @@ export class TimeClockApiService {
     );
   }
 
-  timeIn(username: string, selfie: Blob, location?: TimeClockLocationPayload | null) {
+  timeIn(
+    username: string,
+    selfie: Blob,
+    workLocationType: 'office' | 'wfh',
+    location?: TimeClockLocationPayload | null,
+  ) {
     const formData = new FormData();
     formData.append('username', username);
     formData.append('selfie', selfie, 'time-in-selfie.jpg');
+    formData.append('workLocationType', workLocationType);
     this.appendLocation(formData, location);
 
     return this.http.post<{ success: boolean; message: string; data: TimeClockStatus }>(
