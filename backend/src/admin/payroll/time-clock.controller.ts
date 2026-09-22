@@ -52,7 +52,7 @@ export class TimeClockController {
           locationLabel: null,
           locationLat: null,
           locationLng: null,
-          locationMismatch: expectedLocation === 'off',
+          locationMismatch: false,
         },
       };
     }
@@ -72,6 +72,7 @@ export class TimeClockController {
   )
   timeIn(
     @Body('username') username: string,
+    @Body('workLocationType') workLocationType?: string,
     @Body('locationLat') locationLat?: string,
     @Body('locationLng') locationLng?: string,
     @Body('locationLabel') locationLabel?: string,
@@ -85,11 +86,18 @@ export class TimeClockController {
       throw new BadRequestException('Selfie photo is required before time in.');
     }
 
-    return this.payrollService.timeIn(value, selfie, this.parseLocation(locationLat, locationLng, locationLabel)).then((data) => ({
-      success: true,
-      message: 'Time in recorded.',
-      data,
-    }));
+    const picked = (workLocationType ?? '').trim().toLowerCase();
+    if (picked !== 'office' && picked !== 'wfh') {
+      throw new BadRequestException('Choose Office or Work from home before time in.');
+    }
+
+    return this.payrollService
+      .timeIn(value, selfie, picked, this.parseLocation(locationLat, locationLng, locationLabel))
+      .then((data) => ({
+        success: true,
+        message: 'Time in recorded.',
+        data,
+      }));
   }
 
   @Post('time-out')

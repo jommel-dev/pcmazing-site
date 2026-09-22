@@ -2239,7 +2239,7 @@ export class PayrollService {
       locationLabel: null as string | null,
       locationLat: null as number | null,
       locationLng: null as number | null,
-      locationMismatch: expectedLocation === 'off',
+      locationMismatch: false,
     };
 
     if (!profile.payrollEnabled) {
@@ -2267,7 +2267,7 @@ export class PayrollService {
       locationLabel: attendance?.location_label?.trim() || null,
       locationLat: this.toNullableNumber(attendance?.location_lat),
       locationLng: this.toNullableNumber(attendance?.location_lng),
-      locationMismatch: Boolean(attendance?.location_mismatch) || expectedLocation === 'off',
+      locationMismatch: false,
     };
 
     if (!attendance?.time_in) {
@@ -2329,6 +2329,7 @@ export class PayrollService {
   async timeIn(
     usernameRaw: string,
     selfie: Express.Multer.File,
+    workLocationType: 'office' | 'wfh',
     location?: TimeClockLocationInput | null,
   ): Promise<TimeClockStatus> {
     const status = await this.getTimeClockStatus(usernameRaw);
@@ -2339,12 +2340,17 @@ export class PayrollService {
       throw new BadRequestException(status.message);
     }
 
+    const picked = (workLocationType ?? '').trim().toLowerCase();
+    if (picked !== 'office' && picked !== 'wfh') {
+      throw new BadRequestException('Choose Office or Work from home before time in.');
+    }
+
     const user = await this.findActiveUserByUsername(usernameRaw);
     if (!user) {
       throw new NotFoundException('Username not found.');
     }
 
-    const punchLocation = this.resolvePunchLocation(status.expectedLocation, location);
+    const punchLocation = this.resolvePunchLocation(picked, location);
     const selfieUrl = await saveAttendanceSelfieFile('in', user.username, selfie);
     const workDate = status.workDate;
     await this.databaseService.query(
@@ -2862,7 +2868,7 @@ export class PayrollService {
       locationLabel: null,
       locationLat: null,
       locationLng: null,
-      locationMismatch: expectedLocation === 'off',
+      locationMismatch: false,
     };
   }
 
@@ -2879,10 +2885,10 @@ export class PayrollService {
   }
 
   private resolvePunchLocation(
-    expectedLocation: WorkLocationType,
+    picked: 'office' | 'wfh',
     location?: TimeClockLocationInput | null,
   ): {
-    workLocationType: WorkLocationType;
+    workLocationType: 'office' | 'wfh';
     locationLat: number | null;
     locationLng: number | null;
     locationLabel: string | null;
@@ -2891,14 +2897,14 @@ export class PayrollService {
     const label = location?.locationLabel?.trim() || null;
     const lat = this.toNullableNumber(location?.locationLat ?? null);
     const lng = this.toNullableNumber(location?.locationLng ?? null);
-    const storeCoords = expectedLocation === 'wfh';
+    const storeCoords = picked === 'wfh';
 
     return {
-      workLocationType: expectedLocation,
+      workLocationType: picked,
       locationLat: storeCoords ? lat : null,
       locationLng: storeCoords ? lng : null,
       locationLabel: storeCoords ? (label ? label.slice(0, 200) : null) : null,
-      locationMismatch: expectedLocation === 'off',
+      locationMismatch: false,
     };
   }
 
