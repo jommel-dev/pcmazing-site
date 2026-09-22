@@ -646,12 +646,18 @@ export interface AdminUser {
   positionTitle?: string | null;
   salaryType?: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
   monthlySalary?: number | null;
+  wfhSalary?: number | null;
   fixedMonthlySalary?: number | null;
   payoutMethod?: 'cash' | 'online';
   bankDetails?: string | null;
   qrImageUrl?: string | null;
   payrollEnabled?: boolean;
+  weeklyLocationSchedule?: WeeklyLocationSchedule | null;
 }
+
+export type WorkLocationType = 'office' | 'wfh' | 'off';
+export type WorkLocationDayKey = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
+export type WeeklyLocationSchedule = Record<WorkLocationDayKey, WorkLocationType>;
 
 export type PayrollOvertimeStatus = 'none' | 'pending' | 'approved' | 'rejected';
 
@@ -673,6 +679,11 @@ export interface PayrollAttendanceItem {
   overtimeHours?: number;
   overtimeStatus?: PayrollOvertimeStatus;
   adjustmentStatus?: PayrollOvertimeStatus;
+  workLocationType?: WorkLocationType | null;
+  locationLat?: number | null;
+  locationLng?: number | null;
+  locationLabel?: string | null;
+  locationMismatch?: boolean;
 }
 
 export interface PayrollOvertimeItem {
@@ -870,12 +881,15 @@ export interface PayrollEmployeeItem {
   positionTitle: string | null;
   salaryType: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
   monthlySalary: number | null;
+  wfhSalary?: number | null;
   fixedMonthlySalary?: number | null;
   payoutMethod?: 'cash' | 'online';
   payrollEnabled: boolean;
   todayStatus: 'not_started' | 'timed_in' | 'completed' | 'absent';
   todayTimeIn: string | null;
   todayTimeOut: string | null;
+  weeklyLocationSchedule?: WeeklyLocationSchedule | null;
+  expectedLocationToday?: WorkLocationType;
 }
 
 export interface PayrollPeriodItem {
@@ -2112,10 +2126,12 @@ export class AdminApiService {
     positionTitle?: string;
     salaryType?: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
     monthlySalary?: number | null;
+    wfhSalary?: number | null;
     fixedMonthlySalary?: number | null;
     payoutMethod?: 'cash' | 'online';
     bankDetails?: string | null;
     payrollEnabled?: boolean;
+    weeklyLocationSchedule?: WeeklyLocationSchedule | null;
   }) {
     return this.http.post<MessageResponse<AdminUser>>(
       `${APP_CONFIG.apiUrl}/admin/users`,
@@ -2136,10 +2152,12 @@ export class AdminApiService {
       positionTitle?: string;
       salaryType?: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
       monthlySalary?: number | null;
+      wfhSalary?: number | null;
       fixedMonthlySalary?: number | null;
       payoutMethod?: 'cash' | 'online';
       bankDetails?: string | null;
       payrollEnabled?: boolean;
+      weeklyLocationSchedule?: WeeklyLocationSchedule | null;
     },
   ) {
     return this.http.patch<MessageResponse<AdminUser>>(
@@ -2233,6 +2251,20 @@ export class AdminApiService {
     return this.http.get<ItemResponse<PayrollEmployeeItem[]>>(
       `${APP_CONFIG.apiUrl}/admin/payroll/employees`,
       { headers: this.headers(), params },
+    );
+  }
+
+  updateEmployeeWeeklyLocation(
+    userId: number,
+    payload: {
+      userSource: 'pcmazing_admin_users' | 'tblusers';
+      weeklyLocationSchedule: WeeklyLocationSchedule | null;
+    },
+  ) {
+    return this.http.patch<MessageResponse<{ weeklyLocationSchedule: WeeklyLocationSchedule | null }>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/employees/${userId}/weekly-location`,
+      payload,
+      { headers: this.headers() },
     );
   }
 

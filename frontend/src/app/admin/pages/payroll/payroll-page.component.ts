@@ -16,11 +16,28 @@ import {
   PayrollOvertimeStatus,
   PayrollPeriodItem,
   PayrollPeriodMeta,
+  WeeklyLocationSchedule,
+  WorkLocationDayKey,
+  WorkLocationType,
 } from '../../services/admin-api.service';
 
 type PayrollTab = 'overview' | 'attendance' | 'employees' | 'period' | 'overtime' | 'adjustments';
 type PeriodType = 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
 type WorkWeek = 'mon_fri' | 'mon_sat' | 'day_off_basis';
+
+const LOCATION_DAY_KEYS: WorkLocationDayKey[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+
+function defaultWeeklyLocationSchedule(): WeeklyLocationSchedule {
+  return {
+    mon: 'office',
+    tue: 'office',
+    wed: 'office',
+    thu: 'office',
+    fri: 'office',
+    sat: 'off',
+    sun: 'off',
+  };
+}
 
 @Component({
   selector: 'app-payroll-page',
@@ -54,6 +71,28 @@ export class PayrollPageComponent implements OnInit {
 
   readonly employees = signal<PayrollEmployeeItem[]>([]);
   readonly employeeSearch = signal('');
+  readonly scheduleEditor = signal<{
+    userId: number;
+    userSource: 'pcmazing_admin_users' | 'tblusers';
+    fullName: string;
+    schedule: WeeklyLocationSchedule;
+  } | null>(null);
+  readonly savingSchedule = signal(false);
+  readonly scheduleError = signal('');
+  readonly locationDayOptions: Array<{ key: WorkLocationDayKey; label: string }> = [
+    { key: 'mon', label: 'Mon' },
+    { key: 'tue', label: 'Tue' },
+    { key: 'wed', label: 'Wed' },
+    { key: 'thu', label: 'Thu' },
+    { key: 'fri', label: 'Fri' },
+    { key: 'sat', label: 'Sat' },
+    { key: 'sun', label: 'Sun' },
+  ];
+  readonly locationTypeOptions: Array<{ value: WorkLocationType; label: string }> = [
+    { value: 'office', label: 'Office' },
+    { value: 'wfh', label: 'WFH' },
+    { value: 'off', label: 'Off' },
+  ];
 
   readonly periodItems = signal<PayrollPeriodItem[]>([]);
   readonly periodMeta = signal<PayrollPeriodMeta | null>(null);
@@ -769,6 +808,110 @@ export class PayrollPageComponent implements OnInit {
       default:
         return 'bg-slate-100 text-slate-600';
     }
+  }
+
+  locationTypeLabel(value: WorkLocationType | null | undefined): string {
+    switch (value) {
+      case 'wfh':
+        return 'WFH';
+      case 'off':
+        return 'Off';
+      case 'office':
+        return 'Office';
+      default:
+        return '—';
+    }
+  }
+
+  scheduleSummary(item: PayrollEmployeeItem): string {
+    const schedule = this.normalizeSchedule(item.weeklyLocationSchedule);
+    const wfh = LOCATION_DAY_KEYS.filter((key) => schedule[key] === 'wfh');
+    if (wfh.length === 0) {
+      return 'Office week';
+    }
+    return `WFH: ${wfh.map((key) => key[0]!.toUpperCase() + key.slice(1)).join(', ')}`;
+  }
+
+  attendanceLocationLabel(item: PayrollAttendanceItem): string {
+    const type = this.locationTypeLabel(item.workLocationType);
+    if (!item.workLocationType) {
+      return '—';
+    }
+    const parts = [type];
+    if (item.locationLabel?.trim()) {
+      parts.push(item.locationLabel.trim());
+    } else if (item.locationLat != null && item.locationLng != null) {
+      parts.push(`${item.locationLat.toFixed(4)}, ${item.locationLng.toFixed(4)}`);
+    }
+    if (item.locationMismatch) {
+      parts.push('Off-day punch');
+    }
+    return parts.join(' · ');
+  }
+
+  openScheduleEditor(item: PayrollEmployeeItem): void {
+    this.scheduleError.set('');
+    this.scheduleEditor.set({
+      userId: item.userId,
+      userSource: item.userSource,
+      fullName: item.fullName,
+      schedule: this.normalizeSchedule(item.weeklyLocationSchedule),
+    });
+  }
+
+  closeScheduleEditor(): void {
+    this.scheduleEditor.set(null);
+    this.scheduleError.set('');
+  }
+
+  setScheduleDay(day: WorkLocationDayKey, value: WorkLocationType): void {
+    const editor = this.scheduleEditor();
+    if (!editor) {
+      return;
+    }
+    this.scheduleEditor.set({
+      ...editor,
+      schedule: { ...editor.schedule, [day]: value },
+    });
+  }
+
+  async saveScheduleEditor(): Promise<void> {
+    const editor = this.scheduleEditor();
+    if (!editor) {
+      return;
+    }
+
+    this.savingSchedule.set(true);
+    this.scheduleError.set('');
+    try {
+      await firstValueFrom(
+        this.adminApi.updateEmployeeWeeklyLocation(editor.userId, {
+          userSource: editor.userSource,
+          weeklyLocationSchedule: editor.schedule,
+        }),
+      );
+      this.closeScheduleEditor();
+      await this.loadEmployees();
+    } catch {
+      this.scheduleError.set('Unable to save weekly location schedule.');
+    } finally {
+      this.savingSchedule.set(false);
+    }
+  }
+
+  normalizeSchedule(schedule: WeeklyLocationSchedule | null | undefined): WeeklyLocationSchedule {
+    const fallback = defaultWeeklyLocationSchedule();
+    if (!schedule) {
+      return fallback;
+    }
+    const result = { ...fallback };
+    for (const key of LOCATION_DAY_KEYS) {
+      const value = schedule[key];
+      if (value === 'office' || value === 'wfh' || value === 'off') {
+        result[key] = value;
+      }
+    }
+    return result;
   }
 
   attendanceStatusLabel(value: PayrollAttendanceItem['status']): string {
