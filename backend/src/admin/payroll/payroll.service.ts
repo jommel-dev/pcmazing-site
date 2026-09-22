@@ -1866,14 +1866,14 @@ export class PayrollService {
       let hourlyRate = 0;
 
       if (usesFixedSalary && fixedRates) {
-        // Location amounts unused for fixed pay; Off still contributes 0 paid units.
+        // Location amounts unused for fixed pay; Off still contributes 0 paid units / OT pay.
         if (expected === 'off') {
           units = 0;
         }
         hourlyRate = fixedRates.hourlyRate;
         dayPay = Math.round(units * fixedRates.dailyRate * 100) / 100;
         overtimePay =
-          otHours > 0 && otStatus === 'approved'
+          expected !== 'off' && otHours > 0 && otStatus === 'approved'
             ? Math.round(otHours * hourlyRate * OVERTIME_MULTIPLIER * 100) / 100
             : 0;
       } else {
@@ -1882,7 +1882,7 @@ export class PayrollService {
           input.salaryAmount,
           input.wfhSalary,
         );
-        if (amount == null) {
+        if (amount == null || expected === 'off') {
           units = 0;
           dayPay = 0;
           overtimePay = 0;
@@ -1909,8 +1909,11 @@ export class PayrollService {
         regularHours += Math.min(hours, FULL_DAY_HOURS);
         dayPayTotal += dayPay;
         if (otHours > 0 && otStatus === 'approved') {
-          approvedOvertimeHours += otHours;
-          overtimePayTotal += overtimePay;
+          // Off days: hours may still show on the row, but do not add to payable OT.
+          if (expected !== 'off') {
+            approvedOvertimeHours += otHours;
+            overtimePayTotal += overtimePay;
+          }
         } else if (otHours > 0 && otStatus === 'pending') {
           pendingOvertimeHours += otHours;
         }
@@ -3023,7 +3026,7 @@ export class PayrollService {
       let units = this.dayPayUnits(hours, undertimeGraceMinutes);
 
       if (usesFixedSalary) {
-        // Location amounts unused for fixed pay; Off still contributes 0 paid units.
+        // Location amounts unused for fixed pay; Off still contributes 0 paid units / OT pay.
         if (expected === 'off') {
           units = 0;
         }
@@ -3033,7 +3036,7 @@ export class PayrollService {
           employee.monthlySalary,
           employee.wfhSalary,
         );
-        if (amount == null) {
+        if (amount == null || expected === 'off') {
           units = 0;
         } else {
           const rates = this.resolvePayRates(
@@ -3042,9 +3045,13 @@ export class PayrollService {
             periodDays,
             weeklyHourBase,
           );
-          dayPayTotal += units * rates.dailyRate;
+          // Match payslip: round each day's pay before summing.
+          const dayPay = Math.round(units * rates.dailyRate * 100) / 100;
+          dayPayTotal += dayPay;
           if (otHours > 0 && otStatus === 'approved') {
-            overtimePayTotal += otHours * rates.hourlyRate * OVERTIME_MULTIPLIER;
+            const overtimePay =
+              Math.round(otHours * rates.hourlyRate * OVERTIME_MULTIPLIER * 100) / 100;
+            overtimePayTotal += overtimePay;
           }
         }
       }
@@ -3054,7 +3061,10 @@ export class PayrollService {
       paidDayUnits += units;
       regularHours += Math.min(hours, FULL_DAY_HOURS);
       if (otHours > 0 && otStatus === 'approved') {
-        approvedOvertimeHours += otHours;
+        // Off days: do not add approved OT hours to payable OT totals.
+        if (expected !== 'off') {
+          approvedOvertimeHours += otHours;
+        }
       } else if (otHours > 0 && otStatus === 'pending') {
         pendingOvertimeHours += otHours;
       }
