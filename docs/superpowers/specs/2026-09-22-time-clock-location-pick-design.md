@@ -1,7 +1,7 @@
 # Time-Clock Office / WFH Pick (Overrides Schedule for Punch + Pay)
 
 **Date:** 2026-09-22  
-**Status:** Approved design — pending implementation  
+**Status:** Implemented  
 **Approach:** Employee picks Office or WFH at time-in; store on attendance; pay from punch type
 
 ## Goal
