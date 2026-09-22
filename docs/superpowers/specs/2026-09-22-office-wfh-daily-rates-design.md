@@ -1,7 +1,7 @@
 # Office vs WFH Daily Rates
 
 **Date:** 2026-09-22  
-**Status:** Approved design — pending implementation  
+**Status:** Implemented  
 **Approach:** Keep `monthly_salary` as Office amount; add `wfh_salary`; pay by scheduled location
 
 ## Goal
