@@ -1187,7 +1187,6 @@ export class PayrollService {
         dateTo,
         weeklyHourBase,
         undertimeGraceMinutes,
-        workWeek,
       );
     });
 
@@ -1521,7 +1520,6 @@ export class PayrollService {
           salaryType: payType,
           salaryAmount: employee.monthlySalary,
           wfhSalary: employee.wfhSalary,
-          weeklyLocationSchedule: employee.weeklyLocationSchedule,
           fixedMonthlySalary: employee.fixedMonthlySalary,
           periodDays,
           punches,
@@ -1689,7 +1687,6 @@ export class PayrollService {
     const wfhSalary = slip.wfh_salary == null ? null : Number(slip.wfh_salary);
     const fixedMonthlySalary =
       slip.fixed_monthly_salary == null ? null : Number(slip.fixed_monthly_salary);
-    const weeklyLocationSchedule = normalizeWeeklyLocationSchedule(slip.weekly_location_schedule);
     const periodDays = Number(slip.period_days) || 0;
 
     const attendance = await this.databaseService.query<{
@@ -1720,7 +1717,6 @@ export class PayrollService {
       salaryType,
       salaryAmount,
       wfhSalary,
-      weeklyLocationSchedule,
       fixedMonthlySalary,
       periodDays,
       punches: attendance.rows,
@@ -1789,7 +1785,6 @@ export class PayrollService {
     salaryType: PayrollSalaryType;
     salaryAmount: number | null;
     wfhSalary: number | null;
-    weeklyLocationSchedule: WeeklyLocationSchedule | null;
     fixedMonthlySalary: number | null;
     periodDays: number;
     punches: Array<{
@@ -2268,9 +2263,9 @@ export class PayrollService {
     }
 
     const attendance = await this.getTodayAttendance(user.id, user.source, workDate);
+    // expectedLocation always from schedule; punch only supplies GPS/label fields.
     const recorded = {
-      expectedLocation:
-        this.normalizeStoredLocationType(attendance?.work_location_type) ?? expectedLocation,
+      expectedLocation,
       locationLabel: attendance?.location_label?.trim() || null,
       locationLat: this.toNullableNumber(attendance?.location_lat),
       locationLng: this.toNullableNumber(attendance?.location_lng),
@@ -3006,7 +3001,6 @@ export class PayrollService {
     periodDateTo: string,
     weeklyHourBase = 40,
     undertimeGraceMinutes = 30,
-    workWeek: PayrollWorkWeek = 'mon_fri',
   ): PayrollPeriodRow {
     let totalHours = 0;
     let regularHours = 0;
