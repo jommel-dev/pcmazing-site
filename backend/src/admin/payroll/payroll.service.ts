@@ -24,6 +24,13 @@ import { saveAttendanceSelfieFile } from './attendance-selfie.util';
 import { deletePayrollQrImageFile, savePayrollQrImageFile } from './payroll-qr-image.util';
 import { ensurePayrollTables, manilaWorkDate } from './payroll.schema';
 import { buildPayslipPdfBuffer, PayslipDayBreakdownRow, PayslipPdfPayload } from './payslip-pdf.util';
+import {
+  isWorkLocationType,
+  normalizeWeeklyLocationSchedule,
+  resolveExpectedLocation,
+  WeeklyLocationSchedule,
+  WorkLocationType,
+} from './work-location.util';
 
 export interface PayrollProfile {
   employeeCode: string | null;
@@ -31,11 +38,13 @@ export interface PayrollProfile {
   positionTitle: string | null;
   salaryType: PayrollSalaryType;
   monthlySalary: number | null;
+  wfhSalary: number | null;
   fixedMonthlySalary: number | null;
   payoutMethod: PayrollPayoutMethod;
   bankDetails: string | null;
   qrImageUrl: string | null;
   payrollEnabled: boolean;
+  weeklyLocationSchedule: WeeklyLocationSchedule | null;
 }
 
 export type OvertimeStatus = 'none' | 'pending' | 'approved' | 'rejected';
@@ -59,6 +68,11 @@ export interface AttendanceRecord {
   overtimeHours: number;
   overtimeStatus: OvertimeStatus;
   adjustmentStatus: AdjustmentStatus;
+  workLocationType: WorkLocationType | null;
+  locationLat: number | null;
+  locationLng: number | null;
+  locationLabel: string | null;
+  locationMismatch: boolean;
 }
 
 export interface AdjustmentRecord {
@@ -112,6 +126,7 @@ export interface PayrollEmployeeRecord {
   positionTitle: string | null;
   salaryType: PayrollSalaryType;
   monthlySalary: number | null;
+  wfhSalary: number | null;
   fixedMonthlySalary: number | null;
   payoutMethod: PayrollPayoutMethod;
   bankDetails: string | null;
@@ -120,6 +135,8 @@ export interface PayrollEmployeeRecord {
   todayStatus: 'not_started' | 'timed_in' | 'completed' | 'absent';
   todayTimeIn: string | null;
   todayTimeOut: string | null;
+  weeklyLocationSchedule: WeeklyLocationSchedule | null;
+  expectedLocationToday: WorkLocationType;
 }
 
 export interface PayrollOverview {
@@ -201,7 +218,18 @@ export interface TimeClockStatus {
   serverNow: string;
   /** Minutes before 9h that still count as a full paid day. */
   undertimeGraceMinutes: number;
+  expectedLocation: WorkLocationType;
+  locationLabel: string | null;
+  locationLat: number | null;
+  locationLng: number | null;
+  locationMismatch: boolean;
 }
+
+export type TimeClockLocationInput = {
+  locationLat?: number | null;
+  locationLng?: number | null;
+  locationLabel?: string | null;
+};
 
 /** Hours required for a full paid day (and OT threshold). */
 const FULL_DAY_HOURS = 9;
@@ -216,11 +244,13 @@ const EMPTY_PAYROLL: PayrollProfile = {
   positionTitle: null,
   salaryType: 'monthly',
   monthlySalary: null,
+  wfhSalary: null,
   fixedMonthlySalary: null,
   payoutMethod: 'cash',
   bankDetails: null,
   qrImageUrl: null,
   payrollEnabled: false,
+  weeklyLocationSchedule: null,
 };
 
 @Injectable()
@@ -292,15 +322,17 @@ export class PayrollService {
       position_title: string | null;
       salary_type: string | null;
       monthly_salary: string | null;
+      wfh_salary: string | null;
       fixed_monthly_salary: string | null;
       payout_method: string | null;
       bank_details: string | null;
       qr_image_url: string | null;
       payroll_enabled: boolean;
+      weekly_location_schedule: unknown;
     }>(
       `SELECT user_id, user_source, employee_code, department, position_title, salary_type,
-              monthly_salary, fixed_monthly_salary, payout_method, bank_details, qr_image_url,
-              payroll_enabled
+              monthly_salary, wfh_salary, fixed_monthly_salary, payout_method, bank_details, qr_image_url,
+              payroll_enabled, weekly_location_schedule
        FROM pcmazing_user_payroll
        WHERE (user_id, user_source) IN (${tuples.join(', ')})`,
       params,
@@ -321,14 +353,17 @@ export class PayrollService {
       position_title: string | null;
       salary_type: string | null;
       monthly_salary: string | null;
+      wfh_salary: string | null;
       fixed_monthly_salary: string | null;
       payout_method: string | null;
       bank_details: string | null;
       qr_image_url: string | null;
       payroll_enabled: boolean;
+      weekly_location_schedule: unknown;
     }>(
       `SELECT employee_code, department, position_title, salary_type, monthly_salary,
-              fixed_monthly_salary, payout_method, bank_details, qr_image_url, payroll_enabled
+              wfh_salary, fixed_monthly_salary, payout_method, bank_details, qr_image_url, payroll_enabled,
+              weekly_location_schedule
        FROM pcmazing_user_payroll
        WHERE user_id = $1 AND user_source = $2
        LIMIT 1`,
@@ -360,6 +395,12 @@ export class PayrollService {
           ? null
           : Number(dto.monthlySalary)
         : existing.monthlySalary;
+    const wfhSalary =
+      dto.wfhSalary !== undefined
+        ? dto.wfhSalary == null
+          ? null
+          : Number(dto.wfhSalary)
+        : existing.wfhSalary;
     const fixedMonthlySalary =
       dto.fixedMonthlySalary !== undefined
         ? dto.fixedMonthlySalary == null
@@ -376,6 +417,20 @@ export class PayrollService {
         : existing.bankDetails;
     const payrollEnabled =
       dto.payrollEnabled !== undefined ? Boolean(dto.payrollEnabled) : existing.payrollEnabled;
+    let weeklyLocationSchedule = existing.weeklyLocationSchedule;
+    if (dto.weeklyLocationSchedule !== undefined) {
+      if (dto.weeklyLocationSchedule === null) {
+        weeklyLocationSchedule = null;
+      } else {
+        const normalized = normalizeWeeklyLocationSchedule(dto.weeklyLocationSchedule);
+        if (!normalized) {
+          throw new BadRequestException(
+            'weeklyLocationSchedule must include mon–sun with office, wfh, or off.',
+          );
+        }
+        weeklyLocationSchedule = normalized;
+      }
+    }
 
     const result = await this.databaseService.query<{
       employee_code: string | null;
@@ -383,29 +438,34 @@ export class PayrollService {
       position_title: string | null;
       salary_type: string | null;
       monthly_salary: string | null;
+      wfh_salary: string | null;
       fixed_monthly_salary: string | null;
       payout_method: string | null;
       bank_details: string | null;
       qr_image_url: string | null;
       payroll_enabled: boolean;
+      weekly_location_schedule: unknown;
     }>(
       `INSERT INTO pcmazing_user_payroll (
          user_id, user_source, employee_code, department, position_title, salary_type, monthly_salary,
-         fixed_monthly_salary, payout_method, bank_details, payroll_enabled
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         wfh_salary, fixed_monthly_salary, payout_method, bank_details, payroll_enabled, weekly_location_schedule
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb)
        ON CONFLICT (user_id, user_source) DO UPDATE SET
          employee_code = EXCLUDED.employee_code,
          department = EXCLUDED.department,
          position_title = EXCLUDED.position_title,
          salary_type = EXCLUDED.salary_type,
          monthly_salary = EXCLUDED.monthly_salary,
+         wfh_salary = EXCLUDED.wfh_salary,
          fixed_monthly_salary = EXCLUDED.fixed_monthly_salary,
          payout_method = EXCLUDED.payout_method,
          bank_details = EXCLUDED.bank_details,
          payroll_enabled = EXCLUDED.payroll_enabled,
+         weekly_location_schedule = EXCLUDED.weekly_location_schedule,
          updated_at = NOW()
        RETURNING employee_code, department, position_title, salary_type, monthly_salary,
-                 fixed_monthly_salary, payout_method, bank_details, qr_image_url, payroll_enabled`,
+                 wfh_salary, fixed_monthly_salary, payout_method, bank_details, qr_image_url, payroll_enabled,
+                 weekly_location_schedule`,
       [
         userId,
         userSource,
@@ -414,10 +474,12 @@ export class PayrollService {
         positionTitle,
         salaryType,
         monthlySalary,
+        wfhSalary,
         fixedMonthlySalary,
         payoutMethod,
         bankDetails,
         payrollEnabled,
+        weeklyLocationSchedule ? JSON.stringify(weeklyLocationSchedule) : null,
       ],
     );
 
@@ -494,11 +556,18 @@ export class PayrollService {
       adjustment_status: string | null;
       employee_code: string | null;
       department: string | null;
+      work_location_type: string | null;
+      location_lat: string | number | null;
+      location_lng: string | number | null;
+      location_label: string | null;
+      location_mismatch: boolean | null;
     }>(
       `SELECT a.id, a.user_id, a.user_source, a.username, a.work_date::text AS work_date,
               a.time_in::text AS time_in, a.time_out::text AS time_out,
               a.time_in_selfie_url, a.time_out_selfie_url,
               a.overtime_hours, a.overtime_status, a.adjustment_status,
+              a.work_location_type, a.location_lat, a.location_lng, a.location_label,
+              a.location_mismatch,
               p.employee_code, p.department
        FROM pcmazing_attendance a
        LEFT JOIN pcmazing_user_payroll p
@@ -534,6 +603,11 @@ export class PayrollService {
         overtimeHours: Number(row.overtime_hours ?? 0) || 0,
         overtimeStatus: this.normalizeOvertimeStatus(row.overtime_status),
         adjustmentStatus: this.normalizeOvertimeStatus(row.adjustment_status),
+        workLocationType: this.normalizeStoredLocationType(row.work_location_type),
+        locationLat: row.location_lat == null ? null : Number(row.location_lat),
+        locationLng: row.location_lng == null ? null : Number(row.location_lng),
+        locationLabel: row.location_label,
+        locationMismatch: Boolean(row.location_mismatch),
       });
     }
 
@@ -960,15 +1034,17 @@ export class PayrollService {
       position_title: string | null;
       salary_type: string | null;
       monthly_salary: string | null;
+      wfh_salary: string | null;
       fixed_monthly_salary: string | null;
       payout_method: string | null;
       bank_details: string | null;
       qr_image_url: string | null;
       payroll_enabled: boolean;
+      weekly_location_schedule: unknown;
     }>(
       `SELECT user_id, user_source, employee_code, department, position_title, salary_type,
-              monthly_salary, fixed_monthly_salary, payout_method, bank_details, qr_image_url,
-              payroll_enabled
+              monthly_salary, wfh_salary, fixed_monthly_salary, payout_method, bank_details, qr_image_url,
+              payroll_enabled, weekly_location_schedule
        FROM pcmazing_user_payroll
        WHERE payroll_enabled = TRUE
        ORDER BY employee_code NULLS LAST, user_id ASC`,
@@ -976,6 +1052,7 @@ export class PayrollService {
 
     const items: PayrollEmployeeRecord[] = [];
     const needle = search.trim().toLowerCase();
+    const settings = await this.getSettings();
 
     for (const row of profiles.rows) {
       const identity = await this.resolveUserIdentity(row.user_id, row.user_source);
@@ -990,6 +1067,7 @@ export class PayrollService {
           ? 'completed'
           : 'timed_in';
 
+      const weeklyLocationSchedule = normalizeWeeklyLocationSchedule(row.weekly_location_schedule);
       const item: PayrollEmployeeRecord = {
         userId: row.user_id,
         userSource: row.user_source,
@@ -1001,6 +1079,7 @@ export class PayrollService {
         positionTitle: row.position_title,
         salaryType: this.normalizeSalaryType(row.salary_type),
         monthlySalary: row.monthly_salary == null ? null : Number(row.monthly_salary),
+        wfhSalary: row.wfh_salary == null ? null : Number(row.wfh_salary),
         fixedMonthlySalary:
           row.fixed_monthly_salary == null ? null : Number(row.fixed_monthly_salary),
         payoutMethod: this.normalizePayoutMethod(row.payout_method),
@@ -1010,6 +1089,12 @@ export class PayrollService {
         todayStatus,
         todayTimeIn: attendance?.time_in ?? null,
         todayTimeOut: attendance?.time_out ?? null,
+        weeklyLocationSchedule,
+        expectedLocationToday: resolveExpectedLocation(
+          weeklyLocationSchedule,
+          settings.workWeek,
+          workDate,
+        ),
       };
 
       if (needle) {
@@ -2037,6 +2122,7 @@ export class PayrollService {
     const workDate = clock.workDate;
     const username = usernameRaw.trim();
     const undertimeGraceMinutes = settings.undertimeGraceMinutes;
+    const emptyLocation = this.emptyTimeClockLocationFields(workDate, settings.workWeek);
 
     const user = await this.findActiveUserByUsername(username);
     if (!user) {
@@ -2053,6 +2139,7 @@ export class PayrollService {
         message: 'Username not found.',
         serverNow: clock.serverNow,
         undertimeGraceMinutes,
+        ...emptyLocation,
       };
     }
 
@@ -2070,10 +2157,24 @@ export class PayrollService {
         message: 'This account is inactive.',
         serverNow: clock.serverNow,
         undertimeGraceMinutes,
+        ...emptyLocation,
       };
     }
 
     const profile = await this.getProfile(user.id, user.source);
+    const expectedLocation = resolveExpectedLocation(
+      profile.weeklyLocationSchedule,
+      settings.workWeek,
+      workDate,
+    );
+    const expectedFields = {
+      expectedLocation,
+      locationLabel: null as string | null,
+      locationLat: null as number | null,
+      locationLng: null as number | null,
+      locationMismatch: expectedLocation === 'off',
+    };
+
     if (!profile.payrollEnabled) {
       return {
         username: user.username,
@@ -2088,10 +2189,20 @@ export class PayrollService {
         message: 'This user is not enabled for payroll time clock.',
         serverNow: clock.serverNow,
         undertimeGraceMinutes,
+        ...expectedFields,
       };
     }
 
     const attendance = await this.getTodayAttendance(user.id, user.source, workDate);
+    const recorded = {
+      expectedLocation:
+        this.normalizeStoredLocationType(attendance?.work_location_type) ?? expectedLocation,
+      locationLabel: attendance?.location_label?.trim() || null,
+      locationLat: this.toNullableNumber(attendance?.location_lat),
+      locationLng: this.toNullableNumber(attendance?.location_lng),
+      locationMismatch: Boolean(attendance?.location_mismatch) || expectedLocation === 'off',
+    };
+
     if (!attendance?.time_in) {
       return {
         username: user.username,
@@ -2103,9 +2214,13 @@ export class PayrollService {
         canTimeIn: true,
         canTimeOut: false,
         status: 'ready',
-        message: 'Ready to time in.',
+        message:
+          expectedLocation === 'off'
+            ? 'Today is scheduled as day off. You can still time in if needed.'
+            : 'Ready to time in.',
         serverNow: clock.serverNow,
         undertimeGraceMinutes,
+        ...expectedFields,
       };
     }
 
@@ -2123,6 +2238,7 @@ export class PayrollService {
         message: 'Already timed in. Use time out when leaving.',
         serverNow: clock.serverNow,
         undertimeGraceMinutes,
+        ...recorded,
       };
     }
 
@@ -2139,10 +2255,15 @@ export class PayrollService {
       message: 'Time in and time out are already recorded for today.',
       serverNow: clock.serverNow,
       undertimeGraceMinutes,
+      ...recorded,
     };
   }
 
-  async timeIn(usernameRaw: string, selfie: Express.Multer.File): Promise<TimeClockStatus> {
+  async timeIn(
+    usernameRaw: string,
+    selfie: Express.Multer.File,
+    location?: TimeClockLocationInput | null,
+  ): Promise<TimeClockStatus> {
     const status = await this.getTimeClockStatus(usernameRaw);
     if (status.status === 'not_found') {
       throw new NotFoundException(status.message);
@@ -2156,18 +2277,38 @@ export class PayrollService {
       throw new NotFoundException('Username not found.');
     }
 
+    const punchLocation = this.resolvePunchLocation(status.expectedLocation, location);
     const selfieUrl = await saveAttendanceSelfieFile('in', user.username, selfie);
     const workDate = status.workDate;
     await this.databaseService.query(
-      `INSERT INTO pcmazing_attendance (user_id, user_source, username, work_date, time_in, time_in_selfie_url)
-       VALUES ($1, $2, $3, $4::date, NOW(), $5)
+      `INSERT INTO pcmazing_attendance (
+         user_id, user_source, username, work_date, time_in, time_in_selfie_url,
+         work_location_type, location_lat, location_lng, location_label, location_mismatch
+       )
+       VALUES ($1, $2, $3, $4::date, NOW(), $5, $6, $7, $8, $9, $10)
        ON CONFLICT (user_id, user_source, work_date) DO UPDATE SET
          time_in = COALESCE(pcmazing_attendance.time_in, EXCLUDED.time_in),
          time_in_selfie_url = COALESCE(pcmazing_attendance.time_in_selfie_url, EXCLUDED.time_in_selfie_url),
          username = EXCLUDED.username,
+         work_location_type = COALESCE(pcmazing_attendance.work_location_type, EXCLUDED.work_location_type),
+         location_lat = COALESCE(pcmazing_attendance.location_lat, EXCLUDED.location_lat),
+         location_lng = COALESCE(pcmazing_attendance.location_lng, EXCLUDED.location_lng),
+         location_label = COALESCE(pcmazing_attendance.location_label, EXCLUDED.location_label),
+         location_mismatch = COALESCE(pcmazing_attendance.location_mismatch, EXCLUDED.location_mismatch),
          updated_at = NOW()
        WHERE pcmazing_attendance.time_in IS NULL`,
-      [user.id, user.source, user.username, workDate, selfieUrl],
+      [
+        user.id,
+        user.source,
+        user.username,
+        workDate,
+        selfieUrl,
+        punchLocation.workLocationType,
+        punchLocation.locationLat,
+        punchLocation.locationLng,
+        punchLocation.locationLabel,
+        punchLocation.locationMismatch,
+      ],
     );
 
     const refreshed = await this.getTimeClockStatus(user.username);
@@ -2178,7 +2319,11 @@ export class PayrollService {
     return refreshed;
   }
 
-  async timeOut(usernameRaw: string, selfie: Express.Multer.File): Promise<TimeClockStatus> {
+  async timeOut(
+    usernameRaw: string,
+    selfie: Express.Multer.File,
+    _location?: TimeClockLocationInput | null,
+  ): Promise<TimeClockStatus> {
     const status = await this.getTimeClockStatus(usernameRaw);
     if (status.status === 'not_found') {
       throw new NotFoundException(status.message);
@@ -2489,8 +2634,14 @@ export class PayrollService {
     const result = await this.databaseService.query<{
       time_in: string | null;
       time_out: string | null;
+      work_location_type: string | null;
+      location_lat: string | number | null;
+      location_lng: string | number | null;
+      location_label: string | null;
+      location_mismatch: boolean | null;
     }>(
-      `SELECT time_in::text AS time_in, time_out::text AS time_out
+      `SELECT time_in::text AS time_in, time_out::text AS time_out,
+              work_location_type, location_lat, location_lng, location_label, location_mismatch
        FROM pcmazing_attendance
        WHERE user_id = $1 AND user_source = $2 AND work_date = $3::date
        LIMIT 1`,
@@ -2606,11 +2757,13 @@ export class PayrollService {
     position_title: string | null;
     salary_type?: string | null;
     monthly_salary: string | null;
+    wfh_salary?: string | null;
     fixed_monthly_salary?: string | null;
     payout_method?: string | null;
     bank_details?: string | null;
     qr_image_url?: string | null;
     payroll_enabled: boolean;
+    weekly_location_schedule?: unknown;
   }): PayrollProfile {
     return {
       employeeCode: row.employee_code,
@@ -2618,12 +2771,67 @@ export class PayrollService {
       positionTitle: row.position_title,
       salaryType: this.normalizeSalaryType(row.salary_type),
       monthlySalary: row.monthly_salary == null ? null : Number(row.monthly_salary),
+      wfhSalary: row.wfh_salary == null ? null : Number(row.wfh_salary),
       fixedMonthlySalary:
         row.fixed_monthly_salary == null ? null : Number(row.fixed_monthly_salary),
       payoutMethod: this.normalizePayoutMethod(row.payout_method),
       bankDetails: row.bank_details ?? null,
       qrImageUrl: row.qr_image_url ?? null,
       payrollEnabled: Boolean(row.payroll_enabled),
+      weeklyLocationSchedule: normalizeWeeklyLocationSchedule(row.weekly_location_schedule),
+    };
+  }
+
+  private emptyTimeClockLocationFields(
+    workDate: string,
+    workWeek: PayrollWorkWeek,
+  ): Pick<
+    TimeClockStatus,
+    'expectedLocation' | 'locationLabel' | 'locationLat' | 'locationLng' | 'locationMismatch'
+  > {
+    const expectedLocation = resolveExpectedLocation(null, workWeek, workDate);
+    return {
+      expectedLocation,
+      locationLabel: null,
+      locationLat: null,
+      locationLng: null,
+      locationMismatch: expectedLocation === 'off',
+    };
+  }
+
+  private normalizeStoredLocationType(value?: string | null): WorkLocationType | null {
+    return isWorkLocationType(value) ? value : null;
+  }
+
+  private toNullableNumber(value: string | number | null | undefined): number | null {
+    if (value == null || value === '') {
+      return null;
+    }
+    const num = Number(value);
+    return Number.isFinite(num) ? num : null;
+  }
+
+  private resolvePunchLocation(
+    expectedLocation: WorkLocationType,
+    location?: TimeClockLocationInput | null,
+  ): {
+    workLocationType: WorkLocationType;
+    locationLat: number | null;
+    locationLng: number | null;
+    locationLabel: string | null;
+    locationMismatch: boolean;
+  } {
+    const label = location?.locationLabel?.trim() || null;
+    const lat = this.toNullableNumber(location?.locationLat ?? null);
+    const lng = this.toNullableNumber(location?.locationLng ?? null);
+    const storeCoords = expectedLocation === 'wfh';
+
+    return {
+      workLocationType: expectedLocation,
+      locationLat: storeCoords ? lat : null,
+      locationLng: storeCoords ? lng : null,
+      locationLabel: storeCoords ? (label ? label.slice(0, 200) : null) : null,
+      locationMismatch: expectedLocation === 'off',
     };
   }
 
