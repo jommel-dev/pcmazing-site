@@ -25,6 +25,10 @@ import { deletePayrollQrImageFile, savePayrollQrImageFile } from './payroll-qr-i
 import { ensurePayrollTables, manilaWorkDate } from './payroll.schema';
 import { buildPayslipPdfBuffer, PayslipDayBreakdownRow, PayslipPdfPayload } from './payslip-pdf.util';
 import {
+  locationPayLabelSuffix,
+  pickSalaryAmountForLocation,
+} from './location-pay.util';
+import {
   isWorkLocationType,
   normalizeWeeklyLocationSchedule,
   resolveExpectedLocation,
@@ -1182,6 +1186,7 @@ export class PayrollService {
         dateTo,
         weeklyHourBase,
         undertimeGraceMinutes,
+        workWeek,
       );
     });
 
@@ -1513,6 +1518,8 @@ export class PayrollService {
         const { days, totals } = this.buildPayslipDaysAndTotals({
           salaryType: payType,
           salaryAmount: employee.monthlySalary,
+          wfhSalary: employee.wfhSalary,
+          weeklyLocationSchedule: employee.weeklyLocationSchedule,
           fixedMonthlySalary: employee.fixedMonthlySalary,
           periodDays,
           punches,
@@ -1636,7 +1643,9 @@ export class PayrollService {
       position_title: string | null;
       salary_type: string | null;
       salary_amount: string | null;
+      wfh_salary: string | null;
       fixed_monthly_salary: string | null;
+      weekly_location_schedule: unknown;
       days_present: number;
       days_completed: number;
       total_hours: string;
@@ -1650,7 +1659,9 @@ export class PayrollService {
       `SELECT p.id, p.username, p.full_name, p.employee_code, p.department,
               pay.position_title,
               p.salary_type, p.salary_amount::text AS salary_amount,
+              pay.wfh_salary::text AS wfh_salary,
               pay.fixed_monthly_salary::text AS fixed_monthly_salary,
+              pay.weekly_location_schedule,
               p.days_present, p.days_completed, p.total_hours::text AS total_hours,
               p.estimated_pay::text AS estimated_pay,
               r.label, r.date_from::text AS date_from, r.date_to::text AS date_to,
@@ -1673,8 +1684,10 @@ export class PayrollService {
 
     const salaryType = this.normalizeSalaryType(slip.salary_type);
     const salaryAmount = slip.salary_amount == null ? null : Number(slip.salary_amount);
+    const wfhSalary = slip.wfh_salary == null ? null : Number(slip.wfh_salary);
     const fixedMonthlySalary =
       slip.fixed_monthly_salary == null ? null : Number(slip.fixed_monthly_salary);
+    const weeklyLocationSchedule = normalizeWeeklyLocationSchedule(slip.weekly_location_schedule);
     const periodDays = Number(slip.period_days) || 0;
 
     const attendance = await this.databaseService.query<{
@@ -1702,6 +1715,8 @@ export class PayrollService {
     const { days, totals } = this.buildPayslipDaysAndTotals({
       salaryType,
       salaryAmount,
+      wfhSalary,
+      weeklyLocationSchedule,
       fixedMonthlySalary,
       periodDays,
       punches: attendance.rows,
@@ -1769,6 +1784,8 @@ export class PayrollService {
   private buildPayslipDaysAndTotals(input: {
     salaryType: PayrollSalaryType;
     salaryAmount: number | null;
+    wfhSalary: number | null;
+    weeklyLocationSchedule: WeeklyLocationSchedule | null;
     fixedMonthlySalary: number | null;
     periodDays: number;
     punches: Array<{
@@ -1796,12 +1813,12 @@ export class PayrollService {
     const restDayCount = calendarDays.filter((day) => this.isRestDay(day, workWeek, dayOffDates)).length;
     const weeklyHourBase = this.weeklyHourBase(workWeek, input.periodDays, restDayCount);
 
-    const { dailyRate, hourlyRate } = usesFixedSalary
+    const fixedRates = usesFixedSalary
       ? {
           dailyRate: 0,
           hourlyRate: (fixedMonthly / 22) / FULL_DAY_HOURS,
         }
-      : this.resolvePayRates(input.salaryType, input.salaryAmount, input.periodDays, weeklyHourBase);
+      : null;
 
     let paidDayUnits = 0;
     let regularHours = 0;
@@ -1810,6 +1827,7 @@ export class PayrollService {
     let approvedOvertimeHours = 0;
     let pendingOvertimeHours = 0;
     let overtimePayTotal = 0;
+    let dayPayTotal = 0;
 
     const punchByDate = new Map(
       input.punches.map((row) => [String(row.work_date).slice(0, 10), row]),
@@ -1833,21 +1851,63 @@ export class PayrollService {
         };
       }
 
+      const expected = resolveExpectedLocation(
+        input.weeklyLocationSchedule,
+        workWeek,
+        workDate,
+      );
       const hours = this.computeHours(row.time_in, row.time_out);
-      const units = this.dayPayUnits(hours, undertimeGraceMinutes);
       const otHours = Number(row.overtime_hours ?? 0) || 0;
       const otStatus = this.normalizeOvertimeStatus(row.overtime_status);
-      const dayPay = Math.round(units * dailyRate * 100) / 100;
-      const overtimePay =
-        otHours > 0 && otStatus === 'approved'
-          ? Math.round(otHours * hourlyRate * OVERTIME_MULTIPLIER * 100) / 100
-          : 0;
+
+      let units = this.dayPayUnits(hours, undertimeGraceMinutes);
+      let dayPay = 0;
+      let overtimePay = 0;
+      let hourlyRate = 0;
+
+      if (usesFixedSalary && fixedRates) {
+        // Location amounts unused for fixed pay; Off still contributes 0 paid units.
+        if (expected === 'off') {
+          units = 0;
+        }
+        hourlyRate = fixedRates.hourlyRate;
+        dayPay = Math.round(units * fixedRates.dailyRate * 100) / 100;
+        overtimePay =
+          otHours > 0 && otStatus === 'approved'
+            ? Math.round(otHours * hourlyRate * OVERTIME_MULTIPLIER * 100) / 100
+            : 0;
+      } else {
+        const amount = pickSalaryAmountForLocation(
+          expected,
+          input.salaryAmount,
+          input.wfhSalary,
+        );
+        if (amount == null) {
+          units = 0;
+          dayPay = 0;
+          overtimePay = 0;
+        } else {
+          const rates = this.resolvePayRates(
+            input.salaryType,
+            amount,
+            input.periodDays,
+            weeklyHourBase,
+          );
+          hourlyRate = rates.hourlyRate;
+          dayPay = Math.round(units * rates.dailyRate * 100) / 100;
+          overtimePay =
+            otHours > 0 && otStatus === 'approved'
+              ? Math.round(otHours * hourlyRate * OVERTIME_MULTIPLIER * 100) / 100
+              : 0;
+        }
+      }
 
       if (hours != null) {
         daysCompleted += 1;
         totalHours += hours;
         paidDayUnits += units;
         regularHours += Math.min(hours, FULL_DAY_HOURS);
+        dayPayTotal += dayPay;
         if (otHours > 0 && otStatus === 'approved') {
           approvedOvertimeHours += otHours;
           overtimePayTotal += overtimePay;
@@ -1861,7 +1921,9 @@ export class PayrollService {
         timeInLabel: this.formatPunchLabel(row.time_in),
         timeOutLabel: this.formatPunchLabel(row.time_out),
         hoursWorked: hours ?? 0,
-        dayType: this.dayPayLabel(units, hours, undertimeGraceMinutes),
+        dayType:
+          this.dayPayLabel(units, hours, undertimeGraceMinutes) +
+          locationPayLabelSuffix(expected),
         paidUnits: units,
         dayPay,
         overtimeHours: otHours,
@@ -1870,32 +1932,34 @@ export class PayrollService {
       };
     });
 
-    const basePay =
-      Math.round(
-        this.estimatePay({
-          salaryType: input.salaryType,
-          salaryAmount: input.salaryAmount,
-          fixedMonthlySalary: input.fixedMonthlySalary,
-          regularHours,
-          paidDayUnits,
-          periodDays: input.periodDays,
-          approvedOvertimeHours: 0,
-          weeklyHourBase,
-        }) * 100,
-      ) / 100;
-    const estimatedPay =
-      Math.round(
-        this.estimatePay({
-          salaryType: input.salaryType,
-          salaryAmount: input.salaryAmount,
-          fixedMonthlySalary: input.fixedMonthlySalary,
-          regularHours,
-          paidDayUnits,
-          periodDays: input.periodDays,
-          approvedOvertimeHours,
-          weeklyHourBase,
-        }) * 100,
-      ) / 100;
+    const basePay = usesFixedSalary
+      ? Math.round(
+          this.estimatePay({
+            salaryType: input.salaryType,
+            salaryAmount: input.salaryAmount,
+            fixedMonthlySalary: input.fixedMonthlySalary,
+            regularHours,
+            paidDayUnits,
+            periodDays: input.periodDays,
+            approvedOvertimeHours: 0,
+            weeklyHourBase,
+          }) * 100,
+        ) / 100
+      : Math.round(dayPayTotal * 100) / 100;
+    const estimatedPay = usesFixedSalary
+      ? Math.round(
+          this.estimatePay({
+            salaryType: input.salaryType,
+            salaryAmount: input.salaryAmount,
+            fixedMonthlySalary: input.fixedMonthlySalary,
+            regularHours,
+            paidDayUnits,
+            periodDays: input.periodDays,
+            approvedOvertimeHours,
+            weeklyHourBase,
+          }) * 100,
+        ) / 100
+      : Math.round((dayPayTotal + overtimePayTotal) * 100) / 100;
 
     return {
       days,
@@ -2925,6 +2989,7 @@ export class PayrollService {
     periodDateTo: string,
     weeklyHourBase = 40,
     undertimeGraceMinutes = 30,
+    workWeek: PayrollWorkWeek = 'mon_fri',
   ): PayrollPeriodRow {
     let totalHours = 0;
     let regularHours = 0;
@@ -2932,36 +2997,81 @@ export class PayrollService {
     let paidDayUnits = 0;
     let approvedOvertimeHours = 0;
     let pendingOvertimeHours = 0;
+    let dayPayTotal = 0;
+    let overtimePayTotal = 0;
+
+    const periodDays = this.countInclusiveDays(periodDateFrom, periodDateTo);
+    const normalizedWorkWeek = this.normalizeWorkWeek(workWeek);
+    const usesFixedSalary =
+      employee.fixedMonthlySalary != null && employee.fixedMonthlySalary > 0;
 
     for (const punch of punches) {
       const hours = this.computeHours(punch.time_in, punch.time_out);
-      if (hours != null) {
-        totalHours += hours;
-        daysCompleted += 1;
-        const units = this.dayPayUnits(hours, undertimeGraceMinutes);
-        paidDayUnits += units;
-        regularHours += Math.min(hours, FULL_DAY_HOURS);
-        const otHours = Number(punch.overtime_hours ?? 0) || 0;
-        const otStatus = this.normalizeOvertimeStatus(punch.overtime_status);
-        if (otHours > 0 && otStatus === 'approved') {
-          approvedOvertimeHours += otHours;
-        } else if (otHours > 0 && otStatus === 'pending') {
-          pendingOvertimeHours += otHours;
+      if (hours == null) {
+        continue;
+      }
+
+      const workDate = String(punch.work_date).slice(0, 10);
+      const expected = resolveExpectedLocation(
+        employee.weeklyLocationSchedule,
+        normalizedWorkWeek,
+        workDate,
+      );
+      const otHours = Number(punch.overtime_hours ?? 0) || 0;
+      const otStatus = this.normalizeOvertimeStatus(punch.overtime_status);
+
+      let units = this.dayPayUnits(hours, undertimeGraceMinutes);
+
+      if (usesFixedSalary) {
+        // Location amounts unused for fixed pay; Off still contributes 0 paid units.
+        if (expected === 'off') {
+          units = 0;
         }
+      } else {
+        const amount = pickSalaryAmountForLocation(
+          expected,
+          employee.monthlySalary,
+          employee.wfhSalary,
+        );
+        if (amount == null) {
+          units = 0;
+        } else {
+          const rates = this.resolvePayRates(
+            payslipPeriod,
+            amount,
+            periodDays,
+            weeklyHourBase,
+          );
+          dayPayTotal += units * rates.dailyRate;
+          if (otHours > 0 && otStatus === 'approved') {
+            overtimePayTotal += otHours * rates.hourlyRate * OVERTIME_MULTIPLIER;
+          }
+        }
+      }
+
+      totalHours += hours;
+      daysCompleted += 1;
+      paidDayUnits += units;
+      regularHours += Math.min(hours, FULL_DAY_HOURS);
+      if (otHours > 0 && otStatus === 'approved') {
+        approvedOvertimeHours += otHours;
+      } else if (otHours > 0 && otStatus === 'pending') {
+        pendingOvertimeHours += otHours;
       }
     }
 
-    const periodDays = this.countInclusiveDays(periodDateFrom, periodDateTo);
-    const estimatedPay = this.estimatePay({
-      salaryType: payslipPeriod,
-      salaryAmount: employee.monthlySalary,
-      fixedMonthlySalary: employee.fixedMonthlySalary,
-      regularHours,
-      paidDayUnits,
-      periodDays,
-      approvedOvertimeHours,
-      weeklyHourBase,
-    });
+    const estimatedPay = usesFixedSalary
+      ? this.estimatePay({
+          salaryType: payslipPeriod,
+          salaryAmount: employee.monthlySalary,
+          fixedMonthlySalary: employee.fixedMonthlySalary,
+          regularHours,
+          paidDayUnits,
+          periodDays,
+          approvedOvertimeHours,
+          weeklyHourBase,
+        })
+      : dayPayTotal + overtimePayTotal;
 
     return {
       userId: employee.userId,
