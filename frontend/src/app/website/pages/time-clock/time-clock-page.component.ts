@@ -34,6 +34,10 @@ export class TimeClockPageComponent implements OnInit, OnDestroy {
   readonly cameraError = signal('');
   readonly selfiePreviewUrl = signal<string | null>(null);
   readonly selfieBlob = signal<Blob | null>(null);
+  readonly locationLabel = signal('');
+  readonly locationCoords = signal<{ lat: number; lng: number } | null>(null);
+  readonly locationStatus = signal('');
+  readonly requestingLocation = signal(false);
 
   private mediaStream: MediaStream | null = null;
   private clockTimer: ReturnType<typeof setInterval> | null = null;
@@ -148,6 +152,17 @@ export class TimeClockPageComponent implements OnInit, OnDestroy {
       this.status.set(response.data);
       this.applyServerNow(response.data.serverNow);
       this.username.set(response.data.username || value);
+      this.locationLabel.set(response.data.locationLabel ?? '');
+      this.locationCoords.set(
+        response.data.locationLat != null && response.data.locationLng != null
+          ? { lat: response.data.locationLat, lng: response.data.locationLng }
+          : null,
+      );
+      this.locationStatus.set('');
+
+      if (response.data.canTimeIn && response.data.expectedLocation === 'wfh') {
+        void this.requestGeolocation();
+      }
 
       // Don't block the Check button on camera warmup.
       if (response.data.canTimeIn || response.data.canTimeOut) {
@@ -320,10 +335,29 @@ export class TimeClockPageComponent implements OnInit, OnDestroy {
     this.error.set('');
     this.success.set('');
 
+    const current = this.status();
+    let location =
+      kind === 'in' && current?.expectedLocation === 'wfh'
+        ? {
+            locationLat: this.locationCoords()?.lat ?? null,
+            locationLng: this.locationCoords()?.lng ?? null,
+            locationLabel: this.locationLabel().trim() || null,
+          }
+        : null;
+
+    if (kind === 'in' && current?.expectedLocation === 'wfh' && !this.locationCoords() && !this.requestingLocation()) {
+      await this.requestGeolocation();
+      location = {
+        locationLat: this.locationCoords()?.lat ?? null,
+        locationLng: this.locationCoords()?.lng ?? null,
+        locationLabel: this.locationLabel().trim() || null,
+      };
+    }
+
     try {
       const response = await firstValueFrom(
         kind === 'in'
-          ? this.timeClockApi.timeIn(value, selfie)
+          ? this.timeClockApi.timeIn(value, selfie, location)
           : this.timeClockApi.timeOut(value, selfie),
       );
       this.status.set(response.data);
@@ -349,6 +383,52 @@ export class TimeClockPageComponent implements OnInit, OnDestroy {
       await this.lookup();
     } finally {
       this.submitting.set(false);
+    }
+  }
+
+  expectedLocationLabel(value: string | null | undefined): string {
+    switch (value) {
+      case 'wfh':
+        return 'Work from home';
+      case 'off':
+        return 'Day off';
+      case 'office':
+        return 'Office';
+      default:
+        return 'Office';
+    }
+  }
+
+  async requestGeolocation(): Promise<void> {
+    if (!navigator.geolocation) {
+      this.locationStatus.set('Location is not available on this device. You can still time in.');
+      this.locationCoords.set(null);
+      return;
+    }
+
+    this.requestingLocation.set(true);
+    this.locationStatus.set('Getting your location…');
+
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 12_000,
+          maximumAge: 60_000,
+        });
+      });
+      this.locationCoords.set({
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+      });
+      this.locationStatus.set(
+        `GPS captured (±${Math.round(position.coords.accuracy || 0)} m). You can add an optional label.`,
+      );
+    } catch {
+      this.locationCoords.set(null);
+      this.locationStatus.set('GPS unavailable. You can still time in with an optional label.');
+    } finally {
+      this.requestingLocation.set(false);
     }
   }
 

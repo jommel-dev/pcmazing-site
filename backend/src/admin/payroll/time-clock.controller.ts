@@ -10,7 +10,8 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
-import { PayrollService } from './payroll.service';
+import { PayrollService, TimeClockLocationInput } from './payroll.service';
+import { resolveExpectedLocation } from './work-location.util';
 
 /** Public time clock — no admin auth. Punches use database NOW(), never device time. */
 @Controller('payroll/time-clock')
@@ -31,6 +32,7 @@ export class TimeClockController {
     if (!value) {
       const clock = await this.payrollService.getServerClock();
       const settings = await this.payrollService.getSettings();
+      const expectedLocation = resolveExpectedLocation(null, settings.workWeek, clock.workDate);
       return {
         success: true,
         data: {
@@ -46,6 +48,11 @@ export class TimeClockController {
           message: 'Enter a username to continue.',
           serverNow: clock.serverNow,
           undertimeGraceMinutes: settings.undertimeGraceMinutes,
+          expectedLocation,
+          locationLabel: null,
+          locationLat: null,
+          locationLng: null,
+          locationMismatch: expectedLocation === 'off',
         },
       };
     }
@@ -63,7 +70,13 @@ export class TimeClockController {
       limits: { fileSize: 2 * 1024 * 1024 },
     }),
   )
-  timeIn(@Body('username') username: string, @UploadedFile() selfie?: Express.Multer.File) {
+  timeIn(
+    @Body('username') username: string,
+    @Body('locationLat') locationLat?: string,
+    @Body('locationLng') locationLng?: string,
+    @Body('locationLabel') locationLabel?: string,
+    @UploadedFile() selfie?: Express.Multer.File,
+  ) {
     const value = username?.trim();
     if (!value) {
       throw new BadRequestException('Username is required.');
@@ -72,7 +85,7 @@ export class TimeClockController {
       throw new BadRequestException('Selfie photo is required before time in.');
     }
 
-    return this.payrollService.timeIn(value, selfie).then((data) => ({
+    return this.payrollService.timeIn(value, selfie, this.parseLocation(locationLat, locationLng, locationLabel)).then((data) => ({
       success: true,
       message: 'Time in recorded.',
       data,
@@ -86,7 +99,13 @@ export class TimeClockController {
       limits: { fileSize: 2 * 1024 * 1024 },
     }),
   )
-  timeOut(@Body('username') username: string, @UploadedFile() selfie?: Express.Multer.File) {
+  timeOut(
+    @Body('username') username: string,
+    @Body('locationLat') locationLat?: string,
+    @Body('locationLng') locationLng?: string,
+    @Body('locationLabel') locationLabel?: string,
+    @UploadedFile() selfie?: Express.Multer.File,
+  ) {
     const value = username?.trim();
     if (!value) {
       throw new BadRequestException('Username is required.');
@@ -95,10 +114,32 @@ export class TimeClockController {
       throw new BadRequestException('Selfie photo is required before time out.');
     }
 
-    return this.payrollService.timeOut(value, selfie).then((data) => ({
-      success: true,
-      message: 'Time out recorded.',
-      data,
-    }));
+    return this.payrollService
+      .timeOut(value, selfie, this.parseLocation(locationLat, locationLng, locationLabel))
+      .then((data) => ({
+        success: true,
+        message: 'Time out recorded.',
+        data,
+      }));
+  }
+
+  private parseLocation(
+    locationLat?: string,
+    locationLng?: string,
+    locationLabel?: string,
+  ): TimeClockLocationInput | null {
+    const latRaw = locationLat?.trim();
+    const lngRaw = locationLng?.trim();
+    const label = locationLabel?.trim() || null;
+    const lat = latRaw ? Number(latRaw) : null;
+    const lng = lngRaw ? Number(lngRaw) : null;
+    if (lat == null && lng == null && !label) {
+      return null;
+    }
+    return {
+      locationLat: lat != null && Number.isFinite(lat) ? lat : null,
+      locationLng: lng != null && Number.isFinite(lng) ? lng : null,
+      locationLabel: label,
+    };
   }
 }

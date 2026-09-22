@@ -52,6 +52,45 @@
             <p class="mt-1 text-xs text-slate-500">Employee code: {{ current.employeeCode }}</p>
           }
           <p class="mt-3 text-sm text-slate-600">{{ current.message }}</p>
+          @if (current.expectedLocation) {
+            <p
+              class="mt-3 rounded-xl px-3 py-2 text-xs font-semibold"
+              [class]="
+                current.expectedLocation === 'off'
+                  ? 'border border-amber-200 bg-amber-50 text-amber-900'
+                  : current.expectedLocation === 'wfh'
+                    ? 'border border-sky-200 bg-sky-50 text-sky-900'
+                    : 'border border-slate-200 bg-white text-slate-700'
+              "
+            >
+              Today: {{ expectedLocationLabel(current.expectedLocation) }}
+              @if (current.expectedLocation === 'off') {
+                <span class="mt-1 block font-medium">Scheduled day off — punch is still allowed.</span>
+              }
+            </p>
+          }
+          @if (current.canTimeIn && current.expectedLocation === 'wfh') {
+            <div class="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+              <label class="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-400">Location label (optional)</label>
+              <input
+                type="text"
+                maxlength="200"
+                class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                placeholder="e.g. Home – Cabanatuan"
+                [ngModel]="locationLabel()"
+                (ngModelChange)="locationLabel.set($event)"
+              />
+              <p class="mt-2 text-[11px] text-slate-500">{{ locationStatus() || 'Location will be captured for WFH days.' }}</p>
+              <button
+                type="button"
+                class="mt-2 text-xs font-bold text-pcmazing-500 hover:text-pcmazing-600"
+                [disabled]="requestingLocation()"
+                (click)="requestGeolocation()"
+              >
+                @if (requestingLocation()) { Getting GPS... } @else { Refresh GPS }
+              </button>
+            </div>
+          }
           @if (current.canTimeOut && (current.undertimeGraceMinutes ?? 0) > 0) {
             <p class="mt-3 rounded-xl border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-sky-800">
               Need to leave a little early (emergency, appointment, or event)? Clock out as usual.

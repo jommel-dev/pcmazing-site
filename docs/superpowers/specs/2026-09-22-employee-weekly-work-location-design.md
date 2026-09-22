@@ -1,7 +1,7 @@
 # Per-Employee Weekly Work Location + WFH GPS Tag
 
 **Date:** 2026-09-22  
-**Status:** Approved design — pending implementation  
+**Status:** Implemented  
 **Approach:** Weekly schedule on payroll profile + same clock-in flow with WFH GPS/label
 
 ## Goal
