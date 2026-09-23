@@ -1,0 +1,486 @@
+import {
+  Component,
+  effect,
+  ElementRef,
+  inject,
+  input,
+  OnDestroy,
+  OnInit,
+  output,
+  signal,
+  viewChild,
+} from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { firstValueFrom } from 'rxjs';
+import { AdminApiService, TimeClockStatus } from '../../services/admin-api.service';
+import { AdminAuthService } from '../../services/admin-auth.service';
+
+@Component({
+  selector: 'app-portal-time-clock',
+  imports: [FormsModule],
+  templateUrl: './portal-time-clock.component.html',
+})
+export class PortalTimeClockComponent implements OnInit, OnDestroy {
+  private readonly adminApi = inject(AdminApiService);
+  private readonly adminAuth = inject(AdminAuthService);
+  private readonly videoRef = viewChild<ElementRef<HTMLVideoElement>>('cameraVideo');
+
+  readonly mode = input<'compact' | 'full'>('full');
+  readonly punched = output<void>();
+
+  readonly status = signal<TimeClockStatus | null>(null);
+  readonly loading = signal(false);
+  readonly submitting = signal(false);
+  readonly error = signal('');
+  readonly success = signal('');
+  readonly nowLabel = signal('');
+  readonly cameraStarting = signal(false);
+  readonly cameraReady = signal(false);
+  readonly cameraError = signal('');
+  readonly selfiePreviewUrl = signal<string | null>(null);
+  readonly selfieBlob = signal<Blob | null>(null);
+  readonly locationLabel = signal('');
+  readonly locationCoords = signal<{ lat: number; lng: number } | null>(null);
+  readonly locationStatus = signal('');
+  readonly requestingLocation = signal(false);
+  readonly pickedLocation = signal<'office' | 'wfh' | null>(null);
+
+  private mediaStream: MediaStream | null = null;
+  private clockTimer: ReturnType<typeof setInterval> | null = null;
+  private serverSyncTimer: ReturnType<typeof setInterval> | null = null;
+  private cameraRequestId = 0;
+  /** serverNow - Date.now() when last synced; display uses Date.now() + offset. */
+  private serverOffsetMs = 0;
+  private hasServerSync = false;
+
+  constructor() {
+    effect(() => {
+      const video = this.videoRef()?.nativeElement;
+      if (!video || !this.mediaStream || this.selfiePreviewUrl()) {
+        return;
+      }
+
+      if (video.srcObject !== this.mediaStream) {
+        video.srcObject = this.mediaStream;
+        video.onloadedmetadata = () => {
+          void video.play().then(() => {
+            this.cameraReady.set(true);
+            this.cameraStarting.set(false);
+          }).catch(() => {
+            this.cameraReady.set(true);
+            this.cameraStarting.set(false);
+          });
+        };
+      }
+    });
+  }
+
+  ngOnInit(): void {
+    this.tickClock();
+    this.clockTimer = setInterval(() => this.tickClock(), 1000);
+    void this.loadStatus();
+    this.serverSyncTimer = setInterval(() => void this.syncServerClock(), 60_000);
+  }
+
+  ngOnDestroy(): void {
+    if (this.clockTimer) {
+      clearInterval(this.clockTimer);
+    }
+    if (this.serverSyncTimer) {
+      clearInterval(this.serverSyncTimer);
+    }
+    this.stopCamera();
+    this.clearSelfie();
+  }
+
+  displayName(): string {
+    const current = this.status();
+    if (current?.fullName?.trim()) {
+      return current.fullName.trim();
+    }
+    if (current?.username?.trim()) {
+      return current.username.trim();
+    }
+    const stored = this.adminAuth.getStoredUser();
+    return stored?.fullName?.trim() || stored?.username?.trim() || '—';
+  }
+
+  private applyServerNow(serverNow: string | undefined | null): void {
+    if (!serverNow) {
+      return;
+    }
+    const parsed = Date.parse(serverNow);
+    if (Number.isNaN(parsed)) {
+      return;
+    }
+    this.serverOffsetMs = parsed - Date.now();
+    this.hasServerSync = true;
+    this.tickClock();
+  }
+
+  /** Refresh offset only — does not reset punch UI / selfie. */
+  private async syncServerClock(): Promise<void> {
+    try {
+      const response = await firstValueFrom(this.adminApi.getPortalTimeClockStatus());
+      this.applyServerNow(response.data.serverNow);
+    } catch {
+      // Keep last known offset; never fall back to trusting device for punches.
+    }
+  }
+
+  private tickClock(): void {
+    const source = this.hasServerSync
+      ? new Date(Date.now() + this.serverOffsetMs)
+      : null;
+
+    if (!source) {
+      this.nowLabel.set('Syncing server time…');
+      return;
+    }
+
+    this.nowLabel.set(
+      source.toLocaleString('en-PH', {
+        timeZone: 'Asia/Manila',
+        weekday: 'short',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      }),
+    );
+  }
+
+  async loadStatus(options?: { preserveMessages?: boolean }): Promise<void> {
+    this.loading.set(true);
+    if (!options?.preserveMessages) {
+      this.error.set('');
+      this.success.set('');
+    }
+    this.clearSelfie();
+    this.stopCamera();
+
+    try {
+      const response = await firstValueFrom(this.adminApi.getPortalTimeClockStatus());
+      this.applyStatus(response.data);
+    } catch {
+      if (!options?.preserveMessages) {
+        this.error.set('Unable to load time clock status.');
+      }
+      this.status.set(null);
+    } finally {
+      this.loading.set(false);
+    }
+  }
+
+  private applyStatus(data: TimeClockStatus): void {
+    this.status.set(data);
+    this.applyServerNow(data.serverNow);
+    this.locationLabel.set(data.locationLabel ?? '');
+    this.locationCoords.set(
+      data.locationLat != null && data.locationLng != null
+        ? { lat: data.locationLat, lng: data.locationLng }
+        : null,
+    );
+    this.locationStatus.set('');
+
+    const expected = data.expectedLocation;
+    if (expected === 'office' || expected === 'wfh') {
+      this.pickedLocation.set(expected);
+    } else {
+      this.pickedLocation.set(null);
+    }
+
+    if (data.canTimeIn && this.pickedLocation() === 'wfh') {
+      void this.requestGeolocation();
+    }
+
+    if (data.canTimeIn || data.canTimeOut) {
+      void this.startCamera();
+    }
+  }
+
+  async startCamera(): Promise<void> {
+    this.cameraError.set('');
+    this.cameraReady.set(false);
+    this.cameraStarting.set(true);
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      this.cameraError.set('Camera is not supported on this device/browser.');
+      this.cameraStarting.set(false);
+      return;
+    }
+
+    if (this.mediaStream && this.mediaStream.active) {
+      this.cameraStarting.set(false);
+      this.cameraReady.set(true);
+      return;
+    }
+
+    this.stopCameraTracksOnly();
+    const requestId = ++this.cameraRequestId;
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          facingMode: 'user',
+          width: { ideal: 480 },
+          height: { ideal: 480 },
+          frameRate: { ideal: 24, max: 30 },
+        },
+      });
+
+      if (requestId !== this.cameraRequestId) {
+        for (const track of stream.getTracks()) {
+          track.stop();
+        }
+        return;
+      }
+
+      this.mediaStream = stream;
+      if (this.videoRef()?.nativeElement) {
+        const video = this.videoRef()!.nativeElement;
+        video.srcObject = stream;
+        video.onloadedmetadata = () => {
+          void video.play().finally(() => {
+            this.cameraReady.set(true);
+            this.cameraStarting.set(false);
+          });
+        };
+      }
+    } catch {
+      if (requestId !== this.cameraRequestId) {
+        return;
+      }
+      this.cameraError.set('Unable to access camera. Allow camera permission and try again.');
+      this.mediaStream = null;
+      this.cameraStarting.set(false);
+      this.cameraReady.set(false);
+    }
+  }
+
+  stopCamera(): void {
+    this.cameraRequestId += 1;
+    this.cameraStarting.set(false);
+    this.cameraReady.set(false);
+    this.stopCameraTracksOnly();
+
+    const video = this.videoRef()?.nativeElement;
+    if (video) {
+      video.srcObject = null;
+      video.onloadedmetadata = null;
+    }
+  }
+
+  private stopCameraTracksOnly(): void {
+    if (this.mediaStream) {
+      for (const track of this.mediaStream.getTracks()) {
+        track.stop();
+      }
+      this.mediaStream = null;
+    }
+  }
+
+  async captureSelfie(): Promise<void> {
+    const video = this.videoRef()?.nativeElement;
+    if (!video || !this.cameraReady()) {
+      this.error.set('Camera is not ready yet.');
+      return;
+    }
+
+    const width = video.videoWidth || 480;
+    const height = video.videoHeight || 480;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    if (!context) {
+      this.error.set('Unable to capture selfie.');
+      return;
+    }
+
+    context.translate(width, 0);
+    context.scale(-1, 1);
+    context.drawImage(video, 0, 0, width, height);
+
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob((value) => resolve(value), 'image/jpeg', 0.8);
+    });
+
+    if (!blob) {
+      this.error.set('Unable to capture selfie.');
+      return;
+    }
+
+    this.clearSelfiePreviewOnly();
+    this.selfieBlob.set(blob);
+    this.selfiePreviewUrl.set(URL.createObjectURL(blob));
+    this.error.set('');
+  }
+
+  retakeSelfie(): void {
+    this.clearSelfiePreviewOnly();
+    if (this.mediaStream?.active) {
+      this.cameraReady.set(false);
+      this.cameraStarting.set(true);
+      return;
+    }
+
+    void this.startCamera();
+  }
+
+  async punchIn(): Promise<void> {
+    await this.punch('in');
+  }
+
+  async punchOut(): Promise<void> {
+    await this.punch('out');
+  }
+
+  private async punch(kind: 'in' | 'out'): Promise<void> {
+    const selfie = this.selfieBlob();
+    if (!selfie) {
+      this.error.set('Take a selfie first before submitting.');
+      return;
+    }
+
+    const pick = this.pickedLocation();
+    if (kind === 'in' && pick == null) {
+      this.error.set('Choose Office or Work from home before time in.');
+      return;
+    }
+
+    this.submitting.set(true);
+    this.error.set('');
+    this.success.set('');
+
+    let location =
+      kind === 'in' && pick === 'wfh'
+        ? {
+            locationLat: this.locationCoords()?.lat ?? null,
+            locationLng: this.locationCoords()?.lng ?? null,
+            locationLabel: this.locationLabel().trim() || null,
+          }
+        : null;
+
+    if (kind === 'in' && pick === 'wfh' && !this.locationCoords() && !this.requestingLocation()) {
+      await this.requestGeolocation();
+      location = {
+        locationLat: this.locationCoords()?.lat ?? null,
+        locationLng: this.locationCoords()?.lng ?? null,
+        locationLabel: this.locationLabel().trim() || null,
+      };
+    }
+
+    try {
+      const response = await firstValueFrom(
+        kind === 'in'
+          ? this.adminApi.portalTimeIn(selfie, pick!, location)
+          : this.adminApi.portalTimeOut(selfie),
+      );
+      this.status.set(response.data);
+      this.applyServerNow(response.data.serverNow);
+      this.success.set(response.message);
+      this.clearSelfiePreviewOnly();
+      this.stopCamera();
+      this.punched.emit();
+
+      if (response.data.canTimeOut) {
+        void this.startCamera();
+      }
+    } catch (err: unknown) {
+      const message =
+        typeof err === 'object' &&
+        err !== null &&
+        'error' in err &&
+        typeof (err as { error?: { message?: string } }).error?.message === 'string'
+          ? (err as { error: { message: string } }).error.message
+          : kind === 'in'
+            ? 'Unable to record time in.'
+            : 'Unable to record time out.';
+      this.error.set(message);
+      await this.loadStatus({ preserveMessages: true });
+    } finally {
+      this.submitting.set(false);
+    }
+  }
+
+  expectedLocationLabel(value: string | null | undefined): string {
+    switch (value) {
+      case 'wfh':
+        return 'Work from home';
+      case 'off':
+        return 'Day off';
+      case 'office':
+        return 'Office';
+      default:
+        return 'Office';
+    }
+  }
+
+  async requestGeolocation(): Promise<void> {
+    if (!navigator.geolocation) {
+      this.locationStatus.set('Location is not available on this device. You can still time in.');
+      this.locationCoords.set(null);
+      return;
+    }
+
+    this.requestingLocation.set(true);
+    this.locationStatus.set('Getting your location…');
+
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 12_000,
+          maximumAge: 60_000,
+        });
+      });
+      this.locationCoords.set({
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+      });
+      this.locationStatus.set(
+        `GPS captured (±${Math.round(position.coords.accuracy || 0)} m). You can add an optional label.`,
+      );
+    } catch {
+      this.locationCoords.set(null);
+      this.locationStatus.set('GPS unavailable. You can still time in with an optional label.');
+    } finally {
+      this.requestingLocation.set(false);
+    }
+  }
+
+  formatPunch(value: string | null): string {
+    if (!value) {
+      return '—';
+    }
+
+    return new Date(value).toLocaleTimeString('en-PH', {
+      timeZone: 'Asia/Manila',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+  }
+
+  needsSelfie(): boolean {
+    const current = this.status();
+    return Boolean(current?.canTimeIn || current?.canTimeOut);
+  }
+
+  private clearSelfiePreviewOnly(): void {
+    const preview = this.selfiePreviewUrl();
+    if (preview?.startsWith('blob:')) {
+      URL.revokeObjectURL(preview);
+    }
+    this.selfiePreviewUrl.set(null);
+    this.selfieBlob.set(null);
+  }
+
+  private clearSelfie(): void {
+    this.clearSelfiePreviewOnly();
+  }
+}
