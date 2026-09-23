@@ -39,7 +39,6 @@ import { ClientProspectsService } from './marketing/client-prospects.service';
 import { CurrencyExchangeService } from './marketing/currency-exchange.service';
 import { PayrollController } from './payroll/payroll.controller';
 import { PayrollModule } from './payroll/payroll.module';
-import { TimeClockController } from './payroll/time-clock.controller';
 import { ProjectsController } from './projects/projects.controller';
 import { ProjectsModule } from './projects/projects.module';
 import { CompanyExpensesController } from './company-expenses/company-expenses.controller';
@@ -64,7 +63,6 @@ import { PartsPriceSearchService } from './parts-price-search/parts-price-search
     PartsPriceSearchController,
     UsersController,
     PayrollController,
-    TimeClockController,
     MarketingTeamsController,
     ClientProspectsController,
     ProjectsController,

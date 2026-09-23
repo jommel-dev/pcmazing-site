@@ -56,6 +56,63 @@ export class EmployeeWorkspaceController {
     return { success: true, data };
   }
 
+  @Get('time-clock/status')
+  async timeClockStatus(@Req() req: Request & { user?: AdminJwtPayload }) {
+    const { userId, source } = this.actor(req);
+    const data = await this.workspaceService.getTimeClockStatus(userId, source);
+    return { success: true, data };
+  }
+
+  @Post('time-clock/time-in')
+  @UseInterceptors(
+    FileInterceptor('selfie', {
+      storage: memoryStorage(),
+      limits: { fileSize: 2 * 1024 * 1024 },
+    }),
+  )
+  async timeClockTimeIn(
+    @Req() req: Request & { user?: AdminJwtPayload },
+    @Body('workLocationType') workLocationType?: string,
+    @Body('locationLat') locationLat?: string,
+    @Body('locationLng') locationLng?: string,
+    @Body('locationLabel') locationLabel?: string,
+    @UploadedFile() selfie?: Express.Multer.File,
+  ) {
+    const { userId, source } = this.actor(req);
+    if (!selfie) {
+      throw new BadRequestException('Selfie photo is required before time in.');
+    }
+    const picked = (workLocationType ?? '').trim().toLowerCase();
+    if (picked !== 'office' && picked !== 'wfh') {
+      throw new BadRequestException('Choose Office or Work from home before time in.');
+    }
+    const data = await this.workspaceService.timeIn(userId, source, selfie, picked, {
+      locationLat,
+      locationLng,
+      locationLabel,
+    });
+    return { success: true, message: 'Time in recorded.', data };
+  }
+
+  @Post('time-clock/time-out')
+  @UseInterceptors(
+    FileInterceptor('selfie', {
+      storage: memoryStorage(),
+      limits: { fileSize: 2 * 1024 * 1024 },
+    }),
+  )
+  async timeClockTimeOut(
+    @Req() req: Request & { user?: AdminJwtPayload },
+    @UploadedFile() selfie?: Express.Multer.File,
+  ) {
+    const { userId, source } = this.actor(req);
+    if (!selfie) {
+      throw new BadRequestException('Selfie photo is required before time out.');
+    }
+    const data = await this.workspaceService.timeOut(userId, source, selfie);
+    return { success: true, message: 'Time out recorded.', data };
+  }
+
   @Get('payslips/:id')
   async payslipDetail(
     @Req() req: Request & { user?: AdminJwtPayload },
