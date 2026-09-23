@@ -320,9 +320,14 @@
                 <p class="mt-1 text-xs text-slate-500">How often this employee is paid: weekly, semi-monthly, or monthly.</p>
               </div>
               <div>
-                <label class="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">Salary amount</label>
+                <label class="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">Office rate</label>
                 <input type="number" min="0" step="0.01" formControlName="monthlySalary" class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />
-                <p class="mt-1 text-xs text-slate-500">Used for daily computation when no fixed monthly salary is set. For Weekly and Semi-Monthly, this is the daily rate (full day 9h+, half day 4h to under 9h).</p>
+                <p class="mt-1 text-xs text-slate-500">Used for Office days when no fixed monthly salary is set. For Weekly and Semi-Monthly, this is the daily rate (full day 9h+, half day 4h to under 9h).</p>
+              </div>
+              <div>
+                <label class="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">WFH rate</label>
+                <input type="number" min="0" step="0.01" formControlName="wfhSalary" class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" />
+                <p class="mt-1 text-xs text-slate-500">Blank = use Office rate. Same unit as Office rate for the pay schedule.</p>
               </div>
               <div>
                 <label class="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-300">Fixed monthly salary</label>
@@ -385,6 +390,25 @@
                 <input type="checkbox" formControlName="payrollEnabled" class="size-4 rounded border-slate-300" />
                 Enable payroll time clock
               </label>
+              <div formGroupName="weeklyLocationSchedule">
+                <p class="text-sm font-semibold text-slate-700 dark:text-slate-300">Weekly work location</p>
+                <p class="mt-1 text-xs text-slate-500">Office, WFH, or Off for each day. Used by the time clock and attendance tags.</p>
+                <div class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  @for (day of locationDayOptions; track day.key) {
+                    <label class="block">
+                      <span class="mb-1 block text-[11px] font-bold uppercase tracking-wide text-slate-400">{{ day.label }}</span>
+                      <select
+                        [formControlName]="day.key"
+                        class="h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                      >
+                        @for (option of locationTypeOptions; track option.value) {
+                          <option [value]="option.value">{{ option.label }}</option>
+                        }
+                      </select>
+                    </label>
+                  }
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -457,6 +481,17 @@
                 <p class="text-xs font-bold tracking-wide text-slate-400 uppercase">Payroll clock</p>
                 <p class="mt-1 text-sm font-medium text-slate-900 dark:text-white">{{ user.payrollEnabled ? 'Enabled' : 'Off' }}</p>
               </div>
+              <div class="sm:col-span-2">
+                <p class="text-xs font-bold tracking-wide text-slate-400 uppercase">Weekly location</p>
+                <p class="mt-1 text-sm font-medium text-slate-900 dark:text-white">{{ scheduleSummary(user.weeklyLocationSchedule) }}</p>
+                <div class="mt-2 flex flex-wrap gap-1.5">
+                  @for (day of locationDayOptions; track day.key) {
+                    <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                      {{ day.label }} {{ locationTypeLabel(normalizeSchedule(user.weeklyLocationSchedule)[day.key]) }}
+                    </span>
+                  }
+                </div>
+              </div>
               <div>
                 <p class="text-xs font-bold tracking-wide text-slate-400 uppercase">Employee code</p>
                 <p class="mt-1 text-sm font-medium text-slate-900 dark:text-white">{{ displayValue(user.employeeCode) }}</p>
@@ -474,8 +509,18 @@
                 <p class="mt-1 text-sm font-medium text-slate-900 dark:text-white">{{ salaryTypeLabel(user.salaryType) }}</p>
               </div>
               <div>
-                <p class="text-xs font-bold tracking-wide text-slate-400 uppercase">Salary amount</p>
+                <p class="text-xs font-bold tracking-wide text-slate-400 uppercase">Office rate</p>
                 <p class="mt-1 text-sm font-medium text-slate-900 dark:text-white">{{ formatMoney(user.monthlySalary) }}</p>
+              </div>
+              <div>
+                <p class="text-xs font-bold tracking-wide text-slate-400 uppercase">WFH rate</p>
+                <p class="mt-1 text-sm font-medium text-slate-900 dark:text-white">
+                  @if (user.wfhSalary != null) {
+                    {{ formatMoney(user.wfhSalary) }}
+                  } @else {
+                    Same as office
+                  }
+                </p>
               </div>
               <div>
                 <p class="text-xs font-bold tracking-wide text-slate-400 uppercase">Fixed monthly salary</p>

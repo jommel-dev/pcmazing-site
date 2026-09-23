@@ -94,10 +94,12 @@ export class UsersService {
       positionTitle: dto.positionTitle,
       salaryType: dto.salaryType,
       monthlySalary: dto.monthlySalary,
+      wfhSalary: dto.wfhSalary,
       fixedMonthlySalary: dto.fixedMonthlySalary,
       payoutMethod: dto.payoutMethod,
       bankDetails: dto.bankDetails,
       payrollEnabled: dto.payrollEnabled ?? false,
+      weeklyLocationSchedule: dto.weeklyLocationSchedule,
     });
 
     return this.attachPayrollProfile(user);
@@ -121,10 +123,12 @@ export class UsersService {
       dto.positionTitle !== undefined ||
       dto.salaryType !== undefined ||
       dto.monthlySalary !== undefined ||
+      dto.wfhSalary !== undefined ||
       dto.fixedMonthlySalary !== undefined ||
       dto.payoutMethod !== undefined ||
       dto.bankDetails !== undefined ||
-      dto.payrollEnabled !== undefined
+      dto.payrollEnabled !== undefined ||
+      dto.weeklyLocationSchedule !== undefined
     ) {
       await this.payrollService.upsertProfile(user.id, user.source, {
         employeeCode: dto.employeeCode,
@@ -132,10 +136,12 @@ export class UsersService {
         positionTitle: dto.positionTitle,
         salaryType: dto.salaryType,
         monthlySalary: dto.monthlySalary,
+        wfhSalary: dto.wfhSalary,
         fixedMonthlySalary: dto.fixedMonthlySalary,
         payoutMethod: dto.payoutMethod,
         bankDetails: dto.bankDetails,
         payrollEnabled: dto.payrollEnabled,
+        weeklyLocationSchedule: dto.weeklyLocationSchedule,
       });
     }
 
@@ -679,11 +685,13 @@ export class UsersService {
         positionTitle: profile?.positionTitle ?? null,
         salaryType: profile?.salaryType ?? 'monthly',
         monthlySalary: profile?.monthlySalary ?? null,
+        wfhSalary: profile?.wfhSalary ?? null,
         fixedMonthlySalary: profile?.fixedMonthlySalary ?? null,
         payoutMethod: profile?.payoutMethod ?? 'cash',
         bankDetails: profile?.bankDetails ?? null,
         qrImageUrl: profile?.qrImageUrl ?? null,
         payrollEnabled: profile?.payrollEnabled ?? false,
+        weeklyLocationSchedule: profile?.weeklyLocationSchedule ?? null,
       };
     });
   }

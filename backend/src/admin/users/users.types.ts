@@ -9,6 +9,7 @@ export interface AdminUserPayrollProfile {
   bankDetails: string | null;
   qrImageUrl: string | null;
   payrollEnabled: boolean;
+  weeklyLocationSchedule?: Record<'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun', 'office' | 'wfh' | 'off'> | null;
 }
 
 export interface AdminUserRecord {
@@ -28,11 +29,13 @@ export interface AdminUserRecord {
   positionTitle?: string | null;
   salaryType?: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
   monthlySalary?: number | null;
+  wfhSalary?: number | null;
   fixedMonthlySalary?: number | null;
   payoutMethod?: 'cash' | 'online';
   bankDetails?: string | null;
   qrImageUrl?: string | null;
   payrollEnabled?: boolean;
+  weeklyLocationSchedule?: Record<'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun', 'office' | 'wfh' | 'off'> | null;
 }
 
 export type UserStore = 'tblusers' | 'pcmazing_admin_users';

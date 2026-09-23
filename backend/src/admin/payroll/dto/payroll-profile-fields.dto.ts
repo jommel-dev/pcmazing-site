@@ -1,5 +1,6 @@
-import { IsBoolean, IsIn, IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsNumber, IsObject, IsOptional, IsString, MaxLength, Min, ValidateIf } from 'class-validator';
 import { Type } from 'class-transformer';
+import { WeeklyLocationSchedule } from '../work-location.util';
 
 export const PAYROLL_SALARY_TYPES = ['weekly', 'semi_monthly', 'monthly', 'cutoff'] as const;
 export type PayrollSalaryType = (typeof PAYROLL_SALARY_TYPES)[number];
@@ -37,6 +38,12 @@ export class PayrollProfileFieldsDto {
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
+  wfhSalary?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
   fixedMonthlySalary?: number | null;
 
   @IsOptional()
@@ -51,4 +58,9 @@ export class PayrollProfileFieldsDto {
   @IsOptional()
   @IsBoolean()
   payrollEnabled?: boolean;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsObject()
+  weeklyLocationSchedule?: WeeklyLocationSchedule | null;
 }
