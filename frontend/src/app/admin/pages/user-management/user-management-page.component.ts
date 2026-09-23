@@ -6,10 +6,27 @@ import {
   AdminUser,
   PaginationMeta,
   RbacStatus,
+  WeeklyLocationSchedule,
+  WorkLocationDayKey,
+  WorkLocationType,
 } from '../../services/admin-api.service';
 import { AdminAuthService } from '../../services/admin-auth.service';
 
 type FormMode = 'create' | 'edit';
+
+const LOCATION_DAY_KEYS: WorkLocationDayKey[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+
+function defaultWeeklyLocationSchedule(): WeeklyLocationSchedule {
+  return {
+    mon: 'office',
+    tue: 'office',
+    wed: 'office',
+    thu: 'office',
+    fri: 'office',
+    sat: 'off',
+    sun: 'off',
+  };
+}
 
 @Component({
   selector: 'app-user-management-page',
@@ -54,6 +71,20 @@ export class UserManagementPageComponent implements OnInit {
     { value: 'cash', label: 'Cash' },
     { value: 'online', label: 'Online' },
   ] as const;
+  readonly locationDayOptions: Array<{ key: WorkLocationDayKey; label: string }> = [
+    { key: 'mon', label: 'Mon' },
+    { key: 'tue', label: 'Tue' },
+    { key: 'wed', label: 'Wed' },
+    { key: 'thu', label: 'Thu' },
+    { key: 'fri', label: 'Fri' },
+    { key: 'sat', label: 'Sat' },
+    { key: 'sun', label: 'Sun' },
+  ];
+  readonly locationTypeOptions: Array<{ value: WorkLocationType; label: string }> = [
+    { value: 'office', label: 'Office' },
+    { value: 'wfh', label: 'WFH' },
+    { value: 'off', label: 'Off' },
+  ];
 
   readonly userForm = this.formBuilder.nonNullable.group({
     username: ['', [Validators.required, Validators.minLength(3), Validators.maxLength(80)]],
@@ -67,10 +98,20 @@ export class UserManagementPageComponent implements OnInit {
     positionTitle: [''],
     salaryType: ['monthly' as 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff'],
     monthlySalary: [''],
+    wfhSalary: [''],
     fixedMonthlySalary: [''],
     payoutMethod: ['cash' as 'cash' | 'online'],
     bankDetails: [''],
     payrollEnabled: [false],
+    weeklyLocationSchedule: this.formBuilder.nonNullable.group({
+      mon: ['office' as WorkLocationType],
+      tue: ['office' as WorkLocationType],
+      wed: ['office' as WorkLocationType],
+      thu: ['office' as WorkLocationType],
+      fri: ['office' as WorkLocationType],
+      sat: ['off' as WorkLocationType],
+      sun: ['off' as WorkLocationType],
+    }),
   });
 
   readonly passwordForm = this.formBuilder.nonNullable.group({
@@ -147,10 +188,12 @@ export class UserManagementPageComponent implements OnInit {
       positionTitle: '',
       salaryType: 'monthly',
       monthlySalary: '',
+      wfhSalary: '',
       fixedMonthlySalary: '',
       payoutMethod: 'cash',
       bankDetails: '',
       payrollEnabled: false,
+      weeklyLocationSchedule: defaultWeeklyLocationSchedule(),
     });
     this.userForm.controls.username.enable();
     this.userForm.controls.password.setValidators([Validators.required, Validators.minLength(6)]);
@@ -379,16 +422,26 @@ export class UserManagementPageComponent implements OnInit {
       positionTitle,
       salaryType,
       monthlySalary,
+      wfhSalary,
       fixedMonthlySalary,
       payoutMethod,
       bankDetails,
       payrollEnabled,
+      weeklyLocationSchedule,
     } = this.userForm.getRawValue();
 
     const salaryText = monthlySalary == null ? '' : String(monthlySalary).trim();
     const salaryValue = salaryText === '' ? null : Number(salaryText);
     if (salaryText !== '' && (Number.isNaN(salaryValue) || (salaryValue ?? 0) < 0)) {
-      this.formError.set('Salary amount must be a valid number.');
+      this.formError.set('Office rate must be a valid number.');
+      this.saving.set(false);
+      return;
+    }
+
+    const wfhText = wfhSalary == null ? '' : String(wfhSalary).trim();
+    const wfhValue = wfhText === '' ? null : Number(wfhText);
+    if (wfhText !== '' && (Number.isNaN(wfhValue) || (wfhValue ?? 0) < 0)) {
+      this.formError.set('WFH rate must be a valid number.');
       this.saving.set(false);
       return;
     }
@@ -407,10 +460,12 @@ export class UserManagementPageComponent implements OnInit {
       positionTitle: positionTitle.trim() || undefined,
       salaryType,
       ...(salaryValue == null ? {} : { monthlySalary: salaryValue }),
+      wfhSalary: wfhValue,
       fixedMonthlySalary: fixedValue,
       payoutMethod,
       bankDetails: bankDetails.trim() || null,
       payrollEnabled,
+      weeklyLocationSchedule: weeklyLocationSchedule as WeeklyLocationSchedule,
     };
 
     try {
@@ -456,6 +511,7 @@ export class UserManagementPageComponent implements OnInit {
             isActive,
             ...payrollPayload,
             monthlySalary: salaryValue,
+            wfhSalary: wfhValue,
             fixedMonthlySalary: fixedValue,
           }),
         );
@@ -597,13 +653,52 @@ export class UserManagementPageComponent implements OnInit {
       positionTitle: user.positionTitle ?? '',
       salaryType: user.salaryType ?? 'monthly',
       monthlySalary: user.monthlySalary != null ? String(user.monthlySalary) : '',
+      wfhSalary: user.wfhSalary != null ? String(user.wfhSalary) : '',
       fixedMonthlySalary: user.fixedMonthlySalary != null ? String(user.fixedMonthlySalary) : '',
       payoutMethod: user.payoutMethod ?? 'cash',
       bankDetails: user.bankDetails ?? '',
       payrollEnabled: user.payrollEnabled ?? false,
+      weeklyLocationSchedule: this.normalizeSchedule(user.weeklyLocationSchedule),
     });
     this.userForm.controls.password.clearValidators();
     this.userForm.controls.password.updateValueAndValidity();
+  }
+
+  locationTypeLabel(value: WorkLocationType | null | undefined): string {
+    switch (value) {
+      case 'wfh':
+        return 'WFH';
+      case 'off':
+        return 'Off';
+      default:
+        return 'Office';
+    }
+  }
+
+  scheduleSummary(schedule: WeeklyLocationSchedule | null | undefined): string {
+    const map = this.normalizeSchedule(schedule);
+    const wfhDays = LOCATION_DAY_KEYS.filter((key) => map[key] === 'wfh').map((key) =>
+      key.slice(0, 1).toUpperCase() + key.slice(1),
+    );
+    if (wfhDays.length === 0) {
+      return 'Office week';
+    }
+    return `WFH: ${wfhDays.join(', ')}`;
+  }
+
+  normalizeSchedule(schedule: WeeklyLocationSchedule | null | undefined): WeeklyLocationSchedule {
+    const fallback = defaultWeeklyLocationSchedule();
+    if (!schedule) {
+      return fallback;
+    }
+    const result = { ...fallback };
+    for (const key of LOCATION_DAY_KEYS) {
+      const value = schedule[key];
+      if (value === 'office' || value === 'wfh' || value === 'off') {
+        result[key] = value;
+      }
+    }
+    return result;
   }
 
   private syncCurrentUserProfile(user: AdminUser): void {

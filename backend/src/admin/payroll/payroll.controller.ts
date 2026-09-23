@@ -4,6 +4,7 @@ import { AdminJwtPayload, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../rbac/roles.decorator';
 import { RolesGuard } from '../rbac/roles.guard';
 import { GeneratePayslipsDto } from './dto/generate-payslips.dto';
+import { UpdateEmployeeLocationScheduleDto } from './dto/update-employee-location-schedule.dto';
 import { UpdatePayrollSettingsDto } from './dto/payroll-settings.dto';
 import { ReviewAdjustmentDto } from './dto/review-adjustment.dto';
 import { ReviewOvertimeDto } from './dto/review-overtime.dto';
@@ -30,6 +31,22 @@ export class PayrollController {
       success: true,
       data,
     }));
+  }
+
+  @Patch('employees/:userId/weekly-location')
+  @Roles('admin')
+  updateEmployeeWeeklyLocation(
+    @Param('userId', ParseIntPipe) userId: number,
+    @Body() body: UpdateEmployeeLocationScheduleDto,
+  ) {
+    return this.payrollService
+      .upsertProfile(userId, body.userSource, {
+        weeklyLocationSchedule: body.weeklyLocationSchedule,
+      })
+      .then((data) => ({
+        success: true,
+        data,
+      }));
   }
 
   @Get('settings')

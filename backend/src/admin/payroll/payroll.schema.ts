@@ -68,22 +68,6 @@ ALTER TABLE pcmazing_attendance
 CREATE INDEX IF NOT EXISTS idx_pcmazing_attendance_adjustment_status
   ON pcmazing_attendance (adjustment_status, work_date DESC);
 
--- Recalculate OT using 9-hour full day. Eligible OT stays 'none' until employee requests approval.
-UPDATE pcmazing_attendance
-SET overtime_hours = CASE
-      WHEN EXTRACT(EPOCH FROM (time_out - time_in)) / 3600.0 > 9
-        THEN ROUND((EXTRACT(EPOCH FROM (time_out - time_in)) / 3600.0 - 9)::numeric, 2)
-      ELSE 0
-    END,
-    overtime_status = CASE
-      WHEN EXTRACT(EPOCH FROM (time_out - time_in)) / 3600.0 <= 9 THEN 'none'
-      WHEN overtime_status IN ('pending', 'approved', 'rejected') THEN overtime_status
-      ELSE 'none'
-    END,
-    updated_at = NOW()
-WHERE time_in IS NOT NULL
-  AND time_out IS NOT NULL;
-
 CREATE TABLE IF NOT EXISTS pcmazing_payroll_runs (
   id BIGSERIAL PRIMARY KEY,
   date_from DATE NOT NULL,
@@ -137,6 +121,19 @@ ALTER TABLE pcmazing_payroll_settings
 
 ALTER TABLE pcmazing_attendance
   ADD COLUMN IF NOT EXISTS undertime_category VARCHAR(30);
+
+ALTER TABLE pcmazing_user_payroll
+  ADD COLUMN IF NOT EXISTS weekly_location_schedule JSONB NULL;
+
+ALTER TABLE pcmazing_user_payroll
+  ADD COLUMN IF NOT EXISTS wfh_salary NUMERIC(12, 2);
+
+ALTER TABLE pcmazing_attendance
+  ADD COLUMN IF NOT EXISTS work_location_type VARCHAR(20),
+  ADD COLUMN IF NOT EXISTS location_lat NUMERIC(10, 7),
+  ADD COLUMN IF NOT EXISTS location_lng NUMERIC(10, 7),
+  ADD COLUMN IF NOT EXISTS location_label VARCHAR(200),
+  ADD COLUMN IF NOT EXISTS location_mismatch BOOLEAN NOT NULL DEFAULT FALSE;
 `;
 
 export async function ensurePayrollTables(databaseService: DatabaseService): Promise<void> {
