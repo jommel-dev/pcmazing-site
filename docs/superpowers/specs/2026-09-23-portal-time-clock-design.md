@@ -1,7 +1,7 @@
 # Portal Time Clock (Session-Bound, No Public Search)
 
 **Date:** 2026-09-23  
-**Status:** Approved design — pending implementation  
+**Status:** Implemented  
 **Approach:** Session-bound employee-workspace APIs + shared portal UI (dashboard compact + full page); remove public `/time-clock`
 
 ## Goal

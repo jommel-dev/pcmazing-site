@@ -2,6 +2,7 @@ import { NgClass } from '@angular/common';
 import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
+import { PortalTimeClockComponent } from '../../components/portal-time-clock/portal-time-clock.component';
 import {
   AdminApiService,
   EmployeeActivityItem,
@@ -13,7 +14,7 @@ import {
 
 @Component({
   selector: 'app-sales-employee-dashboard',
-  imports: [FormsModule, NgClass],
+  imports: [FormsModule, NgClass, PortalTimeClockComponent],
   templateUrl: './sales-employee-dashboard.component.html',
 })
 export class SalesEmployeeDashboardComponent implements OnInit {
@@ -95,6 +96,10 @@ export class SalesEmployeeDashboardComponent implements OnInit {
     } finally {
       this.loading.set(false);
     }
+  }
+
+  async onTimeClockPunched(): Promise<void> {
+    await this.load();
   }
 
   async requestOvertime(attendanceId: number | null | undefined): Promise<void> {
