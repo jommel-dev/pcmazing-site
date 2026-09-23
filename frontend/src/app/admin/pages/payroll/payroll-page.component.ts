@@ -184,8 +184,8 @@ export class PayrollPageComponent implements OnInit {
           await this.loadAdjustments();
           break;
       }
-    } catch {
-      this.error.set('Unable to load payroll data.');
+    } catch (err) {
+      this.error.set(this.readHttpError(err, 'Unable to load payroll data.'));
     } finally {
       this.loading.set(false);
     }
@@ -291,8 +291,8 @@ export class PayrollPageComponent implements OnInit {
     this.confirmOverlap.set(false);
     try {
       await this.loadPeriod();
-    } catch {
-      this.error.set('Unable to load period summary.');
+    } catch (err) {
+      this.error.set(this.readHttpError(err, 'Unable to load period summary.'));
     } finally {
       this.loading.set(false);
     }
@@ -596,6 +596,9 @@ export class PayrollPageComponent implements OnInit {
   }
 
   async setPeriodType(type: PeriodType): Promise<void> {
+    if (type === this.periodType()) {
+      return;
+    }
     this.periodType.set(type);
     this.confirmOverlap.set(false);
     this.snapDatesForPeriodType();
@@ -603,7 +606,7 @@ export class PayrollPageComponent implements OnInit {
   }
 
   async setWorkWeek(workWeek: WorkWeek): Promise<void> {
-    if (this.savingWorkWeek()) {
+    if (this.savingWorkWeek() || workWeek === this.workWeek()) {
       return;
     }
     this.savingWorkWeek.set(true);
@@ -699,8 +702,34 @@ export class PayrollPageComponent implements OnInit {
 
   private shiftIsoDate(value: string, days: number): string {
     const [year, month, day] = value.split('-').map(Number);
+    if (![year, month, day].every((part) => Number.isFinite(part))) {
+      return this.manilaToday();
+    }
     const date = new Date(Date.UTC(year, month - 1, day + days));
+    if (Number.isNaN(date.getTime())) {
+      return this.manilaToday();
+    }
     return date.toISOString().slice(0, 10);
+  }
+
+  formatPaidUnits(item: PayrollPeriodItem): string {
+    return Number(item.paidDayUnits ?? item.daysCompleted ?? 0).toFixed(1);
+  }
+
+  private readHttpError(err: unknown, fallback: string): string {
+    const body = (err as { error?: { message?: string | string[] } })?.error;
+    const message = body?.message;
+    if (typeof message === 'string' && message.trim()) {
+      return message.trim();
+    }
+    if (Array.isArray(message) && message.length > 0) {
+      return message.map(String).filter(Boolean).join(', ') || fallback;
+    }
+    const status = (err as { status?: number })?.status;
+    if (status === 0) {
+      return 'Unable to reach the payroll API. Is the backend running?';
+    }
+    return fallback;
   }
 
   private readOverlapError(err: unknown): string {

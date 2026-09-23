@@ -259,10 +259,18 @@ const EMPTY_PAYROLL: PayrollProfile = {
 
 @Injectable()
 export class PayrollService {
+  private ensureReadyPromise: Promise<void> | null = null;
+
   constructor(private readonly databaseService: DatabaseService) {}
 
   async ensureReady(): Promise<void> {
-    await ensurePayrollTables(this.databaseService);
+    if (!this.ensureReadyPromise) {
+      this.ensureReadyPromise = ensurePayrollTables(this.databaseService).catch((error) => {
+        this.ensureReadyPromise = null;
+        throw error;
+      });
+    }
+    await this.ensureReadyPromise;
   }
 
   async getSettings(): Promise<PayrollSettings> {
@@ -1073,7 +1081,7 @@ export class PayrollService {
 
       const weeklyLocationSchedule = normalizeWeeklyLocationSchedule(row.weekly_location_schedule);
       const item: PayrollEmployeeRecord = {
-        userId: row.user_id,
+        userId: Number(row.user_id),
         userSource: row.user_source,
         username: identity.username,
         fullName: identity.fullName,
@@ -3089,7 +3097,7 @@ export class PayrollService {
       : dayPayTotal + overtimePayTotal;
 
     return {
-      userId: employee.userId,
+      userId: Number(employee.userId),
       userSource: employee.userSource,
       username: employee.username,
       fullName: employee.fullName,

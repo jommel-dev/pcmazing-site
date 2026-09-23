@@ -500,7 +500,7 @@
                   {{ item.daysCompleted }}/{{ item.daysPresent }}
                 </td>
                 <td class="px-4 py-3 text-slate-700 dark:text-slate-200">
-                  {{ (item.paidDayUnits ?? item.daysCompleted).toFixed(1) }}
+                  {{ formatPaidUnits(item) }}
                 </td>
                 <td class="px-4 py-3 text-slate-700 dark:text-slate-200">{{ formatHours(item.totalHours) }}</td>
                 <td class="px-4 py-3 text-slate-700 dark:text-slate-200">
