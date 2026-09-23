@@ -80,8 +80,11 @@ export class SalesEmployeeDashboardComponent implements OnInit {
     void this.load();
   }
 
-  async load(): Promise<void> {
-    this.loading.set(true);
+  async load(options?: { quiet?: boolean }): Promise<void> {
+    const quiet = options?.quiet === true && this.dashboard() != null;
+    if (!quiet) {
+      this.loading.set(true);
+    }
     this.error.set('');
     try {
       const response = await firstValueFrom(
@@ -94,12 +97,14 @@ export class SalesEmployeeDashboardComponent implements OnInit {
     } catch {
       this.error.set('Unable to load your employee dashboard.');
     } finally {
-      this.loading.set(false);
+      if (!quiet) {
+        this.loading.set(false);
+      }
     }
   }
 
   async onTimeClockPunched(): Promise<void> {
-    await this.load();
+    await this.load({ quiet: true });
   }
 
   async requestOvertime(attendanceId: number | null | undefined): Promise<void> {
