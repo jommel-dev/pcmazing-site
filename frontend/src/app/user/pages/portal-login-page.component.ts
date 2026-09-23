@@ -1,6 +1,6 @@
 import { Component, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { getRoleHomeRoute } from '../../admin/rbac/admin-roles';
 import { AdminAuthService } from '../../admin/services/admin-auth.service';
@@ -13,6 +13,7 @@ import { AdminAuthService } from '../../admin/services/admin-auth.service';
 export class PortalLoginPageComponent implements OnInit, OnDestroy {
   private readonly adminAuth = inject(AdminAuthService);
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
   private stopAuthWatch: (() => void) | null = null;
 
   readonly username = signal('');
@@ -35,7 +36,7 @@ export class PortalLoginPageComponent implements OnInit, OnDestroy {
     if (!this.adminAuth.isAuthenticated()) {
       return;
     }
-    void this.router.navigateByUrl(getRoleHomeRoute(this.adminAuth.getStoredUser()?.role));
+    void this.router.navigateByUrl(this.resolvePostLoginRoute(this.adminAuth.getStoredUser()?.role));
   }
 
   async submit(): Promise<void> {
@@ -57,12 +58,25 @@ export class PortalLoginPageComponent implements OnInit, OnDestroy {
         this.rememberMe(),
       );
 
-      await this.router.navigateByUrl(getRoleHomeRoute(response.data.user.role));
+      await this.router.navigateByUrl(this.resolvePostLoginRoute(response.data.user.role));
     } catch (error) {
       this.error.set(this.extractLoginError(error));
     } finally {
       this.loading.set(false);
     }
+  }
+
+  private resolvePostLoginRoute(role?: string | null): string {
+    const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
+    if (returnUrl && this.isSafeAdminReturnUrl(returnUrl)) {
+      return returnUrl;
+    }
+    return getRoleHomeRoute(role);
+  }
+
+  /** Only same-origin relative admin paths — blocks open redirects. */
+  private isSafeAdminReturnUrl(url: string): boolean {
+    return url.startsWith('/admin/') && !url.startsWith('//') && !url.includes('://');
   }
 
   private extractLoginError(error: unknown): string {

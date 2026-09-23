@@ -134,7 +134,7 @@ export class PayrollPageComponent implements OnInit {
   readonly adjustmentPage = signal(1);
   readonly reviewingAdjustmentId = signal<number | null>(null);
 
-  readonly timeClockUrl = `${APP_CONFIG.publicSiteUrl.replace(/\/$/, '')}/time-clock`;
+  readonly timeClockUrl = `${APP_CONFIG.publicSiteUrl.replace(/\/$/, '')}/user/login?returnUrl=${encodeURIComponent('/admin/time-clock')}`;
 
   ngOnInit(): void {
     const today = this.manilaToday();

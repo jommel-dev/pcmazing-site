@@ -50,6 +50,7 @@ import { KanbanHubPageComponent } from './pages/projects/kanban-hub-page.compone
 import { AdminModulePlaceholderPageComponent } from './pages/modules/admin-module-placeholder-page.component';
 import { PrintingGeneratorPageComponent } from './pages/printing/printing-generator-page.component';
 import { CompanyExpensesPageComponent } from './pages/company-expenses/company-expenses-page.component';
+import { PortalTimeClockPageComponent } from './pages/time-clock/portal-time-clock-page.component';
 
 export const adminRoutes: Routes = [
   {
@@ -107,6 +108,13 @@ export const adminRoutes: Routes = [
         component: EditProfilePageComponent,
         title: 'Edit Profile | PCMazing Admin',
         data: { module: 'profile' },
+      },
+      {
+        path: 'time-clock',
+        component: PortalTimeClockPageComponent,
+        title: 'Time Clock | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'time_clock' },
       },
       {
         path: 'contact-inquiries',

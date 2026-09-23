@@ -9,7 +9,7 @@ import { ContactPageComponent } from './website/pages/contact/contact-page.compo
 import { ScheduleDemoPageComponent } from './website/pages/schedule-demo/schedule-demo-page.component';
 import { LeaveReviewPageComponent } from './website/pages/leave-review/leave-review-page.component';
 import { SetupPageComponent } from './website/pages/setup/setup-page.component';
-import { TimeClockPageComponent } from './website/pages/time-clock/time-clock-page.component';
+import { TimeClockRedirectComponent } from './website/pages/time-clock/time-clock-redirect.component';
 import { PublicQuotationPageComponent } from './website/pages/public-quotation/public-quotation-page.component';
 import { setupAvailableGuard } from './core/guards/setup-available.guard';
 import { adminRoutes } from './admin/admin.routes';
@@ -26,7 +26,7 @@ export const routes: Routes = [
   },
   {
     path: 'time-clock',
-    component: TimeClockPageComponent,
+    component: TimeClockRedirectComponent,
     title: 'Time Clock | PCmazing',
   },
   {

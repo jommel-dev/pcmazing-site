@@ -192,6 +192,13 @@ export const ADMIN_MODULES: AdminModuleItem[] = [
     description: 'Design printable documents with dynamic, draggable receipt templates.',
     status: 'active',
   },
+  {
+    key: 'time_clock',
+    label: 'Time Clock',
+    route: '/admin/time-clock',
+    description: 'Clock in and out with a selfie using your signed-in portal account.',
+    status: 'active',
+  },
 ];
 
 export const ADMIN_NAV_SECTIONS: AdminNavSection[] = [
@@ -239,6 +246,11 @@ export const ADMIN_NAV_SECTIONS: AdminNavSection[] = [
       ),
     ),
   },
+  {
+    key: 'my_portal',
+    title: 'My Portal',
+    items: ADMIN_MODULES.filter((item) => item.key === 'time_clock'),
+  },
 ];
 
 export function filterNavSectionsForRole(
@@ -250,6 +262,11 @@ export function filterNavSectionsForRole(
   // Super admin keeps classic top dashboard link via layout; sections as today.
   if (allowed === 'all') {
     return [
+      {
+        key: 'my_portal',
+        title: 'My Portal',
+        items: ADMIN_MODULES.filter((item) => item.key === 'time_clock'),
+      },
       {
         key: 'website',
         title: 'Website',
@@ -290,6 +307,13 @@ export function filterNavSectionsForRole(
         ),
       },
     ];
+  }
+
+  const myPortalItems = ADMIN_MODULES.filter(
+    (item) => item.key === 'time_clock' && allowed.has(item.key),
+  );
+  if (myPortalItems.length) {
+    sections.push({ key: 'my_portal', title: 'My Portal', items: myPortalItems });
   }
 
   const marketingItems = ADMIN_MODULES.filter(

@@ -40,7 +40,8 @@ export type AdminModuleKey =
   | 'user_management'
   | 'settings'
   | 'printing_generator'
-  | 'profile';
+  | 'profile'
+  | 'time_clock';
 
 const SUPER_ADMIN_KEYS = new Set([
   'admin',
@@ -182,11 +183,12 @@ export function getAllowedModuleKeys(role?: string | null): Set<AdminModuleKey> 
       'lead_generation',
       'organization_team',
       'profile',
+      'time_clock',
     ]);
   }
 
   if (isMarketing(role)) {
-    return new Set(['marketing_dashboard', 'lead_generation', 'profile']);
+    return new Set(['marketing_dashboard', 'lead_generation', 'profile', 'time_clock']);
   }
 
   if (isOperationsManager(role) || isSalesRestrictedInventory(role)) {
@@ -200,11 +202,12 @@ export function getAllowedModuleKeys(role?: string | null): Set<AdminModuleKey> 
       'inventory',
       'company_expenses',
       'profile',
+      'time_clock',
     ]);
   }
 
   if (isDeveloper(role) || isProjectManager(role)) {
-    return new Set(['developers_dashboard', 'projects', 'kanban', 'profile']);
+    return new Set(['developers_dashboard', 'projects', 'kanban', 'profile', 'time_clock']);
   }
 
   return new Set(['profile']);

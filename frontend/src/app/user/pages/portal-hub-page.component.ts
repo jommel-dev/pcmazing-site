@@ -3,7 +3,7 @@ import { Router, RouterLink } from '@angular/router';
 import { getRoleHomeRoute } from '../../admin/rbac/admin-roles';
 import { AdminAuthService } from '../../admin/services/admin-auth.service';
 
-export type PortalHubAppId = 'admin' | 'people' | 'time-clock';
+export type PortalHubAppId = 'admin' | 'people';
 
 @Component({
   selector: 'app-portal-hub-page',
@@ -32,12 +32,6 @@ export class PortalHubPageComponent implements OnInit, OnDestroy {
       title: 'MyPeoplePortal',
       description: 'Team sign-in for Marketing, Sales, and Development.',
       path: '/user/login',
-    },
-    {
-      id: 'time-clock',
-      title: 'Time Clock',
-      description: 'Clock in and out with attendance selfies.',
-      path: '/time-clock',
     },
   ];
 
