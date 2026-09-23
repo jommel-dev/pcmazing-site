@@ -2,6 +2,12 @@ import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { APP_CONFIG } from '../../core/config/app-config';
 import {
+  TimeClockLocationPayload,
+  TimeClockStatus,
+} from '../../core/services/time-clock-api.service';
+
+export type { TimeClockStatus } from '../../core/services/time-clock-api.service';
+import {
   DashboardDetailMetric,
   DashboardDetails,
   DashboardOverview,
@@ -2913,6 +2919,41 @@ export class AdminApiService {
     );
   }
 
+  getPortalTimeClockStatus() {
+    return this.http.get<{ success: boolean; data: TimeClockStatus }>(
+      `${APP_CONFIG.apiUrl}/admin/employee-workspace/time-clock/status`,
+      { headers: this.headers() },
+    );
+  }
+
+  portalTimeIn(
+    selfie: Blob,
+    workLocationType: 'office' | 'wfh',
+    location?: TimeClockLocationPayload | null,
+  ) {
+    const formData = new FormData();
+    formData.append('selfie', selfie, 'time-in-selfie.jpg');
+    formData.append('workLocationType', workLocationType);
+    this.appendPortalTimeClockLocation(formData, location);
+
+    return this.http.post<{ success: boolean; message: string; data: TimeClockStatus }>(
+      `${APP_CONFIG.apiUrl}/admin/employee-workspace/time-clock/time-in`,
+      formData,
+      { headers: this.headers() },
+    );
+  }
+
+  portalTimeOut(selfie: Blob) {
+    const formData = new FormData();
+    formData.append('selfie', selfie, 'time-out-selfie.jpg');
+
+    return this.http.post<{ success: boolean; message: string; data: TimeClockStatus }>(
+      `${APP_CONFIG.apiUrl}/admin/employee-workspace/time-clock/time-out`,
+      formData,
+      { headers: this.headers() },
+    );
+  }
+
   requestEmployeeOvertime(attendanceId: number) {
     return this.http.post<
       ItemResponse<{
@@ -3151,6 +3192,24 @@ export class AdminApiService {
       params = params.set('search', search.trim());
     }
     return params;
+  }
+
+  private appendPortalTimeClockLocation(
+    formData: FormData,
+    location?: TimeClockLocationPayload | null,
+  ): void {
+    if (!location) {
+      return;
+    }
+    if (location.locationLat != null) {
+      formData.append('locationLat', String(location.locationLat));
+    }
+    if (location.locationLng != null) {
+      formData.append('locationLng', String(location.locationLng));
+    }
+    if (location.locationLabel?.trim()) {
+      formData.append('locationLabel', location.locationLabel.trim());
+    }
   }
 
   private headers(): HttpHeaders {
