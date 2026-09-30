@@ -124,10 +124,19 @@ export class AdminLayoutComponent implements OnInit {
     try {
       const response = await firstValueFrom(this.adminAuth.getProfile());
       this.user.set(response.data);
-    } catch {
-      const role = this.user()?.role;
-      this.adminAuth.logout();
-      void this.router.navigateByUrl(getLogoutRoute(role));
+      this.adminAuth.updateStoredUser(response.data);
+    } catch (error: unknown) {
+      // Only force logout on auth failure — transient/network/5xx must not wipe the session
+      // while child pages are still loading (leaves UI looking signed-in with no token).
+      const status =
+        error && typeof error === 'object' && 'status' in error
+          ? Number((error as { status?: number }).status)
+          : 0;
+      if (status === 401 || status === 403) {
+        const role = this.user()?.role;
+        this.adminAuth.logout();
+        void this.router.navigateByUrl(getLogoutRoute(role));
+      }
     }
   }
 }

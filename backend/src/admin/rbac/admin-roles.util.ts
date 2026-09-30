@@ -126,7 +126,12 @@ export function rolesMatch(userRole: string | null | undefined, required: string
   if (requiredKey === 'admin' && isSuperAdmin(userRole)) {
     return true;
   }
-  if (requiredKey === 'sales' && isSalesRestrictedInventory(userRole)) {
+  // Backend @Roles('sales') covers store sales + operations managers (Manager / Assistant Manager).
+  // isSalesRestrictedInventory() intentionally excludes ops managers, so check both.
+  if (
+    requiredKey === 'sales' &&
+    (isSalesRestrictedInventory(userRole) || isOperationsManager(userRole))
+  ) {
     return true;
   }
   return false;
