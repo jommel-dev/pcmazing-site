@@ -1,6 +1,5 @@
-import { HttpClient } from '@angular/common/http';
-import { inject, Injectable } from '@angular/core';
-import { APP_CONFIG } from '../config/app-config';
+import { Injectable } from '@angular/core';
+import { Observable } from 'rxjs';
 
 export type WorkLocationType = 'office' | 'wfh' | 'off';
 
@@ -36,65 +35,37 @@ export interface TimeClockLocationPayload {
   locationLabel?: string | null;
 }
 
+const PUBLIC_TIME_CLOCK_REMOVED =
+  'Public /payroll/time-clock API was removed. Use AdminApiService portal time-clock methods.';
+
+/**
+ * Types for portal time clock live here. Public HTTP methods are intentionally
+ * disabled — punches go through authenticated employee-workspace APIs only.
+ */
 @Injectable({ providedIn: 'root' })
 export class TimeClockApiService {
-  private readonly http = inject(HttpClient);
-
-  getServerClock() {
-    return this.http.get<{ success: boolean; data: ServerClock }>(
-      `${APP_CONFIG.apiUrl}/payroll/time-clock/now`,
-    );
+  getServerClock(): Observable<{ success: boolean; data: ServerClock }> {
+    throw new Error(PUBLIC_TIME_CLOCK_REMOVED);
   }
 
-  getStatus(username: string) {
-    return this.http.get<{ success: boolean; data: TimeClockStatus }>(
-      `${APP_CONFIG.apiUrl}/payroll/time-clock/status`,
-      { params: { username } },
-    );
+  getStatus(_username: string): Observable<{ success: boolean; data: TimeClockStatus }> {
+    throw new Error(PUBLIC_TIME_CLOCK_REMOVED);
   }
 
   timeIn(
-    username: string,
-    selfie: Blob,
-    workLocationType: 'office' | 'wfh',
-    location?: TimeClockLocationPayload | null,
-  ) {
-    const formData = new FormData();
-    formData.append('username', username);
-    formData.append('selfie', selfie, 'time-in-selfie.jpg');
-    formData.append('workLocationType', workLocationType);
-    this.appendLocation(formData, location);
-
-    return this.http.post<{ success: boolean; message: string; data: TimeClockStatus }>(
-      `${APP_CONFIG.apiUrl}/payroll/time-clock/time-in`,
-      formData,
-    );
+    _username: string,
+    _selfie: Blob,
+    _workLocationType: 'office' | 'wfh',
+    _location?: TimeClockLocationPayload | null,
+  ): Observable<{ success: boolean; message: string; data: TimeClockStatus }> {
+    throw new Error(PUBLIC_TIME_CLOCK_REMOVED);
   }
 
-  timeOut(username: string, selfie: Blob, location?: TimeClockLocationPayload | null) {
-    const formData = new FormData();
-    formData.append('username', username);
-    formData.append('selfie', selfie, 'time-out-selfie.jpg');
-    this.appendLocation(formData, location);
-
-    return this.http.post<{ success: boolean; message: string; data: TimeClockStatus }>(
-      `${APP_CONFIG.apiUrl}/payroll/time-clock/time-out`,
-      formData,
-    );
-  }
-
-  private appendLocation(formData: FormData, location?: TimeClockLocationPayload | null): void {
-    if (!location) {
-      return;
-    }
-    if (location.locationLat != null) {
-      formData.append('locationLat', String(location.locationLat));
-    }
-    if (location.locationLng != null) {
-      formData.append('locationLng', String(location.locationLng));
-    }
-    if (location.locationLabel?.trim()) {
-      formData.append('locationLabel', location.locationLabel.trim());
-    }
+  timeOut(
+    _username: string,
+    _selfie: Blob,
+    _location?: TimeClockLocationPayload | null,
+  ): Observable<{ success: boolean; message: string; data: TimeClockStatus }> {
+    throw new Error(PUBLIC_TIME_CLOCK_REMOVED);
   }
 }

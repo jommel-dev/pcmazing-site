@@ -2,6 +2,12 @@ import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { APP_CONFIG } from '../../core/config/app-config';
 import {
+  TimeClockLocationPayload,
+  TimeClockStatus,
+} from '../../core/services/time-clock-api.service';
+
+export type { TimeClockStatus } from '../../core/services/time-clock-api.service';
+import {
   DashboardDetailMetric,
   DashboardDetails,
   DashboardOverview,
@@ -558,6 +564,10 @@ export interface QuotationItem {
   description: string;
   quantity: number;
   unitPrice: number;
+  baseUnitPrice?: number;
+  topupMode?: 'none' | 'fixed' | 'percent';
+  topupValue?: number;
+  lineTopupTotal?: number;
   sellPrice: number | null;
   discountType: 'none' | 'senior' | 'pwd';
   discountPrice: number | null;
@@ -577,6 +587,7 @@ export interface QuotationDetail extends QuotationListItem {
   customDiscount?: number;
   subtotal?: number;
   discountTotal?: number;
+  totalTopup?: number;
   items: QuotationItem[];
   hasShareToken?: boolean;
 }
@@ -602,6 +613,9 @@ export interface CreateQuotationPayload {
     description?: string;
     quantity: number;
     unitPrice?: number;
+    baseUnitPrice?: number;
+    topupMode?: 'none' | 'fixed' | 'percent';
+    topupValue?: number;
     discountType?: 'none' | 'senior' | 'pwd';
   }>;
 }
@@ -627,6 +641,25 @@ export interface PartsPriceSearchResult {
   query: string;
   items: PartsPriceHit[];
   sourceErrors: PartsPriceSourceError[];
+}
+
+export interface LocalPriceStore {
+  id: number;
+  name: string;
+  active: boolean;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface LocalPriceItem {
+  id: number;
+  storeId: number;
+  title: string;
+  sku: string | null;
+  pricePhp: number;
+  notes: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
 }
 
 export interface AdminUser {
@@ -1964,6 +1997,91 @@ export class AdminApiService {
     );
   }
 
+  listLocalPriceStores() {
+    return this.http.get<ItemResponse<LocalPriceStore[]>>(
+      `${APP_CONFIG.apiUrl}/admin/local-price-stores`,
+      { headers: this.headers() },
+    );
+  }
+
+  createLocalPriceStore(payload: { name: string; active?: boolean }) {
+    return this.http.post<MessageResponse<LocalPriceStore>>(
+      `${APP_CONFIG.apiUrl}/admin/local-price-stores`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  updateLocalPriceStore(id: number, payload: { name?: string; active?: boolean }) {
+    return this.http.patch<MessageResponse<LocalPriceStore>>(
+      `${APP_CONFIG.apiUrl}/admin/local-price-stores/${id}`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  listLocalPriceItems(storeId: number) {
+    return this.http.get<ItemResponse<LocalPriceItem[]>>(
+      `${APP_CONFIG.apiUrl}/admin/local-price-stores/${storeId}/items`,
+      { headers: this.headers() },
+    );
+  }
+
+  createLocalPriceItem(
+    storeId: number,
+    payload: { title: string; pricePhp: number; sku?: string | null; notes?: string | null },
+  ) {
+    return this.http.post<MessageResponse<LocalPriceItem>>(
+      `${APP_CONFIG.apiUrl}/admin/local-price-stores/${storeId}/items`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  updateLocalPriceItem(
+    storeId: number,
+    itemId: number,
+    payload: {
+      title?: string;
+      pricePhp?: number;
+      sku?: string | null;
+      notes?: string | null;
+    },
+  ) {
+    return this.http.patch<MessageResponse<LocalPriceItem>>(
+      `${APP_CONFIG.apiUrl}/admin/local-price-stores/${storeId}/items/${itemId}`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  deleteLocalPriceItem(storeId: number, itemId: number) {
+    return this.http.delete<{ success: boolean; message?: string }>(
+      `${APP_CONFIG.apiUrl}/admin/local-price-stores/${storeId}/items/${itemId}`,
+      { headers: this.headers() },
+    );
+  }
+
+  getLocalPriceListTemplate(storeId: number) {
+    return this.http.get(
+      `${APP_CONFIG.apiUrl}/admin/local-price-stores/${storeId}/items/import/template`,
+      {
+        headers: this.headers(),
+        responseType: 'blob',
+      },
+    );
+  }
+
+  importLocalPriceListCsv(storeId: number, file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.http.post<MessageResponse<{ imported: number }>>(
+      `${APP_CONFIG.apiUrl}/admin/local-price-stores/${storeId}/items/import`,
+      formData,
+      { headers: this.headers() },
+    );
+  }
+
   getDashboardOverview(options: {
     period?: DashboardPeriod;
     startDate?: string;
@@ -2913,6 +3031,41 @@ export class AdminApiService {
     );
   }
 
+  getPortalTimeClockStatus() {
+    return this.http.get<{ success: boolean; data: TimeClockStatus }>(
+      `${APP_CONFIG.apiUrl}/admin/employee-workspace/time-clock/status`,
+      { headers: this.headers() },
+    );
+  }
+
+  portalTimeIn(
+    selfie: Blob,
+    workLocationType: 'office' | 'wfh',
+    location?: TimeClockLocationPayload | null,
+  ) {
+    const formData = new FormData();
+    formData.append('selfie', selfie, 'time-in-selfie.jpg');
+    formData.append('workLocationType', workLocationType);
+    this.appendPortalTimeClockLocation(formData, location);
+
+    return this.http.post<{ success: boolean; message: string; data: TimeClockStatus }>(
+      `${APP_CONFIG.apiUrl}/admin/employee-workspace/time-clock/time-in`,
+      formData,
+      { headers: this.headers() },
+    );
+  }
+
+  portalTimeOut(selfie: Blob) {
+    const formData = new FormData();
+    formData.append('selfie', selfie, 'time-out-selfie.jpg');
+
+    return this.http.post<{ success: boolean; message: string; data: TimeClockStatus }>(
+      `${APP_CONFIG.apiUrl}/admin/employee-workspace/time-clock/time-out`,
+      formData,
+      { headers: this.headers() },
+    );
+  }
+
   requestEmployeeOvertime(attendanceId: number) {
     return this.http.post<
       ItemResponse<{
@@ -3151,6 +3304,24 @@ export class AdminApiService {
       params = params.set('search', search.trim());
     }
     return params;
+  }
+
+  private appendPortalTimeClockLocation(
+    formData: FormData,
+    location?: TimeClockLocationPayload | null,
+  ): void {
+    if (!location) {
+      return;
+    }
+    if (location.locationLat != null) {
+      formData.append('locationLat', String(location.locationLat));
+    }
+    if (location.locationLng != null) {
+      formData.append('locationLng', String(location.locationLng));
+    }
+    if (location.locationLabel?.trim()) {
+      formData.append('locationLabel', location.locationLabel.trim());
+    }
   }
 
   private headers(): HttpHeaders {

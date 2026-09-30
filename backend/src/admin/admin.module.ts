@@ -39,13 +39,14 @@ import { ClientProspectsService } from './marketing/client-prospects.service';
 import { CurrencyExchangeService } from './marketing/currency-exchange.service';
 import { PayrollController } from './payroll/payroll.controller';
 import { PayrollModule } from './payroll/payroll.module';
-import { TimeClockController } from './payroll/time-clock.controller';
 import { ProjectsController } from './projects/projects.controller';
 import { ProjectsModule } from './projects/projects.module';
 import { CompanyExpensesController } from './company-expenses/company-expenses.controller';
 import { CompanyExpensesService } from './company-expenses/company-expenses.service';
 import { PartsPriceSearchController } from './parts-price-search/parts-price-search.controller';
 import { PartsPriceSearchService } from './parts-price-search/parts-price-search.service';
+import { LocalPriceListsController } from './local-price-lists/local-price-lists.controller';
+import { LocalPriceListsService } from './local-price-lists/local-price-lists.service';
 
 @Module({
   imports: [DatabaseModule, AuthModule, PayrollModule, ProjectsModule],
@@ -62,9 +63,9 @@ import { PartsPriceSearchService } from './parts-price-search/parts-price-search
     QuotationController,
     PublicQuotationsController,
     PartsPriceSearchController,
+    LocalPriceListsController,
     UsersController,
     PayrollController,
-    TimeClockController,
     MarketingTeamsController,
     ClientProspectsController,
     ProjectsController,
@@ -85,6 +86,7 @@ import { PartsPriceSearchService } from './parts-price-search/parts-price-search
     PurchaseService,
     QuotationService,
     PartsPriceSearchService,
+    LocalPriceListsService,
     RbacService,
     RolesGuard,
     UsersService,

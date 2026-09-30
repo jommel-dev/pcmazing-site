@@ -43,6 +43,23 @@ class CreateQuotationItemDto {
   unitPrice?: number;
 
   @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(999999999.99)
+  baseUnitPrice?: number;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['none', 'fixed', 'percent'])
+  topupMode?: 'none' | 'fixed' | 'percent';
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(999999999.99)
+  topupValue?: number;
+
+  @IsOptional()
   @IsString()
   @IsIn(['none', 'senior', 'pwd'])
   discountType?: 'none' | 'senior' | 'pwd';

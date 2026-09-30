@@ -5,8 +5,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
-import { isSalesRestrictedInventory, isSuperAdmin } from '../rbac/admin-roles.util';
-import { PayrollService } from '../payroll/payroll.service';
+import { canUsePortalLogin, isSuperAdmin } from '../rbac/admin-roles.util';
+import { PayrollService, TimeClockLocationInput } from '../payroll/payroll.service';
 import { manilaWorkDate } from '../payroll/payroll.schema';
 import { ensureEmployeeWorkspaceTables } from './employee-workspace.schema';
 import {
@@ -37,12 +37,61 @@ export class EmployeeWorkspaceService {
   }
 
   assertSalesWorkspaceAccess(role?: string | null): void {
-    if (isSuperAdmin(role)) {
+    if (isSuperAdmin(role) || canUsePortalLogin(role)) {
       return;
     }
-    if (!isSalesRestrictedInventory(role)) {
-      throw new ForbiddenException('Employee workspace is available for Sales Manager roles.');
+    throw new ForbiddenException('Employee workspace is not available for this role.');
+  }
+
+  async getTimeClockStatus(userId: number, source: UserSource) {
+    await this.ensureReady();
+    return this.payrollService.getTimeClockStatusForUser(userId, source);
+  }
+
+  async timeIn(
+    userId: number,
+    source: UserSource,
+    selfie: Express.Multer.File,
+    workLocationType: 'office' | 'wfh',
+    location?: {
+      locationLat?: string;
+      locationLng?: string;
+      locationLabel?: string;
+    } | null,
+  ) {
+    await this.ensureReady();
+    return this.payrollService.timeInForUser(
+      userId,
+      source,
+      selfie,
+      workLocationType,
+      this.parseLocation(location?.locationLat, location?.locationLng, location?.locationLabel),
+    );
+  }
+
+  async timeOut(userId: number, source: UserSource, selfie: Express.Multer.File) {
+    await this.ensureReady();
+    return this.payrollService.timeOutForUser(userId, source, selfie);
+  }
+
+  private parseLocation(
+    locationLat?: string,
+    locationLng?: string,
+    locationLabel?: string,
+  ): TimeClockLocationInput | null {
+    const latRaw = locationLat?.trim();
+    const lngRaw = locationLng?.trim();
+    const label = locationLabel?.trim() || null;
+    const lat = latRaw ? Number(latRaw) : null;
+    const lng = lngRaw ? Number(lngRaw) : null;
+    if (lat == null && lng == null && !label) {
+      return null;
     }
+    return {
+      locationLat: lat != null && Number.isFinite(lat) ? lat : null,
+      locationLng: lng != null && Number.isFinite(lng) ? lng : null,
+      locationLabel: label,
+    };
   }
 
   async getDashboard(

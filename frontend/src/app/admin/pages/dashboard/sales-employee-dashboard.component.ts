@@ -2,6 +2,7 @@ import { NgClass } from '@angular/common';
 import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
+import { PortalTimeClockComponent } from '../../components/portal-time-clock/portal-time-clock.component';
 import {
   AdminApiService,
   EmployeeActivityItem,
@@ -13,7 +14,7 @@ import {
 
 @Component({
   selector: 'app-sales-employee-dashboard',
-  imports: [FormsModule, NgClass],
+  imports: [FormsModule, NgClass, PortalTimeClockComponent],
   templateUrl: './sales-employee-dashboard.component.html',
 })
 export class SalesEmployeeDashboardComponent implements OnInit {
@@ -79,8 +80,11 @@ export class SalesEmployeeDashboardComponent implements OnInit {
     void this.load();
   }
 
-  async load(): Promise<void> {
-    this.loading.set(true);
+  async load(options?: { quiet?: boolean }): Promise<void> {
+    const quiet = options?.quiet === true && this.dashboard() != null;
+    if (!quiet) {
+      this.loading.set(true);
+    }
     this.error.set('');
     try {
       const response = await firstValueFrom(
@@ -93,8 +97,14 @@ export class SalesEmployeeDashboardComponent implements OnInit {
     } catch {
       this.error.set('Unable to load your employee dashboard.');
     } finally {
-      this.loading.set(false);
+      if (!quiet) {
+        this.loading.set(false);
+      }
     }
+  }
+
+  async onTimeClockPunched(): Promise<void> {
+    await this.load({ quiet: true });
   }
 
   async requestOvertime(attendanceId: number | null | undefined): Promise<void> {

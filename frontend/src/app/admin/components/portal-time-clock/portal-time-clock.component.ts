@@ -3,26 +3,31 @@ import {
   effect,
   ElementRef,
   inject,
+  input,
   OnDestroy,
   OnInit,
+  output,
   signal,
   viewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
-import { TimeClockApiService, TimeClockStatus } from '../../../core/services/time-clock-api.service';
+import { AdminApiService, TimeClockStatus } from '../../services/admin-api.service';
+import { AdminAuthService } from '../../services/admin-auth.service';
 
 @Component({
-  selector: 'app-time-clock-page',
-  imports: [FormsModule, RouterLink],
-  templateUrl: './time-clock-page.component.html',
+  selector: 'app-portal-time-clock',
+  imports: [FormsModule],
+  templateUrl: './portal-time-clock.component.html',
 })
-export class TimeClockPageComponent implements OnInit, OnDestroy {
-  private readonly timeClockApi = inject(TimeClockApiService);
+export class PortalTimeClockComponent implements OnInit, OnDestroy {
+  private readonly adminApi = inject(AdminApiService);
+  private readonly adminAuth = inject(AdminAuthService);
   private readonly videoRef = viewChild<ElementRef<HTMLVideoElement>>('cameraVideo');
 
-  readonly username = signal('');
+  readonly mode = input<'compact' | 'full'>('full');
+  readonly punched = output<void>();
+
   readonly status = signal<TimeClockStatus | null>(null);
   readonly loading = signal(false);
   readonly submitting = signal(false);
@@ -73,7 +78,7 @@ export class TimeClockPageComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.tickClock();
     this.clockTimer = setInterval(() => this.tickClock(), 1000);
-    void this.syncServerClock();
+    void this.loadStatus();
     this.serverSyncTimer = setInterval(() => void this.syncServerClock(), 60_000);
   }
 
@@ -86,6 +91,18 @@ export class TimeClockPageComponent implements OnInit, OnDestroy {
     }
     this.stopCamera();
     this.clearSelfie();
+  }
+
+  displayName(): string {
+    const current = this.status();
+    if (current?.fullName?.trim()) {
+      return current.fullName.trim();
+    }
+    if (current?.username?.trim()) {
+      return current.username.trim();
+    }
+    const stored = this.adminAuth.getStoredUser();
+    return stored?.fullName?.trim() || stored?.username?.trim() || '—';
   }
 
   private applyServerNow(serverNow: string | undefined | null): void {
@@ -101,9 +118,10 @@ export class TimeClockPageComponent implements OnInit, OnDestroy {
     this.tickClock();
   }
 
+  /** Refresh offset only — does not reset punch UI / selfie. */
   private async syncServerClock(): Promise<void> {
     try {
-      const response = await firstValueFrom(this.timeClockApi.getServerClock());
+      const response = await firstValueFrom(this.adminApi.getPortalTimeClockStatus());
       this.applyServerNow(response.data.serverNow);
     } catch {
       // Keep last known offset; never fall back to trusting device for punches.
@@ -134,53 +152,52 @@ export class TimeClockPageComponent implements OnInit, OnDestroy {
     );
   }
 
-  async lookup(): Promise<void> {
-    const value = this.username().trim();
-    if (!value) {
-      this.error.set('Enter your username.');
-      this.status.set(null);
-      return;
-    }
-
+  async loadStatus(options?: { preserveMessages?: boolean }): Promise<void> {
     this.loading.set(true);
-    this.error.set('');
-    this.success.set('');
+    if (!options?.preserveMessages) {
+      this.error.set('');
+      this.success.set('');
+    }
     this.clearSelfie();
     this.stopCamera();
 
     try {
-      const response = await firstValueFrom(this.timeClockApi.getStatus(value));
-      this.status.set(response.data);
-      this.applyServerNow(response.data.serverNow);
-      this.username.set(response.data.username || value);
-      this.locationLabel.set(response.data.locationLabel ?? '');
-      this.locationCoords.set(
-        response.data.locationLat != null && response.data.locationLng != null
-          ? { lat: response.data.locationLat, lng: response.data.locationLng }
-          : null,
-      );
-      this.locationStatus.set('');
-
-      const expected = response.data.expectedLocation;
-      if (expected === 'office' || expected === 'wfh') {
-        this.pickedLocation.set(expected);
-      } else {
-        this.pickedLocation.set(null);
-      }
-
-      if (response.data.canTimeIn && this.pickedLocation() === 'wfh') {
-        void this.requestGeolocation();
-      }
-
-      // Don't block the Check button on camera warmup.
-      if (response.data.canTimeIn || response.data.canTimeOut) {
-        void this.startCamera();
-      }
+      const response = await firstValueFrom(this.adminApi.getPortalTimeClockStatus());
+      this.applyStatus(response.data);
     } catch {
-      this.error.set('Unable to look up username.');
+      if (!options?.preserveMessages) {
+        this.error.set('Unable to load time clock status.');
+      }
       this.status.set(null);
     } finally {
       this.loading.set(false);
+    }
+  }
+
+  private applyStatus(data: TimeClockStatus): void {
+    this.status.set(data);
+    this.applyServerNow(data.serverNow);
+    this.locationLabel.set(data.locationLabel ?? '');
+    this.locationCoords.set(
+      data.locationLat != null && data.locationLng != null
+        ? { lat: data.locationLat, lng: data.locationLng }
+        : null,
+    );
+    this.locationStatus.set('');
+
+    const expected = data.expectedLocation;
+    if (expected === 'office' || expected === 'wfh') {
+      this.pickedLocation.set(expected);
+    } else {
+      this.pickedLocation.set(null);
+    }
+
+    if (data.canTimeIn && this.pickedLocation() === 'wfh') {
+      void this.requestGeolocation();
+    }
+
+    if (data.canTimeIn || data.canTimeOut) {
+      void this.startCamera();
     }
   }
 
@@ -195,7 +212,6 @@ export class TimeClockPageComponent implements OnInit, OnDestroy {
       return;
     }
 
-    // Reuse an already-open stream when possible (faster retake).
     if (this.mediaStream && this.mediaStream.active) {
       this.cameraStarting.set(false);
       this.cameraReady.set(true);
@@ -224,7 +240,6 @@ export class TimeClockPageComponent implements OnInit, OnDestroy {
       }
 
       this.mediaStream = stream;
-      // Effect attaches stream once the <video> exists.
       if (this.videoRef()?.nativeElement) {
         const video = this.videoRef()!.nativeElement;
         video.srcObject = stream;
@@ -307,11 +322,9 @@ export class TimeClockPageComponent implements OnInit, OnDestroy {
 
   retakeSelfie(): void {
     this.clearSelfiePreviewOnly();
-    // Keep the existing stream — avoids another slow getUserMedia round-trip.
     if (this.mediaStream?.active) {
       this.cameraReady.set(false);
       this.cameraStarting.set(true);
-      // <video> remounts after preview clears; effect re-attaches the stream.
       return;
     }
 
@@ -327,12 +340,6 @@ export class TimeClockPageComponent implements OnInit, OnDestroy {
   }
 
   private async punch(kind: 'in' | 'out'): Promise<void> {
-    const value = this.username().trim();
-    if (!value) {
-      this.error.set('Enter your username.');
-      return;
-    }
-
     const selfie = this.selfieBlob();
     if (!selfie) {
       this.error.set('Take a selfie first before submitting.');
@@ -370,14 +377,15 @@ export class TimeClockPageComponent implements OnInit, OnDestroy {
     try {
       const response = await firstValueFrom(
         kind === 'in'
-          ? this.timeClockApi.timeIn(value, selfie, pick!, location)
-          : this.timeClockApi.timeOut(value, selfie),
+          ? this.adminApi.portalTimeIn(selfie, pick!, location)
+          : this.adminApi.portalTimeOut(selfie),
       );
       this.status.set(response.data);
       this.applyServerNow(response.data.serverNow);
       this.success.set(response.message);
       this.clearSelfiePreviewOnly();
       this.stopCamera();
+      this.punched.emit();
 
       if (response.data.canTimeOut) {
         void this.startCamera();
@@ -393,7 +401,7 @@ export class TimeClockPageComponent implements OnInit, OnDestroy {
             ? 'Unable to record time in.'
             : 'Unable to record time out.';
       this.error.set(message);
-      await this.lookup();
+      await this.loadStatus({ preserveMessages: true });
     } finally {
       this.submitting.set(false);
     }
