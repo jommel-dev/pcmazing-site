@@ -564,6 +564,10 @@ export interface QuotationItem {
   description: string;
   quantity: number;
   unitPrice: number;
+  baseUnitPrice?: number;
+  topupMode?: 'none' | 'fixed' | 'percent';
+  topupValue?: number;
+  lineTopupTotal?: number;
   sellPrice: number | null;
   discountType: 'none' | 'senior' | 'pwd';
   discountPrice: number | null;
@@ -583,6 +587,7 @@ export interface QuotationDetail extends QuotationListItem {
   customDiscount?: number;
   subtotal?: number;
   discountTotal?: number;
+  totalTopup?: number;
   items: QuotationItem[];
   hasShareToken?: boolean;
 }
@@ -608,6 +613,9 @@ export interface CreateQuotationPayload {
     description?: string;
     quantity: number;
     unitPrice?: number;
+    baseUnitPrice?: number;
+    topupMode?: 'none' | 'fixed' | 'percent';
+    topupValue?: number;
     discountType?: 'none' | 'senior' | 'pwd';
   }>;
 }

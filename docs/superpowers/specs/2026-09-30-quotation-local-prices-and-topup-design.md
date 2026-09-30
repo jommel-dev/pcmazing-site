@@ -1,7 +1,7 @@
 # Quotation Local Price Lists + Per-Item Topup
 
 **Date:** 2026-09-30  
-**Status:** Approved design — pending implementation  
+**Status:** Implemented  
 **Approach:** Staff-managed Cabanatuan local price lists (CRUD + CSV) alongside existing web sources; per-line topup (`fixed` or `percent`) with customer-safe final prices only
 
 ## Goal

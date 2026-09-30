@@ -114,7 +114,8 @@
             <div>
               <p class="text-sm font-semibold text-slate-800">Quoted items</p>
               <p class="text-xs text-slate-500">
-                Search inventory or web stores, or type a description and choose “Use as custom item” for labor and services.
+                Search inventory or web/local stores, or type a description and choose “Use as custom item” for labor and services.
+                Set a per-line topup; customers only see the charged price.
               </p>
             </div>
             <div class="flex flex-wrap gap-2">
@@ -126,19 +127,24 @@
 
           <div formArrayName="items" class="space-y-2">
             @if (itemsArray.length > 0) {
-              <div class="hidden gap-3 px-3 sm:grid sm:grid-cols-[minmax(0,1fr)_90px_120px_140px_auto]">
+              <div class="hidden gap-3 px-3 lg:grid lg:grid-cols-[minmax(0,1.2fr)_72px_100px_110px_90px_130px_auto]">
                 <p class="text-xs font-semibold uppercase text-slate-700">Item</p>
                 <p class="text-xs font-semibold uppercase text-slate-700">Qty</p>
-                <p class="text-xs font-semibold uppercase text-slate-700">Price</p>
+                <p class="text-xs font-semibold uppercase text-slate-700">Base</p>
+                <p class="text-xs font-semibold uppercase text-slate-700">Topup</p>
+                <p class="text-xs font-semibold uppercase text-slate-700">Value</p>
                 <p class="text-xs font-semibold uppercase text-slate-700">Discount</p>
                 <span></span>
               </div>
             }
 
             @for (item of itemsArray.controls; track $index; let itemIndex = $index) {
-              <div class="grid items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_90px_120px_140px_auto]" [formGroupName]="itemIndex">
+              <div
+                class="grid items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:grid-cols-[minmax(0,1.2fr)_72px_100px_110px_90px_130px_auto]"
+                [formGroupName]="itemIndex"
+              >
                 <div class="relative min-w-0">
-                  <label class="mb-1 block text-xs font-semibold uppercase text-slate-700 sm:hidden">Item</label>
+                  <label class="mb-1 block text-xs font-semibold uppercase text-slate-700 lg:hidden">Item</label>
                   <input
                     type="text"
                     class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none"
@@ -186,21 +192,21 @@
                       }
 
                       <div class="border-t border-slate-100 px-3 py-2">
-                        <p class="text-[11px] font-bold uppercase tracking-wide text-slate-500">Web stores</p>
-                        <p class="mt-0.5 text-[11px] text-slate-400">Third-party prices — verify before finalizing. Gilmore is not a single online catalog.</p>
+                        <p class="text-[11px] font-bold uppercase tracking-wide text-slate-500">Web &amp; local stores</p>
+                        <p class="mt-0.5 text-[11px] text-slate-400">Third-party and local list prices — verify before finalizing.</p>
                       </div>
                       @if (webSearchLoading()) {
-                        <p class="px-4 py-3 text-sm text-slate-500">Searching web stores...</p>
+                        <p class="px-4 py-3 text-sm text-slate-500">Searching stores...</p>
                       } @else if (webPartsFor(itemIndex).length === 0) {
                         <p class="px-4 py-3 text-sm text-slate-500">
                           @if (partQuery(itemIndex).trim().length < 3) {
-                            Type at least 3 characters to search web stores.
+                            Type at least 3 characters to search stores.
                           } @else {
-                            No web matches found.
+                            No store matches found.
                           }
                         </p>
                       } @else {
-                        @for (hit of webPartsFor(itemIndex); track hit.sourceId + ':' + hit.url) {
+                        @for (hit of webPartsFor(itemIndex); track hit.sourceId + ':' + (hit.url || hit.title)) {
                           <button
                             type="button"
                             class="flex w-full items-start justify-between gap-3 px-4 py-3 text-left hover:bg-slate-50"
@@ -231,21 +237,51 @@
                   @if (item.get('materialId')?.value) {
                     <p class="mt-1 text-xs text-slate-500">{{ materialStockLabel(item.get('materialId')?.value) }}</p>
                   }
+                  <p class="mt-1 text-xs text-slate-500">
+                    Charged
+                    <span class="font-semibold text-slate-700">{{ itemChargedUnitPrice(itemIndex) | number:'1.2-2' }}</span>
+                    @if (itemLineTopupTotal(itemIndex) > 0) {
+                      <span class="text-slate-400">·</span>
+                      Topup
+                      <span class="font-semibold text-slate-700">{{ itemLineTopupTotal(itemIndex) | number:'1.2-2' }}</span>
+                    }
+                  </p>
                 </div>
 
                 <div>
-                  <label class="mb-1 block text-xs font-semibold uppercase text-slate-700 sm:hidden">Qty</label>
+                  <label class="mb-1 block text-xs font-semibold uppercase text-slate-700 lg:hidden">Qty</label>
                   <input type="number" min="0.01" step="0.01" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm focus:border-pcmazing-500 focus:outline-none" formControlName="quantity" />
                 </div>
 
                 <div>
-                  <label class="mb-1 block text-xs font-semibold uppercase text-slate-700 sm:hidden">Price</label>
-                  <input type="number" min="0" step="0.01" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm focus:border-pcmazing-500 focus:outline-none" formControlName="unitPrice" />
+                  <label class="mb-1 block text-xs font-semibold uppercase text-slate-700 lg:hidden">Base</label>
+                  <input type="number" min="0" step="0.01" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm focus:border-pcmazing-500 focus:outline-none" formControlName="baseUnitPrice" />
                 </div>
 
                 <div>
-                  <label class="mb-1 block text-xs font-semibold uppercase text-slate-700 sm:hidden">Discount</label>
-                  <select class="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm focus:border-pcmazing-500 focus:outline-none" formControlName="discountType">
+                  <label class="mb-1 block text-xs font-semibold uppercase text-slate-700 lg:hidden">Topup</label>
+                  <select class="w-full rounded-xl border border-slate-200 bg-white px-2 py-3 text-sm focus:border-pcmazing-500 focus:outline-none" formControlName="topupMode">
+                    @for (option of topupOptions; track option.value) {
+                      <option [value]="option.value">{{ option.label }}</option>
+                    }
+                  </select>
+                </div>
+
+                <div>
+                  <label class="mb-1 block text-xs font-semibold uppercase text-slate-700 lg:hidden">Value</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    class="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm focus:border-pcmazing-500 focus:outline-none read-only:bg-slate-100 read-only:text-slate-400"
+                    formControlName="topupValue"
+                    [readOnly]="item.get('topupMode')?.value === 'none'"
+                  />
+                </div>
+
+                <div>
+                  <label class="mb-1 block text-xs font-semibold uppercase text-slate-700 lg:hidden">Discount</label>
+                  <select class="w-full rounded-xl border border-slate-200 bg-white px-2 py-3 text-sm focus:border-pcmazing-500 focus:outline-none" formControlName="discountType">
                     @for (option of discountOptions; track option.value) {
                       <option [value]="option.value">{{ option.label }}</option>
                     }
@@ -272,6 +308,12 @@
             <span>Items subtotal</span>
             <span class="font-medium text-slate-800">{{ itemsNetSubtotal() | number:'1.2-2' }}</span>
           </div>
+          @if (totalTopupAmount() > 0) {
+            <div class="flex items-center justify-between text-slate-500">
+              <span>Total topup (staff)</span>
+              <span class="font-medium text-slate-700">{{ totalTopupAmount() | number:'1.2-2' }}</span>
+            </div>
+          }
           @if (lineDiscountTotal() > 0) {
             <div class="flex items-center justify-between text-emerald-700">
               <span>SC/PWD savings</span>

@@ -3,6 +3,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { AdminApiService, QuotationDetail, QuotationSource } from '../../services/admin-api.service';
 import { phDiscountLabel } from '../inventory/ph-discount.util';
+import { normalizeTopupMode, type TopupMode } from './quotation-topup.util';
 
 @Component({
   selector: 'app-quotation-detail-page',
@@ -131,6 +132,43 @@ export class QuotationDetailPageComponent implements OnInit {
 
   lineQuantity(item: QuotationDetail['items'][number]): number | string {
     return item.quantity || item.totalSetQty || '—';
+  }
+
+  lineBaseUnitPrice(item: QuotationDetail['items'][number]): number {
+    return item.baseUnitPrice != null ? Number(item.baseUnitPrice) : Number(item.unitPrice) || 0;
+  }
+
+  lineTopupMode(item: QuotationDetail['items'][number]): TopupMode {
+    return normalizeTopupMode(item.topupMode);
+  }
+
+  lineTopupLabel(item: QuotationDetail['items'][number]): string {
+    const mode = this.lineTopupMode(item);
+    const value = Number(item.topupValue ?? 0);
+    if (mode === 'fixed') {
+      return `Fixed +${this.formatMoney(value)}`;
+    }
+    if (mode === 'percent') {
+      return `${value}%`;
+    }
+    return 'None';
+  }
+
+  lineTopupTotal(item: QuotationDetail['items'][number]): number {
+    if (item.lineTopupTotal != null) {
+      return Number(item.lineTopupTotal) || 0;
+    }
+    const base = this.lineBaseUnitPrice(item);
+    const charged = Number(item.unitPrice) || 0;
+    const qty = Number(item.quantity) || 0;
+    return Math.round((charged - base) * qty * 100) / 100;
+  }
+
+  quoteTotalTopup(quote: QuotationDetail): number {
+    if (quote.totalTopup != null) {
+      return Number(quote.totalTopup) || 0;
+    }
+    return quote.items.reduce((sum, item) => sum + this.lineTopupTotal(item), 0);
   }
 
   discountLabel(value: string | null | undefined): string {
