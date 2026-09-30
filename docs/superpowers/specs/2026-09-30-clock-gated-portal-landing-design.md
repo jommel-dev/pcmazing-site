@@ -1,7 +1,7 @@
 # Clock-Gated Portal Landing
 
 **Date:** 2026-09-30  
-**Status:** Approved design — pending implementation  
+**Status:** Implemented  
 **Approach:** Post-login resolve via portal time-clock status (`canTimeIn`)
 
 ## Goal

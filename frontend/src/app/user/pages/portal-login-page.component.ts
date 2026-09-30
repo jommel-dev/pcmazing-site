@@ -2,8 +2,9 @@ import { Component, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
-import { getRoleHomeRoute } from '../../admin/rbac/admin-roles';
+import { AdminApiService } from '../../admin/services/admin-api.service';
 import { AdminAuthService } from '../../admin/services/admin-auth.service';
+import { resolvePortalPostLoginRoute } from '../portal-post-login-route';
 
 @Component({
   selector: 'app-portal-login-page',
@@ -12,6 +13,7 @@ import { AdminAuthService } from '../../admin/services/admin-auth.service';
 })
 export class PortalLoginPageComponent implements OnInit, OnDestroy {
   private readonly adminAuth = inject(AdminAuthService);
+  private readonly adminApi = inject(AdminApiService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private stopAuthWatch: (() => void) | null = null;
@@ -24,19 +26,22 @@ export class PortalLoginPageComponent implements OnInit, OnDestroy {
   readonly error = signal('');
 
   ngOnInit(): void {
-    this.redirectIfAuthenticated();
-    this.stopAuthWatch = this.adminAuth.onAuthStorageChange(() => this.redirectIfAuthenticated());
+    void this.redirectIfAuthenticated();
+    this.stopAuthWatch = this.adminAuth.onAuthStorageChange(() => {
+      void this.redirectIfAuthenticated();
+    });
   }
 
   ngOnDestroy(): void {
     this.stopAuthWatch?.();
   }
 
-  private redirectIfAuthenticated(): void {
+  private async redirectIfAuthenticated(): Promise<void> {
     if (!this.adminAuth.isAuthenticated()) {
       return;
     }
-    void this.router.navigateByUrl(this.resolvePostLoginRoute(this.adminAuth.getStoredUser()?.role));
+    const url = await this.resolveLanding(this.adminAuth.getStoredUser()?.role);
+    await this.router.navigateByUrl(url);
   }
 
   async submit(): Promise<void> {
@@ -58,7 +63,8 @@ export class PortalLoginPageComponent implements OnInit, OnDestroy {
         this.rememberMe(),
       );
 
-      await this.router.navigateByUrl(this.resolvePostLoginRoute(response.data.user.role));
+      const url = await this.resolveLanding(response.data.user.role);
+      await this.router.navigateByUrl(url);
     } catch (error) {
       this.error.set(this.extractLoginError(error));
     } finally {
@@ -66,17 +72,15 @@ export class PortalLoginPageComponent implements OnInit, OnDestroy {
     }
   }
 
-  private resolvePostLoginRoute(role?: string | null): string {
-    const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
-    if (returnUrl && this.isSafeAdminReturnUrl(returnUrl)) {
-      return returnUrl;
-    }
-    return getRoleHomeRoute(role);
-  }
-
-  /** Only same-origin relative admin paths — blocks open redirects. */
-  private isSafeAdminReturnUrl(url: string): boolean {
-    return url.startsWith('/admin/') && !url.startsWith('//') && !url.includes('://');
+  private resolveLanding(role?: string | null): Promise<string> {
+    return resolvePortalPostLoginRoute({
+      role,
+      returnUrl: this.route.snapshot.queryParamMap.get('returnUrl'),
+      fetchCanTimeIn: async () => {
+        const status = await firstValueFrom(this.adminApi.getPortalTimeClockStatus());
+        return Boolean(status?.data?.canTimeIn);
+      },
+    });
   }
 
   private extractLoginError(error: unknown): string {
