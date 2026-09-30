@@ -635,6 +635,25 @@ export interface PartsPriceSearchResult {
   sourceErrors: PartsPriceSourceError[];
 }
 
+export interface LocalPriceStore {
+  id: number;
+  name: string;
+  active: boolean;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface LocalPriceItem {
+  id: number;
+  storeId: number;
+  title: string;
+  sku: string | null;
+  pricePhp: number;
+  notes: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
 export interface AdminUser {
   id: number;
   username: string;
@@ -1967,6 +1986,91 @@ export class AdminApiService {
     return this.http.get<ItemResponse<PartsPriceSearchResult>>(
       `${APP_CONFIG.apiUrl}/admin/parts-price-search`,
       { headers: this.headers(), params },
+    );
+  }
+
+  listLocalPriceStores() {
+    return this.http.get<ItemResponse<LocalPriceStore[]>>(
+      `${APP_CONFIG.apiUrl}/admin/local-price-stores`,
+      { headers: this.headers() },
+    );
+  }
+
+  createLocalPriceStore(payload: { name: string; active?: boolean }) {
+    return this.http.post<MessageResponse<LocalPriceStore>>(
+      `${APP_CONFIG.apiUrl}/admin/local-price-stores`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  updateLocalPriceStore(id: number, payload: { name?: string; active?: boolean }) {
+    return this.http.patch<MessageResponse<LocalPriceStore>>(
+      `${APP_CONFIG.apiUrl}/admin/local-price-stores/${id}`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  listLocalPriceItems(storeId: number) {
+    return this.http.get<ItemResponse<LocalPriceItem[]>>(
+      `${APP_CONFIG.apiUrl}/admin/local-price-stores/${storeId}/items`,
+      { headers: this.headers() },
+    );
+  }
+
+  createLocalPriceItem(
+    storeId: number,
+    payload: { title: string; pricePhp: number; sku?: string | null; notes?: string | null },
+  ) {
+    return this.http.post<MessageResponse<LocalPriceItem>>(
+      `${APP_CONFIG.apiUrl}/admin/local-price-stores/${storeId}/items`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  updateLocalPriceItem(
+    storeId: number,
+    itemId: number,
+    payload: {
+      title?: string;
+      pricePhp?: number;
+      sku?: string | null;
+      notes?: string | null;
+    },
+  ) {
+    return this.http.patch<MessageResponse<LocalPriceItem>>(
+      `${APP_CONFIG.apiUrl}/admin/local-price-stores/${storeId}/items/${itemId}`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  deleteLocalPriceItem(storeId: number, itemId: number) {
+    return this.http.delete<{ success: boolean; message?: string }>(
+      `${APP_CONFIG.apiUrl}/admin/local-price-stores/${storeId}/items/${itemId}`,
+      { headers: this.headers() },
+    );
+  }
+
+  getLocalPriceListTemplate(storeId: number) {
+    return this.http.get(
+      `${APP_CONFIG.apiUrl}/admin/local-price-stores/${storeId}/items/import/template`,
+      {
+        headers: this.headers(),
+        responseType: 'blob',
+      },
+    );
+  }
+
+  importLocalPriceListCsv(storeId: number, file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.http.post<MessageResponse<{ imported: number }>>(
+      `${APP_CONFIG.apiUrl}/admin/local-price-stores/${storeId}/items/import`,
+      formData,
+      { headers: this.headers() },
     );
   }
 

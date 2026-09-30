@@ -27,6 +27,7 @@ export type AdminModuleKey =
   | 'sales_order'
   | 'job_order'
   | 'quotation'
+  | 'local_price_lists'
   | 'inventory'
   | 'customers'
   | 'company_expenses'
@@ -199,6 +200,7 @@ export function getAllowedModuleKeys(role?: string | null): Set<AdminModuleKey> 
       'sales_order',
       'job_order',
       'quotation',
+      'local_price_lists',
       'inventory',
       'company_expenses',
       'profile',

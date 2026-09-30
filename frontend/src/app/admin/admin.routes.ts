@@ -35,6 +35,7 @@ import { QuotationsPageComponent } from './pages/quotations/quotations-page.comp
 import { QuotationDetailPageComponent } from './pages/quotations/quotation-detail-page.component';
 import { QuotationCreatePageComponent } from './pages/quotations/quotation-create-page.component';
 import { QuotationPrintPageComponent } from './pages/quotations/quotation-print-page.component';
+import { LocalPriceListsPageComponent } from './pages/local-price-lists/local-price-lists-page.component';
 import { UserManagementPageComponent } from './pages/user-management/user-management-page.component';
 import { LeadGenerationPageComponent } from './pages/marketing/lead-generation-page.component';
 import { LeadProspectViewPageComponent } from './pages/marketing/lead-prospect-view-page.component';
@@ -332,6 +333,13 @@ export const adminRoutes: Routes = [
         title: 'Quotation Detail | PCMazing Admin',
         canActivate: [adminRoleGuard],
         data: { module: 'quotation' },
+      },
+      {
+        path: 'local-price-lists',
+        component: LocalPriceListsPageComponent,
+        title: 'Local Price Lists | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'local_price_lists' },
       },
       {
         path: 'users',

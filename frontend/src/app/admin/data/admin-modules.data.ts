@@ -98,6 +98,14 @@ export const ADMIN_MODULES: AdminModuleItem[] = [
     referenceMenu: 'quotation',
   },
   {
+    key: 'local_price_lists',
+    label: 'Local Price Lists',
+    route: '/admin/local-price-lists',
+    description: 'Maintain Cabanatuan store price lists for quotation parts search.',
+    status: 'active',
+    referenceMenu: 'quotation',
+  },
+  {
     key: 'inventory',
     label: 'Inventory',
     route: '/admin/inventory',
@@ -213,9 +221,15 @@ export const ADMIN_NAV_SECTIONS: AdminNavSection[] = [
     key: 'sales_operations',
     title: 'Sales Operations',
     items: ADMIN_MODULES.filter((item) =>
-      ['sales_order', 'job_order', 'quotation', 'inventory', 'customers', 'company_expenses'].includes(
-        item.key,
-      ),
+      [
+        'sales_order',
+        'job_order',
+        'quotation',
+        'local_price_lists',
+        'inventory',
+        'customers',
+        'company_expenses',
+      ].includes(item.key),
     ),
   },
   {
@@ -278,9 +292,15 @@ export function filterNavSectionsForRole(
         key: 'sales_operations',
         title: 'Sales Operations',
         items: ADMIN_MODULES.filter((item) =>
-          ['sales_order', 'job_order', 'quotation', 'inventory', 'customers', 'company_expenses'].includes(
-        item.key,
-      ),
+          [
+            'sales_order',
+            'job_order',
+            'quotation',
+            'local_price_lists',
+            'inventory',
+            'customers',
+            'company_expenses',
+          ].includes(item.key),
         ),
       },
       {
@@ -338,8 +358,14 @@ export function filterNavSectionsForRole(
   );
   const salesOps = ADMIN_MODULES.filter(
     (item) =>
-      ['sales_order', 'job_order', 'quotation', 'inventory', 'company_expenses'].includes(item.key) &&
-      allowed.has(item.key),
+      [
+        'sales_order',
+        'job_order',
+        'quotation',
+        'local_price_lists',
+        'inventory',
+        'company_expenses',
+      ].includes(item.key) && allowed.has(item.key),
   );
   if (salesHome.length) {
     sections.push({ key: 'sales_home', title: 'Sales', items: salesHome });
