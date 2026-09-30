@@ -98,6 +98,14 @@ export const ADMIN_MODULES: AdminModuleItem[] = [
     referenceMenu: 'quotation',
   },
   {
+    key: 'local_price_lists',
+    label: 'Local Price Lists',
+    route: '/admin/local-price-lists',
+    description: 'Maintain Cabanatuan store price lists for quotation parts search.',
+    status: 'active',
+    referenceMenu: 'quotation',
+  },
+  {
     key: 'inventory',
     label: 'Inventory',
     route: '/admin/inventory',
@@ -192,6 +200,13 @@ export const ADMIN_MODULES: AdminModuleItem[] = [
     description: 'Design printable documents with dynamic, draggable receipt templates.',
     status: 'active',
   },
+  {
+    key: 'time_clock',
+    label: 'Time Clock',
+    route: '/admin/time-clock',
+    description: 'Clock in and out with a selfie using your signed-in portal account.',
+    status: 'active',
+  },
 ];
 
 export const ADMIN_NAV_SECTIONS: AdminNavSection[] = [
@@ -206,9 +221,15 @@ export const ADMIN_NAV_SECTIONS: AdminNavSection[] = [
     key: 'sales_operations',
     title: 'Sales Operations',
     items: ADMIN_MODULES.filter((item) =>
-      ['sales_order', 'job_order', 'quotation', 'inventory', 'customers', 'company_expenses'].includes(
-        item.key,
-      ),
+      [
+        'sales_order',
+        'job_order',
+        'quotation',
+        'local_price_lists',
+        'inventory',
+        'customers',
+        'company_expenses',
+      ].includes(item.key),
     ),
   },
   {
@@ -239,6 +260,11 @@ export const ADMIN_NAV_SECTIONS: AdminNavSection[] = [
       ),
     ),
   },
+  {
+    key: 'my_portal',
+    title: 'My Portal',
+    items: ADMIN_MODULES.filter((item) => item.key === 'time_clock'),
+  },
 ];
 
 export function filterNavSectionsForRole(
@@ -251,6 +277,11 @@ export function filterNavSectionsForRole(
   if (allowed === 'all') {
     return [
       {
+        key: 'my_portal',
+        title: 'My Portal',
+        items: ADMIN_MODULES.filter((item) => item.key === 'time_clock'),
+      },
+      {
         key: 'website',
         title: 'Website',
         items: ADMIN_MODULES.filter((item) =>
@@ -261,9 +292,15 @@ export function filterNavSectionsForRole(
         key: 'sales_operations',
         title: 'Sales Operations',
         items: ADMIN_MODULES.filter((item) =>
-          ['sales_order', 'job_order', 'quotation', 'inventory', 'customers', 'company_expenses'].includes(
-        item.key,
-      ),
+          [
+            'sales_order',
+            'job_order',
+            'quotation',
+            'local_price_lists',
+            'inventory',
+            'customers',
+            'company_expenses',
+          ].includes(item.key),
         ),
       },
       {
@@ -292,6 +329,13 @@ export function filterNavSectionsForRole(
     ];
   }
 
+  const myPortalItems = ADMIN_MODULES.filter(
+    (item) => item.key === 'time_clock' && allowed.has(item.key),
+  );
+  if (myPortalItems.length) {
+    sections.push({ key: 'my_portal', title: 'My Portal', items: myPortalItems });
+  }
+
   const marketingItems = ADMIN_MODULES.filter(
     (item) =>
       ['marketing_dashboard', 'lead_generation', 'organization_team'].includes(item.key) &&
@@ -314,8 +358,14 @@ export function filterNavSectionsForRole(
   );
   const salesOps = ADMIN_MODULES.filter(
     (item) =>
-      ['sales_order', 'job_order', 'quotation', 'inventory', 'company_expenses'].includes(item.key) &&
-      allowed.has(item.key),
+      [
+        'sales_order',
+        'job_order',
+        'quotation',
+        'local_price_lists',
+        'inventory',
+        'company_expenses',
+      ].includes(item.key) && allowed.has(item.key),
   );
   if (salesHome.length) {
     sections.push({ key: 'sales_home', title: 'Sales', items: salesHome });

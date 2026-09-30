@@ -9,7 +9,7 @@ const HUB_MANIFEST = {
 
 /**
  * Registers the installable service worker and keeps a single PWA identity
- * (portal hub) so Admin, MyPeoplePortal, and Time Clock stay one installed app.
+ * (portal hub) so Admin and MyPeoplePortal stay one installed app.
  */
 @Injectable({ providedIn: 'root' })
 export class PwaInstallService {

@@ -1,0 +1,391 @@
+<section class="min-w-0 max-w-full">
+  <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div class="min-w-0">
+      <h2 class="text-2xl font-bold text-slate-900">Local Price Lists</h2>
+      <p class="mt-1 text-sm text-slate-500">
+        Maintain Cabanatuan store price lists used in quotation parts search. CSV import replaces all
+        items for the selected store.
+      </p>
+    </div>
+  </div>
+
+  @if (error()) {
+    <div class="mb-4 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
+      {{ error() }}
+    </div>
+  }
+  @if (success()) {
+    <div
+      class="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-700"
+    >
+      {{ success() }}
+    </div>
+  }
+  @if (importMessage()) {
+    <div class="mb-4 rounded-2xl border border-blue-200 bg-blue-50 px-5 py-4 text-sm text-blue-700">
+      {{ importMessage() }}
+    </div>
+  }
+
+  <div class="grid min-w-0 gap-6 xl:grid-cols-[300px_minmax(0,1fr)]">
+    <!-- Stores -->
+    <div class="min-w-0 space-y-4">
+      <form
+        class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+        [formGroup]="storeForm"
+        (ngSubmit)="submitStore()"
+      >
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <h3 class="text-base font-bold text-slate-900">
+              @if (isEditingStore()) {
+                Edit Store
+              } @else {
+                Add Store
+              }
+            </h3>
+            <p class="mt-1 text-xs text-slate-500">Store name appears as the source label in parts search.</p>
+          </div>
+          @if (isEditingStore()) {
+            <button
+              type="button"
+              class="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100"
+              (click)="cancelStoreEdit()"
+            >
+              Cancel
+            </button>
+          }
+        </div>
+
+        <div class="mt-4 space-y-4">
+          <div>
+            <label class="mb-2 block text-sm font-semibold text-slate-800">Store name *</label>
+            <input
+              type="text"
+              class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none"
+              formControlName="name"
+              placeholder="e.g. PC Hub Cabanatuan"
+            />
+          </div>
+          <div
+            class="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
+          >
+            <div>
+              <p class="text-sm font-semibold text-slate-800">Active</p>
+              <p class="text-xs text-slate-500">Inactive stores are excluded from parts search.</p>
+            </div>
+            <label class="relative inline-flex cursor-pointer items-center">
+              <input type="checkbox" class="peer sr-only" formControlName="active" />
+              <span
+                class="h-6 w-11 rounded-full bg-slate-300 transition peer-checked:bg-pcmazing-500"
+              ></span>
+              <span
+                class="absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white transition peer-checked:translate-x-5"
+              ></span>
+            </label>
+          </div>
+          <button
+            type="submit"
+            class="w-full rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:opacity-50"
+            [disabled]="savingStore()"
+          >
+            @if (savingStore()) {
+              Saving...
+            } @else if (isEditingStore()) {
+              Save Store
+            } @else {
+              Add Store
+            }
+          </button>
+        </div>
+      </form>
+
+      <div class="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div class="border-b border-slate-100 px-4 py-3">
+          <h3 class="text-sm font-bold text-slate-900">Stores</h3>
+        </div>
+        @if (loadingStores()) {
+          <div class="px-4 py-8 text-center text-sm text-slate-500">Loading stores...</div>
+        } @else if (stores().length === 0) {
+          <div class="px-4 py-8 text-center text-sm text-slate-500">No stores yet. Add one above.</div>
+        } @else {
+          <ul class="divide-y divide-slate-100">
+            @for (store of stores(); track store.id) {
+              <li>
+                <button
+                  type="button"
+                  class="flex w-full items-start justify-between gap-2 px-4 py-3 text-left transition hover:bg-slate-50"
+                  [class.bg-pcmazing-50]="selectedStoreId() === store.id"
+                  [class.border-l-4]="selectedStoreId() === store.id"
+                  [class.border-pcmazing-500]="selectedStoreId() === store.id"
+                  (click)="selectStore(store.id)"
+                >
+                  <div class="min-w-0">
+                    <p class="truncate text-sm font-semibold text-slate-900">{{ store.name }}</p>
+                    <p class="mt-0.5 text-xs text-slate-500">
+                      @if (store.active) {
+                        Active
+                      } @else {
+                        Inactive
+                      }
+                    </p>
+                  </div>
+                  <span
+                    class="mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase"
+                    [class.bg-emerald-50]="store.active"
+                    [class.text-emerald-700]="store.active"
+                    [class.bg-slate-100]="!store.active"
+                    [class.text-slate-500]="!store.active"
+                  >
+                    @if (store.active) {
+                      On
+                    } @else {
+                      Off
+                    }
+                  </span>
+                </button>
+                @if (selectedStoreId() === store.id) {
+                  <div class="flex gap-2 border-t border-slate-50 bg-slate-50/80 px-4 py-2">
+                    <button
+                      type="button"
+                      class="rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-white"
+                      (click)="startEditStore(store)"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      class="rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-white"
+                      (click)="toggleStoreActive(store)"
+                    >
+                      @if (store.active) {
+                        Deactivate
+                      } @else {
+                        Activate
+                      }
+                    </button>
+                  </div>
+                }
+              </li>
+            }
+          </ul>
+        }
+      </div>
+    </div>
+
+    <!-- Items -->
+    <div class="min-w-0 space-y-4">
+      @if (selectedStore(); as store) {
+        <div
+          class="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div class="min-w-0">
+            <h3 class="truncate text-lg font-bold text-slate-900">{{ store.name }}</h3>
+            <p class="mt-1 text-sm text-slate-500">
+              {{ items().length }} item(s)
+              @if (!store.active) {
+                · inactive (hidden from search)
+              }
+            </p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50"
+              (click)="downloadImportTemplate()"
+            >
+              Download template
+            </button>
+            <button
+              type="button"
+              class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              [disabled]="importLoading()"
+              (click)="importFileInput.click()"
+            >
+              @if (importLoading()) {
+                Importing...
+              } @else {
+                Import CSV
+              }
+            </button>
+            <input
+              #importFileInput
+              type="file"
+              accept=".csv,.txt,.tsv"
+              class="hidden"
+              (change)="onImportSelected($event)"
+            />
+          </div>
+        </div>
+
+        <form
+          class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+          [formGroup]="itemForm"
+          (ngSubmit)="submitItem()"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <h3 class="text-base font-bold text-slate-900">
+                @if (isEditingItem()) {
+                  Edit Item
+                } @else {
+                  Add Item
+                }
+              </h3>
+              <p class="mt-1 text-xs text-slate-500">
+                Columns: title and price required; SKU and notes optional.
+              </p>
+            </div>
+            @if (isEditingItem()) {
+              <button
+                type="button"
+                class="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                (click)="cancelItemEdit()"
+              >
+                Cancel
+              </button>
+            }
+          </div>
+
+          <div class="mt-4 grid gap-4 sm:grid-cols-2">
+            <div class="sm:col-span-2">
+              <label class="mb-2 block text-sm font-semibold text-slate-800">Title *</label>
+              <input
+                type="text"
+                class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none"
+                formControlName="title"
+                placeholder="e.g. Ryzen 5 5600"
+              />
+            </div>
+            <div>
+              <label class="mb-2 block text-sm font-semibold text-slate-800">Price (PHP) *</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none"
+                formControlName="pricePhp"
+                placeholder="0.00"
+              />
+            </div>
+            <div>
+              <label class="mb-2 block text-sm font-semibold text-slate-800">SKU</label>
+              <input
+                type="text"
+                class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none"
+                formControlName="sku"
+                placeholder="Optional"
+              />
+            </div>
+            <div class="sm:col-span-2">
+              <label class="mb-2 block text-sm font-semibold text-slate-800">Notes</label>
+              <textarea
+                rows="2"
+                class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none"
+                formControlName="notes"
+                placeholder="Optional notes"
+              ></textarea>
+            </div>
+          </div>
+
+          <div class="mt-4">
+            <button
+              type="submit"
+              class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:opacity-50"
+              [disabled]="savingItem()"
+            >
+              @if (savingItem()) {
+                Saving...
+              } @else if (isEditingItem()) {
+                Save Item
+              } @else {
+                Add Item
+              }
+            </button>
+          </div>
+        </form>
+
+        <div class="min-w-0 rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div
+            class="flex flex-col gap-3 border-b border-slate-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <h3 class="text-sm font-bold text-slate-900">Items</h3>
+            <input
+              type="search"
+              class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:border-pcmazing-500 focus:outline-none sm:max-w-xs"
+              placeholder="Search title, SKU, notes..."
+              [value]="itemSearch()"
+              (input)="itemSearch.set($any($event.target).value)"
+            />
+          </div>
+
+          @if (loadingItems()) {
+            <div class="px-4 py-10 text-center text-sm text-slate-500">Loading items...</div>
+          } @else if (filteredItems().length === 0) {
+            <div class="px-4 py-10 text-center text-sm text-slate-500">
+              @if (items().length === 0) {
+                No items yet. Add one above or import a CSV.
+              } @else {
+                No items match your search.
+              }
+            </div>
+          } @else {
+            <div class="overflow-x-auto">
+              <table class="min-w-full text-left text-sm">
+                <thead class="bg-slate-50 text-xs font-bold tracking-wide text-slate-500 uppercase">
+                  <tr>
+                    <th class="px-4 py-3">Title</th>
+                    <th class="px-4 py-3">SKU</th>
+                    <th class="px-4 py-3 text-right">Price</th>
+                    <th class="px-4 py-3">Notes</th>
+                    <th class="px-4 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                  @for (item of filteredItems(); track item.id) {
+                    <tr class="hover:bg-slate-50/80">
+                      <td class="max-w-[240px] px-4 py-3 font-medium text-slate-900">
+                        {{ item.title }}
+                      </td>
+                      <td class="px-4 py-3 text-slate-600">{{ item.sku || '—' }}</td>
+                      <td class="px-4 py-3 text-right font-semibold text-slate-900">
+                        ₱{{ formatMoney(item.pricePhp) }}
+                      </td>
+                      <td class="max-w-[200px] truncate px-4 py-3 text-slate-500">
+                        {{ item.notes || '—' }}
+                      </td>
+                      <td class="px-4 py-3 text-right">
+                        <div class="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            class="rounded-lg px-2.5 py-1 text-xs font-semibold text-pcmazing-600 hover:bg-pcmazing-50"
+                            (click)="startEditItem(item)"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            class="rounded-lg px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50"
+                            (click)="deleteItem(item)"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        </div>
+      } @else {
+        <div
+          class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500"
+        >
+          Select or create a store to manage its price list.
+        </div>
+      }
+    </div>
+  </div>
+</section>

@@ -2451,6 +2451,59 @@ export class PayrollService {
     return this.getTimeClockStatus(user.username);
   }
 
+  async getTimeClockStatusForUser(
+    userId: number,
+    source: 'tblusers' | 'pcmazing_admin_users',
+  ): Promise<TimeClockStatus> {
+    const identity = await this.resolveUserIdentity(userId, source);
+    if (!identity) {
+      const clock = await this.getServerClock();
+      const settings = await this.getSettings();
+      return {
+        username: '',
+        fullName: '',
+        employeeCode: null,
+        workDate: clock.workDate,
+        timeIn: null,
+        timeOut: null,
+        canTimeIn: false,
+        canTimeOut: false,
+        status: 'not_found',
+        message: 'Account not found.',
+        serverNow: clock.serverNow,
+        undertimeGraceMinutes: settings.undertimeGraceMinutes,
+        ...this.emptyTimeClockLocationFields(clock.workDate, settings.workWeek),
+      };
+    }
+    return this.getTimeClockStatus(identity.username);
+  }
+
+  async timeInForUser(
+    userId: number,
+    source: 'tblusers' | 'pcmazing_admin_users',
+    selfie: Express.Multer.File,
+    workLocationType: 'office' | 'wfh',
+    location?: TimeClockLocationInput | null,
+  ): Promise<TimeClockStatus> {
+    const identity = await this.resolveUserIdentity(userId, source);
+    if (!identity) {
+      throw new NotFoundException('Account not found.');
+    }
+    return this.timeIn(identity.username, selfie, workLocationType, location);
+  }
+
+  async timeOutForUser(
+    userId: number,
+    source: 'tblusers' | 'pcmazing_admin_users',
+    selfie: Express.Multer.File,
+  ): Promise<TimeClockStatus> {
+    const identity = await this.resolveUserIdentity(userId, source);
+    if (!identity) {
+      throw new NotFoundException('Account not found.');
+    }
+    return this.timeOut(identity.username, selfie);
+  }
+
   async requestOvertime(
     userId: number,
     userSource: AdminUserRecord['source'],

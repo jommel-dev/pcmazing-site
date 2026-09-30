@@ -35,6 +35,7 @@ import { QuotationsPageComponent } from './pages/quotations/quotations-page.comp
 import { QuotationDetailPageComponent } from './pages/quotations/quotation-detail-page.component';
 import { QuotationCreatePageComponent } from './pages/quotations/quotation-create-page.component';
 import { QuotationPrintPageComponent } from './pages/quotations/quotation-print-page.component';
+import { LocalPriceListsPageComponent } from './pages/local-price-lists/local-price-lists-page.component';
 import { UserManagementPageComponent } from './pages/user-management/user-management-page.component';
 import { LeadGenerationPageComponent } from './pages/marketing/lead-generation-page.component';
 import { LeadProspectViewPageComponent } from './pages/marketing/lead-prospect-view-page.component';
@@ -50,6 +51,7 @@ import { KanbanHubPageComponent } from './pages/projects/kanban-hub-page.compone
 import { AdminModulePlaceholderPageComponent } from './pages/modules/admin-module-placeholder-page.component';
 import { PrintingGeneratorPageComponent } from './pages/printing/printing-generator-page.component';
 import { CompanyExpensesPageComponent } from './pages/company-expenses/company-expenses-page.component';
+import { PortalTimeClockPageComponent } from './pages/time-clock/portal-time-clock-page.component';
 
 export const adminRoutes: Routes = [
   {
@@ -107,6 +109,13 @@ export const adminRoutes: Routes = [
         component: EditProfilePageComponent,
         title: 'Edit Profile | PCMazing Admin',
         data: { module: 'profile' },
+      },
+      {
+        path: 'time-clock',
+        component: PortalTimeClockPageComponent,
+        title: 'Time Clock | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'time_clock' },
       },
       {
         path: 'contact-inquiries',
@@ -324,6 +333,13 @@ export const adminRoutes: Routes = [
         title: 'Quotation Detail | PCMazing Admin',
         canActivate: [adminRoleGuard],
         data: { module: 'quotation' },
+      },
+      {
+        path: 'local-price-lists',
+        component: LocalPriceListsPageComponent,
+        title: 'Local Price Lists | PCMazing Admin',
+        canActivate: [adminRoleGuard],
+        data: { module: 'local_price_lists' },
       },
       {
         path: 'users',

@@ -22,6 +22,8 @@
       </div>
     }
 
+    <app-portal-time-clock mode="compact" (punched)="onTimeClockPunched()" />
+
     @if (data.adjustmentNotice?.message; as adjustmentNoticeMessage) {
       <div class="rounded-2xl border border-sky-200 bg-sky-50 px-5 py-4 dark:border-sky-900 dark:bg-sky-950/40">
         <p class="text-sm font-bold text-sky-900 dark:text-sky-100">Missed time out</p>

@@ -103,8 +103,11 @@
             <tr>
               <th class="px-4 py-3 text-left font-bold text-slate-600">Description</th>
               <th class="px-4 py-3 text-left font-bold text-slate-600">Qty</th>
-              <th class="px-4 py-3 text-left font-bold text-slate-600">Rate</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600">Base</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600">Topup</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600">Charged</th>
               <th class="px-4 py-3 text-left font-bold text-slate-600">Discount</th>
+              <th class="px-4 py-3 text-right font-bold text-slate-600">Line topup</th>
               <th class="px-4 py-3 text-right font-bold text-slate-600">Line total</th>
             </tr>
           </thead>
@@ -113,8 +116,17 @@
               <tr>
                 <td class="px-4 py-3 text-slate-800">{{ lineDescription(item) }}</td>
                 <td class="px-4 py-3 text-slate-600">{{ lineQuantity(item) }}</td>
+                <td class="px-4 py-3 text-slate-600">{{ formatMoney(lineBaseUnitPrice(item)) }}</td>
+                <td class="px-4 py-3 text-slate-600">{{ lineTopupLabel(item) }}</td>
                 <td class="px-4 py-3 text-slate-600">{{ formatMoney(item.unitPrice) }}</td>
                 <td class="px-4 py-3 text-slate-600">{{ discountLabel(item.discountType) }}</td>
+                <td class="px-4 py-3 text-right text-slate-600">
+                  @if (lineTopupTotal(item) > 0) {
+                    {{ formatMoney(lineTopupTotal(item)) }}
+                  } @else {
+                    —
+                  }
+                </td>
                 <td class="px-4 py-3 text-right text-slate-600">{{ formatMoney(item.lineTotal) }}</td>
               </tr>
             }
@@ -127,6 +139,12 @@
           <span>Subtotal</span>
           <span class="font-medium text-slate-800">{{ formatMoney(quote.subtotal ?? quote.totalAmount) }}</span>
         </div>
+        @if (quoteTotalTopup(quote) > 0) {
+          <div class="flex items-center justify-between text-slate-500">
+            <span>Total topup (staff)</span>
+            <span class="font-medium text-slate-700">{{ formatMoney(quoteTotalTopup(quote)) }}</span>
+          </div>
+        }
         @if ((quote.discountTotal ?? 0) > 0) {
           <div class="flex items-center justify-between text-emerald-700">
             <span>Discounts</span>

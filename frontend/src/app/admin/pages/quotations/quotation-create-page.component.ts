@@ -16,6 +16,12 @@ import {
   normalizePhDiscountType,
   type PhDiscountType,
 } from '../inventory/ph-discount.util';
+import {
+  computeChargedUnitPrice,
+  computeLineTopupTotal,
+  normalizeTopupMode,
+  type TopupMode,
+} from './quotation-topup.util';
 
 const DISCOUNT_OPTIONS: Array<{ value: PhDiscountType; label: string }> = [
   { value: 'none', label: 'No discount' },
@@ -23,7 +29,24 @@ const DISCOUNT_OPTIONS: Array<{ value: PhDiscountType; label: string }> = [
   { value: 'pwd', label: 'PWD (20%)' },
 ];
 
+const TOPUP_OPTIONS: Array<{ value: TopupMode; label: string }> = [
+  { value: 'none', label: 'No topup' },
+  { value: 'fixed', label: 'Fixed ₱' },
+  { value: 'percent', label: 'Percent %' },
+];
+
 type QuoteItemKind = 'material' | 'custom';
+
+type QuoteLineFormValue = {
+  itemKind?: QuoteItemKind;
+  materialId: string;
+  description: string;
+  quantity: number | string;
+  baseUnitPrice: number | string;
+  topupMode: TopupMode | string;
+  topupValue: number | string;
+  discountType?: PhDiscountType;
+};
 
 @Component({
   selector: 'app-quotation-create-page',
@@ -41,6 +64,7 @@ export class QuotationCreatePageComponent implements OnInit {
   private customerSearchCloseTimer: ReturnType<typeof setTimeout> | null = null;
 
   readonly discountOptions = DISCOUNT_OPTIONS;
+  readonly topupOptions = TOPUP_OPTIONS;
   readonly loading = signal(true);
   readonly saving = signal(false);
   readonly error = signal('');
@@ -131,13 +155,17 @@ export class QuotationCreatePageComponent implements OnInit {
     this.partQueries.set([]);
     for (const item of quote.items) {
       const isCustom = !item.materialId;
+      const baseUnitPrice =
+        item.baseUnitPrice != null ? Number(item.baseUnitPrice) : Number(item.unitPrice) || 0;
       this.itemsArray.push(
         this.formBuilder.nonNullable.group({
           itemKind: [isCustom ? 'custom' : 'material'],
           materialId: [item.materialId ? String(item.materialId) : ''],
           description: [item.description || ''],
           quantity: [item.quantity, [Validators.required, Validators.min(0.01)]],
-          unitPrice: [item.unitPrice, [Validators.required, Validators.min(0)]],
+          baseUnitPrice: [baseUnitPrice, [Validators.required, Validators.min(0)]],
+          topupMode: [normalizeTopupMode(item.topupMode)],
+          topupValue: [Number(item.topupValue ?? 0), [Validators.required, Validators.min(0)]],
           discountType: [normalizePhDiscountType(item.discountType)],
         }),
       );
@@ -152,7 +180,9 @@ export class QuotationCreatePageComponent implements OnInit {
         materialId: [''],
         description: [''],
         quantity: [1, [Validators.required, Validators.min(0.01)]],
-        unitPrice: [0, [Validators.required, Validators.min(0)]],
+        baseUnitPrice: [0, [Validators.required, Validators.min(0)]],
+        topupMode: ['none' as TopupMode],
+        topupValue: [0, [Validators.required, Validators.min(0)]],
         discountType: ['none' as PhDiscountType],
       }),
     );
@@ -209,7 +239,9 @@ export class QuotationCreatePageComponent implements OnInit {
               itemKind: 'custom' as QuoteItemKind,
               materialId: '',
               description: value.trim().slice(0, 500),
-              unitPrice: 0,
+              baseUnitPrice: 0,
+              topupMode: 'none' as TopupMode,
+              topupValue: 0,
             },
             { emitEvent: false },
           );
@@ -300,7 +332,9 @@ export class QuotationCreatePageComponent implements OnInit {
       {
         itemKind: 'material' as QuoteItemKind,
         materialId: String(item.id),
-        unitPrice: this.resolveMaterialUnitPrice(item),
+        baseUnitPrice: this.resolveMaterialUnitPrice(item),
+        topupMode: 'none' as TopupMode,
+        topupValue: 0,
         description: item.materialName,
       },
       { emitEvent: false },
@@ -329,7 +363,9 @@ export class QuotationCreatePageComponent implements OnInit {
         itemKind: 'custom' as QuoteItemKind,
         materialId: '',
         description,
-        unitPrice: Number(hit.pricePhp) || 0,
+        baseUnitPrice: Number(hit.pricePhp) || 0,
+        topupMode: 'none' as TopupMode,
+        topupValue: 0,
       },
       { emitEvent: false },
     );
@@ -509,16 +545,39 @@ export class QuotationCreatePageComponent implements OnInit {
     this.selectCustomer(customer);
   }
 
+  itemChargedUnitPrice(index: number): number {
+    const group = this.itemsArray.at(index);
+    if (!group) {
+      return 0;
+    }
+    const item = group.getRawValue() as QuoteLineFormValue;
+    return computeChargedUnitPrice(
+      Number(item.baseUnitPrice) || 0,
+      normalizeTopupMode(item.topupMode),
+      Number(item.topupValue) || 0,
+    );
+  }
+
+  itemLineTopupTotal(index: number): number {
+    const group = this.itemsArray.at(index);
+    if (!group) {
+      return 0;
+    }
+    const item = group.getRawValue() as QuoteLineFormValue;
+    return computeLineTopupTotal(
+      Number(item.baseUnitPrice) || 0,
+      this.itemChargedUnitPrice(index),
+      Number(item.quantity) || 0,
+    );
+  }
+
   itemSubtotal(index: number): number {
     const group = this.itemsArray.at(index);
     if (!group) {
       return 0;
     }
-    const { quantity, unitPrice } = group.getRawValue() as {
-      quantity: number | string;
-      unitPrice: number | string;
-    };
-    return (Number(quantity) || 0) * (Number(unitPrice) || 0);
+    const { quantity } = group.getRawValue() as QuoteLineFormValue;
+    return (Number(quantity) || 0) * this.itemChargedUnitPrice(index);
   }
 
   itemDiscountType(index: number): PhDiscountType {
@@ -526,7 +585,7 @@ export class QuotationCreatePageComponent implements OnInit {
     if (!group) {
       return 'none';
     }
-    return normalizePhDiscountType((group.getRawValue() as { discountType?: string }).discountType);
+    return normalizePhDiscountType((group.getRawValue() as QuoteLineFormValue).discountType);
   }
 
   itemNetAmount(index: number): number {
@@ -543,6 +602,10 @@ export class QuotationCreatePageComponent implements OnInit {
 
   lineDiscountTotal(): number {
     return this.itemsArray.controls.reduce((total, _, index) => total + this.itemDiscountAmount(index), 0);
+  }
+
+  totalTopupAmount(): number {
+    return this.itemsArray.controls.reduce((total, _, index) => total + this.itemLineTopupTotal(index), 0);
   }
 
   customDiscountAmount(): number {
@@ -628,22 +691,18 @@ export class QuotationCreatePageComponent implements OnInit {
       validityDays: Number(value.validityDays) || 7,
       status,
       items: this.itemsArray.controls.map((control, index) => {
-        const item = control.getRawValue() as {
-          itemKind?: QuoteItemKind;
-          materialId: string;
-          description: string;
-          quantity: number | string;
-          unitPrice: number | string;
-          discountType?: PhDiscountType;
-        };
+        const item = control.getRawValue() as QuoteLineFormValue;
         const materialId = Number(item.materialId);
         const hasMaterial = Number.isFinite(materialId) && materialId > 0;
         const description = (item.description || this.partQuery(index) || '').trim();
+        const topupMode = normalizeTopupMode(item.topupMode);
         return {
           ...(hasMaterial ? { materialId } : {}),
           description: description || undefined,
           quantity: Number(item.quantity),
-          unitPrice: Number(item.unitPrice),
+          baseUnitPrice: Number(item.baseUnitPrice) || 0,
+          topupMode,
+          topupValue: topupMode === 'none' ? 0 : Number(item.topupValue) || 0,
           discountType: normalizePhDiscountType(item.discountType),
         };
       }),
