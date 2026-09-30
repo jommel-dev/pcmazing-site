@@ -45,6 +45,8 @@ import { CompanyExpensesController } from './company-expenses/company-expenses.c
 import { CompanyExpensesService } from './company-expenses/company-expenses.service';
 import { PartsPriceSearchController } from './parts-price-search/parts-price-search.controller';
 import { PartsPriceSearchService } from './parts-price-search/parts-price-search.service';
+import { LocalPriceListsController } from './local-price-lists/local-price-lists.controller';
+import { LocalPriceListsService } from './local-price-lists/local-price-lists.service';
 
 @Module({
   imports: [DatabaseModule, AuthModule, PayrollModule, ProjectsModule],
@@ -61,6 +63,7 @@ import { PartsPriceSearchService } from './parts-price-search/parts-price-search
     QuotationController,
     PublicQuotationsController,
     PartsPriceSearchController,
+    LocalPriceListsController,
     UsersController,
     PayrollController,
     MarketingTeamsController,
@@ -83,6 +86,7 @@ import { PartsPriceSearchService } from './parts-price-search/parts-price-search
     PurchaseService,
     QuotationService,
     PartsPriceSearchService,
+    LocalPriceListsService,
     RbacService,
     RolesGuard,
     UsersService,
