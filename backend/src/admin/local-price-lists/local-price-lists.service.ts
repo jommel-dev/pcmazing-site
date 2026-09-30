@@ -1,11 +1,14 @@
 import {
   BadRequestException,
+  forwardRef,
+  Inject,
   Injectable,
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { tableExists } from '../common/admin-table.util';
+import { PartsPriceSearchService } from '../parts-price-search/parts-price-search.service';
 import {
   LOCAL_PRICE_LIST_TEMPLATE_CSV,
   parseLocalPriceListCsv,
@@ -44,7 +47,11 @@ export type LocalPriceSearchHit = {
 
 @Injectable()
 export class LocalPriceListsService {
-  constructor(private readonly databaseService: DatabaseService) {}
+  constructor(
+    private readonly databaseService: DatabaseService,
+    @Inject(forwardRef(() => PartsPriceSearchService))
+    private readonly partsPriceSearch: PartsPriceSearchService,
+  ) {}
 
   private async ensureTables(): Promise<void> {
     const [storesOk, itemsOk] = await Promise.all([
@@ -88,6 +95,7 @@ export class LocalPriceListsService {
       [name, dto.active ?? true],
     );
 
+    this.partsPriceSearch.clearCache();
     return this.getStore(Number(insert.rows[0].id));
   }
 
@@ -115,6 +123,7 @@ export class LocalPriceListsService {
       [dto.name?.trim() || null, dto.active ?? null, id],
     );
 
+    this.partsPriceSearch.clearCache();
     return this.getStore(id);
   }
 
@@ -161,6 +170,7 @@ export class LocalPriceListsService {
          RETURNING id`,
         [storeId, title, sku, dto.pricePhp, notes],
       );
+      this.partsPriceSearch.clearCache();
       return this.getItem(storeId, Number(insert.rows[0].id));
     } catch (error) {
       this.rethrowUniqueSku(error);
@@ -215,6 +225,7 @@ export class LocalPriceListsService {
       throw error;
     }
 
+    this.partsPriceSearch.clearCache();
     return this.getItem(storeId, itemId);
   }
 
@@ -227,6 +238,7 @@ export class LocalPriceListsService {
       `DELETE FROM pcmazing_local_price_items WHERE id = $1 AND store_id = $2`,
       [itemId, storeId],
     );
+    this.partsPriceSearch.clearCache();
   }
 
   getImportTemplate(): string {
@@ -262,6 +274,7 @@ export class LocalPriceListsService {
       throw error;
     }
 
+    this.partsPriceSearch.clearCache();
     return { imported: rows.length };
   }
 

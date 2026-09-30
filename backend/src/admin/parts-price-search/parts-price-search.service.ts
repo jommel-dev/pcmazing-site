@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LocalPriceListsService } from '../local-price-lists/local-price-lists.service';
 import { createShopifySuggestAdapter } from './adapters/shopify-suggest.adapter';
@@ -26,6 +26,7 @@ export class PartsPriceSearchService {
 
   constructor(
     private readonly config: ConfigService,
+    @Inject(forwardRef(() => LocalPriceListsService))
     private readonly localPriceLists: LocalPriceListsService,
   ) {
     const timeoutMs = this.resolveTimeoutMs();
@@ -52,6 +53,10 @@ export class PartsPriceSearchService {
       createPcHubAdapter(timeoutMs),
     ];
     this.adapters = new Map(list.map((adapter) => [adapter.id, adapter]));
+  }
+
+  clearCache(): void {
+    this.cache.clear();
   }
 
   isEnabled(): boolean {
