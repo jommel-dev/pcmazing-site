@@ -4,10 +4,12 @@
 #   www.pcmazing.com  → http://pcmazing_frontend_app:80
 #   v1-api.pcmazing.com  → http://pcmazing_backend_api:3000
 #
-# Deploy on server (as root):
+# Deploy on server (as root). Full steps: docs/deployment.md
 #   cd ~/apps/pcmazing-site
-#   cp .env.docker.example .env.docker   # edit DB + secrets
-#   docker compose --env-file .env.docker up -d --build
+#   cp .env.docker.example .env.docker   # first time only; edit DB + secrets
+#   docker compose --env-file .env.docker build pcmazing_frontend_app
+#   docker compose --env-file .env.docker build pcmazing_backend_api
+#   docker compose --env-file .env.docker up -d --no-build
 #
 # Network: must match the network your tunnel container is on (this server: app-tier).
 #   docker inspect <pcmazing-tunnel-container> -f '{{json .NetworkSettings.Networks}}'
@@ -41,6 +43,8 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
+      # Same host crash as the image build. See docs/deployment.md.
+      UV_USE_IO_URING: "0"
       CORS_ORIGINS: ${CORS_ORIGINS:-https://www.pcmazing.com,https://pcmazing.com}
       UPLOADS_DIR: /app/uploads
     volumes:

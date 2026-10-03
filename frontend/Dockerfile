@@ -1,5 +1,9 @@
 # Stage 1: Build Angular (Node 22)
+# Node 22 turns on libuv io_uring. On the production host that segfaults
+# inside npm (exit 139) before install finishes. Keep it off for npm and ng build.
 FROM node:22-slim AS builder
+
+ENV UV_USE_IO_URING=0
 
 WORKDIR /app
 
