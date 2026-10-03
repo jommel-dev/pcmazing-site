@@ -89,36 +89,20 @@ docker compose --env-file .env.docker stop
 
 ## npm segmentation fault (exit 139)
 
-A failed build that looks like this:
+`node:22-slim` on this server is Node 22.23.3 on Debian. `npm ci` dies in under a second with `Segmentation fault (core dumped)` and exit 139. Turning off `io_uring` does not stop it. The Dockerfiles build on `node:22.23.3-alpine` instead, which does not use that Debian Node binary.
 
-```text
-RUN npm ci
-Segmentation fault (core dumped)
-exit code: 139
+Pull that change before building. The log should show `node:22.23.3-alpine` and a line that prints `v22.23.3` before `npm ci`. If it still shows `node:22-slim` or `RUN npm ci --legacy-peer-deps || npm install`, the server is not on this commit.
+
+If the Alpine build still exits 139, rebuild without cache:
+
+```bash
+docker compose --env-file .env.docker build --no-cache pcmazing_frontend_app
+docker compose --env-file .env.docker build --no-cache pcmazing_backend_api
+docker compose --env-file .env.docker up -d --no-build
 ```
-
-is Node 22 crashing as soon as `npm` starts. Node 22 uses Linux `io_uring`. On this host that faults inside the build container. Both Dockerfiles set `UV_USE_IO_URING=0` before `npm ci`, and the API service sets the same variable at runtime.
-
-The fix is in the image, so the server must be on a commit that contains it before you build. If the log still stops in `npm ci` with exit 139:
-
-1. Confirm the variable is in the files you just pulled:
-
-   ```bash
-   grep UV_USE_IO_URING frontend/Dockerfile backend/Dockerfile
-   ```
-
-2. Rebuild without reusing the old npm layer:
-
-   ```bash
-   docker compose --env-file .env.docker build --no-cache pcmazing_frontend_app
-   docker compose --env-file .env.docker build --no-cache pcmazing_backend_api
-   docker compose --env-file .env.docker up -d --no-build
-   ```
-
-3. If the log instead shows `uv_thread_create` or an assertion failure, the host Docker engine is too old for this Node image. Upgrade Docker (Engine 24 or newer, with a current `runc`) and build again.
 
 ## What each image does
 
-**Frontend.** `frontend/Dockerfile` installs dependencies, runs the production Angular build, and copies the browser files into nginx. The container listens on port 80. The public API host is written into the bundle from `API_URL`.
+**Frontend.** `frontend/Dockerfile` installs dependencies on Alpine Node, runs the production Angular build, and copies the browser files into nginx. The container listens on port 80. The public API host is written into the bundle from `API_URL`.
 
-**Backend.** `backend/Dockerfile` compiles the NestJS app, installs production dependencies (including `bcrypt`), and runs `node dist/main.js` as the `node` user on port 3000. Configuration comes from `.env.docker`.
+**Backend.** `backend/Dockerfile` compiles the NestJS app on Alpine Node, installs production dependencies (including `bcrypt`), and runs `node dist/main.js` as the `node` user on port 3000. Configuration comes from `.env.docker`.
