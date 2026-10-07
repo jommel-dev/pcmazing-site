@@ -18,22 +18,39 @@ export class SeoService {
     const robots = meta.indexable ? 'index, follow' : 'noindex, nofollow';
 
     this.title.setTitle(meta.title);
-    this.meta.updateTag({ name: 'description', content: meta.description });
-    this.meta.updateTag({ name: 'robots', content: robots });
+    this.upsertMetaTag({ name: 'description', content: meta.description });
+    this.upsertMetaTag({ name: 'robots', content: robots });
 
-    this.meta.updateTag({ property: 'og:title', content: meta.title });
-    this.meta.updateTag({ property: 'og:description', content: meta.description });
-    this.meta.updateTag({ property: 'og:url', content: url });
-    this.meta.updateTag({ property: 'og:type', content: 'website' });
-    this.meta.updateTag({ property: 'og:image', content: image });
-    this.meta.updateTag({ property: 'og:site_name', content: 'PCmazing' });
+    this.upsertMetaTag({ property: 'og:title', content: meta.title });
+    this.upsertMetaTag({ property: 'og:description', content: meta.description });
+    this.upsertMetaTag({ property: 'og:url', content: url });
+    this.upsertMetaTag({ property: 'og:type', content: 'website' });
+    this.upsertMetaTag({ property: 'og:image', content: image });
+    this.upsertMetaTag({ property: 'og:site_name', content: 'PCmazing' });
 
-    this.meta.updateTag({ name: 'twitter:card', content: 'summary' });
-    this.meta.updateTag({ name: 'twitter:title', content: meta.title });
-    this.meta.updateTag({ name: 'twitter:description', content: meta.description });
-    this.meta.updateTag({ name: 'twitter:image', content: image });
+    this.upsertMetaTag({ name: 'twitter:card', content: 'summary' });
+    this.upsertMetaTag({ name: 'twitter:title', content: meta.title });
+    this.upsertMetaTag({ name: 'twitter:description', content: meta.description });
+    this.upsertMetaTag({ name: 'twitter:image', content: image });
 
     this.setCanonical(url);
+  }
+
+  private upsertMetaTag(tag: { name?: string; property?: string; content: string }): void {
+    const selector =
+      tag.property != null
+        ? `property="${tag.property}"`
+        : tag.name != null
+          ? `name="${tag.name}"`
+          : null;
+    if (!selector) {
+      return;
+    }
+    if (this.meta.getTag(selector)) {
+      this.meta.updateTag(tag, selector);
+    } else {
+      this.meta.addTag(tag);
+    }
   }
 
   private setCanonical(url: string): void {

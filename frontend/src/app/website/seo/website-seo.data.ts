@@ -75,6 +75,7 @@ export function resolvePageSeo(pathname: string): PageSeoMeta {
     normalized === '/time-clock' ||
     normalized.startsWith('/admin') ||
     normalized.startsWith('/user') ||
+    normalized === '/q' ||
     normalized.startsWith('/q/')
   ) {
     return {
