@@ -1,7 +1,7 @@
 # Website SEO Launch Baseline
 
 **Date:** 2026-10-07  
-**Status:** Approved design — pending implementation  
+**Status:** Implemented  
 **Approach:** Central `SeoService` + page meta map; static `robots.txt` / `sitemap.xml`; Organization + LocalBusiness JSON-LD (CSR; no SSR)
 
 ## Goal
