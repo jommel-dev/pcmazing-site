@@ -24,8 +24,9 @@ export function createUniPcAdapter(timeoutMs: number): PartsPriceSearchAdapter {
 }
 
 /**
- * PCHub often blocks anonymous bots (403). Adapter still attempts search HTML
- * and degrades to empty on failure so other sources keep working.
+ * PCHub sits behind Cloudflare bot protection ("Just a moment…" / HTTP 403).
+ * Attempts search HTML when enabled, but never throws — empty results only —
+ * so quotation create search does not surface a source error.
  */
 export function createPcHubAdapter(timeoutMs: number): PartsPriceSearchAdapter {
   const origin = 'https://www.pchubonline.com';
@@ -33,16 +34,33 @@ export function createPcHubAdapter(timeoutMs: number): PartsPriceSearchAdapter {
     id: 'pchub',
     label: 'PCHub',
     async search(query: string, limit: number): Promise<PartsPriceHit[]> {
-      const url = `${origin}/search?controller=search&s=${encodeURIComponent(query)}`;
-      const html = await fetchText(url, { timeoutMs });
-      return parseLooseProductCards(html, {
-        sourceId: 'pchub',
-        sourceLabel: 'PCHub',
-        origin,
-        limit,
-      });
+      try {
+        const url = `${origin}/search?controller=search&s=${encodeURIComponent(query)}`;
+        const html = await fetchText(url, { timeoutMs });
+        if (looksLikeBotChallenge(html)) {
+          return [];
+        }
+        return parseLooseProductCards(html, {
+          sourceId: 'pchub',
+          sourceLabel: 'PCHub',
+          origin,
+          limit,
+        });
+      } catch {
+        return [];
+      }
     },
   };
+}
+
+function looksLikeBotChallenge(html: string): boolean {
+  const sample = html.slice(0, 4000).toLowerCase();
+  return (
+    sample.includes('just a moment') ||
+    sample.includes('cf-browser-verification') ||
+    sample.includes('cdn-cgi/challenge') ||
+    sample.includes('attention required')
+  );
 }
 
 function parseLooseProductCards(
