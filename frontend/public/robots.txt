@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+
+Disallow: /admin
+Disallow: /user
+Disallow: /setup
+Disallow: /q/
+Disallow: /time-clock
+
+Sitemap: https://www.pcmazing.com/sitemap.xml

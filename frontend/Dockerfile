@@ -1,14 +1,19 @@
-# Stage 1: Build Angular (Node 22)
-FROM node:22-slim AS builder
+# Stage 1: Build Angular
+# node:22-slim (Debian, Node 22.23.3) segfaults inside npm on the production
+# host (exit 139) even with io_uring disabled. Alpine uses musl and does not
+# hit that crash. UV_USE_IO_URING=0 stays on, because libuv can still fault
+# if io_uring is left enabled.
+FROM node:22.23.3-alpine AS builder
+
+ENV UV_USE_IO_URING=0
 
 WORKDIR /app
 
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3 make g++ \
-  && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache python3 make g++ linux-headers
 
 COPY package*.json ./
-RUN npm ci --legacy-peer-deps || npm install --legacy-peer-deps
+RUN UV_USE_IO_URING=0 node -p process.version \
+  && UV_USE_IO_URING=0 npm ci --legacy-peer-deps
 
 COPY . .
 
