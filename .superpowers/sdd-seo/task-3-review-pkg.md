@@ -136,7 +136,7 @@ index 8b1c899..9fcf8e0 100644
  <html lang="en">
  <head>
    <meta charset="utf-8">
-   <title>PCmazing | Web Development & Tech Solutions</title>
+   <title>PCmazing Information Technology Services</title>
 +  <meta name="description" content="PCmazing ΓÇö web development, PC repair, custom builds, and tech support in Cabanatuan City, Philippines.">
 +  <meta name="robots" content="index, follow">
    <base href="/">

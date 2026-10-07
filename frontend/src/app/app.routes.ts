@@ -41,7 +41,7 @@ export const routes: Routes = [
       {
         path: '',
         component: HomeComponent,
-        title: 'PCmazing | Web Development & Tech Solutions',
+        title: 'PCmazing Information Technology Services',
       },
       {
         path: 'web-services',
