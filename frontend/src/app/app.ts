@@ -36,6 +36,7 @@ export class App implements OnInit {
 
   private applySeo(url: string): void {
     const path = url.split('?')[0].split('#')[0] || '/';
-    this.seo.apply(resolvePageSeo(path));
+    // Defer so we run after the router's TitleStrategy has set the route title.
+    queueMicrotask(() => this.seo.apply(resolvePageSeo(path)));
   }
 }

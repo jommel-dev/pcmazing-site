@@ -82,7 +82,6 @@ export const routes: Routes = [
       {
         path: 'services/:slug',
         component: ServiceDetailPageComponent,
-        title: 'Service | PCmazing',
       },
     ],
   },
