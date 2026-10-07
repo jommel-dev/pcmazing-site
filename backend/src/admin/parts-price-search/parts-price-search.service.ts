@@ -15,7 +15,9 @@ type CacheEntry = {
   result: PartsPriceSearchResult;
 };
 
-const DEFAULT_SOURCES = ['pcx', 'dynaquest', 'octagon', 'unipc', 'pchub'];
+// PCHub omitted by default: Cloudflare blocks server-side scrapes (HTTP 403).
+// Re-enable via PARTS_SEARCH_SOURCES=...,pchub if a workable path appears.
+const DEFAULT_SOURCES = ['pcx', 'octagon', 'unipc'];
 const CACHE_TTL_MS = 8 * 60 * 1000;
 
 @Injectable()
@@ -38,18 +40,13 @@ export class PartsPriceSearchService {
         timeoutMs,
       }),
       createShopifySuggestAdapter({
-        id: 'dynaquest',
-        label: 'DynaQuest',
-        origin: 'https://dynaquestpc.com',
-        timeoutMs,
-      }),
-      createShopifySuggestAdapter({
         id: 'octagon',
         label: 'Octagon',
         origin: 'https://www.octagon.com.ph',
         timeoutMs,
       }),
       createUniPcAdapter(timeoutMs),
+      // Kept registered so PARTS_SEARCH_SOURCES can opt back in without a code change.
       createPcHubAdapter(timeoutMs),
     ];
     this.adapters = new Map(list.map((adapter) => [adapter.id, adapter]));
