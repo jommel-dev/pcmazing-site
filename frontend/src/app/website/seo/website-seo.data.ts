@@ -14,7 +14,7 @@ type StaticPageSeo = Omit<PageSeoMeta, 'path' | 'indexable'>;
 
 export const STATIC_PAGE_SEO: Record<string, StaticPageSeo> = {
   '/': {
-    title: 'PCmazing | Web Development & Tech Solutions',
+    title: 'PCmazing Information Technology Services',
     description:
       'PCmazing in Cabanatuan City builds custom web systems and sells, repairs, and supports PCs, laptops, and accessories for homes, schools, and local businesses.',
   },
