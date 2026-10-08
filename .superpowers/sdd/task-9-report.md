@@ -24,3 +24,8 @@ Completed.
 
 - The frontend project has no component test files/test harness coverage for this dashboard; Angular compilation verifies the template and API signature.
 - Existing unrelated `.superpowers/sdd` working-tree changes were left untouched.
+
+## Fix
+
+- Extended employee payslip PDF data and rendering with commission, late, loan, manual deduction, gross, total deduction, and ledger-line details matching the modal.
+- Added generated-PDF regression coverage for ledger lines and remarks exclusion when `includeRemarks` is false.

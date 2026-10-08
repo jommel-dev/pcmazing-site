@@ -2898,6 +2898,8 @@ export class PayrollService {
       },
       days,
       totals,
+      lines,
+      breakdown,
       remarks: slip.remarks,
     };
 

@@ -1,4 +1,8 @@
 import PDFDocument from 'pdfkit';
+import type {
+  computePayslipNet,
+  PayslipLedgerLine,
+} from './payroll-ledger.util';
 
 export interface PayslipDayBreakdownRow {
   workDate: string;
@@ -39,6 +43,8 @@ export interface PayslipPdfPayload {
     salaryTypeLabel?: string;
     payBasis?: string;
   };
+  lines?: Array<Pick<PayslipLedgerLine, 'lineType' | 'label' | 'amount'>>;
+  breakdown?: ReturnType<typeof computePayslipNet>;
 }
 
 function money(value: number): string {
@@ -247,6 +253,22 @@ export async function buildPayslipPdfBuffer(
     doc.moveDown(0.35);
     writeLine(`Base pay: ${money(t.basePay)}`);
     writeLine(`Overtime pay: ${money(t.overtimePay)}`);
+    if (payload.breakdown) {
+      writeLine(`Commissions: ${money(payload.breakdown.commissionsTotal)}`);
+      writeLine(`Late deductions: ${money(payload.breakdown.lateTotal)}`);
+      writeLine(`Loan deductions: ${money(payload.breakdown.loanTotal)}`);
+      writeLine(`Manual deductions: ${money(payload.breakdown.manualTotal)}`);
+      writeLine(`Gross pay: ${money(payload.breakdown.grossPay)}`);
+      writeLine(`Total deductions: ${money(payload.breakdown.totalDeductions)}`);
+    }
+    if (payload.lines?.length) {
+      doc.moveDown(0.35);
+      writeLine('Pay breakdown', { underline: true });
+      for (const line of payload.lines) {
+        const sign = line.lineType === 'commission' ? '+' : '-';
+        writeLine(`${line.label}: ${sign}${money(line.amount)}`);
+      }
+    }
     if (
       shouldRenderPayslipRemarks(
         payload.remarks,
@@ -260,7 +282,9 @@ export async function buildPayslipPdfBuffer(
     }
     doc.moveDown(0.25);
     doc.fontSize(13).fillColor('#0047FF');
-    writeLine(`Net estimated pay: ${money(t.estimatedPay)}`);
+    writeLine(
+      `Net pay: ${money(payload.breakdown?.netPay ?? t.estimatedPay)}`,
+    );
 
     const range = doc.bufferedPageRange();
     const pageCount = range.count;
