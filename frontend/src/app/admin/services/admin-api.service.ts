@@ -1069,7 +1069,8 @@ export interface PayrollLoan {
   termStyle: 'equal_installments' | 'fixed_per_cutoff';
   installmentCount: number | null;
   fixedInstallmentAmount: number;
-  status: 'active' | 'paid' | 'cancelled';
+  status: 'active' | 'paid' | 'cancelled' | 'deleted';
+  label: string;
   notes: string | null;
   createdAt: string;
   updatedAt: string;
@@ -2729,6 +2730,7 @@ export class AdminApiService {
   }
 
   createPayrollLoan(payload: PayrollLoanScope & {
+    label: string;
     principal: number;
     termStyle: 'equal_installments' | 'fixed_per_cutoff';
     installmentCount?: number;
@@ -2742,7 +2744,14 @@ export class AdminApiService {
     );
   }
 
-  updatePayrollLoan(id: number, payload: { status?: 'cancelled'; notes?: string }) {
+  updatePayrollLoan(
+    id: number,
+    payload: {
+      status?: 'cancelled' | 'active' | 'deleted';
+      label?: string;
+      notes?: string;
+    },
+  ) {
     return this.http.patch<ItemResponse<PayrollLoan>>(
       `${APP_CONFIG.apiUrl}/admin/payroll/loans/${id}`,
       payload,

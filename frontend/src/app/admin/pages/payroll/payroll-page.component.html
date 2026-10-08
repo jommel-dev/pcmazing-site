@@ -636,37 +636,66 @@
     @if (selectedToolEmployee(); as selected) {
       <div class="grid gap-5 xl:grid-cols-3">
         <div class="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-          <h3 class="font-bold text-slate-900 dark:text-white">Loans</h3>
-          <div class="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
-            <input type="number" min="0" step="0.01" class="h-10 rounded-lg border px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="Principal" [ngModel]="loanPrincipal()" (ngModelChange)="loanPrincipal.set(+$event || 0)" name="loanPrincipal" />
-            <select class="h-10 rounded-lg border px-3 text-sm dark:border-slate-700 dark:bg-slate-950" [ngModel]="loanTermStyle()" (ngModelChange)="loanTermStyle.set($event)" name="loanTermStyle">
-              <option value="equal_installments">Equal installments</option>
-              <option value="fixed_per_cutoff">Fixed per cutoff</option>
-            </select>
-            @if (loanTermStyle() === 'equal_installments') {
-              <input type="number" min="1" class="h-10 rounded-lg border px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="Installment count" [ngModel]="loanInstallmentCount()" (ngModelChange)="loanInstallmentCount.set(+$event || 1)" name="loanInstallments" />
-            } @else {
-              <input type="number" min="0" step="0.01" class="h-10 rounded-lg border px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="Amount per cutoff" [ngModel]="loanFixedAmount()" (ngModelChange)="loanFixedAmount.set(+$event || 0)" name="loanFixedAmount" />
-            }
-            <input class="h-10 rounded-lg border px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="Notes (optional)" [ngModel]="loanNotes()" (ngModelChange)="loanNotes.set($event)" name="loanNotes" />
+          <div class="flex items-center justify-between gap-3">
+            <h3 class="font-bold text-slate-900 dark:text-white">Loans</h3>
+            <button
+              type="button"
+              class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-lg font-bold leading-none text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              [attr.aria-label]="loanFormOpen() ? 'Close loan form' : 'Add loan'"
+              (click)="toggleLoanForm()"
+            >{{ loanFormOpen() ? '×' : '+' }}</button>
           </div>
-          <button type="button" class="mt-3 rounded-lg bg-pcmazing-500 px-3 py-2 text-xs font-bold text-white disabled:opacity-50" [disabled]="savingPayrollTool() || loanPrincipal() <= 0" (click)="createLoan()">Create loan</button>
+          @if (loanFormOpen()) {
+            <div class="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+              <input class="h-10 rounded-lg border px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="Loan name / label" [ngModel]="loanLabel()" (ngModelChange)="loanLabel.set($event)" name="loanLabel" />
+              <input type="number" min="0" step="0.01" class="h-10 rounded-lg border px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="Principal" [ngModel]="loanPrincipal()" (ngModelChange)="loanPrincipal.set(+$event || 0)" name="loanPrincipal" />
+              <select class="h-10 rounded-lg border px-3 text-sm dark:border-slate-700 dark:bg-slate-950" [ngModel]="loanTermStyle()" (ngModelChange)="loanTermStyle.set($event)" name="loanTermStyle">
+                <option value="equal_installments">Equal installments</option>
+                <option value="fixed_per_cutoff">Fixed per cutoff</option>
+              </select>
+              @if (loanTermStyle() === 'equal_installments') {
+                <input type="number" min="1" class="h-10 rounded-lg border px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="Installment count" [ngModel]="loanInstallmentCount()" (ngModelChange)="loanInstallmentCount.set(+$event || 1)" name="loanInstallments" />
+              } @else {
+                <input type="number" min="0" step="0.01" class="h-10 rounded-lg border px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="Amount per cutoff" [ngModel]="loanFixedAmount()" (ngModelChange)="loanFixedAmount.set(+$event || 0)" name="loanFixedAmount" />
+              }
+              <input class="h-10 rounded-lg border px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="Notes (optional)" [ngModel]="loanNotes()" (ngModelChange)="loanNotes.set($event)" name="loanNotes" />
+            </div>
+            <button type="button" class="mt-3 rounded-lg bg-pcmazing-500 px-3 py-2 text-xs font-bold text-white disabled:opacity-50" [disabled]="savingPayrollTool() || !loanLabel().trim() || loanPrincipal() <= 0" (click)="createLoan()">Create loan</button>
+          }
           <div class="mt-4 space-y-2">
             @for (loan of employeeLoans(); track loan.id) {
               <div class="rounded-xl border border-slate-100 p-3 text-sm dark:border-slate-800">
-                <div class="flex justify-between gap-2"><span class="font-semibold">{{ formatMoney(loan.balance) }} balance</span><span class="text-xs capitalize text-slate-500">{{ loan.status }}</span></div>
-                <p class="mt-1 text-xs text-slate-500">{{ formatMoney(loan.principal) }} principal · {{ loan.termStyle === 'equal_installments' ? loan.installmentCount + ' installments' : formatMoney(loan.fixedInstallmentAmount) + '/cutoff' }}</p>
+                <div class="flex justify-between gap-2">
+                  <span class="font-semibold text-slate-900 dark:text-white">{{ loan.label }}</span>
+                  <span class="text-xs capitalize text-slate-500">{{ loan.status }}</span>
+                </div>
+                <p class="mt-1 text-xs text-slate-500">{{ formatMoney(loan.balance) }} balance · {{ formatMoney(loan.principal) }} principal · {{ loan.termStyle === 'equal_installments' ? loan.installmentCount + ' installments' : formatMoney(loan.fixedInstallmentAmount) + '/cutoff' }}</p>
                 @if (loan.status === 'active') {
                   <div class="mt-2 flex flex-wrap gap-2">
                     <button type="button" class="text-xs font-bold text-pcmazing-500" (click)="overrideLoanId.set(loan.id)">Set period override</button>
-                    <button type="button" class="text-xs font-bold text-red-600" (click)="cancelLoan(loan)">Cancel</button>
+                    <button type="button" class="text-xs font-bold text-amber-700" (click)="cancelLoan(loan)">Cancel</button>
+                    <button type="button" class="text-xs font-bold text-red-600" (click)="deleteLoan(loan)">Delete</button>
+                  </div>
+                }
+                @if (loan.status === 'cancelled') {
+                  <div class="mt-2 flex flex-wrap gap-2">
+                    <button type="button" class="text-xs font-bold text-pcmazing-500" (click)="restoreLoan(loan)">Restore</button>
+                    <button type="button" class="text-xs font-bold text-red-600" (click)="deleteLoan(loan)">Delete</button>
+                  </div>
+                }
+                @if (loan.status === 'paid') {
+                  <div class="mt-2 flex flex-wrap gap-2">
+                    <button type="button" class="text-xs font-bold text-red-600" (click)="deleteLoan(loan)">Delete</button>
                   </div>
                 }
                 @if (overrideLoanId() === loan.id) {
                   <div class="mt-2 grid gap-2">
                     <select class="h-9 rounded-lg border px-2 text-xs dark:border-slate-700 dark:bg-slate-950" [ngModel]="overrideAction()" (ngModelChange)="overrideAction.set($event)" name="overrideAction"><option value="skip">Skip this period</option><option value="custom">Custom amount</option></select>
                     @if (overrideAction() === 'custom') { <input type="number" min="0" step="0.01" class="h-9 rounded-lg border px-2 text-xs dark:border-slate-700 dark:bg-slate-950" [ngModel]="overrideAmount()" (ngModelChange)="overrideAmount.set(+$event || 0)" name="overrideAmount" placeholder="Custom amount" /> }
-                    <button type="button" class="justify-self-start rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold text-white" (click)="saveLoanOverride()">Save override</button>
+                    <div class="flex flex-wrap gap-2">
+                      <button type="button" class="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold text-white" (click)="saveLoanOverride()">Save override</button>
+                      <button type="button" class="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 dark:border-slate-700 dark:text-slate-200" (click)="cancelLoanOverride()">Cancel</button>
+                    </div>
                   </div>
                 }
               </div>
@@ -675,33 +704,53 @@
         </div>
 
         <div class="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-          <h3 class="font-bold text-slate-900 dark:text-white">Commission entries</h3>
-          <div class="mt-3 grid gap-2">
-            <select class="h-10 rounded-lg border px-3 text-sm dark:border-slate-700 dark:bg-slate-950" [ngModel]="commissionTypeId()" (ngModelChange)="commissionTypeId.set($event == null ? null : +$event)" name="entryCommissionType">
-              <option [ngValue]="null">Custom / no type</option>
-              @for (type of commissionTypes(); track type.id) { @if (type.isActive) { <option [ngValue]="type.id">{{ type.name }}</option> } }
-            </select>
-            <input class="h-10 rounded-lg border px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="Label (optional)" [ngModel]="commissionLabel()" (ngModelChange)="commissionLabel.set($event)" name="commissionLabel" />
-            <input type="number" min="0" step="0.01" class="h-10 rounded-lg border px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="Amount" [ngModel]="commissionAmount()" (ngModelChange)="commissionAmount.set(+$event || 0)" name="commissionAmount" />
+          <div class="flex items-center justify-between gap-3">
+            <h3 class="font-bold text-slate-900 dark:text-white">Commission entries</h3>
+            <button
+              type="button"
+              class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-lg font-bold leading-none text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              [attr.aria-label]="commissionFormOpen() ? 'Close commission form' : 'Add commission'"
+              (click)="toggleCommissionForm()"
+            >{{ commissionFormOpen() ? '×' : '+' }}</button>
           </div>
-          <button type="button" class="mt-3 rounded-lg bg-pcmazing-500 px-3 py-2 text-xs font-bold text-white disabled:opacity-50" [disabled]="savingPayrollTool() || commissionAmount() <= 0" (click)="addCommissionEntry()">Add commission</button>
+          @if (commissionFormOpen()) {
+            <div class="mt-3 grid gap-2">
+              <select class="h-10 rounded-lg border px-3 text-sm dark:border-slate-700 dark:bg-slate-950" [ngModel]="commissionTypeId()" (ngModelChange)="commissionTypeId.set($event == null ? null : +$event)" name="entryCommissionType">
+                <option [ngValue]="null">Custom / no type</option>
+                @for (type of commissionTypes(); track type.id) { @if (type.isActive) { <option [ngValue]="type.id">{{ type.name }}</option> } }
+              </select>
+              <input class="h-10 rounded-lg border px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="Label (optional)" [ngModel]="commissionLabel()" (ngModelChange)="commissionLabel.set($event)" name="commissionLabel" />
+              <input type="number" min="0" step="0.01" class="h-10 rounded-lg border px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="Amount" [ngModel]="commissionAmount()" (ngModelChange)="commissionAmount.set(+$event || 0)" name="commissionAmount" />
+            </div>
+            <button type="button" class="mt-3 rounded-lg bg-pcmazing-500 px-3 py-2 text-xs font-bold text-white disabled:opacity-50" [disabled]="savingPayrollTool() || commissionAmount() <= 0" (click)="addCommissionEntry()">Add commission</button>
+          }
           <div class="mt-4 divide-y dark:divide-slate-800">
             @for (entry of employeeCommissions(); track entry.id) {
-              <div class="flex items-center justify-between gap-3 py-2 text-sm"><span>{{ entry.typeName || entry.label || 'Commission' }}</span><span class="font-semibold">{{ formatMoney(entry.amount) }} <button type="button" class="ml-2 text-xs text-red-600" (click)="deleteCommissionEntry(entry.id)">Remove</button></span></div>
+              <div class="flex items-center justify-between gap-3 py-2 text-sm"><span>{{ entry.typeName || entry.label || 'Commission' }}</span><span class="font-semibold">{{ formatMoney(entry.amount) }} <button type="button" class="ml-2 text-xs text-red-600" (click)="deleteCommissionEntry(entry)">Remove</button></span></div>
             } @empty { <p class="py-2 text-sm text-slate-500">No entries for this period.</p> }
           </div>
         </div>
 
         <div class="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-          <h3 class="font-bold text-slate-900 dark:text-white">Manual deductions</h3>
-          <div class="mt-3 grid gap-2">
-            <input class="h-10 rounded-lg border px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="Deduction label" [ngModel]="deductionLabel()" (ngModelChange)="deductionLabel.set($event)" name="deductionLabel" />
-            <input type="number" min="0" step="0.01" class="h-10 rounded-lg border px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="Amount" [ngModel]="deductionAmount()" (ngModelChange)="deductionAmount.set(+$event || 0)" name="deductionAmount" />
+          <div class="flex items-center justify-between gap-3">
+            <h3 class="font-bold text-slate-900 dark:text-white">Manual deductions</h3>
+            <button
+              type="button"
+              class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-lg font-bold leading-none text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              [attr.aria-label]="deductionFormOpen() ? 'Close deduction form' : 'Add deduction'"
+              (click)="toggleDeductionForm()"
+            >{{ deductionFormOpen() ? '×' : '+' }}</button>
           </div>
-          <button type="button" class="mt-3 rounded-lg bg-pcmazing-500 px-3 py-2 text-xs font-bold text-white disabled:opacity-50" [disabled]="savingPayrollTool() || !deductionLabel().trim() || deductionAmount() <= 0" (click)="addManualDeduction()">Add deduction</button>
+          @if (deductionFormOpen()) {
+            <div class="mt-3 grid gap-2">
+              <input class="h-10 rounded-lg border px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="Deduction label" [ngModel]="deductionLabel()" (ngModelChange)="deductionLabel.set($event)" name="deductionLabel" />
+              <input type="number" min="0" step="0.01" class="h-10 rounded-lg border px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="Amount" [ngModel]="deductionAmount()" (ngModelChange)="deductionAmount.set(+$event || 0)" name="deductionAmount" />
+            </div>
+            <button type="button" class="mt-3 rounded-lg bg-pcmazing-500 px-3 py-2 text-xs font-bold text-white disabled:opacity-50" [disabled]="savingPayrollTool() || !deductionLabel().trim() || deductionAmount() <= 0" (click)="addManualDeduction()">Add deduction</button>
+          }
           <div class="mt-4 divide-y dark:divide-slate-800">
             @for (entry of employeeDeductions(); track entry.id) {
-              <div class="flex items-center justify-between gap-3 py-2 text-sm"><span>{{ entry.label }}</span><span class="font-semibold">{{ formatMoney(entry.amount) }} <button type="button" class="ml-2 text-xs text-red-600" (click)="deleteManualDeduction(entry.id)">Remove</button></span></div>
+              <div class="flex items-center justify-between gap-3 py-2 text-sm"><span>{{ entry.label }}</span><span class="font-semibold">{{ formatMoney(entry.amount) }} <button type="button" class="ml-2 text-xs text-red-600" (click)="deleteManualDeduction(entry)">Remove</button></span></div>
             } @empty { <p class="py-2 text-sm text-slate-500">No deductions for this period.</p> }
           </div>
         </div>
@@ -709,23 +758,6 @@
     } @else {
       <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900">Select an employee to manage period payroll tools.</div>
     }
-  } @else if (activeTab() === 'commissions') {
-    <div class="max-w-3xl rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-      <h3 class="font-bold text-slate-900 dark:text-white">Commission types</h3>
-      <form class="mt-4 flex gap-2" (ngSubmit)="saveCommissionType()">
-        <input class="h-10 min-w-0 flex-1 rounded-lg border border-slate-200 px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="Type name" [ngModel]="commissionTypeName()" (ngModelChange)="commissionTypeName.set($event)" name="commissionTypeName" />
-        <button type="submit" class="rounded-lg bg-pcmazing-500 px-4 text-sm font-bold text-white disabled:opacity-50" [disabled]="savingPayrollTool() || !commissionTypeName().trim()">{{ editingCommissionTypeId() == null ? 'Add' : 'Save' }}</button>
-      </form>
-      @if (payrollToolMessage()) { <p class="mt-3 text-sm text-emerald-600">{{ payrollToolMessage() }}</p> }
-      <div class="mt-4 divide-y divide-slate-100 dark:divide-slate-800">
-        @for (item of commissionTypes(); track item.id) {
-          <div class="flex items-center justify-between gap-3 py-3">
-            <div><p class="font-semibold text-slate-900 dark:text-white">{{ item.name }}</p><p class="text-xs text-slate-500">{{ item.isActive ? 'Active' : 'Inactive' }}</p></div>
-            <div class="flex gap-2"><button type="button" class="text-xs font-bold text-pcmazing-500" (click)="editCommissionType(item)">Edit</button><button type="button" class="text-xs font-bold text-slate-600" (click)="toggleCommissionType(item)">{{ item.isActive ? 'Disable' : 'Enable' }}</button></div>
-          </div>
-        } @empty { <p class="py-6 text-center text-sm text-slate-500">No commission types yet.</p> }
-      </div>
-    </div>
   } @else if (activeTab() === 'overtime') {
     <form class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end" (ngSubmit)="applyOvertimeFilter()">
       <div class="w-full sm:max-w-xs">
