@@ -1,0 +1,139 @@
+<div>
+  <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div>
+      <h3 class="text-lg font-bold text-slate-900 dark:text-white">Roles &amp; access</h3>
+      <p class="text-sm text-slate-500 dark:text-slate-400">
+        Create roles and assign fine-grained permissions.
+      </p>
+    </div>
+    <button
+      type="button"
+      class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white dark:bg-white dark:text-slate-900"
+      (click)="startCreate()"
+    >
+      New role
+    </button>
+  </div>
+
+  @if (error()) {
+    <p class="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300">
+      {{ error() }}
+    </p>
+  }
+  @if (success()) {
+    <p class="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
+      {{ success() }}
+    </p>
+  }
+
+  @if (loading()) {
+    <p class="text-sm text-slate-500">Loading roles…</p>
+  } @else {
+    <div class="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
+      <div class="space-y-1 rounded-2xl border border-slate-200 p-2 dark:border-slate-700">
+        @for (role of roles(); track role.id) {
+          <button
+            type="button"
+            class="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm"
+            [class.bg-slate-100]="selectedId() === role.id && !creating()"
+            [class.dark:bg-slate-800]="selectedId() === role.id && !creating()"
+            (click)="selectRole(role)"
+          >
+            <span class="font-semibold text-slate-800 dark:text-slate-100">{{ role.name }}</span>
+            <span class="text-xs text-slate-500">
+              @if (role.isSystem) {
+                System
+              } @else if (!role.isActive) {
+                Inactive
+              }
+            </span>
+          </button>
+        }
+      </div>
+
+      <div class="rounded-2xl border border-slate-200 p-4 dark:border-slate-700">
+        @if (!creating() && !selected()) {
+          <p class="text-sm text-slate-500">Select a role to edit.</p>
+        } @else {
+          <div class="space-y-4">
+            <div>
+              <label class="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500"
+                >Role name</label
+              >
+              <input
+                class="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
+                [ngModel]="draftName()"
+                (ngModelChange)="draftName.set($event)"
+                [disabled]="selected()?.isSystem === true"
+              />
+            </div>
+
+            @if (!creating() && selected()?.isSystem !== true) {
+              <label class="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                <input
+                  type="checkbox"
+                  [ngModel]="draftActive()"
+                  (ngModelChange)="draftActive.set($event)"
+                />
+                Active (show in User Management assign list)
+              </label>
+            }
+
+            @if (selected()?.isSystem) {
+              <p class="text-sm text-amber-700 dark:text-amber-300">
+                Super Admin is a system role and cannot be edited, deactivated, or deleted.
+              </p>
+            } @else {
+              <div class="space-y-4">
+                @for (group of catalog(); track group.id) {
+                  <div>
+                    <h4 class="mb-2 text-sm font-bold text-slate-800 dark:text-slate-100">
+                      {{ group.label }}
+                    </h4>
+                    <div class="grid gap-2 sm:grid-cols-2">
+                      @for (perm of group.permissions; track perm.key) {
+                        <label class="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-300">
+                          <input
+                            type="checkbox"
+                            class="mt-0.5"
+                            [checked]="isChecked(perm.key)"
+                            (change)="toggleKey(perm.key, $any($event.target).checked)"
+                          />
+                          <span>
+                            <span class="font-medium">{{ perm.label }}</span>
+                            <span class="block text-xs text-slate-400">{{ perm.key }}</span>
+                          </span>
+                        </label>
+                      }
+                    </div>
+                  </div>
+                }
+              </div>
+
+              <div class="flex flex-wrap gap-2 pt-2">
+                <button
+                  type="button"
+                  class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 dark:bg-white dark:text-slate-900"
+                  [disabled]="saving()"
+                  (click)="save()"
+                >
+                  {{ creating() ? 'Create role' : 'Save changes' }}
+                </button>
+                @if (!creating() && selected()) {
+                  <button
+                    type="button"
+                    class="rounded-xl border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 disabled:opacity-50 dark:border-rose-800 dark:text-rose-300"
+                    [disabled]="saving()"
+                    (click)="softDelete()"
+                  >
+                    Soft delete
+                  </button>
+                }
+              </div>
+            }
+          </div>
+        }
+      </div>
+    </div>
+  }
+</div>

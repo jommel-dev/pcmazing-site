@@ -1,49 +1,38 @@
-# Task 4 Report: Admin UI — User Management + Payroll Employees
+# Task 4 Report: Commission types + entries API
 
 ## Status
 
-**DONE**
+Completed the commission type and employee-period commission entry APIs.
 
-## Commits
+## Implementation
 
-| SHA | Subject |
-|-----|---------|
-| `0dca199` | Add Office and WFH rate fields in admin payroll UI. |
+- Added validated DTOs for commission type writes, commission entry scope queries, and entry creation.
+- Added payroll service methods to list/create/update commission types and list/create/delete commission entries.
+- Enforced active type selection, custom labels for “Other”, valid employee sources, valid periods, and non-negative amounts.
+- Added guarded controller routes with `payroll.view` for reads and `payroll.edit` for writes.
+- Added typed `AdminApiService` models and client methods for all routes.
+- Added service tests for row mapping, custom-label validation, inactive/missing types, and missing entry deletion.
 
-## Files modified
+## Routes
 
-- `frontend/src/app/admin/services/admin-api.service.ts` — `wfhSalary` on `AdminUser`, `PayrollEmployeeItem`, create/update payloads
-- `frontend/src/app/admin/pages/user-management/user-management-page.component.ts` — form control, populate/reset, create/update payload + validation
-- `frontend/src/app/admin/pages/user-management/user-management-page.component.html` — Office/WFH rate fields + view panel
-- `frontend/src/app/admin/pages/payroll/payroll-page.component.html` — Amount column shows Office + WFH (or “Same as office”)
-- `frontend/src/app/admin/pages/payroll/payroll-page.component.ts` — included as listed (existing weekly-location helpers; no new formatter required)
+- `GET|POST /admin/payroll/commission-types`
+- `PATCH /admin/payroll/commission-types/:id`
+- `GET|POST /admin/payroll/commission-entries?userId&userSource&dateFrom&dateTo`
+- `DELETE /admin/payroll/commission-entries/:id`
 
-## Steps completed
+## Verification
 
-1. Added `wfhSalary?: number | null` to API types and create/update payloads
-2. User Management: renamed salary label to Office rate; added WFH rate with blank=Office help; view shows both
-3. Payroll Employees Amount: Office + WFH lines; fixed monthly unchanged when set
-4. Frontend build
-5. Commit (only the five frontend files listed in the brief)
+- Backend tests: 15 suites passed, 76 tests passed.
+- Nest backend build: passed.
+- Angular development build: passed.
+- Backend and frontend TypeScript checks: passed.
+- IDE diagnostics on changed source files: no linter errors.
 
-## Build
+## Commit
 
-Command:
-
-```powershell
-cd frontend; npx ng build --configuration=development
-```
-
-Result: exit 0
-
-## Self-review
-
-- Preserved existing weekly-location UI in the same files.
-- Blank WFH sends `null`; UI help and list/view show “Same as office”.
-- Fixed monthly Amount display unchanged when set.
-- No backend changes.
+- `feat(payroll): commission types and entries API`
 
 ## Concerns
 
-- Commit also includes prior uncommitted weekly-location UI in these five files (intentionally preserved per brief).
-- Create path still omits `monthlySalary` when blank (existing pattern); `wfhSalary` always sent (null when empty) per brief.
+- The API is complete; payroll admin UI remains intentionally deferred to Task 8.
+- Existing unrelated `.superpowers/sdd` working-tree changes were left untouched.

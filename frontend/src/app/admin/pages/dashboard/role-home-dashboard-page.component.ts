@@ -42,6 +42,10 @@ export class RoleHomeDashboardPageComponent implements OnInit {
     () => this.kind() === 'marketing' && isMarketingLead(this.adminAuth.getStoredUser()?.role),
   );
 
+  readonly showEmployeeWorkspace = computed(
+    () => this.adminAuth.getStoredUser()?.payrollEnabled === true,
+  );
+
   ngOnInit(): void {
     const kind = (this.route.snapshot.data['roleHome'] ?? 'marketing') as RoleHomeKind;
     this.kind.set(kind);

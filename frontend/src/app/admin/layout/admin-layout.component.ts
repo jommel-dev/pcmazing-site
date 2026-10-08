@@ -4,8 +4,8 @@ import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } fro
 import { filter } from 'rxjs/operators';
 import { firstValueFrom } from 'rxjs';
 import { filterNavSectionsForRole } from '../data/admin-modules.data';
+import { resolveAllowedModules } from '../rbac/admin-permissions';
 import {
-  getAllowedModuleKeys,
   getLogoutRoute,
   getRoleHomeRoute,
   isSuperAdmin,
@@ -32,8 +32,15 @@ export class AdminLayoutComponent implements OnInit {
   readonly profileMenuOpen = signal(false);
 
   readonly navSections = computed(() => {
-    const role = this.user()?.role;
-    return filterNavSectionsForRole(role, getAllowedModuleKeys(role));
+    const user = this.user();
+    const allowed = resolveAllowedModules({
+      role: user?.role,
+      permissionKeys: user?.permissionKeys,
+      payrollEnabled: Boolean(user?.payrollEnabled),
+    });
+    return filterNavSectionsForRole(user?.role, allowed, {
+      payrollEnabled: Boolean(user?.payrollEnabled),
+    });
   });
 
   readonly homeRoute = computed(() => getRoleHomeRoute(this.user()?.role));

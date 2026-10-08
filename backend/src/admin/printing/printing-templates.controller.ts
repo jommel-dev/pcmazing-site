@@ -11,14 +11,14 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../rbac/roles.guard';
-import { Roles } from '../rbac/roles.decorator';
+import { RequirePermissions } from '../rbac/permissions.decorator';
+import { PermissionsGuard } from '../rbac/permissions.guard';
 import { CreatePrintingTemplateDto, UpdatePrintingTemplateDto } from './dto/printing.dto';
 import { PrintingTemplatesService } from './printing-templates.service';
 
 @Controller('admin/printing/templates')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('admin')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermissions('printing_generator.templates.edit')
 export class PrintingTemplatesController {
   constructor(private readonly printingTemplatesService: PrintingTemplatesService) {}
 

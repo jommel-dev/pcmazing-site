@@ -43,20 +43,25 @@ export class UsersService {
     private readonly payrollService: PayrollService,
   ) {}
 
-  getRbacStatus() {
+  async getRbacStatus() {
     return {
       enabled: this.rbacService.isEnabled(),
-      roles: this.rbacService.listRoles(),
+      roles: await this.rbacService.listRoles(),
     };
   }
 
   async listRoles() {
+    const dbRoles = await this.rbacService.listRoles();
+    if (dbRoles.length) {
+      return dbRoles;
+    }
+
     const tblRoles = await listTblrbacRoleNames(this.databaseService);
     if (tblRoles.length) {
       return tblRoles;
     }
 
-    return this.rbacService.listRoles();
+    return dbRoles;
   }
 
   async list(pageRaw?: string, limitRaw?: string, search?: string) {
@@ -520,7 +525,8 @@ export class UsersService {
     const username = dto.username.trim();
     const fullName = dto.fullName.trim();
     const email = dto.email?.trim() || null;
-    const role = this.normalizeRole(dto.role);
+    const role = await this.normalizeRole(dto.role);
+    const roleId = await this.rbacService.resolveRoleIdByName(role);
     const isActive = dto.isActive ?? true;
     const passwordHash = hashPasswordSha1(dto.password);
 
@@ -536,11 +542,11 @@ export class UsersService {
         created_at: string;
         updated_at: string;
       }>(
-        `INSERT INTO pcmazing_admin_users (username, full_name, email, password_hash, role, is_active)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO pcmazing_admin_users (username, full_name, email, password_hash, role, role_id, is_active)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING id, username, full_name, email, role, profile_image_url, is_active, created_at,
                    COALESCE(updated_at, created_at) AS updated_at`,
-        [username, fullName, email, passwordHash, role, isActive],
+        [username, fullName, email, passwordHash, role, roleId, isActive],
       );
 
       return this.mapPcmazingUser(result.rows[0]);
@@ -608,8 +614,12 @@ export class UsersService {
     }
 
     if (dto.role !== undefined) {
-      params.push(this.normalizeRole(dto.role));
+      const role = await this.normalizeRole(dto.role);
+      const roleId = await this.rbacService.resolveRoleIdByName(role);
+      params.push(role);
       fields.push(`role = $${params.length}`);
+      params.push(roleId);
+      fields.push(`role_id = $${params.length}`);
     }
 
     if (dto.isActive !== undefined) {
@@ -701,15 +711,14 @@ export class UsersService {
     return withProfile;
   }
 
-  private normalizeRole(role?: string): string {
-    const value = role?.trim().toLowerCase() || 'staff';
-    const allowed = this.rbacService.listRoles().map((item) => item.toLowerCase());
-
-    if (!allowed.includes(value)) {
+  private async normalizeRole(role?: string): Promise<string> {
+    const value = role?.trim();
+    if (!value) {
       return 'staff';
     }
-
-    return value;
+    const allowed = await this.rbacService.listRoles();
+    const match = allowed.find((item) => item.toLowerCase() === value.toLowerCase());
+    return match ?? 'staff';
   }
 
   private async columnExists(tableName: string, columnName: string): Promise<boolean> {

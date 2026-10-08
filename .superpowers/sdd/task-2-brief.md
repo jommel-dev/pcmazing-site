@@ -1,60 +1,52 @@
-### Task 2: Schema + profile API (`wfhSalary`)
+### Task 2: Migration 074
 
 **Files:**
-- Create: `backend/src/sql/migrations/071_office_wfh_daily_rates.sql`
-- Modify: `backend/src/admin/payroll/payroll.schema.ts` (add ALTER beside weekly location columns)
-- Modify: `backend/src/admin/payroll/dto/payroll-profile-fields.dto.ts`
-- Modify: `backend/src/admin/payroll/payroll.service.ts` — `PayrollProfile`, `EMPTY_PAYROLL`, `PayrollEmployeeRecord`, SELECTs, `upsertProfile`, `mapProfile`, `listEmployees`
-- Modify: `backend/src/admin/users/users.types.ts`
-- Modify: `backend/src/admin/users/users.service.ts` — create/update upsert + `attachPayrollProfiles`
+- Create: `backend/src/sql/migrations/074_payroll_ledger_loans_commissions.sql`
+- Create: `backend/scripts/apply-payroll-ledger-migration.mjs` (copy pattern from `apply-settings-rbac-roles-migration.mjs`)
+- Modify: `backend/src/admin/payroll/payroll.schema.ts` — append same DDL for ensure path
 
-**Interfaces:**
-- Produces: `PayrollProfile.wfhSalary: number | null` and same on `AdminUserRecord` / employee list rows
-
-- [ ] **Step 1: Migration SQL**
+**Schema (essential):**
 
 ```sql
-ALTER TABLE pcmazing_user_payroll
-  ADD COLUMN IF NOT EXISTS wfh_salary NUMERIC(12, 2);
+ALTER TABLE pcmazing_payroll_settings
+  ADD COLUMN IF NOT EXISTS shift_start_time TIME NOT NULL DEFAULT '09:00',
+  ADD COLUMN IF NOT EXISTS late_grace_minutes SMALLINT NOT NULL DEFAULT 15,
+  ADD COLUMN IF NOT EXISTS late_deduction_fixed NUMERIC(12,2) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS late_deduction_per_minute NUMERIC(12,2) NOT NULL DEFAULT 0;
+
+ALTER TABLE pcmazing_generated_payslips
+  ADD COLUMN IF NOT EXISTS remarks TEXT NULL;
+
+CREATE TABLE IF NOT EXISTS pcmazing_payroll_payslip_ledger (
+  id BIGSERIAL PRIMARY KEY,
+  payslip_id BIGINT NOT NULL REFERENCES pcmazing_generated_payslips(id) ON DELETE CASCADE,
+  line_type VARCHAR(40) NOT NULL,
+  label TEXT NOT NULL,
+  amount NUMERIC(12,2) NOT NULL CHECK (amount >= 0),
+  source VARCHAR(20) NOT NULL DEFAULT 'manual',
+  meta JSONB NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS pcmazing_payroll_loans ( ... );
+CREATE TABLE IF NOT EXISTS pcmazing_payroll_loan_period_overrides ( ... );
+CREATE TABLE IF NOT EXISTS pcmazing_payroll_commission_types ( ... );
+CREATE TABLE IF NOT EXISTS pcmazing_payroll_commission_entries ( ... );
+CREATE TABLE IF NOT EXISTS pcmazing_payroll_manual_deductions ( ... );
 ```
 
-Also append the same `ALTER` to `ENSURE_PAYROLL_SQL` in `payroll.schema.ts`.
+Period identity for entries/overrides: prefer `payroll_run_id` nullable + `date_from`/`date_to` so entries can be staged before generate, then attached on generate.
 
-- [ ] **Step 2: DTO**
+- [ ] **Step 1: Write SQL + ensure schema sync**
 
-In `PayrollProfileFieldsDto` add (mirror `monthlySalary`):
+- [ ] **Step 2: Apply** `node scripts/apply-payroll-ledger-migration.mjs`
 
-```typescript
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0)
-  wfhSalary?: number | null;
-```
+- [ ] **Step 3: Commit**
 
-- [ ] **Step 3: Service profile plumbing**
-
-- Add `wfhSalary: number | null` to `PayrollProfile`, `EMPTY_PAYROLL`, `PayrollEmployeeRecord`.
-- Include `wfh_salary` in all profile SELECT/INSERT/UPDATE/RETURNING and `mapProfile`.
-- In `upsertProfile`, merge `dto.wfhSalary` like `monthlySalary`.
-- In `listEmployees`, map `wfhSalary` from row.
-
-- [ ] **Step 4: Users attach**
-
-- Add `wfhSalary?: number | null` to `AdminUserRecord`.
-- Pass `wfhSalary: dto.wfhSalary` in create/update `upsertProfile` calls (include in update `if` guard).
-- In `attachPayrollProfiles`, set `wfhSalary: profile?.wfhSalary ?? null`.
-
-- [ ] **Step 5: Typecheck**
-
-Run: `cd backend; npx tsc --noEmit -p tsconfig.build.json`  
-Expected: exit 0
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add backend/src/sql/migrations/071_office_wfh_daily_rates.sql backend/src/admin/payroll/payroll.schema.ts backend/src/admin/payroll/dto/payroll-profile-fields.dto.ts backend/src/admin/payroll/payroll.service.ts backend/src/admin/users/users.types.ts backend/src/admin/users/users.service.ts
-git commit -m "Add wfh_salary to payroll profile API."
+```powershell
+git add backend/src/sql/migrations/074_payroll_ledger_loans_commissions.sql backend/scripts/apply-payroll-ledger-migration.mjs backend/src/admin/payroll/payroll.schema.ts
+git commit -m "feat(payroll): migration for loans commissions ledger remarks"
 ```
 
 ---
+

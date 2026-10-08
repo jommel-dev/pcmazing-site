@@ -13,6 +13,7 @@ export interface AdminJwtPayload {
   fullName: string;
   email: string | null;
   role: string;
+  roleId: number | null;
   source: 'tblusers' | 'pcmazing_admin_users';
 }
 

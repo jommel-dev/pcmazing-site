@@ -35,3 +35,6 @@ frontend/src/app/core/config/env.generated.ts
 frontend/public/app-version.json
 .env.docker
 !.env.docker.example
+
+# Local agent / brainstorm session artifacts
+.superpowers/

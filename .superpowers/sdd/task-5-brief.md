@@ -1,25 +1,21 @@
-### Task 5: Verify end-to-end
+### Task 5: Loans + period overrides API
 
-- [ ] **Step 1: Restart Nest** so `ensurePayrollTables` adds `wfh_salary` (or run migration `071`).
+**Files:**
+- DTOs + `payroll.service` methods + controller routes
+- Frontend API methods (UI in Task 8)
 
-- [ ] **Step 2: Manual checks**
+**Routes:**
+- `GET /admin/payroll/loans?userId&userSource`
+- `POST /admin/payroll/loans` create (`principal`, `termStyle`, counts/amounts, notes)
+- `PATCH /admin/payroll/loans/:id` (cancel, notes)
+- `PUT /admin/payroll/loans/:id/period-override` `{ dateFrom, dateTo, action: 'skip'|'custom', customAmount? }`
+- `DELETE /admin/payroll/loans/:id/period-override?dateFrom&dateTo`
 
-1. User with Office 800 / WFH 700; Wed=WFH → period/payslip Wed day pay from 700.  
-2. Clear WFH → WFH days use 800.  
-3. Set fixed monthly → location rates ignored.  
-4. Punch on Off day → day pay 0; mismatch still visible.  
-5. Payslip day type shows `· Office` / `· WFH` / `· Off (unpaid)`.
+On create: `balance = principal`. Status `paid` when balance hits 0 after a generate deduction.
 
-- [ ] **Step 3: Re-run automated checks**
+- [ ] **Step 1: Implement**
 
-```bash
-cd backend; npx jest src/admin/payroll/location-pay.util.spec.ts -v
-cd backend; npx tsc --noEmit -p tsconfig.build.json
-cd frontend; npx ng build --configuration=development
-```
-
-Expected: all pass / exit 0
-
-- [ ] **Step 4: Commit any leftover fixes** (if needed), then mark spec status Implemented in `docs/superpowers/specs/2026-09-22-office-wfh-daily-rates-design.md`
+- [ ] **Step 2: Commit** `feat(payroll): employee loans and period overrides API`
 
 ---
+
