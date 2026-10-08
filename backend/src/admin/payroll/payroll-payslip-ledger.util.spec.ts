@@ -101,6 +101,56 @@ describe('assemblePayslipLedger', () => {
     expect(result.loanDeductions).toEqual([]);
   });
 
+  it('uses loan label on ledger lines and falls back to Loan #id', () => {
+    const withLabel = assemblePayslipLedger({
+      basePay: 100,
+      overtimePay: 0,
+      settings,
+      commissions: [],
+      manualDeductions: [],
+      attendance: [],
+      loans: [
+        {
+          id: 7,
+          label: 'Laptop advance',
+          balance: 1_000,
+          termStyle: 'fixed_per_cutoff',
+          installmentCount: null,
+          fixedInstallmentAmount: 200,
+          override: null,
+        },
+      ],
+    });
+    expect(withLabel.lines).toEqual([
+      expect.objectContaining({
+        lineType: 'loan_deduction',
+        label: 'Laptop advance',
+        amount: 200,
+      }),
+    ]);
+
+    const withoutLabel = assemblePayslipLedger({
+      basePay: 100,
+      overtimePay: 0,
+      settings,
+      commissions: [],
+      manualDeductions: [],
+      attendance: [],
+      loans: [
+        {
+          id: 7,
+          label: '   ',
+          balance: 1_000,
+          termStyle: 'fixed_per_cutoff',
+          installmentCount: null,
+          fixedInstallmentAmount: 200,
+          override: null,
+        },
+      ],
+    });
+    expect(withoutLabel.lines[0]?.label).toBe('Loan #7');
+  });
+
   it('omits late deductions on rest days and plotted days off', () => {
     const result = assemblePayslipLedger({
       basePay: 100,

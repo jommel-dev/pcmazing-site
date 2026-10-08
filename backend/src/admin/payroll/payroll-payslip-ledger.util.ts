@@ -31,6 +31,7 @@ export interface PayslipLedgerAssemblyInput {
   lateExcludedDates?: ReadonlySet<string>;
   loans: Array<{
     id: number;
+    label?: string | null;
     balance: number;
     termStyle: 'equal_installments' | 'fixed_per_cutoff';
     installmentCount: number | null;
@@ -100,9 +101,10 @@ export function assemblePayslipLedger(input: PayslipLedgerAssemblyInput): {
       override: loan.override,
     });
     if (amount <= 0) continue;
+    const loanLabel = loan.label?.trim();
     lines.push({
       lineType: 'loan_deduction',
-      label: `Loan #${loan.id}`,
+      label: loanLabel || `Loan #${loan.id}`,
       amount,
       source: loan.override ? 'override' : 'auto',
       meta: { loanId: loan.id, balanceBefore: loan.balance },
