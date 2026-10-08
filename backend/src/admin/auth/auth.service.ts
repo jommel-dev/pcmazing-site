@@ -2,7 +2,9 @@ import { ForbiddenException, Injectable, Logger, UnauthorizedException } from '@
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { DatabaseService } from '../../database/database.service';
+import { PayrollService } from '../payroll/payroll.service';
 import { canUseAdminLogin, canUsePortalLogin } from '../rbac/admin-roles.util';
+import { RbacService } from '../rbac/rbac.service';
 import { ensureUserManagementTable } from '../users/user-management.schema';
 import { AVATAR_SQL } from '../users/tblusers.util';
 import { AdminLoginDto } from './dto/admin-login.dto';
@@ -15,9 +17,16 @@ export interface AdminAuthUser {
   fullName: string;
   email: string | null;
   role: string;
+  roleId: number | null;
+  permissionKeys: string[];
+  payrollEnabled: boolean;
   profileImageUrl?: string | null;
   source: 'tblusers' | 'pcmazing_admin_users';
 }
+
+type AdminAuthUserBase = Omit<AdminAuthUser, 'roleId' | 'permissionKeys' | 'payrollEnabled'> & {
+  roleId?: number | null;
+};
 
 @Injectable()
 export class AuthService {
@@ -27,6 +36,8 @@ export class AuthService {
     private readonly databaseService: DatabaseService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly rbacService: RbacService,
+    private readonly payrollService: PayrollService,
   ) {}
 
   verifyStaffPasscode(passcode: string): { staffGateToken: string; expiresIn: string } {
@@ -90,6 +101,7 @@ export class AuthService {
       fullName: user.fullName,
       email: user.email,
       role: user.role,
+      roleId: user.roleId,
       source: user.source,
     };
 
@@ -143,7 +155,7 @@ export class AuthService {
         throw new UnauthorizedException('User not found.');
       }
 
-      return {
+      return this.enrichAuthUser({
         id: row.id,
         username: row.username,
         fullName: row.fullname ?? row.username,
@@ -151,7 +163,7 @@ export class AuthService {
         role: row.rolename ?? 'staff',
         profileImageUrl: row.avatar,
         source: 'tblusers',
-      };
+      });
     }
 
     await ensureUserManagementTable(this.databaseService);
@@ -162,9 +174,10 @@ export class AuthService {
       full_name: string;
       email: string | null;
       role: string;
+      role_id: string | null;
       profile_image_url: string | null;
     }>(
-      `SELECT id, username, full_name, email, role, profile_image_url
+      `SELECT id, username, full_name, email, role, role_id::text AS role_id, profile_image_url
        FROM pcmazing_admin_users
        WHERE id = $1 AND is_active = TRUE
        LIMIT 1`,
@@ -176,15 +189,16 @@ export class AuthService {
       throw new UnauthorizedException('User not found.');
     }
 
-    return {
+    return this.enrichAuthUser({
       id: row.id,
       username: row.username,
       fullName: row.full_name,
       email: row.email,
       role: row.role,
+      roleId: row.role_id != null ? Number(row.role_id) : null,
       profileImageUrl: row.profile_image_url,
       source: 'pcmazing_admin_users',
-    };
+    });
   }
 
   private async findLegacyUser(username: string, password: string): Promise<AdminAuthUser | null> {
@@ -245,7 +259,7 @@ export class AuthService {
         return null;
       }
 
-      return {
+      return this.enrichAuthUser({
         id: row.id,
         username: row.username,
         fullName: row.fullname ?? row.username,
@@ -253,7 +267,7 @@ export class AuthService {
         role: row.rolename ?? 'staff',
         profileImageUrl: row.avatar,
         source: 'tblusers',
-      };
+      });
     } catch (error) {
       this.logger.warn(
         `tblusers login query failed: ${error instanceof Error ? error.message : 'unknown error'}`,
@@ -281,9 +295,10 @@ export class AuthService {
       full_name: string;
       email: string | null;
       role: string;
+      role_id: string | null;
       profile_image_url: string | null;
     }>(
-      `SELECT id, username, full_name, email, role, profile_image_url
+      `SELECT id, username, full_name, email, role, role_id::text AS role_id, profile_image_url
        FROM pcmazing_admin_users
        WHERE LOWER(TRIM(username)) = LOWER(TRIM($1))
          AND LOWER(TRIM(password_hash)) = LOWER(TRIM($2))
@@ -297,14 +312,36 @@ export class AuthService {
       return null;
     }
 
-    return {
+    return this.enrichAuthUser({
       id: row.id,
       username: row.username,
       fullName: row.full_name,
       email: row.email,
       role: row.role,
+      roleId: row.role_id != null ? Number(row.role_id) : null,
       profileImageUrl: row.profile_image_url,
       source: 'pcmazing_admin_users',
+    });
+  }
+
+  private async enrichAuthUser(base: AdminAuthUserBase): Promise<AdminAuthUser> {
+    let roleId = base.roleId ?? null;
+    if (roleId == null) {
+      roleId = await this.rbacService.resolveRoleIdByName(base.role);
+    }
+    const { permissionKeys } = await this.rbacService.resolveAuthAccess(base.role, roleId);
+    let payrollEnabled = false;
+    try {
+      const profile = await this.payrollService.getProfile(base.id, base.source);
+      payrollEnabled = Boolean(profile.payrollEnabled);
+    } catch {
+      payrollEnabled = false;
+    }
+    return {
+      ...base,
+      roleId,
+      permissionKeys,
+      payrollEnabled,
     };
   }
 

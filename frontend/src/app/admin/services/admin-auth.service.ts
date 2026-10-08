@@ -9,6 +9,9 @@ export interface AdminAuthUser {
   fullName: string;
   email: string | null;
   role: string;
+  roleId?: number | null;
+  permissionKeys?: string[];
+  payrollEnabled?: boolean;
   profileImageUrl?: string | null;
   source: 'tblusers' | 'pcmazing_admin_users';
 }
