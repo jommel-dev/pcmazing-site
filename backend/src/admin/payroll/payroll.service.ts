@@ -22,12 +22,16 @@ import {
 import {
   CommissionUserSource,
   CreateCommissionEntryDto,
+  UpdateCommissionEntryDto,
 } from './dto/commission-entry.dto';
 import {
   CreateCommissionTypeDto,
   UpdateCommissionTypeDto,
 } from './dto/commission-type.dto';
-import { CreateManualDeductionDto } from './dto/manual-deduction.dto';
+import {
+  CreateManualDeductionDto,
+  UpdateManualDeductionDto,
+} from './dto/manual-deduction.dto';
 import { CreateLoanDto, LoanTermStyle, UpdateLoanDto } from './dto/loan.dto';
 import { UpsertLoanPeriodOverrideDto } from './dto/loan-period-override.dto';
 import {
@@ -713,6 +717,99 @@ export class PayrollService {
     return this.mapCommissionEntry(result.rows[0]);
   }
 
+  async updateCommissionEntry(
+    id: number,
+    input: UpdateCommissionEntryDto,
+  ): Promise<CommissionEntry> {
+    await this.ensureReady();
+    if (
+      input.typeId === undefined &&
+      input.label === undefined &&
+      input.amount === undefined
+    ) {
+      throw new BadRequestException('Provide a commission entry change.');
+    }
+
+    const current = await this.databaseService.query<{
+      type_id: string | number | null;
+      label: string | null;
+    }>(
+      `SELECT type_id, label
+       FROM pcmazing_payroll_commission_entries
+       WHERE id = $1
+       LIMIT 1`,
+      [id],
+    );
+    if (!current.rows[0]) {
+      throw new NotFoundException('Commission entry not found.');
+    }
+
+    const nextTypeId =
+      input.typeId === undefined
+        ? current.rows[0].type_id == null
+          ? null
+          : Number(current.rows[0].type_id)
+        : input.typeId;
+    const nextLabel =
+      input.label === undefined
+        ? current.rows[0].label
+        : input.label?.trim() || null;
+    if (nextTypeId == null && !nextLabel) {
+      throw new BadRequestException(
+        'Label is required for an Other commission.',
+      );
+    }
+    if (nextTypeId != null) {
+      const type = await this.databaseService.query<{ id: string | number }>(
+        `SELECT id FROM pcmazing_payroll_commission_types
+         WHERE id = $1 AND is_active = TRUE
+         LIMIT 1`,
+        [nextTypeId],
+      );
+      if (!type.rows[0]) {
+        throw new BadRequestException('Select an active commission type.');
+      }
+    }
+
+    const result = await this.databaseService.query<{
+      id: string | number;
+      user_id: string | number;
+      user_source: CommissionUserSource;
+      payroll_run_id: string | number | null;
+      date_from: string;
+      date_to: string;
+      type_id: string | number | null;
+      type_name: string | null;
+      label: string | null;
+      amount: string | number;
+      created_by: string | number | null;
+      created_at: string;
+      updated_at: string;
+    }>(
+      `WITH updated AS (
+         UPDATE pcmazing_payroll_commission_entries
+         SET type_id = $2,
+             label = $3,
+             amount = COALESCE($4, amount),
+             updated_at = NOW()
+         WHERE id = $1
+         RETURNING *
+       )
+       SELECT u.id, u.user_id, u.user_source, u.payroll_run_id,
+              u.date_from::text AS date_from, u.date_to::text AS date_to,
+              u.type_id, t.name AS type_name, u.label, u.amount,
+              u.created_by, u.created_at::text AS created_at,
+              u.updated_at::text AS updated_at
+       FROM updated u
+       LEFT JOIN pcmazing_payroll_commission_types t ON t.id = u.type_id`,
+      [id, nextTypeId, nextLabel, input.amount ?? null],
+    );
+    if (!result.rows[0]) {
+      throw new NotFoundException('Commission entry not found.');
+    }
+    return this.mapCommissionEntry(result.rows[0]);
+  }
+
   async deleteCommissionEntry(id: number): Promise<void> {
     await this.ensureReady();
     const result = await this.databaseService.query<{ id: string | number }>(
@@ -805,6 +902,49 @@ export class PayrollService {
         createdBy ?? null,
       ],
     );
+    return this.mapManualDeduction(result.rows[0]);
+  }
+
+  async updateManualDeduction(
+    id: number,
+    input: UpdateManualDeductionDto,
+  ): Promise<ManualDeduction> {
+    await this.ensureReady();
+    if (input.label === undefined && input.amount === undefined) {
+      throw new BadRequestException('Provide a deduction change.');
+    }
+    const nextLabel =
+      input.label === undefined ? null : input.label.trim() || null;
+    if (input.label !== undefined && !nextLabel) {
+      throw new BadRequestException('Deduction label is required.');
+    }
+    const result = await this.databaseService.query<{
+      id: string | number;
+      user_id: string | number;
+      user_source: CommissionUserSource;
+      payroll_run_id: string | number | null;
+      date_from: string;
+      date_to: string;
+      label: string;
+      amount: string | number;
+      created_by: string | number | null;
+      created_at: string;
+      updated_at: string;
+    }>(
+      `UPDATE pcmazing_payroll_manual_deductions
+       SET label = CASE WHEN $2::boolean THEN $3 ELSE label END,
+           amount = COALESCE($4, amount),
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING id, user_id, user_source, payroll_run_id,
+                 date_from::text AS date_from, date_to::text AS date_to,
+                 label, amount, created_by, created_at::text AS created_at,
+                 updated_at::text AS updated_at`,
+      [id, input.label !== undefined, nextLabel, input.amount ?? null],
+    );
+    if (!result.rows[0]) {
+      throw new NotFoundException('Manual deduction not found.');
+    }
     return this.mapManualDeduction(result.rows[0]);
   }
 

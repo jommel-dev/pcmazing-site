@@ -53,3 +53,23 @@ export class CreateCommissionEntryDto {
   @Max(9999999999.99)
   amount!: number;
 }
+
+export class UpdateCommissionEntryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  typeId?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  label?: string | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(9999999999.99)
+  amount?: number;
+}

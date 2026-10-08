@@ -19,6 +19,7 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import {
   CommissionEntryQueryDto,
   CreateCommissionEntryDto,
+  UpdateCommissionEntryDto,
 } from './dto/commission-entry.dto';
 import {
   CreateCommissionTypeDto,
@@ -37,6 +38,7 @@ import {
 import {
   CreateManualDeductionDto,
   ManualDeductionQueryDto,
+  UpdateManualDeductionDto,
 } from './dto/manual-deduction.dto';
 import { UpdatePayslipRemarksDto } from './dto/update-payslip-remarks.dto';
 import { PayrollService } from './payroll.service';
@@ -170,6 +172,18 @@ export class PayrollController {
       }));
   }
 
+  @Patch('commission-entries/:id')
+  @RequirePermissions('payroll.edit')
+  updateCommissionEntry(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: UpdateCommissionEntryDto,
+  ) {
+    return this.payrollService.updateCommissionEntry(id, body).then((data) => ({
+      success: true,
+      data,
+    }));
+  }
+
   @Delete('commission-entries/:id')
   @RequirePermissions('payroll.edit')
   deleteCommissionEntry(@Param('id', ParseIntPipe) id: number) {
@@ -219,6 +233,18 @@ export class PayrollController {
         success: true,
         data,
       }));
+  }
+
+  @Patch('manual-deductions/:id')
+  @RequirePermissions('payroll.edit')
+  updateManualDeduction(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: UpdateManualDeductionDto,
+  ) {
+    return this.payrollService.updateManualDeduction(id, body).then((data) => ({
+      success: true,
+      data,
+    }));
   }
 
   @Delete('manual-deductions/:id')

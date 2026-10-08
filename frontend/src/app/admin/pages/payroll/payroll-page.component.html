@@ -665,36 +665,63 @@
           <div class="mt-4 space-y-2">
             @for (loan of employeeLoans(); track loan.id) {
               <div class="rounded-xl border border-slate-100 p-3 text-sm dark:border-slate-800">
-                <div class="flex justify-between gap-2">
-                  <span class="font-semibold text-slate-900 dark:text-white">{{ loan.label }}</span>
-                  <span class="text-xs capitalize text-slate-500">{{ loan.status }}</span>
-                </div>
-                <p class="mt-1 text-xs text-slate-500">{{ formatMoney(loan.balance) }} balance · {{ formatMoney(loan.principal) }} principal · {{ loan.termStyle === 'equal_installments' ? loan.installmentCount + ' installments' : formatMoney(loan.fixedInstallmentAmount) + '/cutoff' }}</p>
-                @if (loan.status === 'active') {
-                  <div class="mt-2 flex flex-wrap gap-2">
-                    <button type="button" class="text-xs font-bold text-pcmazing-500" (click)="overrideLoanId.set(loan.id)">Set period override</button>
-                    <button type="button" class="text-xs font-bold text-amber-700" (click)="cancelLoan(loan)">Cancel</button>
-                    <button type="button" class="text-xs font-bold text-red-600" (click)="deleteLoan(loan)">Delete</button>
+                @if (editingLoanId() === loan.id) {
+                  <div class="grid gap-2">
+                    <input class="h-9 rounded-lg border px-2 text-xs dark:border-slate-700 dark:bg-slate-950" [ngModel]="editLoanLabel()" (ngModelChange)="editLoanLabel.set($event)" name="editLoanLabel" placeholder="Loan name" />
+                    <input class="h-9 rounded-lg border px-2 text-xs dark:border-slate-700 dark:bg-slate-950" [ngModel]="editLoanNotes()" (ngModelChange)="editLoanNotes.set($event)" name="editLoanNotes" placeholder="Notes (optional)" />
+                    <div class="flex gap-1">
+                      <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-emerald-600 hover:bg-emerald-50" title="Save" aria-label="Save loan" [disabled]="savingPayrollTool() || !editLoanLabel().trim()" (click)="saveEditLoan(loan)">
+                        <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m5 13 4 4L19 7" /></svg>
+                      </button>
+                      <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100" title="Cancel edit" aria-label="Cancel edit loan" (click)="cancelEditLoan()">
+                        <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M18 6 6 18" /></svg>
+                      </button>
+                    </div>
                   </div>
-                }
-                @if (loan.status === 'cancelled') {
-                  <div class="mt-2 flex flex-wrap gap-2">
-                    <button type="button" class="text-xs font-bold text-pcmazing-500" (click)="restoreLoan(loan)">Restore</button>
-                    <button type="button" class="text-xs font-bold text-red-600" (click)="deleteLoan(loan)">Delete</button>
-                  </div>
-                }
-                @if (loan.status === 'paid') {
-                  <div class="mt-2 flex flex-wrap gap-2">
-                    <button type="button" class="text-xs font-bold text-red-600" (click)="deleteLoan(loan)">Delete</button>
+                } @else {
+                  <div class="flex items-start justify-between gap-2">
+                    <div class="min-w-0">
+                      <p class="font-semibold text-slate-900 dark:text-white">{{ loan.label }}</p>
+                      <p class="mt-1 text-xs capitalize text-slate-500">{{ loan.status }}</p>
+                      <p class="mt-1 text-xs text-slate-500">{{ formatMoney(loan.balance) }} balance · {{ formatMoney(loan.principal) }} principal · {{ loan.termStyle === 'equal_installments' ? loan.installmentCount + ' installments' : formatMoney(loan.fixedInstallmentAmount) + '/cutoff' }}</p>
+                      @if (loan.notes) { <p class="mt-1 text-xs text-slate-400">{{ loan.notes }}</p> }
+                    </div>
+                    <div class="flex shrink-0 flex-wrap justify-end gap-0.5">
+                      @if (loan.status === 'active' || loan.status === 'cancelled' || loan.status === 'paid') {
+                        <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-pcmazing-600" title="Edit" aria-label="Edit loan" (click)="startEditLoan(loan)">
+                          <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 3.5 20.5 7.5 8 20H4v-4L16.5 3.5Z" /></svg>
+                        </button>
+                      }
+                      @if (loan.status === 'active') {
+                        <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-pcmazing-600" title="Set period override" aria-label="Set period override" (click)="overrideLoanId.set(loan.id)">
+                          <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h10M4 18h7" /><path stroke-linecap="round" stroke-linejoin="round" d="M16 14v6M13 17h6" /></svg>
+                        </button>
+                        <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-amber-600 hover:bg-amber-50" title="Cancel loan" aria-label="Cancel loan" (click)="cancelLoan(loan)">
+                          <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path stroke-linecap="round" d="M8 12h8" /></svg>
+                        </button>
+                      }
+                      @if (loan.status === 'cancelled') {
+                        <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-emerald-600 hover:bg-emerald-50" title="Restore" aria-label="Restore loan" (click)="restoreLoan(loan)">
+                          <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12a9 9 0 1 0 3-6.7" /><path stroke-linecap="round" stroke-linejoin="round" d="M3 4v5h5" /></svg>
+                        </button>
+                      }
+                      <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-red-500 hover:bg-red-50 hover:text-red-600" title="Delete" aria-label="Delete loan" (click)="deleteLoan(loan)">
+                        <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>
+                      </button>
+                    </div>
                   </div>
                 }
                 @if (overrideLoanId() === loan.id) {
                   <div class="mt-2 grid gap-2">
                     <select class="h-9 rounded-lg border px-2 text-xs dark:border-slate-700 dark:bg-slate-950" [ngModel]="overrideAction()" (ngModelChange)="overrideAction.set($event)" name="overrideAction"><option value="skip">Skip this period</option><option value="custom">Custom amount</option></select>
                     @if (overrideAction() === 'custom') { <input type="number" min="0" step="0.01" class="h-9 rounded-lg border px-2 text-xs dark:border-slate-700 dark:bg-slate-950" [ngModel]="overrideAmount()" (ngModelChange)="overrideAmount.set(+$event || 0)" name="overrideAmount" placeholder="Custom amount" /> }
-                    <div class="flex flex-wrap gap-2">
-                      <button type="button" class="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold text-white" (click)="saveLoanOverride()">Save override</button>
-                      <button type="button" class="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 dark:border-slate-700 dark:text-slate-200" (click)="cancelLoanOverride()">Cancel</button>
+                    <div class="flex flex-wrap gap-1">
+                      <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg bg-slate-900 text-white" title="Save override" aria-label="Save override" (click)="saveLoanOverride()">
+                        <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m5 13 4 4L19 7" /></svg>
+                      </button>
+                      <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 dark:border-slate-700" title="Cancel override" aria-label="Cancel override" (click)="cancelLoanOverride()">
+                        <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M18 6 6 18" /></svg>
+                      </button>
                     </div>
                   </div>
                 }
@@ -726,7 +753,41 @@
           }
           <div class="mt-4 divide-y dark:divide-slate-800">
             @for (entry of employeeCommissions(); track entry.id) {
-              <div class="flex items-center justify-between gap-3 py-2 text-sm"><span>{{ entry.typeName || entry.label || 'Commission' }}</span><span class="font-semibold">{{ formatMoney(entry.amount) }} <button type="button" class="ml-2 text-xs text-red-600" (click)="deleteCommissionEntry(entry)">Remove</button></span></div>
+              <div class="py-2 text-sm">
+                @if (editingCommissionId() === entry.id) {
+                  <div class="grid gap-2">
+                    <select class="h-9 rounded-lg border px-2 text-xs dark:border-slate-700 dark:bg-slate-950" [ngModel]="editCommissionTypeId()" (ngModelChange)="editCommissionTypeId.set($event == null ? null : +$event)" name="editCommissionType">
+                      <option [ngValue]="null">Custom / no type</option>
+                      @for (type of commissionTypes(); track type.id) { @if (type.isActive || type.id === entry.typeId) { <option [ngValue]="type.id">{{ type.name }}</option> } }
+                    </select>
+                    <input class="h-9 rounded-lg border px-2 text-xs dark:border-slate-700 dark:bg-slate-950" [ngModel]="editCommissionLabel()" (ngModelChange)="editCommissionLabel.set($event)" name="editCommissionLabel" placeholder="Label (optional)" />
+                    <input type="number" min="0" step="0.01" class="h-9 rounded-lg border px-2 text-xs dark:border-slate-700 dark:bg-slate-950" [ngModel]="editCommissionAmount()" (ngModelChange)="editCommissionAmount.set(+$event || 0)" name="editCommissionAmount" placeholder="Amount" />
+                    <div class="flex gap-1">
+                      <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-emerald-600 hover:bg-emerald-50" title="Save" aria-label="Save commission" [disabled]="savingPayrollTool() || editCommissionAmount() <= 0" (click)="saveEditCommission(entry)">
+                        <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m5 13 4 4L19 7" /></svg>
+                      </button>
+                      <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100" title="Cancel edit" aria-label="Cancel edit commission" (click)="cancelEditCommission()">
+                        <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M18 6 6 18" /></svg>
+                      </button>
+                    </div>
+                  </div>
+                } @else {
+                  <div class="flex items-center justify-between gap-3">
+                    <div class="min-w-0">
+                      <p class="font-medium text-slate-900 dark:text-white">{{ entry.typeName || entry.label || 'Commission' }}</p>
+                      <p class="text-xs text-slate-500">{{ formatMoney(entry.amount) }}</p>
+                    </div>
+                    <div class="flex shrink-0 gap-0.5">
+                      <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-pcmazing-600" title="Edit" aria-label="Edit commission" (click)="startEditCommission(entry)">
+                        <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 3.5 20.5 7.5 8 20H4v-4L16.5 3.5Z" /></svg>
+                      </button>
+                      <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-red-500 hover:bg-red-50" title="Remove" aria-label="Remove commission" (click)="deleteCommissionEntry(entry)">
+                        <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>
+                      </button>
+                    </div>
+                  </div>
+                }
+              </div>
             } @empty { <p class="py-2 text-sm text-slate-500">No entries for this period.</p> }
           </div>
         </div>
@@ -750,7 +811,37 @@
           }
           <div class="mt-4 divide-y dark:divide-slate-800">
             @for (entry of employeeDeductions(); track entry.id) {
-              <div class="flex items-center justify-between gap-3 py-2 text-sm"><span>{{ entry.label }}</span><span class="font-semibold">{{ formatMoney(entry.amount) }} <button type="button" class="ml-2 text-xs text-red-600" (click)="deleteManualDeduction(entry)">Remove</button></span></div>
+              <div class="py-2 text-sm">
+                @if (editingDeductionId() === entry.id) {
+                  <div class="grid gap-2">
+                    <input class="h-9 rounded-lg border px-2 text-xs dark:border-slate-700 dark:bg-slate-950" [ngModel]="editDeductionLabel()" (ngModelChange)="editDeductionLabel.set($event)" name="editDeductionLabel" placeholder="Deduction label" />
+                    <input type="number" min="0" step="0.01" class="h-9 rounded-lg border px-2 text-xs dark:border-slate-700 dark:bg-slate-950" [ngModel]="editDeductionAmount()" (ngModelChange)="editDeductionAmount.set(+$event || 0)" name="editDeductionAmount" placeholder="Amount" />
+                    <div class="flex gap-1">
+                      <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-emerald-600 hover:bg-emerald-50" title="Save" aria-label="Save deduction" [disabled]="savingPayrollTool() || !editDeductionLabel().trim() || editDeductionAmount() <= 0" (click)="saveEditDeduction(entry)">
+                        <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m5 13 4 4L19 7" /></svg>
+                      </button>
+                      <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100" title="Cancel edit" aria-label="Cancel edit deduction" (click)="cancelEditDeduction()">
+                        <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M18 6 6 18" /></svg>
+                      </button>
+                    </div>
+                  </div>
+                } @else {
+                  <div class="flex items-center justify-between gap-3">
+                    <div class="min-w-0">
+                      <p class="font-medium text-slate-900 dark:text-white">{{ entry.label }}</p>
+                      <p class="text-xs text-slate-500">{{ formatMoney(entry.amount) }}</p>
+                    </div>
+                    <div class="flex shrink-0 gap-0.5">
+                      <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-pcmazing-600" title="Edit" aria-label="Edit deduction" (click)="startEditDeduction(entry)">
+                        <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 3.5 20.5 7.5 8 20H4v-4L16.5 3.5Z" /></svg>
+                      </button>
+                      <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-red-500 hover:bg-red-50" title="Remove" aria-label="Remove deduction" (click)="deleteManualDeduction(entry)">
+                        <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>
+                      </button>
+                    </div>
+                  </div>
+                }
+              </div>
             } @empty { <p class="py-2 text-sm text-slate-500">No deductions for this period.</p> }
           </div>
         </div>

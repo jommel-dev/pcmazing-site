@@ -2690,6 +2690,17 @@ export class AdminApiService {
     );
   }
 
+  updatePayrollCommissionEntry(
+    id: number,
+    payload: { typeId?: number | null; label?: string | null; amount?: number },
+  ) {
+    return this.http.patch<ItemResponse<PayrollCommissionEntry>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/commission-entries/${id}`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
   deletePayrollCommissionEntry(id: number) {
     return this.http.delete<{ success: boolean; message: string }>(
       `${APP_CONFIG.apiUrl}/admin/payroll/commission-entries/${id}`,
@@ -2712,6 +2723,17 @@ export class AdminApiService {
       `${APP_CONFIG.apiUrl}/admin/payroll/manual-deductions`,
       payload,
       { headers: this.headers(), params: this.payrollManualDeductionScopeParams(scope) },
+    );
+  }
+
+  updatePayrollManualDeduction(
+    id: number,
+    payload: { label?: string; amount?: number },
+  ) {
+    return this.http.patch<ItemResponse<PayrollManualDeduction>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/manual-deductions/${id}`,
+      payload,
+      { headers: this.headers() },
     );
   }
 
@@ -2749,7 +2771,7 @@ export class AdminApiService {
     payload: {
       status?: 'cancelled' | 'active' | 'deleted';
       label?: string;
-      notes?: string;
+      notes?: string | null;
     },
   ) {
     return this.http.patch<ItemResponse<PayrollLoan>>(

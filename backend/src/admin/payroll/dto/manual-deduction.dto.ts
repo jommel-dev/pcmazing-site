@@ -4,6 +4,7 @@ import {
   IsIn,
   IsInt,
   IsNumber,
+  IsOptional,
   IsString,
   Max,
   MaxLength,
@@ -40,4 +41,19 @@ export class CreateManualDeductionDto {
   @Min(0)
   @Max(9999999999.99)
   amount!: number;
+}
+
+export class UpdateManualDeductionDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(255)
+  label?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(9999999999.99)
+  amount?: number;
 }

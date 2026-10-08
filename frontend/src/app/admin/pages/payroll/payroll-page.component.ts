@@ -162,11 +162,21 @@ export class PayrollPageComponent implements OnInit {
   readonly overrideLoanId = signal<number | null>(null);
   readonly overrideAction = signal<'skip' | 'custom'>('skip');
   readonly overrideAmount = signal(0);
+  readonly editingLoanId = signal<number | null>(null);
+  readonly editLoanLabel = signal('');
+  readonly editLoanNotes = signal('');
   readonly commissionTypeId = signal<number | null>(null);
   readonly commissionLabel = signal('');
   readonly commissionAmount = signal(0);
+  readonly editingCommissionId = signal<number | null>(null);
+  readonly editCommissionTypeId = signal<number | null>(null);
+  readonly editCommissionLabel = signal('');
+  readonly editCommissionAmount = signal(0);
   readonly deductionLabel = signal('');
   readonly deductionAmount = signal(0);
+  readonly editingDeductionId = signal<number | null>(null);
+  readonly editDeductionLabel = signal('');
+  readonly editDeductionAmount = signal(0);
   readonly remarksDrafts = signal<Record<string, string>>({});
   readonly savingRemarksId = signal<string | number | null>(null);
 
@@ -394,12 +404,42 @@ export class PayrollPageComponent implements OnInit {
     }, 'Loan created.');
   }
 
+  startEditLoan(item: PayrollLoan): void {
+    this.editingLoanId.set(item.id);
+    this.editLoanLabel.set(item.label);
+    this.editLoanNotes.set(item.notes ?? '');
+    this.overrideLoanId.set(null);
+  }
+
+  cancelEditLoan(): void {
+    this.editingLoanId.set(null);
+    this.editLoanLabel.set('');
+    this.editLoanNotes.set('');
+  }
+
+  async saveEditLoan(item: PayrollLoan): Promise<void> {
+    const label = this.editLoanLabel().trim();
+    if (!label) return;
+    if (!this.confirmAction(`Save changes to loan "${label}"?`)) return;
+    await this.runPayrollTool(async () => {
+      await firstValueFrom(
+        this.adminApi.updatePayrollLoan(item.id, {
+          label,
+          notes: this.editLoanNotes().trim(),
+        }),
+      );
+      this.cancelEditLoan();
+      await this.loadSelectedEmployeeTools();
+    }, 'Loan updated.');
+  }
+
   async cancelLoan(item: PayrollLoan): Promise<void> {
     if (!this.confirmAction(`Cancel loan "${item.label}"? It will stay listed and can be restored.`)) {
       return;
     }
     await this.runPayrollTool(async () => {
       await firstValueFrom(this.adminApi.updatePayrollLoan(item.id, { status: 'cancelled' }));
+      this.cancelEditLoan();
       await this.loadSelectedEmployeeTools();
     }, 'Loan cancelled.');
   }
@@ -422,6 +462,7 @@ export class PayrollPageComponent implements OnInit {
     }
     await this.runPayrollTool(async () => {
       await firstValueFrom(this.adminApi.updatePayrollLoan(item.id, { status: 'deleted' }));
+      this.cancelEditLoan();
       await this.loadSelectedEmployeeTools();
     }, 'Loan deleted.');
   }
@@ -474,6 +515,37 @@ export class PayrollPageComponent implements OnInit {
     }, 'Commission added.');
   }
 
+  startEditCommission(entry: PayrollCommissionEntry): void {
+    this.editingCommissionId.set(entry.id);
+    this.editCommissionTypeId.set(entry.typeId);
+    this.editCommissionLabel.set(entry.label ?? '');
+    this.editCommissionAmount.set(entry.amount);
+  }
+
+  cancelEditCommission(): void {
+    this.editingCommissionId.set(null);
+    this.editCommissionTypeId.set(null);
+    this.editCommissionLabel.set('');
+    this.editCommissionAmount.set(0);
+  }
+
+  async saveEditCommission(entry: PayrollCommissionEntry): Promise<void> {
+    if (this.editCommissionAmount() <= 0) return;
+    const name = this.editCommissionLabel().trim() || entry.typeName || 'Commission';
+    if (!this.confirmAction(`Save changes to commission "${name}"?`)) return;
+    await this.runPayrollTool(async () => {
+      await firstValueFrom(
+        this.adminApi.updatePayrollCommissionEntry(entry.id, {
+          typeId: this.editCommissionTypeId(),
+          label: this.editCommissionLabel().trim() || null,
+          amount: this.editCommissionAmount(),
+        }),
+      );
+      this.cancelEditCommission();
+      await this.loadSelectedEmployeeTools();
+    }, 'Commission updated.');
+  }
+
   async deleteCommissionEntry(entry: PayrollCommissionEntry): Promise<void> {
     const name = entry.typeName || entry.label || 'Commission';
     if (!this.confirmAction(`Remove commission "${name}" (${this.formatMoney(entry.amount)})?`)) {
@@ -481,6 +553,7 @@ export class PayrollPageComponent implements OnInit {
     }
     await this.runPayrollTool(async () => {
       await firstValueFrom(this.adminApi.deletePayrollCommissionEntry(entry.id));
+      this.cancelEditCommission();
       await this.loadSelectedEmployeeTools();
     }, 'Commission removed.');
   }
@@ -504,12 +577,41 @@ export class PayrollPageComponent implements OnInit {
     }, 'Deduction added.');
   }
 
+  startEditDeduction(entry: PayrollManualDeduction): void {
+    this.editingDeductionId.set(entry.id);
+    this.editDeductionLabel.set(entry.label);
+    this.editDeductionAmount.set(entry.amount);
+  }
+
+  cancelEditDeduction(): void {
+    this.editingDeductionId.set(null);
+    this.editDeductionLabel.set('');
+    this.editDeductionAmount.set(0);
+  }
+
+  async saveEditDeduction(entry: PayrollManualDeduction): Promise<void> {
+    const label = this.editDeductionLabel().trim();
+    if (!label || this.editDeductionAmount() <= 0) return;
+    if (!this.confirmAction(`Save changes to deduction "${label}"?`)) return;
+    await this.runPayrollTool(async () => {
+      await firstValueFrom(
+        this.adminApi.updatePayrollManualDeduction(entry.id, {
+          label,
+          amount: this.editDeductionAmount(),
+        }),
+      );
+      this.cancelEditDeduction();
+      await this.loadSelectedEmployeeTools();
+    }, 'Deduction updated.');
+  }
+
   async deleteManualDeduction(entry: PayrollManualDeduction): Promise<void> {
     if (!this.confirmAction(`Remove deduction "${entry.label}" (${this.formatMoney(entry.amount)})?`)) {
       return;
     }
     await this.runPayrollTool(async () => {
       await firstValueFrom(this.adminApi.deletePayrollManualDeduction(entry.id));
+      this.cancelEditDeduction();
       await this.loadSelectedEmployeeTools();
     }, 'Deduction removed.');
   }
