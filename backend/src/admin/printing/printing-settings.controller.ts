@@ -1,13 +1,13 @@
 import { Body, Controller, Get, Patch, Post, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../rbac/roles.guard';
-import { Roles } from '../rbac/roles.decorator';
+import { RequirePermissions } from '../rbac/permissions.decorator';
+import { PermissionsGuard } from '../rbac/permissions.guard';
 import { TestPrinterConnectionDto, UpdatePrintingSettingsDto } from './dto/printing.dto';
 import { PrintingSettingsService } from './printing-settings.service';
 
 @Controller('admin/printing/settings')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('admin')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermissions('printing_generator.view')
 export class PrintingSettingsController {
   constructor(private readonly printingSettingsService: PrintingSettingsService) {}
 

@@ -17,18 +17,18 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import type { Request } from 'express';
 import { AdminJwtPayload, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { Roles } from '../rbac/roles.decorator';
-import { RolesGuard } from '../rbac/roles.guard';
+import { RequirePermissions } from '../rbac/permissions.decorator';
+import { PermissionsGuard } from '../rbac/permissions.guard';
 import { CompanyExpensesService } from './company-expenses.service';
 import { CreateCompanyExpenseDto, UpdateCompanyExpenseDto } from './dto/company-expense.dto';
 
 @Controller('admin/company-expenses')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class CompanyExpensesController {
   constructor(private readonly companyExpensesService: CompanyExpensesService) {}
 
   @Get()
-  @Roles('admin', 'sales')
+  @RequirePermissions('company_expenses.view')
   list(
     @Query('from') from?: string,
     @Query('to') to?: string,
@@ -42,7 +42,7 @@ export class CompanyExpensesController {
   }
 
   @Get('category-suggestions')
-  @Roles('admin', 'sales')
+  @RequirePermissions('company_expenses.view')
   categorySuggestions() {
     return this.companyExpensesService.listCategorySuggestions().then((data) => ({
       success: true,
@@ -51,7 +51,7 @@ export class CompanyExpensesController {
   }
 
   @Get(':id')
-  @Roles('admin', 'sales')
+  @RequirePermissions('company_expenses.view')
   getById(@Param('id', ParseIntPipe) id: number) {
     return this.companyExpensesService.getById(id).then((data) => ({
       success: true,
@@ -60,7 +60,7 @@ export class CompanyExpensesController {
   }
 
   @Post()
-  @Roles('admin', 'sales')
+  @RequirePermissions('company_expenses.create')
   create(
     @Body() dto: CreateCompanyExpenseDto,
     @Req() req: Request & { user?: AdminJwtPayload },
@@ -78,7 +78,7 @@ export class CompanyExpensesController {
   }
 
   @Patch(':id')
-  @Roles('admin', 'sales')
+  @RequirePermissions('company_expenses.edit')
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateCompanyExpenseDto) {
     return this.companyExpensesService.update(id, dto).then((data) => ({
       success: true,
@@ -88,7 +88,7 @@ export class CompanyExpensesController {
   }
 
   @Post(':id/attachments')
-  @Roles('admin', 'sales')
+  @RequirePermissions('company_expenses.edit')
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
@@ -113,7 +113,7 @@ export class CompanyExpensesController {
   }
 
   @Delete(':id/attachments/:attachmentId')
-  @Roles('admin', 'sales')
+  @RequirePermissions('company_expenses.edit')
   deleteAttachment(
     @Param('id', ParseIntPipe) id: number,
     @Param('attachmentId', ParseIntPipe) attachmentId: number,
@@ -125,7 +125,7 @@ export class CompanyExpensesController {
   }
 
   @Delete(':id')
-  @Roles('admin', 'sales')
+  @RequirePermissions('company_expenses.delete')
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.companyExpensesService.remove(id).then((data) => ({
       success: true,

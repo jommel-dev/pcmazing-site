@@ -1,7 +1,7 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { Roles } from '../rbac/roles.decorator';
-import { RolesGuard } from '../rbac/roles.guard';
+import { RequirePermissions } from '../rbac/permissions.decorator';
+import { PermissionsGuard } from '../rbac/permissions.guard';
 import {
   DashboardDetailsQueryDto,
   DashboardOverviewQueryDto,
@@ -9,12 +9,12 @@ import {
 import { DashboardService } from './dashboard.service';
 
 @Controller('admin/dashboard')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class DashboardController {
   constructor(private readonly dashboardService: DashboardService) {}
 
   @Get('overview')
-  @Roles('admin', 'sales')
+  @RequirePermissions('sales_dashboard.view')
   async getOverview(@Query() query: DashboardOverviewQueryDto) {
     const data = await this.dashboardService.getOverview(query);
 
@@ -25,7 +25,7 @@ export class DashboardController {
   }
 
   @Get('details')
-  @Roles('admin', 'sales')
+  @RequirePermissions('sales_dashboard.view')
   async getDetails(@Query() query: DashboardDetailsQueryDto) {
     const data = await this.dashboardService.getDetails(query);
 

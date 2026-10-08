@@ -9,14 +9,14 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { Roles } from './roles.decorator';
-import { RolesGuard } from './roles.guard';
 import { CreateRoleDto, UpdateRoleDto } from './dto/role.dto';
+import { RequirePermissions } from './permissions.decorator';
+import { PermissionsGuard } from './permissions.guard';
 import { RolesAdminService } from './roles-admin.service';
 
 @Controller('admin/roles')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('admin')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermissions('settings.roles.manage')
 export class RolesAdminController {
   constructor(private readonly rolesAdmin: RolesAdminService) {}
 
