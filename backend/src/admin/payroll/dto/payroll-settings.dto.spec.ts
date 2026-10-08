@@ -23,6 +23,7 @@ describe('UpdatePayrollSettingsDto late settings', () => {
 
   it.each([
     ['shiftStartTime', '9:00'],
+    ['shiftStartTime', '25:99'],
     ['lateGraceMinutes', -1],
     ['lateGraceMinutes', 121],
     ['lateDeductionFixed', -0.01],

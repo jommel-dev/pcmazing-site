@@ -1941,6 +1941,7 @@ export class PayrollService {
 
     return {
       rows,
+      dayOffsByUser,
       totals: {
         employees: rows.length,
         totalHours:
@@ -2034,9 +2035,11 @@ export class PayrollService {
         id: number | string;
         user_id: number | string;
         user_source: string;
+        estimated_pay: string;
         remarks: string | null;
       }>(
-        `SELECT p.id, p.user_id, p.user_source, p.remarks
+        `SELECT p.id, p.user_id, p.user_source,
+                p.estimated_pay::text AS estimated_pay, p.remarks
          FROM pcmazing_generated_payslips p
          INNER JOIN pcmazing_payroll_runs r ON r.id = p.run_id
          WHERE r.date_from = $1::date AND r.date_to = $2::date`,
@@ -2051,6 +2054,9 @@ export class PayrollService {
             dateTo,
             settings,
             false,
+            computed.dayOffsByUser?.get(
+              `${item.userSource}:${item.userId}`,
+            ) ?? new Set<string>(),
           ),
         ),
       ),
@@ -2061,6 +2067,7 @@ export class PayrollService {
         id: number | string;
         user_id: number | string;
         user_source: string;
+        estimated_pay: string;
         remarks: string | null;
       }
     >(
@@ -2077,9 +2084,16 @@ export class PayrollService {
       return {
         ...item,
         commissionsTotal: assembled.net.commissionsTotal,
+        grossPay: assembled.net.grossPay,
         totalDeductions: assembled.net.totalDeductions,
         netPay: assembled.net.netPay,
         payslipId: payslip == null ? null : Number(payslip.id),
+        deductionsExceedGross:
+          assembled.net.totalDeductions > assembled.net.grossPay,
+        regenerationNeeded:
+          payslip != null &&
+          Math.round(Number(payslip.estimated_pay) * 100) !==
+            Math.round(assembled.net.netPay * 100),
         remarks: payslip?.remarks ?? null,
       };
     });
@@ -2107,6 +2121,7 @@ export class PayrollService {
     dateTo: string,
     settings: PayrollSettings,
     lockLoans = true,
+    dayOffDates: ReadonlySet<string> = new Set<string>(),
   ) {
     const [commissions, deductions, attendance, loans] = await Promise.all([
       query<{
@@ -2162,6 +2177,15 @@ export class PayrollService {
       ),
     ]);
 
+    const employeeDayOffDates = new Set(dayOffDates);
+    const lateExcludedDates = new Set<string>(
+      attendance.rows
+        .map((row) => String(row.work_date).slice(0, 10))
+        .filter((workDate) =>
+          this.isRestDay(workDate, settings.workWeek, employeeDayOffDates),
+        ),
+    );
+
     return assemblePayslipLedger({
       basePay: item.basePay,
       overtimePay: item.overtimePay,
@@ -2181,6 +2205,7 @@ export class PayrollService {
         workDate: String(row.work_date).slice(0, 10),
         timeIn: row.time_in,
       })),
+      lateExcludedDates,
       loans: loans.rows.map((row) => ({
         id: Number(row.id),
         balance: Number(row.balance),
@@ -2213,6 +2238,7 @@ export class PayrollService {
     dateFrom: string,
     dateTo: string,
     settings: PayrollSettings,
+    dayOffDates: ReadonlySet<string> = new Set<string>(),
   ) {
     await query(
       `SELECT id
@@ -2250,6 +2276,8 @@ export class PayrollService {
       dateFrom,
       dateTo,
       settings,
+      true,
+      dayOffDates,
     );
     await query(
       `DELETE FROM pcmazing_payroll_payslip_ledger WHERE payslip_id = $1`,
@@ -2468,6 +2496,9 @@ export class PayrollService {
               groupFrom,
               groupTo,
               settings,
+              computed.dayOffsByUser?.get(
+                `${item.userSource}:${item.userId}`,
+              ) ?? new Set<string>(),
             );
           },
         );
@@ -2614,6 +2645,8 @@ export class PayrollService {
             dateFrom,
             dateTo,
             settings,
+            false,
+            dayOffDates,
           );
 
           return {

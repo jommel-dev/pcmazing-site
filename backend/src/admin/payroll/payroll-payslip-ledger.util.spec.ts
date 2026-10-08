@@ -100,4 +100,28 @@ describe('assemblePayslipLedger', () => {
     expect(result.net.netPay).toBe(100);
     expect(result.loanDeductions).toEqual([]);
   });
+
+  it('omits late deductions on rest days and plotted days off', () => {
+    const result = assemblePayslipLedger({
+      basePay: 100,
+      overtimePay: 0,
+      settings,
+      commissions: [],
+      manualDeductions: [],
+      attendance: [
+        { workDate: '2026-10-10', timeIn: '2026-10-10T01:30:00.000Z' },
+        { workDate: '2026-10-11', timeIn: '2026-10-11T01:30:00.000Z' },
+        { workDate: '2026-10-12', timeIn: '2026-10-12T01:30:00.000Z' },
+      ],
+      lateExcludedDates: new Set(['2026-10-10', '2026-10-11']),
+      loans: [],
+    });
+
+    expect(result.lines).toEqual([
+      expect.objectContaining({
+        lineType: 'late_deduction',
+        meta: expect.objectContaining({ workDate: '2026-10-12' }),
+      }),
+    ]);
+  });
 });

@@ -47,6 +47,7 @@ describe('PayrollService period summary', () => {
               id: '99',
               user_id: '4',
               user_source: 'pcmazing_admin_users',
+              estimated_pay: '10500.00',
               remarks: 'Great work',
             },
           ],
@@ -76,6 +77,9 @@ describe('PayrollService period summary', () => {
       computeRunRows: jest.fn().mockResolvedValue({
         rows: [row],
         totals: { employees: 1, estimatedPay: 10_500 },
+        dayOffsByUser: new Map([
+          ['pcmazing_admin_users:4', new Set(['2026-10-08'])],
+        ]),
       }),
       findOverlappingPayslips: jest.fn().mockResolvedValue([]),
       assembleLedgerForPeriod,
@@ -93,6 +97,8 @@ describe('PayrollService period summary', () => {
         totalDeductions: 630,
         netPay: 10_870,
         payslipId: 99,
+        deductionsExceedGross: false,
+        regenerationNeeded: true,
         remarks: 'Great work',
       }),
     ]);
@@ -103,10 +109,53 @@ describe('PayrollService period summary', () => {
       '2026-10-15',
       settings,
       false,
+      new Set(['2026-10-08']),
     );
     expect(query.mock.calls[0]?.[1]).toEqual([
       '2026-10-01',
       '2026-10-15',
     ]);
+  });
+
+  it('flags deductions that exceed gross pay', async () => {
+    const service = new PayrollService({
+      query: jest.fn(async () => ({ rows: [] })),
+    } as unknown as DatabaseService);
+    jest.spyOn(service, 'ensureReady').mockResolvedValue();
+    jest.spyOn(service, 'getSettings').mockResolvedValue(settings);
+    Object.assign(service as unknown as Record<string, unknown>, {
+      computeRunRows: jest.fn().mockResolvedValue({
+        rows: [row],
+        totals: { employees: 1, estimatedPay: 10_500 },
+        dayOffsByUser: new Map(),
+      }),
+      findOverlappingPayslips: jest.fn().mockResolvedValue([]),
+      assembleLedgerForPeriod: jest.fn().mockResolvedValue({
+        lines: [],
+        net: {
+          commissionsTotal: 0,
+          lateTotal: 0,
+          loanTotal: 11_000,
+          manualTotal: 0,
+          grossPay: 10_500,
+          totalDeductions: 11_000,
+          netPay: 0,
+        },
+        loanDeductions: [],
+      }),
+    });
+
+    const result = await service.getPeriodSummary(
+      '2026-10-01',
+      '2026-10-15',
+      'semi_monthly',
+    );
+
+    expect(result.items[0]).toEqual(
+      expect.objectContaining({
+        grossPay: 10_500,
+        deductionsExceedGross: true,
+      }),
+    );
   });
 });

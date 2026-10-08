@@ -28,6 +28,7 @@ export interface PayslipLedgerAssemblyInput {
   }>;
   manualDeductions: Array<{ id: number; label: string; amount: number }>;
   attendance: Array<{ workDate: string; timeIn: string | null }>;
+  lateExcludedDates?: ReadonlySet<string>;
   loans: Array<{
     id: number;
     balance: number;
@@ -68,7 +69,7 @@ export function assemblePayslipLedger(input: PayslipLedgerAssemblyInput): {
   }
 
   for (const punch of input.attendance) {
-    if (!punch.timeIn) continue;
+    if (!punch.timeIn || input.lateExcludedDates?.has(punch.workDate)) continue;
     const minutesLate = computeLateMinutes(
       new Date(punch.timeIn),
       punch.workDate,
