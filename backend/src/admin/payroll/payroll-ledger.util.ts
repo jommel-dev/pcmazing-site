@@ -120,12 +120,13 @@ export function computeLoanPeriodAmount(args: {
   let scheduled = 0;
   if (args.termStyle === 'fixed_per_cutoff') {
     scheduled = args.fixedInstallmentAmount ?? 0;
-  } else if (
-    args.termStyle === 'equal_installments' &&
-    args.installmentCount != null &&
-    args.installmentCount > 0
-  ) {
-    scheduled = computeEqualInstallmentAmount(balance, args.installmentCount);
+  } else if (args.termStyle === 'equal_installments') {
+    // Prefer stored principal/N (fixedInstallmentAmount at loan create); else split current balance.
+    if (args.fixedInstallmentAmount != null) {
+      scheduled = args.fixedInstallmentAmount;
+    } else if (args.installmentCount != null && args.installmentCount > 0) {
+      scheduled = computeEqualInstallmentAmount(balance, args.installmentCount);
+    }
   }
 
   return roundMoney(Math.min(Math.max(0, scheduled), balance));
