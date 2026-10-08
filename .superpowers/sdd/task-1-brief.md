@@ -1,96 +1,86 @@
-### Task 1: Location pay helpers + unit tests
+### Task 1: Pure helpers (TDD)
 
 **Files:**
-- Create: `backend/src/admin/payroll/location-pay.util.ts`
-- Create: `backend/src/admin/payroll/location-pay.util.spec.ts`
-- Consumes: `WorkLocationType` from `work-location.util.ts`
+- Create: `backend/src/admin/payroll/payroll-ledger.util.ts`
+- Create: `backend/src/admin/payroll/payroll-ledger.util.spec.ts`
 
 **Interfaces:**
 - Produces:
-  - `pickSalaryAmountForLocation(expected: WorkLocationType, officeSalary: number | null, wfhSalary: number | null): number | null`
-  - `locationPayLabelSuffix(expected: WorkLocationType): string` → `''` | `' · Office'` | `' · WFH'` | `' · Off (unpaid)'`
+  - `export type PayslipLedgerLineType = 'commission' | 'late_deduction' | 'loan_deduction' | 'manual_deduction'`
+  - `export type PayslipLedgerLine = { lineType: PayslipLedgerLineType; label: string; amount: number; source: 'auto' | 'manual' | 'override'; meta?: Record<string, unknown> }`
+  - `computeLateMinutes(timeIn: Date, workDateYmd: string, shiftStartHhmm: string, graceMinutes: number): number`
+  - `computeLateDeduction(minutesLate: number, fixed: number, perMinute: number): number`
+  - `computeEqualInstallmentAmount(principal: number, installmentCount: number): number`
+  - `computeLoanPeriodAmount(args: { balance: number; termStyle: 'equal_installments' | 'fixed_per_cutoff'; installmentCount: number | null; fixedInstallmentAmount: number | null; override: null | { action: 'skip' | 'custom'; customAmount?: number } }): number` // 0 if skip
+  - `computePayslipNet(args: { basePay: number; overtimePay: number; lines: PayslipLedgerLine[] }): { grossPay: number; totalDeductions: number; netPay: number; commissionsTotal: number; lateTotal: number; loanTotal: number; manualTotal: number }`
 
 - [ ] **Step 1: Write failing tests**
 
 ```typescript
-import { pickSalaryAmountForLocation, locationPayLabelSuffix } from './location-pay.util';
+import {
+  computeLateMinutes,
+  computeLateDeduction,
+  computeEqualInstallmentAmount,
+  computeLoanPeriodAmount,
+  computePayslipNet,
+} from './payroll-ledger.util';
 
-describe('pickSalaryAmountForLocation', () => {
-  it('uses office amount for office days', () => {
-    expect(pickSalaryAmountForLocation('office', 800, 700)).toBe(800);
+describe('payroll-ledger.util', () => {
+  it('late minutes after grace', () => {
+    // workDate 2026-10-08, shift 09:00, grace 15 → late after 09:15
+    const timeIn = new Date('2026-10-08T01:30:00.000Z'); // adjust to project TZ handling — use same convention as attendance
+    expect(computeLateMinutes(timeIn, '2026-10-08', '09:00', 15)).toBeGreaterThan(0);
   });
-
-  it('uses wfh amount for wfh days', () => {
-    expect(pickSalaryAmountForLocation('wfh', 800, 700)).toBe(700);
+  it('on-time is zero', () => {
+    expect(computeLateDeduction(0, 50, 2)).toBe(0);
   });
-
-  it('falls back to office when wfh is null', () => {
-    expect(pickSalaryAmountForLocation('wfh', 800, null)).toBe(800);
+  it('late deduction fixed + per minute', () => {
+    expect(computeLateDeduction(10, 50, 2)).toBe(70);
   });
-
-  it('returns null for off days (unpaid)', () => {
-    expect(pickSalaryAmountForLocation('off', 800, 700)).toBe(null);
+  it('equal installment rounds money', () => {
+    expect(computeEqualInstallmentAmount(6000, 6)).toBe(1000);
   });
-});
-
-describe('locationPayLabelSuffix', () => {
-  it('labels office, wfh, and off', () => {
-    expect(locationPayLabelSuffix('office')).toBe(' · Office');
-    expect(locationPayLabelSuffix('wfh')).toBe(' · WFH');
-    expect(locationPayLabelSuffix('off')).toBe(' · Off (unpaid)');
+  it('skip loan returns 0', () => {
+    expect(
+      computeLoanPeriodAmount({
+        balance: 3000,
+        termStyle: 'fixed_per_cutoff',
+        installmentCount: null,
+        fixedInstallmentAmount: 500,
+        override: { action: 'skip' },
+      }),
+    ).toBe(0);
+  });
+  it('net floors at 0', () => {
+    const r = computePayslipNet({
+      basePay: 100,
+      overtimePay: 0,
+      lines: [
+        { lineType: 'manual_deduction', label: 'x', amount: 500, source: 'manual' },
+      ],
+    });
+    expect(r.netPay).toBe(0);
+    expect(r.totalDeductions).toBe(500);
   });
 });
 ```
 
-- [ ] **Step 2: Run tests — expect FAIL**
+- [ ] **Step 2: Run — expect FAIL**
 
-Run: `cd backend; npx jest src/admin/payroll/location-pay.util.spec.ts -v`  
-Expected: FAIL module not found / cannot find module
-
-- [ ] **Step 3: Implement helpers**
-
-```typescript
-import { WorkLocationType } from './work-location.util';
-
-export function pickSalaryAmountForLocation(
-  expected: WorkLocationType,
-  officeSalary: number | null,
-  wfhSalary: number | null,
-): number | null {
-  if (expected === 'off') {
-    return null;
-  }
-  if (expected === 'wfh') {
-    if (wfhSalary != null && wfhSalary > 0) {
-      return wfhSalary;
-    }
-    return officeSalary != null && officeSalary > 0 ? officeSalary : null;
-  }
-  return officeSalary != null && officeSalary > 0 ? officeSalary : null;
-}
-
-export function locationPayLabelSuffix(expected: WorkLocationType): string {
-  switch (expected) {
-    case 'wfh':
-      return ' · WFH';
-    case 'off':
-      return ' · Off (unpaid)';
-    default:
-      return ' · Office';
-  }
-}
+```powershell
+cd backend; npx jest src/admin/payroll/payroll-ledger.util.spec.ts --no-cache
 ```
 
-- [ ] **Step 4: Run tests — expect PASS**
+- [ ] **Step 3: Implement util** (use Asia/Manila or existing payroll date helpers if present; document TZ in comments). Cap loan period amount at `balance`. Round money to 2 decimals.
 
-Run: `cd backend; npx jest src/admin/payroll/location-pay.util.spec.ts -v`  
-Expected: PASS
+- [ ] **Step 4: Run — expect PASS**
 
 - [ ] **Step 5: Commit**
 
-```bash
-git add backend/src/admin/payroll/location-pay.util.ts backend/src/admin/payroll/location-pay.util.spec.ts
-git commit -m "Add location pay amount helpers for Office vs WFH rates."
+```powershell
+git add backend/src/admin/payroll/payroll-ledger.util.ts backend/src/admin/payroll/payroll-ledger.util.spec.ts
+git commit -m "feat(payroll): ledger math helpers for loans late and net"
 ```
 
 ---
+

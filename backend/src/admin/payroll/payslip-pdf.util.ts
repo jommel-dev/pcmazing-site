@@ -1,4 +1,8 @@
 import PDFDocument from 'pdfkit';
+import type {
+  computePayslipNet,
+  PayslipLedgerLine,
+} from './payroll-ledger.util';
 
 export interface PayslipDayBreakdownRow {
   workDate: string;
@@ -19,6 +23,7 @@ export interface PayslipPdfPayload {
   dateFrom: string;
   dateTo: string;
   generatedAt: string;
+  remarks?: string | null;
   employee: {
     fullName: string;
     positionTitle: string | null;
@@ -38,6 +43,8 @@ export interface PayslipPdfPayload {
     salaryTypeLabel?: string;
     payBasis?: string;
   };
+  lines?: Array<Pick<PayslipLedgerLine, 'lineType' | 'label' | 'amount'>>;
+  breakdown?: ReturnType<typeof computePayslipNet>;
 }
 
 function money(value: number): string {
@@ -47,7 +54,17 @@ function money(value: number): string {
   })}`;
 }
 
-export async function buildPayslipPdfBuffer(payload: PayslipPdfPayload): Promise<Buffer> {
+export function shouldRenderPayslipRemarks(
+  remarks: string | null | undefined,
+  includeRemarks: boolean,
+): boolean {
+  return includeRemarks && Boolean(remarks?.trim());
+}
+
+export async function buildPayslipPdfBuffer(
+  payload: PayslipPdfPayload,
+  options?: { includeRemarks?: boolean },
+): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const pageMargin = { top: 48, bottom: 72, left: 48, right: 48 };
     const doc = new PDFDocument({
@@ -66,7 +83,8 @@ export async function buildPayslipPdfBuffer(payload: PayslipPdfPayload): Promise
     doc.on('error', reject);
 
     const left = doc.page.margins.left;
-    const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+    const pageWidth =
+      doc.page.width - doc.page.margins.left - doc.page.margins.right;
     const right = left + pageWidth;
     const contentBottom = () => doc.page.height - doc.page.margins.bottom;
     const resetCursor = (y?: number) => {
@@ -95,7 +113,12 @@ export async function buildPayslipPdfBuffer(payload: PayslipPdfPayload): Promise
     writeLine('Employee Payslip');
 
     doc.moveDown(0.7);
-    doc.strokeColor('#e2e8f0').lineWidth(1).moveTo(left, doc.y).lineTo(right, doc.y).stroke();
+    doc
+      .strokeColor('#e2e8f0')
+      .lineWidth(1)
+      .moveTo(left, doc.y)
+      .lineTo(right, doc.y)
+      .stroke();
     doc.moveDown(0.7);
 
     doc.fontSize(10).fillColor('#0f172a');
@@ -130,7 +153,11 @@ export async function buildPayslipPdfBuffer(payload: PayslipPdfPayload): Promise
       doc.text('OT hrs', col.ot, y, { width: 75, lineBreak: false });
       doc.text('OT pay', col.otPay, y, { width: 70, lineBreak: false });
       resetCursor(y + 12);
-      doc.strokeColor('#e2e8f0').moveTo(left, doc.y).lineTo(right, doc.y).stroke();
+      doc
+        .strokeColor('#e2e8f0')
+        .moveTo(left, doc.y)
+        .lineTo(right, doc.y)
+        .stroke();
       resetCursor(doc.y + 6);
     };
 
@@ -149,17 +176,36 @@ export async function buildPayslipPdfBuffer(payload: PayslipPdfPayload): Promise
       const y = doc.y;
       doc.fontSize(8).fillColor('#0f172a');
       doc.text(day.workDate, col.date, y, { width: 65, lineBreak: false });
-      doc.text(`${day.timeInLabel}-${day.timeOutLabel}`, col.shift, y, { width: 85, lineBreak: false });
-      doc.text(day.hoursWorked.toFixed(2), col.hours, y, { width: 45, lineBreak: false });
+      doc.text(`${day.timeInLabel}-${day.timeOutLabel}`, col.shift, y, {
+        width: 85,
+        lineBreak: false,
+      });
+      doc.text(day.hoursWorked.toFixed(2), col.hours, y, {
+        width: 45,
+        lineBreak: false,
+      });
       doc.text(day.dayType, col.type, y, { width: 60, lineBreak: false });
-      doc.text(money(day.dayPay), col.dayPay, y, { width: 70, lineBreak: false });
+      doc.text(money(day.dayPay), col.dayPay, y, {
+        width: 70,
+        lineBreak: false,
+      });
       doc.text(
-        day.overtimeHours > 0 ? `${day.overtimeHours.toFixed(2)} (${day.overtimeStatus})` : '-',
+        day.overtimeHours > 0
+          ? `${day.overtimeHours.toFixed(2)} (${day.overtimeStatus})`
+          : '-',
         col.ot,
         y,
-        { width: 75, lineBreak: false },
+        {
+          width: 75,
+          lineBreak: false,
+        },
       );
-      doc.text(day.overtimePay > 0 ? money(day.overtimePay) : '-', col.otPay, y, { width: 70, lineBreak: false });
+      doc.text(
+        day.overtimePay > 0 ? money(day.overtimePay) : '-',
+        col.otPay,
+        y,
+        { width: 70, lineBreak: false },
+      );
       resetCursor(y + rowHeight);
     }
 
@@ -189,21 +235,56 @@ export async function buildPayslipPdfBuffer(payload: PayslipPdfPayload): Promise
     if (t.periodDays != null) {
       writeLine(`Days in period: ${t.periodDays}`);
     }
-    writeLine(`Days present / completed: ${t.daysPresent} / ${t.daysCompleted}`);
-    writeLine(`Paid day units: ${t.paidDayUnits.toFixed(2)} (full=1.0, half=0.5)`);
+    writeLine(
+      `Days present / completed: ${t.daysPresent} / ${t.daysCompleted}`,
+    );
+    writeLine(
+      `Paid day units: ${t.paidDayUnits.toFixed(2)} (full=1.0, half=0.5)`,
+    );
     writeLine(`Total hours: ${t.totalHours.toFixed(2)} h`);
     writeLine(`Approved overtime: ${t.approvedOvertimeHours.toFixed(2)} h`);
     if (t.pendingOvertimeHours > 0) {
       doc.fillColor('#b45309');
-      writeLine(`Pending overtime (not paid): ${t.pendingOvertimeHours.toFixed(2)} h`);
+      writeLine(
+        `Pending overtime (not paid): ${t.pendingOvertimeHours.toFixed(2)} h`,
+      );
       doc.fillColor('#0f172a');
     }
     doc.moveDown(0.35);
     writeLine(`Base pay: ${money(t.basePay)}`);
     writeLine(`Overtime pay: ${money(t.overtimePay)}`);
+    if (payload.breakdown) {
+      writeLine(`Commissions: ${money(payload.breakdown.commissionsTotal)}`);
+      writeLine(`Late deductions: ${money(payload.breakdown.lateTotal)}`);
+      writeLine(`Loan deductions: ${money(payload.breakdown.loanTotal)}`);
+      writeLine(`Manual deductions: ${money(payload.breakdown.manualTotal)}`);
+      writeLine(`Gross pay: ${money(payload.breakdown.grossPay)}`);
+      writeLine(`Total deductions: ${money(payload.breakdown.totalDeductions)}`);
+    }
+    if (payload.lines?.length) {
+      doc.moveDown(0.35);
+      writeLine('Pay breakdown', { underline: true });
+      for (const line of payload.lines) {
+        const sign = line.lineType === 'commission' ? '+' : '-';
+        writeLine(`${line.label}: ${sign}${money(line.amount)}`);
+      }
+    }
+    if (
+      shouldRenderPayslipRemarks(
+        payload.remarks,
+        options?.includeRemarks === true,
+      )
+    ) {
+      doc.moveDown(0.35);
+      doc.fontSize(10).fillColor('#0f172a');
+      writeLine('Remarks', { underline: true });
+      writeLine(payload.remarks!.trim());
+    }
     doc.moveDown(0.25);
     doc.fontSize(13).fillColor('#0047FF');
-    writeLine(`Net estimated pay: ${money(t.estimatedPay)}`);
+    writeLine(
+      `Net pay: ${money(payload.breakdown?.netPay ?? t.estimatedPay)}`,
+    );
 
     const range = doc.bufferedPageRange();
     const pageCount = range.count;
@@ -221,14 +302,22 @@ export async function buildPayslipPdfBuffer(payload: PayslipPdfPayload): Promise
         'This payslip is system-generated by PCmazing Payroll and for employee reference only.',
         pageMargin.left,
         disclaimerY,
-        { width: footerWidth, align: 'center', lineBreak: false },
+        {
+          width: footerWidth,
+          align: 'center',
+          lineBreak: false,
+        },
       );
       doc.font('Helvetica').fontSize(8).fillColor('#94a3b8');
       doc.text(
         `Page ${i + 1} of ${pageCount}  |  Generated ${payload.generatedAt}`,
         pageMargin.left,
         pageLineY,
-        { width: footerWidth, align: 'center', lineBreak: false },
+        {
+          width: footerWidth,
+          align: 'center',
+          lineBreak: false,
+        },
       );
 
       doc.page.margins.bottom = pageMargin.bottom;

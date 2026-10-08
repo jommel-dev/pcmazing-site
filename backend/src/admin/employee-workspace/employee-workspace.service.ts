@@ -276,9 +276,19 @@ export class EmployeeWorkspaceService {
     return result;
   }
 
-  async getPayslipPdf(userId: number, source: UserSource, payslipId: string | number) {
+  async getPayslipPdf(
+    userId: number,
+    source: UserSource,
+    payslipId: string | number,
+    includeRemarks = false,
+  ) {
     await this.ensureReady();
-    return this.payrollService.buildEmployeePayslipPdf(payslipId, userId, source);
+    return this.payrollService.buildEmployeePayslipPdf(
+      payslipId,
+      userId,
+      source,
+      includeRemarks,
+    );
   }
 
   async getPayslipDetail(userId: number, source: UserSource, payslipId: string | number) {

@@ -9,7 +9,12 @@ import {
   PaginationMeta,
   PayrollAdjustmentItem,
   PayrollAttendanceItem,
+  PayrollCommissionEntry,
+  PayrollCommissionType,
   PayrollEmployeeItem,
+  PayrollLoan,
+  PayrollLoanDetail,
+  PayrollManualDeduction,
   PayrollOverlapItem,
   PayrollOverview,
   PayrollOvertimeItem,
@@ -21,9 +26,18 @@ import {
   WorkLocationType,
 } from '../../services/admin-api.service';
 
-type PayrollTab = 'overview' | 'attendance' | 'employees' | 'period' | 'overtime' | 'adjustments';
+type PayrollTab = 'overview' | 'attendance' | 'employees' | 'period' | 'tools' | 'overtime' | 'adjustments';
 type PeriodType = 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
 type WorkWeek = 'mon_fri' | 'mon_sat' | 'day_off_basis';
+type ConfirmTone = 'default' | 'danger' | 'warning';
+
+interface ConfirmDialogState {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  cancelLabel: string;
+  tone: ConfirmTone;
+}
 
 const LOCATION_DAY_KEYS: WorkLocationDayKey[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 
@@ -54,6 +68,7 @@ export class PayrollPageComponent implements OnInit {
     { key: 'attendance', label: 'Attendance' },
     { key: 'employees', label: 'Employees' },
     { key: 'period', label: 'Period pay' },
+    { key: 'tools', label: 'Employee tools' },
     { key: 'overtime', label: 'Overtime' },
     { key: 'adjustments', label: 'Adjustments' },
   ];
@@ -107,6 +122,10 @@ export class PayrollPageComponent implements OnInit {
   readonly periodType = signal<PeriodType>('weekly');
   readonly workWeek = signal<WorkWeek>('mon_fri');
   readonly undertimeGraceMinutes = signal(30);
+  readonly shiftStartTime = signal('09:00');
+  readonly lateGraceMinutes = signal(15);
+  readonly lateDeductionFixed = signal(0);
+  readonly lateDeductionPerMinute = signal(0);
   readonly savingWorkWeek = signal(false);
   readonly overlaps = signal<PayrollOverlapItem[]>([]);
   readonly confirmOverlap = signal(false);
@@ -134,6 +153,54 @@ export class PayrollPageComponent implements OnInit {
   readonly adjustmentPage = signal(1);
   readonly reviewingAdjustmentId = signal<number | null>(null);
 
+  readonly commissionTypes = signal<PayrollCommissionType[]>([]);
+  readonly savingPayrollTool = signal(false);
+  readonly payrollToolMessage = signal('');
+  readonly selectedToolEmployeeItem = signal<PayrollEmployeeItem | null>(null);
+  readonly toolEmployeeQuery = signal('');
+  readonly toolEmployeeResults = signal<PayrollEmployeeItem[]>([]);
+  readonly toolEmployeeMenuOpen = signal(false);
+  readonly toolEmployeeSearching = signal(false);
+  private toolEmployeeSearchTimer: ReturnType<typeof setTimeout> | null = null;
+  private toolEmployeeSearchSeq = 0;
+  readonly employeeLoans = signal<PayrollLoan[]>([]);
+  readonly employeeCommissions = signal<PayrollCommissionEntry[]>([]);
+  readonly employeeDeductions = signal<PayrollManualDeduction[]>([]);
+  readonly loanFormOpen = signal(false);
+  readonly commissionFormOpen = signal(false);
+  readonly deductionFormOpen = signal(false);
+  readonly loanLabel = signal('');
+  readonly loanPrincipal = signal(0);
+  readonly loanTermStyle = signal<'equal_installments' | 'fixed_per_cutoff'>('equal_installments');
+  readonly loanInstallmentCount = signal(1);
+  readonly loanFixedAmount = signal(0);
+  readonly loanNotes = signal('');
+  readonly overrideLoanId = signal<number | null>(null);
+  readonly overrideAction = signal<'skip' | 'custom'>('skip');
+  readonly overrideAmount = signal(0);
+  readonly editingLoanId = signal<number | null>(null);
+  readonly editLoanLabel = signal('');
+  readonly editLoanBalance = signal(0);
+  readonly editLoanNotes = signal('');
+  readonly loanDetail = signal<PayrollLoanDetail | null>(null);
+  readonly loanDetailLoading = signal(false);
+  readonly confirmDialog = signal<ConfirmDialogState | null>(null);
+  private confirmResolver: ((value: boolean) => void) | null = null;
+  readonly commissionTypeId = signal<number | null>(null);
+  readonly commissionLabel = signal('');
+  readonly commissionAmount = signal(0);
+  readonly editingCommissionId = signal<number | null>(null);
+  readonly editCommissionTypeId = signal<number | null>(null);
+  readonly editCommissionLabel = signal('');
+  readonly editCommissionAmount = signal(0);
+  readonly deductionLabel = signal('');
+  readonly deductionAmount = signal(0);
+  readonly editingDeductionId = signal<number | null>(null);
+  readonly editDeductionLabel = signal('');
+  readonly editDeductionAmount = signal(0);
+  readonly remarksDrafts = signal<Record<string, string>>({});
+  readonly savingRemarksId = signal<string | number | null>(null);
+
   readonly timeClockUrl = `${APP_CONFIG.publicSiteUrl.replace(/\/$/, '')}/user/login?returnUrl=${encodeURIComponent('/admin/time-clock')}`;
 
   ngOnInit(): void {
@@ -147,6 +214,10 @@ export class PayrollPageComponent implements OnInit {
       const settings = await firstValueFrom(this.adminApi.getPayrollSettings());
       this.workWeek.set(settings.data.workWeek);
       this.undertimeGraceMinutes.set(settings.data.undertimeGraceMinutes ?? 30);
+      this.shiftStartTime.set(settings.data.shiftStartTime ?? '09:00');
+      this.lateGraceMinutes.set(settings.data.lateGraceMinutes ?? 15);
+      this.lateDeductionFixed.set(settings.data.lateDeductionFixed ?? 0);
+      this.lateDeductionPerMinute.set(settings.data.lateDeductionPerMinute ?? 0);
     } catch {
       // Keep default Mon–Fri until settings load with Period pay.
     }
@@ -176,6 +247,9 @@ export class PayrollPageComponent implements OnInit {
           break;
         case 'period':
           await this.loadPeriod();
+          break;
+        case 'tools':
+          await this.loadEmployeeToolsBase();
           break;
         case 'overtime':
           await this.loadOvertime();
@@ -227,6 +301,10 @@ export class PayrollPageComponent implements OnInit {
     this.overlaps.set(periodResponse.meta.overlaps ?? []);
     this.workWeek.set(settingsResponse.data.workWeek);
     this.undertimeGraceMinutes.set(settingsResponse.data.undertimeGraceMinutes ?? 30);
+    this.shiftStartTime.set(settingsResponse.data.shiftStartTime ?? '09:00');
+    this.lateGraceMinutes.set(settingsResponse.data.lateGraceMinutes ?? 15);
+    this.lateDeductionFixed.set(settingsResponse.data.lateDeductionFixed ?? 0);
+    this.lateDeductionPerMinute.set(settingsResponse.data.lateDeductionPerMinute ?? 0);
   }
 
   private async loadOvertime(): Promise<void> {
@@ -245,6 +323,517 @@ export class PayrollPageComponent implements OnInit {
     this.adjustmentItems.set(response.data);
     this.adjustmentMeta.set(response.meta);
     this.adjustmentStatus.set(response.status);
+  }
+
+  private async loadCommissionTypes(): Promise<void> {
+    const response = await firstValueFrom(this.adminApi.listPayrollCommissionTypes());
+    this.commissionTypes.set(response.data);
+  }
+
+  private async loadEmployeeToolsBase(): Promise<void> {
+    await Promise.all([this.loadEmployees(), this.loadCommissionTypes()]);
+    if (this.selectedToolEmployeeItem()) {
+      await this.loadSelectedEmployeeTools();
+    } else {
+      void this.searchToolEmployees('');
+    }
+  }
+
+  selectedToolEmployee(): PayrollEmployeeItem | null {
+    return this.selectedToolEmployeeItem();
+  }
+
+  private employeePeriodScope() {
+    const employee = this.selectedToolEmployee();
+    return employee
+      ? { userId: employee.userId, userSource: employee.userSource, dateFrom: this.dateFrom(), dateTo: this.dateTo() }
+      : null;
+  }
+
+  toolEmployeeLabel(item: PayrollEmployeeItem): string {
+    return `${item.fullName} · ${item.employeeCode || item.username}`;
+  }
+
+  onToolEmployeeQuery(value: string): void {
+    this.toolEmployeeQuery.set(value);
+    this.toolEmployeeMenuOpen.set(true);
+    const selected = this.selectedToolEmployeeItem();
+    if (selected && value.trim() !== this.toolEmployeeLabel(selected)) {
+      this.clearToolEmployeeSelection(false);
+    }
+    this.scheduleToolEmployeeSearch(value);
+  }
+
+  openToolEmployeeMenu(): void {
+    this.toolEmployeeMenuOpen.set(true);
+    if (this.toolEmployeeResults().length === 0 && !this.toolEmployeeSearching()) {
+      void this.searchToolEmployees(this.toolEmployeeQuery());
+    }
+  }
+
+  closeToolEmployeeMenuSoon(): void {
+    setTimeout(() => this.toolEmployeeMenuOpen.set(false), 150);
+  }
+
+  private scheduleToolEmployeeSearch(value: string): void {
+    if (this.toolEmployeeSearchTimer) {
+      clearTimeout(this.toolEmployeeSearchTimer);
+    }
+    this.toolEmployeeSearchTimer = setTimeout(() => {
+      void this.searchToolEmployees(value);
+    }, 250);
+  }
+
+  private async searchToolEmployees(query: string): Promise<void> {
+    const seq = ++this.toolEmployeeSearchSeq;
+    this.toolEmployeeSearching.set(true);
+    try {
+      const response = await firstValueFrom(this.adminApi.listPayrollEmployees(query));
+      if (seq !== this.toolEmployeeSearchSeq) return;
+      this.toolEmployeeResults.set(response.data.slice(0, 25));
+    } catch {
+      if (seq !== this.toolEmployeeSearchSeq) return;
+      this.toolEmployeeResults.set([]);
+    } finally {
+      if (seq === this.toolEmployeeSearchSeq) {
+        this.toolEmployeeSearching.set(false);
+      }
+    }
+  }
+
+  async pickToolEmployee(item: PayrollEmployeeItem): Promise<void> {
+    this.selectedToolEmployeeItem.set(item);
+    this.toolEmployeeQuery.set(this.toolEmployeeLabel(item));
+    this.toolEmployeeMenuOpen.set(false);
+    this.payrollToolMessage.set('');
+    await this.loadSelectedEmployeeTools();
+  }
+
+  private clearToolEmployeeSelection(clearQuery: boolean): void {
+    this.selectedToolEmployeeItem.set(null);
+    if (clearQuery) {
+      this.toolEmployeeQuery.set('');
+    }
+    this.employeeLoans.set([]);
+    this.employeeCommissions.set([]);
+    this.employeeDeductions.set([]);
+    this.cancelEditLoan();
+    this.cancelEditCommission();
+    this.cancelEditDeduction();
+    this.cancelLoanOverride();
+    this.closeLoanDetail();
+  }
+
+  async loadSelectedEmployeeTools(): Promise<void> {
+    const scope = this.employeePeriodScope();
+    if (!scope) {
+      this.employeeLoans.set([]);
+      this.employeeCommissions.set([]);
+      this.employeeDeductions.set([]);
+      return;
+    }
+    this.error.set('');
+    try {
+      const [loans, commissions, deductions] = await Promise.all([
+        firstValueFrom(this.adminApi.listPayrollLoans({ userId: scope.userId, userSource: scope.userSource })),
+        firstValueFrom(this.adminApi.listPayrollCommissionEntries(scope)),
+        firstValueFrom(this.adminApi.listPayrollManualDeductions(scope)),
+      ]);
+      this.employeeLoans.set(loans.data);
+      this.employeeCommissions.set(commissions.data);
+      this.employeeDeductions.set(deductions.data);
+    } catch (err) {
+      this.error.set(this.readHttpError(err, 'Unable to load employee payroll tools.'));
+    }
+  }
+
+  private confirmAction(
+    message: string,
+    options?: {
+      title?: string;
+      confirmLabel?: string;
+      cancelLabel?: string;
+      tone?: ConfirmTone;
+    },
+  ): Promise<boolean> {
+    this.confirmResolver?.(false);
+    return new Promise((resolve) => {
+      this.confirmResolver = resolve;
+      this.confirmDialog.set({
+        title: options?.title ?? 'Confirm',
+        message,
+        confirmLabel: options?.confirmLabel ?? 'Yes',
+        cancelLabel: options?.cancelLabel ?? 'Cancel',
+        tone: options?.tone ?? 'default',
+      });
+    });
+  }
+
+  resolveConfirm(ok: boolean): void {
+    const resolve = this.confirmResolver;
+    this.confirmResolver = null;
+    this.confirmDialog.set(null);
+    resolve?.(ok);
+  }
+
+  toggleLoanForm(): void {
+    this.loanFormOpen.update((open) => !open);
+  }
+
+  toggleCommissionForm(): void {
+    this.commissionFormOpen.update((open) => !open);
+  }
+
+  toggleDeductionForm(): void {
+    this.deductionFormOpen.update((open) => !open);
+  }
+
+  private resetLoanForm(): void {
+    this.loanLabel.set('');
+    this.loanPrincipal.set(0);
+    this.loanTermStyle.set('equal_installments');
+    this.loanInstallmentCount.set(1);
+    this.loanFixedAmount.set(0);
+    this.loanNotes.set('');
+    this.loanFormOpen.set(false);
+  }
+
+  async createLoan(): Promise<void> {
+    const employee = this.selectedToolEmployee();
+    const label = this.loanLabel().trim();
+    if (!employee || !label || this.loanPrincipal() <= 0) return;
+    if (!(await this.confirmAction(`Create loan "${label}" for ${employee.fullName}?`, {
+      title: 'Create loan?',
+      confirmLabel: 'Create',
+    }))) return;
+    await this.runPayrollTool(async () => {
+      await firstValueFrom(this.adminApi.createPayrollLoan({
+        userId: employee.userId,
+        userSource: employee.userSource,
+        label,
+        principal: this.loanPrincipal(),
+        termStyle: this.loanTermStyle(),
+        ...(this.loanTermStyle() === 'equal_installments'
+          ? { installmentCount: Math.max(1, this.loanInstallmentCount()) }
+          : { fixedInstallmentAmount: this.loanFixedAmount() }),
+        notes: this.loanNotes().trim() || undefined,
+      }));
+      this.resetLoanForm();
+      await this.loadSelectedEmployeeTools();
+    }, 'Loan created.');
+  }
+
+  startEditLoan(item: PayrollLoan): void {
+    this.editingLoanId.set(item.id);
+    this.editLoanLabel.set(item.label);
+    this.editLoanBalance.set(item.balance);
+    this.editLoanNotes.set(item.notes ?? '');
+    this.overrideLoanId.set(null);
+  }
+
+  cancelEditLoan(): void {
+    this.editingLoanId.set(null);
+    this.editLoanLabel.set('');
+    this.editLoanBalance.set(0);
+    this.editLoanNotes.set('');
+  }
+
+  async saveEditLoan(item: PayrollLoan): Promise<void> {
+    const label = this.editLoanLabel().trim();
+    const balance = this.editLoanBalance();
+    if (!label || balance < 0 || balance > item.principal) return;
+    if (!(await this.confirmAction(`Save changes to loan "${label}"?`, {
+      title: 'Save loan changes?',
+      confirmLabel: 'Save',
+    }))) return;
+    await this.runPayrollTool(async () => {
+      await firstValueFrom(
+        this.adminApi.updatePayrollLoan(item.id, {
+          label,
+          balance,
+          notes: this.editLoanNotes().trim(),
+        }),
+      );
+      this.cancelEditLoan();
+      await this.loadSelectedEmployeeTools();
+    }, 'Loan updated.');
+  }
+
+  async cancelLoan(item: PayrollLoan): Promise<void> {
+    if (!(await this.confirmAction(
+      `Cancel loan "${item.label}"? It will stay listed and can be restored.`,
+      { title: 'Cancel loan?', confirmLabel: 'Cancel loan', tone: 'warning' },
+    ))) {
+      return;
+    }
+    await this.runPayrollTool(async () => {
+      await firstValueFrom(this.adminApi.updatePayrollLoan(item.id, { status: 'cancelled' }));
+      this.cancelEditLoan();
+      await this.loadSelectedEmployeeTools();
+    }, 'Loan cancelled.');
+  }
+
+  async restoreLoan(item: PayrollLoan): Promise<void> {
+    if (!(await this.confirmAction(`Restore loan "${item.label}"?`, {
+      title: 'Restore loan?',
+      confirmLabel: 'Restore',
+    }))) return;
+    await this.runPayrollTool(async () => {
+      await firstValueFrom(this.adminApi.updatePayrollLoan(item.id, { status: 'active' }));
+      await this.loadSelectedEmployeeTools();
+    }, 'Loan restored.');
+  }
+
+  async deleteLoan(item: PayrollLoan): Promise<void> {
+    if (!(await this.confirmAction(
+      `Delete loan "${item.label}"? It will be hidden and cannot be restored.`,
+      { title: 'Delete loan?', confirmLabel: 'Delete', tone: 'danger' },
+    ))) {
+      return;
+    }
+    await this.runPayrollTool(async () => {
+      await firstValueFrom(this.adminApi.updatePayrollLoan(item.id, { status: 'deleted' }));
+      this.cancelEditLoan();
+      await this.loadSelectedEmployeeTools();
+    }, 'Loan deleted.');
+  }
+
+  cancelLoanOverride(): void {
+    this.overrideLoanId.set(null);
+    this.overrideAction.set('skip');
+    this.overrideAmount.set(0);
+  }
+
+  async openLoanDetail(item: PayrollLoan): Promise<void> {
+    this.loanDetailLoading.set(true);
+    this.error.set('');
+    try {
+      const response = await firstValueFrom(this.adminApi.getPayrollLoanDetail(item.id));
+      this.loanDetail.set(response.data);
+    } catch (err) {
+      this.error.set(this.readHttpError(err, 'Unable to load loan details.'));
+    } finally {
+      this.loanDetailLoading.set(false);
+    }
+  }
+
+  closeLoanDetail(): void {
+    this.loanDetail.set(null);
+  }
+
+  loanTermLabel(loan: PayrollLoan): string {
+    if (loan.termStyle === 'equal_installments') {
+      return `${loan.installmentCount ?? '—'} equal installments · ${this.formatMoney(loan.fixedInstallmentAmount)} each`;
+    }
+    return `Fixed ${this.formatMoney(loan.fixedInstallmentAmount)} per cutoff`;
+  }
+
+  loanBalanceDrift(detail: PayrollLoanDetail): boolean {
+    return Math.abs(detail.loan.principal - detail.deductedTotal - detail.remainingBalance) > 0.009;
+  }
+
+  async saveLoanOverride(): Promise<void> {
+    const loanId = this.overrideLoanId();
+    if (loanId == null) return;
+    const loan = this.employeeLoans().find((item) => item.id === loanId);
+    const label = loan?.label ?? `Loan #${loanId}`;
+    const detail =
+      this.overrideAction() === 'custom'
+        ? `custom amount ${this.formatMoney(this.overrideAmount())}`
+        : 'skip this period';
+    if (!(await this.confirmAction(`Save period override (${detail}) for "${label}"?`, {
+      title: 'Save period override?',
+      confirmLabel: 'Save',
+    }))) return;
+    await this.runPayrollTool(async () => {
+      await firstValueFrom(this.adminApi.upsertPayrollLoanPeriodOverride(loanId, {
+        dateFrom: this.dateFrom(),
+        dateTo: this.dateTo(),
+        action: this.overrideAction(),
+        ...(this.overrideAction() === 'custom' ? { customAmount: this.overrideAmount() } : {}),
+      }));
+      this.cancelLoanOverride();
+      await this.loadSelectedEmployeeTools();
+    }, 'Period override saved.');
+  }
+
+  async addCommissionEntry(): Promise<void> {
+    const scope = this.employeePeriodScope();
+    if (!scope || this.commissionAmount() <= 0) return;
+    if (!(await this.confirmAction(`Add commission of ${this.formatMoney(this.commissionAmount())}?`, {
+      title: 'Add commission?',
+      confirmLabel: 'Add',
+    }))) {
+      return;
+    }
+    await this.runPayrollTool(async () => {
+      await firstValueFrom(this.adminApi.createPayrollCommissionEntry(scope, {
+        typeId: this.commissionTypeId(),
+        label: this.commissionLabel().trim() || undefined,
+        amount: this.commissionAmount(),
+      }));
+      this.commissionLabel.set('');
+      this.commissionAmount.set(0);
+      this.commissionTypeId.set(null);
+      this.commissionFormOpen.set(false);
+      await this.loadSelectedEmployeeTools();
+    }, 'Commission added.');
+  }
+
+  startEditCommission(entry: PayrollCommissionEntry): void {
+    this.editingCommissionId.set(entry.id);
+    this.editCommissionTypeId.set(entry.typeId);
+    this.editCommissionLabel.set(entry.label ?? '');
+    this.editCommissionAmount.set(entry.amount);
+  }
+
+  cancelEditCommission(): void {
+    this.editingCommissionId.set(null);
+    this.editCommissionTypeId.set(null);
+    this.editCommissionLabel.set('');
+    this.editCommissionAmount.set(0);
+  }
+
+  async saveEditCommission(entry: PayrollCommissionEntry): Promise<void> {
+    if (this.editCommissionAmount() <= 0) return;
+    const name = this.editCommissionLabel().trim() || entry.typeName || 'Commission';
+    if (!(await this.confirmAction(`Save changes to commission "${name}"?`, {
+      title: 'Save commission changes?',
+      confirmLabel: 'Save',
+    }))) return;
+    await this.runPayrollTool(async () => {
+      await firstValueFrom(
+        this.adminApi.updatePayrollCommissionEntry(entry.id, {
+          typeId: this.editCommissionTypeId(),
+          label: this.editCommissionLabel().trim() || null,
+          amount: this.editCommissionAmount(),
+        }),
+      );
+      this.cancelEditCommission();
+      await this.loadSelectedEmployeeTools();
+    }, 'Commission updated.');
+  }
+
+  async deleteCommissionEntry(entry: PayrollCommissionEntry): Promise<void> {
+    const name = entry.typeName || entry.label || 'Commission';
+    if (!(await this.confirmAction(
+      `Remove commission "${name}" (${this.formatMoney(entry.amount)})?`,
+      { title: 'Remove commission?', confirmLabel: 'Remove', tone: 'danger' },
+    ))) {
+      return;
+    }
+    await this.runPayrollTool(async () => {
+      await firstValueFrom(this.adminApi.deletePayrollCommissionEntry(entry.id));
+      this.cancelEditCommission();
+      await this.loadSelectedEmployeeTools();
+    }, 'Commission removed.');
+  }
+
+  async addManualDeduction(): Promise<void> {
+    const scope = this.employeePeriodScope();
+    const label = this.deductionLabel().trim();
+    if (!scope || !label || this.deductionAmount() <= 0) return;
+    if (!(await this.confirmAction(
+      `Add deduction "${label}" for ${this.formatMoney(this.deductionAmount())}?`,
+      { title: 'Add deduction?', confirmLabel: 'Add' },
+    ))) {
+      return;
+    }
+    await this.runPayrollTool(async () => {
+      await firstValueFrom(this.adminApi.createPayrollManualDeduction(scope, {
+        label,
+        amount: this.deductionAmount(),
+      }));
+      this.deductionLabel.set('');
+      this.deductionAmount.set(0);
+      this.deductionFormOpen.set(false);
+      await this.loadSelectedEmployeeTools();
+    }, 'Deduction added.');
+  }
+
+  startEditDeduction(entry: PayrollManualDeduction): void {
+    this.editingDeductionId.set(entry.id);
+    this.editDeductionLabel.set(entry.label);
+    this.editDeductionAmount.set(entry.amount);
+  }
+
+  cancelEditDeduction(): void {
+    this.editingDeductionId.set(null);
+    this.editDeductionLabel.set('');
+    this.editDeductionAmount.set(0);
+  }
+
+  async saveEditDeduction(entry: PayrollManualDeduction): Promise<void> {
+    const label = this.editDeductionLabel().trim();
+    if (!label || this.editDeductionAmount() <= 0) return;
+    if (!(await this.confirmAction(`Save changes to deduction "${label}"?`, {
+      title: 'Save deduction changes?',
+      confirmLabel: 'Save',
+    }))) return;
+    await this.runPayrollTool(async () => {
+      await firstValueFrom(
+        this.adminApi.updatePayrollManualDeduction(entry.id, {
+          label,
+          amount: this.editDeductionAmount(),
+        }),
+      );
+      this.cancelEditDeduction();
+      await this.loadSelectedEmployeeTools();
+    }, 'Deduction updated.');
+  }
+
+  async deleteManualDeduction(entry: PayrollManualDeduction): Promise<void> {
+    if (!(await this.confirmAction(
+      `Remove deduction "${entry.label}" (${this.formatMoney(entry.amount)})?`,
+      { title: 'Remove deduction?', confirmLabel: 'Remove', tone: 'danger' },
+    ))) {
+      return;
+    }
+    await this.runPayrollTool(async () => {
+      await firstValueFrom(this.adminApi.deletePayrollManualDeduction(entry.id));
+      this.cancelEditDeduction();
+      await this.loadSelectedEmployeeTools();
+    }, 'Deduction removed.');
+  }
+
+  setRemarksDraft(item: PayrollPeriodItem, value: string): void {
+    if (item.payslipId == null) return;
+    this.remarksDrafts.update((drafts) => ({ ...drafts, [String(item.payslipId)]: value }));
+  }
+
+  remarksDraft(item: PayrollPeriodItem): string {
+    return item.payslipId == null
+      ? ''
+      : this.remarksDrafts()[String(item.payslipId)] ?? item.remarks ?? '';
+  }
+
+  async savePayslipRemarks(item: PayrollPeriodItem): Promise<void> {
+    if (item.payslipId == null) return;
+    this.savingRemarksId.set(item.payslipId);
+    try {
+      const value = this.remarksDraft(item).trim();
+      await firstValueFrom(this.adminApi.updatePayrollPayslipRemarks(item.payslipId, value || null));
+      this.generateMessage.set(`Remarks saved for ${item.fullName}.`);
+    } catch (err) {
+      this.error.set(this.readHttpError(err, 'Unable to save payslip remarks.'));
+    } finally {
+      this.savingRemarksId.set(null);
+    }
+  }
+
+  private async runPayrollTool(action: () => Promise<void>, success: string): Promise<void> {
+    if (this.savingPayrollTool()) return;
+    this.savingPayrollTool.set(true);
+    this.error.set('');
+    this.payrollToolMessage.set('');
+    try {
+      await action();
+      this.payrollToolMessage.set(success);
+    } catch (err) {
+      this.error.set(this.readHttpError(err, 'Unable to save payroll changes.'));
+    } finally {
+      this.savingPayrollTool.set(false);
+    }
   }
 
   async applyAttendanceFilter(): Promise<void> {
@@ -545,6 +1134,14 @@ export class PayrollPageComponent implements OnInit {
 
   @HostListener('document:keydown.escape')
   onEscape(): void {
+    if (this.confirmDialog()) {
+      this.resolveConfirm(false);
+      return;
+    }
+    if (this.loanDetail()) {
+      this.closeLoanDetail();
+      return;
+    }
     if (this.previewOpen()) {
       this.closePayslipPreview();
       return;
@@ -648,6 +1245,41 @@ export class PayrollPageComponent implements OnInit {
       await this.applyPeriodFilter();
     } catch {
       this.error.set('Unable to save undertime grace.');
+    } finally {
+      this.savingWorkWeek.set(false);
+    }
+  }
+
+  async setLateSettings(): Promise<void> {
+    const lateGraceMinutes = Math.min(
+      120,
+      Math.max(0, Math.round(Number(this.lateGraceMinutes()) || 0)),
+    );
+    const lateDeductionFixed = Math.max(0, Number(this.lateDeductionFixed()) || 0);
+    const lateDeductionPerMinute = Math.max(0, Number(this.lateDeductionPerMinute()) || 0);
+    this.lateGraceMinutes.set(lateGraceMinutes);
+    this.lateDeductionFixed.set(lateDeductionFixed);
+    this.lateDeductionPerMinute.set(lateDeductionPerMinute);
+    if (this.savingWorkWeek()) {
+      return;
+    }
+    this.savingWorkWeek.set(true);
+    this.error.set('');
+    try {
+      const response = await firstValueFrom(
+        this.adminApi.updatePayrollSettings({
+          shiftStartTime: this.shiftStartTime(),
+          lateGraceMinutes,
+          lateDeductionFixed,
+          lateDeductionPerMinute,
+        }),
+      );
+      this.shiftStartTime.set(response.data.shiftStartTime);
+      this.lateGraceMinutes.set(response.data.lateGraceMinutes);
+      this.lateDeductionFixed.set(response.data.lateDeductionFixed);
+      this.lateDeductionPerMinute.set(response.data.lateDeductionPerMinute);
+    } catch {
+      this.error.set('Unable to save late deduction settings.');
     } finally {
       this.savingWorkWeek.set(false);
     }

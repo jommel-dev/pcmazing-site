@@ -366,6 +366,73 @@
         </div>
       </div>
 
+      <div class="mt-4 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-2 xl:grid-cols-4 dark:border-slate-800">
+        <div>
+          <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Shift start</label>
+          <input
+            type="time"
+            class="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 focus:border-pcmazing-400 focus:outline-none focus:ring-2 focus:ring-pcmazing-400/30 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+            [ngModel]="shiftStartTime()"
+            (ngModelChange)="shiftStartTime.set($event)"
+            (change)="setLateSettings()"
+            name="shiftStartTime"
+            [disabled]="savingWorkWeek()"
+          />
+        </div>
+        <div>
+          <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Late grace</label>
+          <div class="relative">
+            <input
+              type="number"
+              min="0"
+              max="120"
+              step="1"
+              class="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 pr-10 text-sm text-slate-900 focus:border-pcmazing-400 focus:outline-none focus:ring-2 focus:ring-pcmazing-400/30 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              [ngModel]="lateGraceMinutes()"
+              (ngModelChange)="lateGraceMinutes.set(+$event || 0)"
+              (change)="setLateSettings()"
+              name="lateGraceMinutes"
+              [disabled]="savingWorkWeek()"
+            />
+            <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-bold text-slate-400">min</span>
+          </div>
+        </div>
+        <div>
+          <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Fixed late deduction</label>
+          <div class="relative">
+            <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-slate-400">₱</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              class="h-11 w-full rounded-xl border border-slate-200 bg-white pl-7 pr-3 text-sm text-slate-900 focus:border-pcmazing-400 focus:outline-none focus:ring-2 focus:ring-pcmazing-400/30 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              [ngModel]="lateDeductionFixed()"
+              (ngModelChange)="lateDeductionFixed.set(+$event || 0)"
+              (change)="setLateSettings()"
+              name="lateDeductionFixed"
+              [disabled]="savingWorkWeek()"
+            />
+          </div>
+        </div>
+        <div>
+          <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Per-minute deduction</label>
+          <div class="relative">
+            <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-slate-400">₱</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              class="h-11 w-full rounded-xl border border-slate-200 bg-white pl-7 pr-3 text-sm text-slate-900 focus:border-pcmazing-400 focus:outline-none focus:ring-2 focus:ring-pcmazing-400/30 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              [ngModel]="lateDeductionPerMinute()"
+              (ngModelChange)="lateDeductionPerMinute.set(+$event || 0)"
+              (change)="setLateSettings()"
+              name="lateDeductionPerMinute"
+              [disabled]="savingWorkWeek()"
+            />
+          </div>
+        </div>
+      </div>
+
       <div class="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800">
         <div class="flex flex-wrap gap-2">
           @if (periodType() === 'weekly') {
@@ -477,7 +544,9 @@
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Paid units</th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Hours</th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">OT</th>
-              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Est. pay</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Commission</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Deductions</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Net pay</th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Payslip</th>
             </tr>
           </thead>
@@ -509,22 +578,335 @@
                     <p class="text-xs text-amber-600">{{ formatHours(item.pendingOvertimeHours) }} pending</p>
                   }
                 </td>
-                <td class="px-4 py-3 font-semibold text-slate-900 dark:text-white">{{ formatMoney(item.estimatedPay) }}</td>
+                <td class="px-4 py-3 font-medium text-emerald-700">{{ formatMoney(item.commissionsTotal ?? 0) }}</td>
+                <td class="px-4 py-3 font-medium text-red-700">{{ formatMoney(item.totalDeductions ?? 0) }}</td>
+                <td class="px-4 py-3 font-semibold text-slate-900 dark:text-white">
+                  {{ formatMoney(item.netPay ?? item.estimatedPay) }}
+                  @if (item.deductionsExceedGross) {
+                    <span class="mt-1 block text-[11px] font-bold text-red-700 dark:text-red-300">Deductions exceed gross — net floored at ₱0</span>
+                  }
+                </td>
                 <td class="px-4 py-3">
-                  <button
-                    type="button"
-                    class="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
-                    [disabled]="previewLoading() || generating()"
-                    (click)="openPayslipPreview(item)"
-                  >
-                    Preview
-                  </button>
+                  <div class="flex min-w-48 flex-col gap-2">
+                    <button type="button" class="self-start rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200" [disabled]="previewLoading() || generating()" (click)="openPayslipPreview(item)">Preview</button>
+                    @if (item.payslipId != null) {
+                      @if (item.regenerationNeeded) {
+                        <span class="self-start rounded-full bg-amber-100 px-2 py-1 text-[11px] font-bold text-amber-800 dark:bg-amber-950/60 dark:text-amber-200">Regenerate needed</span>
+                      }
+                      <textarea rows="2" class="rounded-lg border border-slate-200 px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-950" placeholder="Payslip remarks" [ngModel]="remarksDraft(item)" (ngModelChange)="setRemarksDraft(item, $event)" [ngModelOptions]="{standalone: true}"></textarea>
+                      <button type="button" class="self-start text-xs font-bold text-pcmazing-500 disabled:opacity-50" [disabled]="savingRemarksId() != null" (click)="savePayslipRemarks(item)">
+                        @if (savingRemarksId() === item.payslipId) { Saving... } @else { Save remarks }
+                      </button>
+                    }
+                  </div>
                 </td>
               </tr>
             }
           </tbody>
         </table>
       </div>
+    }
+  } @else if (activeTab() === 'tools') {
+    <div class="mb-5 rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+      <div class="grid gap-3 lg:grid-cols-3">
+        <label class="relative lg:col-span-1">
+          <span class="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">Employee</span>
+          <input
+            type="search"
+            autocomplete="off"
+            class="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:border-pcmazing-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+            placeholder="Search name, code, username..."
+            [ngModel]="toolEmployeeQuery()"
+            (ngModelChange)="onToolEmployeeQuery($event)"
+            (focus)="openToolEmployeeMenu()"
+            (blur)="closeToolEmployeeMenuSoon()"
+            name="toolEmployeeSearch"
+          />
+          @if (toolEmployeeMenuOpen()) {
+            <div class="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-950">
+              @if (toolEmployeeSearching()) {
+                <p class="px-3 py-2 text-sm text-slate-500">Searching...</p>
+              } @else if (toolEmployeeResults().length === 0) {
+                <p class="px-3 py-2 text-sm text-slate-500">No employees found</p>
+              } @else {
+                @for (item of toolEmployeeResults(); track employeeKey(item)) {
+                  <button
+                    type="button"
+                    class="flex w-full flex-col px-3 py-2 text-left hover:bg-slate-50 dark:hover:bg-slate-900"
+                    (mousedown)="pickToolEmployee(item)"
+                  >
+                    <span class="text-sm font-medium text-slate-800 dark:text-slate-100">{{ item.fullName }}</span>
+                    <span class="text-xs text-slate-500">{{ item.employeeCode || item.username }}@if (item.department) { · {{ item.department }} }</span>
+                  </button>
+                }
+              }
+            </div>
+          }
+        </label>
+        <div>
+          <span class="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">Period from</span>
+          <input type="date" class="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm dark:border-slate-700 dark:bg-slate-950" [ngModel]="dateFrom()" (ngModelChange)="dateFrom.set($event)" name="toolsDateFrom" />
+        </div>
+        <div>
+          <span class="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">Period to</span>
+          <div class="flex gap-2">
+            <input type="date" class="h-11 min-w-0 flex-1 rounded-xl border border-slate-200 px-3 text-sm dark:border-slate-700 dark:bg-slate-950" [ngModel]="dateTo()" (ngModelChange)="dateTo.set($event)" name="toolsDateTo" />
+            <button type="button" class="rounded-xl bg-slate-900 px-4 text-sm font-bold text-white dark:bg-slate-100 dark:text-slate-900" (click)="loadSelectedEmployeeTools()">Load</button>
+          </div>
+        </div>
+      </div>
+      @if (payrollToolMessage()) { <p class="mt-3 text-sm font-medium text-emerald-600">{{ payrollToolMessage() }}</p> }
+    </div>
+
+    @if (selectedToolEmployee(); as selected) {
+      <div class="grid gap-5 xl:grid-cols-3">
+        <div class="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+          <div class="flex items-center justify-between gap-3">
+            <h3 class="font-bold text-slate-900 dark:text-white">Loans</h3>
+            <button
+              type="button"
+              class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-lg font-bold leading-none text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              [attr.aria-label]="loanFormOpen() ? 'Close loan form' : 'Add loan'"
+              (click)="toggleLoanForm()"
+            >{{ loanFormOpen() ? '×' : '+' }}</button>
+          </div>
+          @if (loanFormOpen()) {
+            <div class="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+              <input class="h-10 rounded-lg border px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="Loan name / label" [ngModel]="loanLabel()" (ngModelChange)="loanLabel.set($event)" name="loanLabel" />
+              <input type="number" min="0" step="0.01" class="h-10 rounded-lg border px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="Principal" [ngModel]="loanPrincipal()" (ngModelChange)="loanPrincipal.set(+$event || 0)" name="loanPrincipal" />
+              <select class="h-10 rounded-lg border px-3 text-sm dark:border-slate-700 dark:bg-slate-950" [ngModel]="loanTermStyle()" (ngModelChange)="loanTermStyle.set($event)" name="loanTermStyle">
+                <option value="equal_installments">Equal installments</option>
+                <option value="fixed_per_cutoff">Fixed per cutoff</option>
+              </select>
+              @if (loanTermStyle() === 'equal_installments') {
+                <input type="number" min="1" class="h-10 rounded-lg border px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="Installment count" [ngModel]="loanInstallmentCount()" (ngModelChange)="loanInstallmentCount.set(+$event || 1)" name="loanInstallments" />
+              } @else {
+                <input type="number" min="0" step="0.01" class="h-10 rounded-lg border px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="Amount per cutoff" [ngModel]="loanFixedAmount()" (ngModelChange)="loanFixedAmount.set(+$event || 0)" name="loanFixedAmount" />
+              }
+              <input class="h-10 rounded-lg border px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="Notes (optional)" [ngModel]="loanNotes()" (ngModelChange)="loanNotes.set($event)" name="loanNotes" />
+            </div>
+            <button type="button" class="mt-3 rounded-lg bg-pcmazing-500 px-3 py-2 text-xs font-bold text-white disabled:opacity-50" [disabled]="savingPayrollTool() || !loanLabel().trim() || loanPrincipal() <= 0" (click)="createLoan()">Create loan</button>
+          }
+          <div class="mt-4 space-y-2">
+            @for (loan of employeeLoans(); track loan.id) {
+              <div class="rounded-xl border border-slate-100 p-3 text-sm dark:border-slate-800">
+                @if (editingLoanId() === loan.id) {
+                  <div class="grid gap-2">
+                    <input class="h-9 rounded-lg border px-2 text-xs dark:border-slate-700 dark:bg-slate-950" [ngModel]="editLoanLabel()" (ngModelChange)="editLoanLabel.set($event)" name="editLoanLabel" placeholder="Loan name" />
+                    <input type="number" min="0" [attr.max]="loan.principal" step="0.01" class="h-9 rounded-lg border px-2 text-xs dark:border-slate-700 dark:bg-slate-950" [ngModel]="editLoanBalance()" (ngModelChange)="editLoanBalance.set(+$event || 0)" name="editLoanBalance" placeholder="Amount (remaining balance)" title="Remaining balance (0 to principal)" />
+                    <input class="h-9 rounded-lg border px-2 text-xs dark:border-slate-700 dark:bg-slate-950" [ngModel]="editLoanNotes()" (ngModelChange)="editLoanNotes.set($event)" name="editLoanNotes" placeholder="Notes (optional)" />
+                    <div class="flex gap-1">
+                      <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-emerald-600 hover:bg-emerald-50" title="Save" aria-label="Save loan" [disabled]="savingPayrollTool() || !editLoanLabel().trim() || editLoanBalance() < 0 || editLoanBalance() > loan.principal" (click)="saveEditLoan(loan)">
+                        <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m5 13 4 4L19 7" /></svg>
+                      </button>
+                      <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100" title="Cancel edit" aria-label="Cancel edit loan" (click)="cancelEditLoan()">
+                        <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M18 6 6 18" /></svg>
+                      </button>
+                    </div>
+                  </div>
+                } @else {
+                  <div class="flex items-start justify-between gap-2">
+                    <div class="min-w-0">
+                      <p class="font-semibold text-slate-900 dark:text-white">{{ loan.label }}</p>
+                      <p class="mt-1 text-xs capitalize text-slate-500">{{ loan.status }}</p>
+                      <p class="mt-1 text-xs text-slate-500">{{ formatMoney(loan.balance) }} balance · {{ formatMoney(loan.principal) }} principal · {{ loan.termStyle === 'equal_installments' ? loan.installmentCount + ' installments' : formatMoney(loan.fixedInstallmentAmount) + '/cutoff' }}</p>
+                      @if (loan.notes) { <p class="mt-1 text-xs text-slate-400">{{ loan.notes }}</p> }
+                    </div>
+                    <div class="flex shrink-0 flex-wrap justify-end gap-0.5">
+                      <span class="group relative inline-flex">
+                        <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-pcmazing-600 disabled:opacity-40" title="View details" aria-label="View loan details" [disabled]="loanDetailLoading()" (click)="openLoanDetail(loan)">
+                          <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></svg>
+                        </button>
+                        <span class="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-semibold text-white opacity-0 shadow transition group-hover:opacity-100 dark:bg-slate-700">View details</span>
+                      </span>
+                      @if (loan.status === 'active' || loan.status === 'cancelled' || loan.status === 'paid') {
+                        <span class="group relative inline-flex">
+                          <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-pcmazing-600" title="Edit" aria-label="Edit loan" (click)="startEditLoan(loan)">
+                            <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 3.5 20.5 7.5 8 20H4v-4L16.5 3.5Z" /></svg>
+                          </button>
+                          <span class="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-semibold text-white opacity-0 shadow transition group-hover:opacity-100 dark:bg-slate-700">Edit</span>
+                        </span>
+                      }
+                      @if (loan.status === 'active') {
+                        <span class="group relative inline-flex">
+                          <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-pcmazing-600" title="Set period override" aria-label="Set period override" (click)="overrideLoanId.set(loan.id)">
+                            <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h10M4 18h7" /><path stroke-linecap="round" stroke-linejoin="round" d="M16 14v6M13 17h6" /></svg>
+                          </button>
+                          <span class="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-semibold text-white opacity-0 shadow transition group-hover:opacity-100 dark:bg-slate-700">Period override</span>
+                        </span>
+                        <span class="group relative inline-flex">
+                          <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-amber-600 hover:bg-amber-50" title="Cancel loan" aria-label="Cancel loan" (click)="cancelLoan(loan)">
+                            <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path stroke-linecap="round" d="M8 12h8" /></svg>
+                          </button>
+                          <span class="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-semibold text-white opacity-0 shadow transition group-hover:opacity-100 dark:bg-slate-700">Cancel loan</span>
+                        </span>
+                      }
+                      @if (loan.status === 'cancelled') {
+                        <span class="group relative inline-flex">
+                          <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-emerald-600 hover:bg-emerald-50" title="Restore" aria-label="Restore loan" (click)="restoreLoan(loan)">
+                            <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12a9 9 0 1 0 3-6.7" /><path stroke-linecap="round" stroke-linejoin="round" d="M3 4v5h5" /></svg>
+                          </button>
+                          <span class="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-semibold text-white opacity-0 shadow transition group-hover:opacity-100 dark:bg-slate-700">Restore</span>
+                        </span>
+                      }
+                      <span class="group relative inline-flex">
+                        <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-red-500 hover:bg-red-50 hover:text-red-600" title="Delete" aria-label="Delete loan" (click)="deleteLoan(loan)">
+                          <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>
+                        </button>
+                        <span class="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-semibold text-white opacity-0 shadow transition group-hover:opacity-100 dark:bg-slate-700">Delete</span>
+                      </span>
+                    </div>
+                  </div>
+                }
+                @if (overrideLoanId() === loan.id) {
+                  <div class="mt-2 grid gap-2">
+                    <select class="h-9 rounded-lg border px-2 text-xs dark:border-slate-700 dark:bg-slate-950" [ngModel]="overrideAction()" (ngModelChange)="overrideAction.set($event)" name="overrideAction"><option value="skip">Skip this period</option><option value="custom">Custom amount</option></select>
+                    @if (overrideAction() === 'custom') { <input type="number" min="0" step="0.01" class="h-9 rounded-lg border px-2 text-xs dark:border-slate-700 dark:bg-slate-950" [ngModel]="overrideAmount()" (ngModelChange)="overrideAmount.set(+$event || 0)" name="overrideAmount" placeholder="Custom amount" /> }
+                    <div class="flex flex-wrap gap-1">
+                      <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg bg-slate-900 text-white" title="Save override" aria-label="Save override" (click)="saveLoanOverride()">
+                        <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m5 13 4 4L19 7" /></svg>
+                      </button>
+                      <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200 text-slate-600 dark:border-slate-700" title="Cancel override" aria-label="Cancel override" (click)="cancelLoanOverride()">
+                        <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M18 6 6 18" /></svg>
+                      </button>
+                    </div>
+                  </div>
+                }
+              </div>
+            } @empty { <p class="text-sm text-slate-500">No loans.</p> }
+          </div>
+        </div>
+
+        <div class="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+          <div class="flex items-center justify-between gap-3">
+            <h3 class="font-bold text-slate-900 dark:text-white">Commission entries</h3>
+            <button
+              type="button"
+              class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-lg font-bold leading-none text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              [attr.aria-label]="commissionFormOpen() ? 'Close commission form' : 'Add commission'"
+              (click)="toggleCommissionForm()"
+            >{{ commissionFormOpen() ? '×' : '+' }}</button>
+          </div>
+          @if (commissionFormOpen()) {
+            <div class="mt-3 grid gap-2">
+              <select class="h-10 rounded-lg border px-3 text-sm dark:border-slate-700 dark:bg-slate-950" [ngModel]="commissionTypeId()" (ngModelChange)="commissionTypeId.set($event == null ? null : +$event)" name="entryCommissionType">
+                <option [ngValue]="null">Custom / no type</option>
+                @for (type of commissionTypes(); track type.id) { @if (type.isActive) { <option [ngValue]="type.id">{{ type.name }}</option> } }
+              </select>
+              <input class="h-10 rounded-lg border px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="Label (optional)" [ngModel]="commissionLabel()" (ngModelChange)="commissionLabel.set($event)" name="commissionLabel" />
+              <input type="number" min="0" step="0.01" class="h-10 rounded-lg border px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="Amount" [ngModel]="commissionAmount()" (ngModelChange)="commissionAmount.set(+$event || 0)" name="commissionAmount" />
+            </div>
+            <button type="button" class="mt-3 rounded-lg bg-pcmazing-500 px-3 py-2 text-xs font-bold text-white disabled:opacity-50" [disabled]="savingPayrollTool() || commissionAmount() <= 0" (click)="addCommissionEntry()">Add commission</button>
+          }
+          <div class="mt-4 divide-y dark:divide-slate-800">
+            @for (entry of employeeCommissions(); track entry.id) {
+              <div class="py-2 text-sm">
+                @if (editingCommissionId() === entry.id) {
+                  <div class="grid gap-2">
+                    <select class="h-9 rounded-lg border px-2 text-xs dark:border-slate-700 dark:bg-slate-950" [ngModel]="editCommissionTypeId()" (ngModelChange)="editCommissionTypeId.set($event == null ? null : +$event)" name="editCommissionType">
+                      <option [ngValue]="null">Custom / no type</option>
+                      @for (type of commissionTypes(); track type.id) { @if (type.isActive || type.id === entry.typeId) { <option [ngValue]="type.id">{{ type.name }}</option> } }
+                    </select>
+                    <input class="h-9 rounded-lg border px-2 text-xs dark:border-slate-700 dark:bg-slate-950" [ngModel]="editCommissionLabel()" (ngModelChange)="editCommissionLabel.set($event)" name="editCommissionLabel" placeholder="Label (optional)" />
+                    <input type="number" min="0" step="0.01" class="h-9 rounded-lg border px-2 text-xs dark:border-slate-700 dark:bg-slate-950" [ngModel]="editCommissionAmount()" (ngModelChange)="editCommissionAmount.set(+$event || 0)" name="editCommissionAmount" placeholder="Amount" />
+                    <div class="flex gap-1">
+                      <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-emerald-600 hover:bg-emerald-50" title="Save" aria-label="Save commission" [disabled]="savingPayrollTool() || editCommissionAmount() <= 0" (click)="saveEditCommission(entry)">
+                        <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m5 13 4 4L19 7" /></svg>
+                      </button>
+                      <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100" title="Cancel edit" aria-label="Cancel edit commission" (click)="cancelEditCommission()">
+                        <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M18 6 6 18" /></svg>
+                      </button>
+                    </div>
+                  </div>
+                } @else {
+                  <div class="flex items-center justify-between gap-3">
+                    <div class="min-w-0">
+                      <p class="font-medium text-slate-900 dark:text-white">{{ entry.typeName || entry.label || 'Commission' }}</p>
+                      <p class="text-xs text-slate-500">{{ formatMoney(entry.amount) }}</p>
+                    </div>
+                    <div class="flex shrink-0 gap-0.5">
+                      <span class="group relative inline-flex">
+                        <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-pcmazing-600" title="Edit" aria-label="Edit commission" (click)="startEditCommission(entry)">
+                          <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 3.5 20.5 7.5 8 20H4v-4L16.5 3.5Z" /></svg>
+                        </button>
+                        <span class="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-semibold text-white opacity-0 shadow transition group-hover:opacity-100 dark:bg-slate-700">Edit</span>
+                      </span>
+                      <span class="group relative inline-flex">
+                        <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-red-500 hover:bg-red-50" title="Remove" aria-label="Remove commission" (click)="deleteCommissionEntry(entry)">
+                          <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>
+                        </button>
+                        <span class="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-semibold text-white opacity-0 shadow transition group-hover:opacity-100 dark:bg-slate-700">Remove</span>
+                      </span>
+                    </div>
+                  </div>
+                }
+              </div>
+            } @empty { <p class="py-2 text-sm text-slate-500">No entries for this period.</p> }
+          </div>
+        </div>
+
+        <div class="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+          <div class="flex items-center justify-between gap-3">
+            <h3 class="font-bold text-slate-900 dark:text-white">Manual deductions</h3>
+            <button
+              type="button"
+              class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-lg font-bold leading-none text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              [attr.aria-label]="deductionFormOpen() ? 'Close deduction form' : 'Add deduction'"
+              (click)="toggleDeductionForm()"
+            >{{ deductionFormOpen() ? '×' : '+' }}</button>
+          </div>
+          @if (deductionFormOpen()) {
+            <div class="mt-3 grid gap-2">
+              <input class="h-10 rounded-lg border px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="Deduction label" [ngModel]="deductionLabel()" (ngModelChange)="deductionLabel.set($event)" name="deductionLabel" />
+              <input type="number" min="0" step="0.01" class="h-10 rounded-lg border px-3 text-sm dark:border-slate-700 dark:bg-slate-950" placeholder="Amount" [ngModel]="deductionAmount()" (ngModelChange)="deductionAmount.set(+$event || 0)" name="deductionAmount" />
+            </div>
+            <button type="button" class="mt-3 rounded-lg bg-pcmazing-500 px-3 py-2 text-xs font-bold text-white disabled:opacity-50" [disabled]="savingPayrollTool() || !deductionLabel().trim() || deductionAmount() <= 0" (click)="addManualDeduction()">Add deduction</button>
+          }
+          <div class="mt-4 divide-y dark:divide-slate-800">
+            @for (entry of employeeDeductions(); track entry.id) {
+              <div class="py-2 text-sm">
+                @if (editingDeductionId() === entry.id) {
+                  <div class="grid gap-2">
+                    <input class="h-9 rounded-lg border px-2 text-xs dark:border-slate-700 dark:bg-slate-950" [ngModel]="editDeductionLabel()" (ngModelChange)="editDeductionLabel.set($event)" name="editDeductionLabel" placeholder="Deduction label" />
+                    <input type="number" min="0" step="0.01" class="h-9 rounded-lg border px-2 text-xs dark:border-slate-700 dark:bg-slate-950" [ngModel]="editDeductionAmount()" (ngModelChange)="editDeductionAmount.set(+$event || 0)" name="editDeductionAmount" placeholder="Amount" />
+                    <div class="flex gap-1">
+                      <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-emerald-600 hover:bg-emerald-50" title="Save" aria-label="Save deduction" [disabled]="savingPayrollTool() || !editDeductionLabel().trim() || editDeductionAmount() <= 0" (click)="saveEditDeduction(entry)">
+                        <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m5 13 4 4L19 7" /></svg>
+                      </button>
+                      <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100" title="Cancel edit" aria-label="Cancel edit deduction" (click)="cancelEditDeduction()">
+                        <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 6l12 12M18 6 6 18" /></svg>
+                      </button>
+                    </div>
+                  </div>
+                } @else {
+                  <div class="flex items-center justify-between gap-3">
+                    <div class="min-w-0">
+                      <p class="font-medium text-slate-900 dark:text-white">{{ entry.label }}</p>
+                      <p class="text-xs text-slate-500">{{ formatMoney(entry.amount) }}</p>
+                    </div>
+                    <div class="flex shrink-0 gap-0.5">
+                      <span class="group relative inline-flex">
+                        <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-pcmazing-600" title="Edit" aria-label="Edit deduction" (click)="startEditDeduction(entry)">
+                          <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 3.5 20.5 7.5 8 20H4v-4L16.5 3.5Z" /></svg>
+                        </button>
+                        <span class="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-semibold text-white opacity-0 shadow transition group-hover:opacity-100 dark:bg-slate-700">Edit</span>
+                      </span>
+                      <span class="group relative inline-flex">
+                        <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-red-500 hover:bg-red-50" title="Remove" aria-label="Remove deduction" (click)="deleteManualDeduction(entry)">
+                          <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>
+                        </button>
+                        <span class="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-semibold text-white opacity-0 shadow transition group-hover:opacity-100 dark:bg-slate-700">Remove</span>
+                      </span>
+                    </div>
+                  </div>
+                }
+              </div>
+            } @empty { <p class="py-2 text-sm text-slate-500">No deductions for this period.</p> }
+          </div>
+        </div>
+      </div>
+    } @else {
+      <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900">Select an employee to manage period payroll tools.</div>
     }
   } @else if (activeTab() === 'overtime') {
     <form class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end" (ngSubmit)="applyOvertimeFilter()">
@@ -905,10 +1287,36 @@
                 }
                 <p>Base pay: {{ formatMoney(detail.totals.basePay) }}</p>
                 <p>Overtime pay: {{ formatMoney(detail.totals.overtimePay) }}</p>
+                @if (detail.breakdown; as breakdown) {
+                  <p class="text-emerald-700">Commissions: {{ formatMoney(breakdown.commissionsTotal) }}</p>
+                  <p class="text-red-700">Late deductions: {{ formatMoney(breakdown.lateTotal) }}</p>
+                  <p class="text-red-700">Loan deductions: {{ formatMoney(breakdown.loanTotal) }}</p>
+                  <p class="text-red-700">Manual deductions: {{ formatMoney(breakdown.manualTotal) }}</p>
+                  <p>Gross pay: {{ formatMoney(breakdown.grossPay) }}</p>
+                  <p>Total deductions: {{ formatMoney(breakdown.totalDeductions) }}</p>
+                  @if (breakdown.totalDeductions > breakdown.grossPay) {
+                    <p class="font-bold text-red-700 dark:text-red-300 sm:col-span-2">
+                      Warning: deductions exceed gross pay. Net pay is floored at ₱0.
+                    </p>
+                  }
+                }
                 <p class="pt-2 text-base font-bold text-pcmazing-500 sm:col-span-2">
-                  Net estimated pay: {{ formatMoney(detail.totals.estimatedPay) }}
+                  Net estimated pay: {{ formatMoney(detail.netPay ?? detail.totals.estimatedPay) }}
                 </p>
               </div>
+              @if (detail.lines?.length) {
+                <div class="mt-4 border-t border-slate-200 pt-3 dark:border-slate-700">
+                  <p class="text-xs font-bold uppercase tracking-wide text-slate-500">Ledger lines</p>
+                  @for (line of detail.lines; track line.lineType + '-' + line.label) {
+                    <div class="mt-2 flex justify-between gap-3 text-sm">
+                      <span>{{ line.label }}</span>
+                      <span class="font-semibold" [class.text-emerald-700]="line.lineType === 'commission'" [class.text-red-700]="line.lineType !== 'commission'">
+                        {{ line.lineType === 'commission' ? '+' : '−' }}{{ formatMoney(line.amount) }}
+                      </span>
+                    </div>
+                  }
+                </div>
+              }
             </div>
           } @else {
             <p class="py-10 text-center text-sm text-slate-500">No payslips to preview for this cutoff.</p>
@@ -954,6 +1362,170 @@
               }
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  }
+
+  @if (confirmDialog(); as dialog) {
+    <div
+      class="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 p-4 dark:bg-black/70"
+      (click)="resolveConfirm(false)"
+    >
+      <div
+        class="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900"
+        (click)="$event.stopPropagation()"
+        role="alertdialog"
+        aria-modal="true"
+        [attr.aria-labelledby]="'payroll-confirm-title'"
+      >
+        <div class="flex items-start gap-4">
+          <div
+            class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ring-1"
+            [class]="
+              dialog.tone === 'danger'
+                ? 'bg-red-50 text-red-700 ring-red-100 dark:bg-red-950/40 dark:text-red-300 dark:ring-red-900'
+                : dialog.tone === 'warning'
+                  ? 'bg-amber-50 text-amber-700 ring-amber-100 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-900'
+                  : 'bg-pcmazing-50 text-pcmazing-700 ring-pcmazing-100 dark:bg-pcmazing-950/40 dark:text-pcmazing-300 dark:ring-pcmazing-900'
+            "
+          >
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m0 3.75h.007M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+          </div>
+          <div class="min-w-0">
+            <h3 id="payroll-confirm-title" class="text-lg font-bold text-slate-900 dark:text-white">{{ dialog.title }}</h3>
+            <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ dialog.message }}</p>
+          </div>
+        </div>
+        <div class="mt-6 flex justify-end gap-2">
+          <button
+            type="button"
+            class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+            (click)="resolveConfirm(false)"
+          >
+            {{ dialog.cancelLabel }}
+          </button>
+          <button
+            type="button"
+            class="rounded-xl px-4 py-2.5 text-sm font-bold text-white"
+            [class]="
+              dialog.tone === 'danger'
+                ? 'bg-red-600 hover:bg-red-700'
+                : dialog.tone === 'warning'
+                  ? 'bg-amber-600 hover:bg-amber-700'
+                  : 'bg-pcmazing-500 hover:bg-pcmazing-600'
+            "
+            (click)="resolveConfirm(true)"
+          >
+            {{ dialog.confirmLabel }}
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
+  @if (loanDetail(); as detail) {
+    <div
+      class="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/60 p-0 sm:items-center sm:p-4 dark:bg-black/70"
+      (click)="closeLoanDetail()"
+    >
+      <div
+        class="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-slate-200 bg-white shadow-xl sm:rounded-3xl dark:border-slate-700 dark:bg-slate-900"
+        (click)="$event.stopPropagation()"
+      >
+        <div class="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-700">
+          <div class="min-w-0">
+            <h3 class="text-base font-bold text-slate-900 dark:text-white">{{ detail.loan.label }}</h3>
+            <p class="mt-0.5 text-xs capitalize text-slate-500">{{ detail.loan.status }} · Loan #{{ detail.loan.id }}</p>
+          </div>
+          <button type="button" class="rounded-lg px-2 py-1 text-sm font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800" (click)="closeLoanDetail()">Close</button>
+        </div>
+        <div class="overflow-y-auto px-5 py-4 text-sm">
+          <div class="grid grid-cols-2 gap-3">
+            <div class="rounded-xl bg-slate-50 p-3 dark:bg-slate-950">
+              <p class="text-[11px] font-bold uppercase tracking-wide text-slate-500">Principal</p>
+              <p class="mt-1 font-semibold text-slate-900 dark:text-white">{{ formatMoney(detail.loan.principal) }}</p>
+            </div>
+            <div class="rounded-xl bg-slate-50 p-3 dark:bg-slate-950">
+              <p class="text-[11px] font-bold uppercase tracking-wide text-slate-500">Remaining</p>
+              <p class="mt-1 font-semibold text-slate-900 dark:text-white">{{ formatMoney(detail.remainingBalance) }}</p>
+            </div>
+            <div class="rounded-xl bg-emerald-50 p-3 dark:bg-emerald-950/40">
+              <p class="text-[11px] font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Deducted on payslips</p>
+              <p class="mt-1 font-semibold text-emerald-800 dark:text-emerald-200">{{ formatMoney(detail.deductedTotal) }}</p>
+            </div>
+            <div class="rounded-xl bg-slate-50 p-3 dark:bg-slate-950">
+              <p class="text-[11px] font-bold uppercase tracking-wide text-slate-500">Per cutoff</p>
+              <p class="mt-1 font-semibold text-slate-900 dark:text-white">{{ formatMoney(detail.scheduledInstallmentAmount) }}</p>
+            </div>
+          </div>
+
+          <div class="mt-4 rounded-xl border border-slate-100 p-3 dark:border-slate-800">
+            <p class="text-[11px] font-bold uppercase tracking-wide text-slate-500">Terms</p>
+            <p class="mt-1 font-medium text-slate-900 dark:text-white">{{ loanTermLabel(detail.loan) }}</p>
+            @if (detail.estimatedRemainingInstallments != null) {
+              <p class="mt-1 text-xs text-slate-500">
+                Est. remaining cutoffs at current installment:
+                <span class="font-semibold text-slate-700 dark:text-slate-200">{{ detail.estimatedRemainingInstallments }}</span>
+              </p>
+            }
+            @if (detail.loan.notes) {
+              <p class="mt-2 text-xs text-slate-500">Notes: {{ detail.loan.notes }}</p>
+            }
+            <p class="mt-2 text-xs text-slate-400">
+              Principal {{ formatMoney(detail.loan.principal) }} − payslip deductions
+              {{ formatMoney(detail.deductedTotal) }}
+              @if (loanBalanceDrift(detail)) {
+                · stored remaining {{ formatMoney(detail.remainingBalance) }}
+                (may differ if balance was edited manually)
+              } @else {
+                = remaining {{ formatMoney(detail.remainingBalance) }}
+              }
+            </p>
+          </div>
+
+          <div class="mt-4">
+            <p class="text-[11px] font-bold uppercase tracking-wide text-slate-500">Payslip deductions</p>
+            @if (detail.deductions.length === 0) {
+              <p class="mt-2 text-xs text-slate-500">No payslip deductions yet.</p>
+            } @else {
+              <div class="mt-2 divide-y divide-slate-100 rounded-xl border border-slate-100 dark:divide-slate-800 dark:border-slate-800">
+                @for (row of detail.deductions; track row.id) {
+                  <div class="flex items-start justify-between gap-3 px-3 py-2">
+                    <div class="min-w-0">
+                      <p class="font-medium text-slate-900 dark:text-white">{{ row.runLabel }}</p>
+                      <p class="text-xs text-slate-500">{{ row.dateFrom }} – {{ row.dateTo }} · {{ row.source }}</p>
+                      @if (row.balanceBefore != null) {
+                        <p class="text-xs text-slate-400">Balance before: {{ formatMoney(row.balanceBefore) }}</p>
+                      }
+                    </div>
+                    <p class="shrink-0 font-semibold text-red-600">−{{ formatMoney(row.amount) }}</p>
+                  </div>
+                }
+              </div>
+            }
+          </div>
+
+          @if (detail.periodOverrides.length > 0) {
+            <div class="mt-4">
+              <p class="text-[11px] font-bold uppercase tracking-wide text-slate-500">Period overrides</p>
+              <div class="mt-2 divide-y divide-slate-100 rounded-xl border border-slate-100 dark:divide-slate-800 dark:border-slate-800">
+                @for (row of detail.periodOverrides; track row.id) {
+                  <div class="flex items-start justify-between gap-3 px-3 py-2">
+                    <div>
+                      <p class="font-medium capitalize text-slate-900 dark:text-white">{{ row.action }}</p>
+                      <p class="text-xs text-slate-500">{{ row.dateFrom }} – {{ row.dateTo }}</p>
+                    </div>
+                    <p class="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                      {{ row.action === 'custom' ? formatMoney(row.customAmount) : 'Skipped' }}
+                    </p>
+                  </div>
+                }
+              </div>
+            </div>
+          }
         </div>
       </div>
     </div>

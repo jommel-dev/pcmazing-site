@@ -18,23 +18,23 @@ import { memoryStorage } from 'multer';
 import { Request } from 'express';
 import { AdminJwtPayload } from '../auth/guards/jwt-auth.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { Roles } from '../rbac/roles.decorator';
-import { RolesGuard } from '../rbac/roles.guard';
+import { RequirePermissions } from '../rbac/permissions.decorator';
+import { PermissionsGuard } from '../rbac/permissions.guard';
 import { ChangeUserPasswordDto } from './dto/change-user-password.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UsersService } from './users.service';
 
 @Controller('admin/users')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get('rbac-status')
-  getRbacStatus() {
+  async getRbacStatus() {
     return {
       success: true,
-      data: this.usersService.getRbacStatus(),
+      data: await this.usersService.getRbacStatus(),
     };
   }
 
@@ -47,7 +47,7 @@ export class UsersController {
   }
 
   @Get()
-  @Roles('admin')
+  @RequirePermissions('user_management.view')
   list(
     @Query('page') page?: string,
     @Query('limit') limit?: string,
@@ -61,7 +61,7 @@ export class UsersController {
   }
 
   @Post()
-  @Roles('admin')
+  @RequirePermissions('user_management.create')
   create(@Body() dto: CreateUserDto) {
     return this.usersService.create(dto).then((item) => ({
       success: true,
@@ -71,7 +71,7 @@ export class UsersController {
   }
 
   @Get(':id')
-  @Roles('admin')
+  @RequirePermissions('user_management.view')
   getById(@Param('id', ParseIntPipe) id: number, @Query('source') source?: string) {
     const resolvedSource =
       source === 'tblusers'
@@ -87,7 +87,7 @@ export class UsersController {
   }
 
   @Patch(':id')
-  @Roles('admin')
+  @RequirePermissions('user_management.edit')
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateUserDto,
@@ -103,7 +103,7 @@ export class UsersController {
   }
 
   @Patch(':id/password')
-  @Roles('admin')
+  @RequirePermissions('user_management.edit')
   changePassword(@Param('id', ParseIntPipe) id: number, @Body() dto: ChangeUserPasswordDto) {
     return this.usersService.changePassword(id, dto).then((item) => ({
       success: true,
@@ -113,7 +113,7 @@ export class UsersController {
   }
 
   @Post(':id/profile-image')
-  @Roles('admin')
+  @RequirePermissions('user_management.edit')
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
@@ -132,7 +132,7 @@ export class UsersController {
   }
 
   @Delete(':id/profile-image')
-  @Roles('admin')
+  @RequirePermissions('user_management.edit')
   removeProfileImage(@Param('id', ParseIntPipe) id: number) {
     return this.usersService.removeProfileImage(id).then((item) => ({
       success: true,
@@ -142,7 +142,7 @@ export class UsersController {
   }
 
   @Post(':id/payroll-qr')
-  @Roles('admin')
+  @RequirePermissions('user_management.edit')
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
@@ -161,7 +161,7 @@ export class UsersController {
   }
 
   @Delete(':id/payroll-qr')
-  @Roles('admin')
+  @RequirePermissions('user_management.edit')
   removePayrollQr(@Param('id', ParseIntPipe) id: number) {
     return this.usersService.removePayrollQr(id).then((item) => ({
       success: true,
@@ -171,7 +171,7 @@ export class UsersController {
   }
 
   @Delete(':id')
-  @Roles('admin')
+  @RequirePermissions('user_management.deactivate')
   deactivate(
     @Param('id', ParseIntPipe) id: number,
     @Req() request: Request & { user?: AdminJwtPayload },

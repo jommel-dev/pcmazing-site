@@ -1,8 +1,18 @@
 import { NgClass } from '@angular/common';
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import {
+  Component,
+  computed,
+  effect,
+  ElementRef,
+  inject,
+  input,
+  OnDestroy,
+  OnInit,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
-import { PortalTimeClockComponent } from '../../components/portal-time-clock/portal-time-clock.component';
 import {
   AdminApiService,
   EmployeeActivityItem,
@@ -12,13 +22,19 @@ import {
   EmployeeWorkspaceDashboard,
 } from '../../services/admin-api.service';
 
+/** full = employee home (calendar, payslips, notices). notices = missed time-out / OT alerts only. */
+export type EmployeeDashboardVariant = 'full' | 'notices';
+
 @Component({
   selector: 'app-sales-employee-dashboard',
-  imports: [FormsModule, NgClass, PortalTimeClockComponent],
+  imports: [FormsModule, NgClass],
   templateUrl: './sales-employee-dashboard.component.html',
 })
-export class SalesEmployeeDashboardComponent implements OnInit {
+export class SalesEmployeeDashboardComponent implements OnInit, OnDestroy {
   private readonly adminApi = inject(AdminApiService);
+  private readonly adjustmentVideoRef = viewChild<ElementRef<HTMLVideoElement>>('adjustmentCameraVideo');
+
+  readonly variant = input<EmployeeDashboardVariant>('full');
 
   readonly loading = signal(true);
   readonly error = signal('');
@@ -36,9 +52,14 @@ export class SalesEmployeeDashboardComponent implements OnInit {
   readonly adjustmentMessage = signal('');
   readonly adjustmentPhoto = signal<File | null>(null);
   readonly adjustmentPhotoPreview = signal<string | null>(null);
+  readonly adjustmentCameraStarting = signal(false);
+  readonly adjustmentCameraReady = signal(false);
+  readonly adjustmentCameraError = signal('');
   readonly requestedTimeOut = signal('');
   readonly adjustmentNote = signal('');
   readonly undertimeCategory = signal<'emergency' | 'appointment' | 'event' | 'other'>('emergency');
+  private adjustmentMediaStream: MediaStream | null = null;
+  private adjustmentCameraRequestId = 0;
   readonly undertimeCategoryOptions: Array<{ value: 'emergency' | 'appointment' | 'event' | 'other'; label: string }> = [
     { value: 'emergency', label: 'Emergency' },
     { value: 'appointment', label: 'Scheduled appointment' },
@@ -50,6 +71,7 @@ export class SalesEmployeeDashboardComponent implements OnInit {
   readonly payslipDetailOpen = signal(false);
   readonly payslipDetailLoading = signal(false);
   readonly downloadingPayslip = signal(false);
+  readonly includePayslipRemarks = signal(false);
 
   readonly calendarDays = computed(() => this.buildCalendar(this.month(), this.dashboard()));
 
@@ -60,6 +82,18 @@ export class SalesEmployeeDashboardComponent implements OnInit {
   readonly incompletePunchDays = computed(() =>
     (this.dashboard()?.attendanceDays ?? []).filter((day) => day.canRequestTimeOutAdjustment),
   );
+
+  readonly hasNoticeContent = computed(() => {
+    const data = this.dashboard();
+    if (!data) return false;
+    return Boolean(
+      data.adjustmentNotice?.message ||
+        data.overtimeNotice?.message ||
+        this.adjustmentMessage() ||
+        this.overtimeMessage() ||
+        this.error(),
+    );
+  });
 
   readonly selectedDayTodos = computed(() => {
     const date = this.selectedDate();
@@ -75,6 +109,30 @@ export class SalesEmployeeDashboardComponent implements OnInit {
     const date = this.selectedDate();
     return (this.dashboard()?.attendanceDays ?? []).find((item) => item.workDate === date) ?? null;
   });
+
+  constructor() {
+    effect(() => {
+      const video = this.adjustmentVideoRef()?.nativeElement;
+      if (!video || !this.adjustmentMediaStream || this.adjustmentPhotoPreview()) {
+        return;
+      }
+      if (video.srcObject !== this.adjustmentMediaStream) {
+        video.srcObject = this.adjustmentMediaStream;
+        video.onloadedmetadata = () => {
+          void video
+            .play()
+            .then(() => {
+              this.adjustmentCameraReady.set(true);
+              this.adjustmentCameraStarting.set(false);
+            })
+            .catch(() => {
+              this.adjustmentCameraReady.set(true);
+              this.adjustmentCameraStarting.set(false);
+            });
+        };
+      }
+    });
+  }
 
   ngOnInit(): void {
     void this.load();
@@ -103,10 +161,6 @@ export class SalesEmployeeDashboardComponent implements OnInit {
     }
   }
 
-  async onTimeClockPunched(): Promise<void> {
-    await this.load({ quiet: true });
-  }
-
   async requestOvertime(attendanceId: number | null | undefined): Promise<void> {
     if (attendanceId == null || this.requestingOvertimeId() != null) {
       return;
@@ -133,7 +187,7 @@ export class SalesEmployeeDashboardComponent implements OnInit {
       return;
     }
     if (!photo) {
-      this.error.set('Upload a time-out photo first.');
+      this.error.set('Capture a time-out photo first.');
       return;
     }
     if (!requestedTimeOut) {
@@ -162,6 +216,8 @@ export class SalesEmployeeDashboardComponent implements OnInit {
         response.data.message || response.message || 'Time-out adjustment submitted.',
       );
       this.clearAdjustmentForm();
+      this.stopAdjustmentCamera();
+      this.closeDayOffModal();
       await this.load();
     } catch (error) {
       const message =
@@ -174,15 +230,140 @@ export class SalesEmployeeDashboardComponent implements OnInit {
     }
   }
 
-  onAdjustmentPhoto(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0] ?? null;
+  async startAdjustmentCamera(): Promise<void> {
+    this.adjustmentCameraError.set('');
+    this.adjustmentCameraReady.set(false);
+    this.adjustmentCameraStarting.set(true);
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      this.adjustmentCameraError.set('Camera is not supported on this device/browser.');
+      this.adjustmentCameraStarting.set(false);
+      return;
+    }
+
+    if (this.adjustmentMediaStream?.active) {
+      this.adjustmentCameraStarting.set(false);
+      this.adjustmentCameraReady.set(true);
+      return;
+    }
+
+    this.stopAdjustmentCameraTracksOnly();
+    const requestId = ++this.adjustmentCameraRequestId;
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          facingMode: 'user',
+          width: { ideal: 480 },
+          height: { ideal: 480 },
+          frameRate: { ideal: 24, max: 30 },
+        },
+      });
+
+      if (requestId !== this.adjustmentCameraRequestId) {
+        for (const track of stream.getTracks()) {
+          track.stop();
+        }
+        return;
+      }
+
+      this.adjustmentMediaStream = stream;
+      const video = this.adjustmentVideoRef()?.nativeElement;
+      if (video) {
+        video.srcObject = stream;
+        video.onloadedmetadata = () => {
+          void video.play().finally(() => {
+            this.adjustmentCameraReady.set(true);
+            this.adjustmentCameraStarting.set(false);
+          });
+        };
+      }
+    } catch {
+      if (requestId !== this.adjustmentCameraRequestId) {
+        return;
+      }
+      this.adjustmentCameraError.set('Unable to access camera. Allow camera permission and try again.');
+      this.adjustmentMediaStream = null;
+      this.adjustmentCameraStarting.set(false);
+      this.adjustmentCameraReady.set(false);
+    }
+  }
+
+  stopAdjustmentCamera(): void {
+    this.adjustmentCameraRequestId += 1;
+    this.adjustmentCameraStarting.set(false);
+    this.adjustmentCameraReady.set(false);
+    this.stopAdjustmentCameraTracksOnly();
+    const video = this.adjustmentVideoRef()?.nativeElement;
+    if (video) {
+      video.srcObject = null;
+      video.onloadedmetadata = null;
+    }
+  }
+
+  private stopAdjustmentCameraTracksOnly(): void {
+    if (this.adjustmentMediaStream) {
+      for (const track of this.adjustmentMediaStream.getTracks()) {
+        track.stop();
+      }
+      this.adjustmentMediaStream = null;
+    }
+  }
+
+  async captureAdjustmentPhoto(): Promise<void> {
+    const video = this.adjustmentVideoRef()?.nativeElement;
+    if (!video || !this.adjustmentCameraReady()) {
+      this.error.set('Camera is not ready yet.');
+      return;
+    }
+
+    const width = video.videoWidth || 480;
+    const height = video.videoHeight || 480;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    if (!context) {
+      this.error.set('Unable to capture photo.');
+      return;
+    }
+
+    context.translate(width, 0);
+    context.scale(-1, 1);
+    context.drawImage(video, 0, 0, width, height);
+
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob((value) => resolve(value), 'image/jpeg', 0.8);
+    });
+    if (!blob) {
+      this.error.set('Unable to capture photo.');
+      return;
+    }
+
     const previous = this.adjustmentPhotoPreview();
     if (previous) {
       URL.revokeObjectURL(previous);
     }
+    const file = new File([blob], 'time-out-selfie.jpg', { type: 'image/jpeg' });
     this.adjustmentPhoto.set(file);
-    this.adjustmentPhotoPreview.set(file ? URL.createObjectURL(file) : null);
+    this.adjustmentPhotoPreview.set(URL.createObjectURL(blob));
+    this.error.set('');
+  }
+
+  retakeAdjustmentPhoto(): void {
+    const previous = this.adjustmentPhotoPreview();
+    if (previous) {
+      URL.revokeObjectURL(previous);
+    }
+    this.adjustmentPhoto.set(null);
+    this.adjustmentPhotoPreview.set(null);
+    if (this.adjustmentMediaStream?.active) {
+      this.adjustmentCameraReady.set(true);
+      this.adjustmentCameraStarting.set(false);
+      return;
+    }
+    void this.startAdjustmentCamera();
   }
 
   private clearAdjustmentForm(): void {
@@ -194,6 +375,12 @@ export class SalesEmployeeDashboardComponent implements OnInit {
     this.adjustmentPhotoPreview.set(null);
     this.adjustmentNote.set('');
     this.undertimeCategory.set('emergency');
+    this.adjustmentCameraError.set('');
+  }
+
+  ngOnDestroy(): void {
+    this.stopAdjustmentCamera();
+    this.clearAdjustmentForm();
   }
 
   async viewPayslipPdf(payslipId: string): Promise<void> {
@@ -205,6 +392,7 @@ export class SalesEmployeeDashboardComponent implements OnInit {
     this.payslipDetailLoading.set(true);
     this.payslipDetailOpen.set(true);
     this.payslipDetail.set(null);
+    this.includePayslipRemarks.set(false);
     this.error.set('');
     try {
       const response = await firstValueFrom(this.adminApi.getEmployeePayslipDetail(payslipId));
@@ -221,6 +409,7 @@ export class SalesEmployeeDashboardComponent implements OnInit {
   closePayslipDetail(): void {
     this.payslipDetailOpen.set(false);
     this.payslipDetail.set(null);
+    this.includePayslipRemarks.set(false);
   }
 
   async downloadPayslipPdf(payslipId: string): Promise<void> {
@@ -231,7 +420,13 @@ export class SalesEmployeeDashboardComponent implements OnInit {
     this.downloadingPayslip.set(true);
     this.error.set('');
     try {
-      const blob = await firstValueFrom(this.adminApi.downloadEmployeePayslipPdf(payslipId, true));
+      const blob = await firstValueFrom(
+        this.adminApi.downloadEmployeePayslipPdf(
+          payslipId,
+          true,
+          this.includePayslipRemarks(),
+        ),
+      );
       const detail = this.payslipDetail();
       const filename = detail
         ? `payslip-${detail.dateFrom}_${detail.dateTo}.pdf`
@@ -253,6 +448,7 @@ export class SalesEmployeeDashboardComponent implements OnInit {
   }
 
   closeDayOffModal(): void {
+    this.stopAdjustmentCamera();
     this.dayOffModalOpen.set(false);
   }
 
@@ -270,22 +466,32 @@ export class SalesEmployeeDashboardComponent implements OnInit {
     const punch = (this.dashboard()?.attendanceDays ?? []).find((item) => item.workDate === isoDate);
     this.requestedTimeOut.set(punch ? this.defaultRequestedTimeOut(punch.workDate, punch.timeIn) : `${isoDate}T18:00`);
     this.dayOffModalOpen.set(true);
+    if (punch?.canRequestTimeOutAdjustment) {
+      void this.startAdjustmentCamera();
+    }
   }
 
   private defaultRequestedTimeOut(workDate: string, timeIn: string | null): string {
+    // Always use the missed work date (the day without time-out).
     if (!timeIn) {
       return `${workDate}T18:00`;
     }
+
     const start = new Date(timeIn).getTime();
     const guessed = new Date(start + 9 * 60 * 60 * 1000);
-    const manilaDate = guessed.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
-    const manilaTime = guessed.toLocaleTimeString('en-GB', {
+    const guessedDate = guessed.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+    const guessedTime = guessed.toLocaleTimeString('en-GB', {
       hour: '2-digit',
       minute: '2-digit',
       hour12: false,
       timeZone: 'Asia/Manila',
     });
-    return `${manilaDate}T${manilaTime}`;
+
+    // If time-in + 9h stays on the work date, use that time; otherwise default to 6:00 PM that day.
+    if (guessedDate === workDate) {
+      return `${workDate}T${guessedTime}`;
+    }
+    return `${workDate}T18:00`;
   }
 
   formatPunch(value: string | null | undefined): string {

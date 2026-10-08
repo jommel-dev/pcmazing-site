@@ -839,6 +839,26 @@ export interface EmployeePayslipDetail {
   salaryType?: string;
   userId?: number;
   userSource?: string;
+  lines?: Array<{
+    lineType: 'commission' | 'late_deduction' | 'loan_deduction' | 'manual_deduction';
+    label: string;
+    amount: number;
+    source: string;
+    meta?: Record<string, unknown> | null;
+  }>;
+  remarks?: string | null;
+  basePay?: number;
+  overtimePay?: number;
+  netPay?: number;
+  breakdown?: {
+    grossPay: number;
+    totalDeductions: number;
+    netPay: number;
+    commissionsTotal: number;
+    lateTotal: number;
+    loanTotal: number;
+    manualTotal: number;
+  };
 }
 
 export interface EmployeeWorkspaceDashboard {
@@ -945,6 +965,14 @@ export interface PayrollPeriodItem {
   payslipPeriod?: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
   periodDateFrom?: string;
   periodDateTo?: string;
+  payslipId?: string | number | null;
+  commissionsTotal?: number;
+  grossPay?: number;
+  totalDeductions?: number;
+  netPay?: number;
+  deductionsExceedGross?: boolean;
+  regenerationNeeded?: boolean;
+  remarks?: string | null;
 }
 
 export interface PayrollOverlapItem {
@@ -957,6 +985,123 @@ export interface PayrollOverlapItem {
   dateFrom: string;
   dateTo: string;
   exactMatch: boolean;
+}
+
+export interface PayrollSettings {
+  workWeek: 'mon_fri' | 'mon_sat' | 'day_off_basis';
+  undertimeGraceMinutes: number;
+  shiftStartTime: string;
+  lateGraceMinutes: number;
+  lateDeductionFixed: number;
+  lateDeductionPerMinute: number;
+}
+
+export interface PayrollCommissionType {
+  id: number;
+  name: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PayrollCommissionEntry {
+  id: number;
+  userId: number;
+  userSource: 'pcmazing_admin_users' | 'tblusers';
+  payrollRunId: number | null;
+  dateFrom: string;
+  dateTo: string;
+  typeId: number | null;
+  typeName: string | null;
+  label: string | null;
+  amount: number;
+  createdBy: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PayrollCommissionEntryScope {
+  userId: number;
+  userSource: 'pcmazing_admin_users' | 'tblusers';
+  dateFrom: string;
+  dateTo: string;
+}
+
+export interface PayrollManualDeduction {
+  id: number;
+  userId: number;
+  userSource: 'pcmazing_admin_users' | 'tblusers';
+  payrollRunId: number | null;
+  dateFrom: string;
+  dateTo: string;
+  label: string;
+  amount: number;
+  createdBy: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PayrollManualDeductionScope {
+  userId: number;
+  userSource: 'pcmazing_admin_users' | 'tblusers';
+  dateFrom: string;
+  dateTo: string;
+}
+
+export interface PayrollLoanPeriodOverride {
+  id: number;
+  loanId: number;
+  payrollRunId: number | null;
+  dateFrom: string;
+  dateTo: string;
+  action: 'skip' | 'custom';
+  customAmount: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PayrollLoan {
+  id: number;
+  userId: number;
+  userSource: 'pcmazing_admin_users' | 'tblusers';
+  principal: number;
+  balance: number;
+  termStyle: 'equal_installments' | 'fixed_per_cutoff';
+  installmentCount: number | null;
+  fixedInstallmentAmount: number;
+  status: 'active' | 'paid' | 'cancelled' | 'deleted';
+  label: string;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  periodOverrides?: PayrollLoanPeriodOverride[];
+}
+
+export interface PayrollLoanDeductionHistoryItem {
+  id: number;
+  amount: number;
+  source: string;
+  label: string;
+  dateFrom: string;
+  dateTo: string;
+  runLabel: string;
+  balanceBefore: number | null;
+  createdAt: string;
+}
+
+export interface PayrollLoanDetail {
+  loan: PayrollLoan;
+  deductedTotal: number;
+  remainingBalance: number;
+  scheduledInstallmentAmount: number;
+  estimatedRemainingInstallments: number | null;
+  deductions: PayrollLoanDeductionHistoryItem[];
+  periodOverrides: PayrollLoanPeriodOverride[];
+}
+
+export interface PayrollLoanScope {
+  userId: number;
+  userSource: 'pcmazing_admin_users' | 'tblusers';
 }
 
 export interface PayrollPeriodMeta {
@@ -991,6 +1136,27 @@ export interface PayrollGenerateResult {
     estimatedPay: number;
   };
   replaced: boolean;
+}
+
+export interface AdminRolePermission {
+  key: string;
+  label: string;
+}
+
+export interface AdminPermissionGroup {
+  id: string;
+  label: string;
+  permissions: AdminRolePermission[];
+}
+
+export interface AdminRoleRecord {
+  id: number;
+  name: string;
+  slug: string;
+  isSystem: boolean;
+  isActive: boolean;
+  deletedAt: string | null;
+  permissionKeys: string[];
 }
 
 export interface RbacStatus {
@@ -2223,6 +2389,44 @@ export class AdminApiService {
     );
   }
 
+  listAdminRoles() {
+    return this.http.get<ItemResponse<AdminRoleRecord[]>>(`${APP_CONFIG.apiUrl}/admin/roles`, {
+      headers: this.headers(),
+    });
+  }
+
+  getPermissionCatalog() {
+    return this.http.get<ItemResponse<AdminPermissionGroup[]>>(
+      `${APP_CONFIG.apiUrl}/admin/roles/catalog`,
+      { headers: this.headers() },
+    );
+  }
+
+  createAdminRole(payload: { name: string; permissionKeys: string[] }) {
+    return this.http.post<ItemResponse<AdminRoleRecord>>(`${APP_CONFIG.apiUrl}/admin/roles`, payload, {
+      headers: this.headers(),
+    });
+  }
+
+  updateAdminRole(
+    id: number,
+    payload: { name?: string; isActive?: boolean; permissionKeys?: string[] },
+  ) {
+    return this.http.patch<ItemResponse<AdminRoleRecord>>(
+      `${APP_CONFIG.apiUrl}/admin/roles/${id}`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  softDeleteAdminRole(id: number) {
+    return this.http.post<ItemResponse<{ id: number }>>(
+      `${APP_CONFIG.apiUrl}/admin/roles/${id}/soft-delete`,
+      {},
+      { headers: this.headers() },
+    );
+  }
+
   listUsers(page = 1, limit = 20, search = '') {
     const params = this.listParams(page, limit, search);
 
@@ -2450,23 +2654,191 @@ export class AdminApiService {
   }
 
   getPayrollSettings() {
-    return this.http.get<
-      ItemResponse<{ workWeek: 'mon_fri' | 'mon_sat' | 'day_off_basis'; undertimeGraceMinutes: number }>
-    >(
+    return this.http.get<ItemResponse<PayrollSettings>>(
       `${APP_CONFIG.apiUrl}/admin/payroll/settings`,
       { headers: this.headers() },
     );
   }
 
-  updatePayrollSettings(payload: {
-    workWeek?: 'mon_fri' | 'mon_sat' | 'day_off_basis';
-    undertimeGraceMinutes?: number;
-  }) {
-    return this.http.patch<
-      ItemResponse<{ workWeek: 'mon_fri' | 'mon_sat' | 'day_off_basis'; undertimeGraceMinutes: number }>
-    >(
+  updatePayrollSettings(payload: Partial<PayrollSettings>) {
+    return this.http.patch<ItemResponse<PayrollSettings>>(
       `${APP_CONFIG.apiUrl}/admin/payroll/settings`,
       payload,
+      { headers: this.headers() },
+    );
+  }
+
+  listPayrollCommissionTypes() {
+    return this.http.get<ItemResponse<PayrollCommissionType[]>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/commission-types`,
+      { headers: this.headers() },
+    );
+  }
+
+  createPayrollCommissionType(payload: { name: string; isActive?: boolean }) {
+    return this.http.post<ItemResponse<PayrollCommissionType>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/commission-types`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  updatePayrollCommissionType(
+    id: number,
+    payload: { name?: string; isActive?: boolean },
+  ) {
+    return this.http.patch<ItemResponse<PayrollCommissionType>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/commission-types/${id}`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  listPayrollCommissionEntries(scope: PayrollCommissionEntryScope) {
+    return this.http.get<ItemResponse<PayrollCommissionEntry[]>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/commission-entries`,
+      { headers: this.headers(), params: this.payrollCommissionScopeParams(scope) },
+    );
+  }
+
+  createPayrollCommissionEntry(
+    scope: PayrollCommissionEntryScope,
+    payload: { typeId?: number | null; label?: string; amount: number },
+  ) {
+    return this.http.post<ItemResponse<PayrollCommissionEntry>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/commission-entries`,
+      payload,
+      { headers: this.headers(), params: this.payrollCommissionScopeParams(scope) },
+    );
+  }
+
+  updatePayrollCommissionEntry(
+    id: number,
+    payload: { typeId?: number | null; label?: string | null; amount?: number },
+  ) {
+    return this.http.patch<ItemResponse<PayrollCommissionEntry>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/commission-entries/${id}`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  deletePayrollCommissionEntry(id: number) {
+    return this.http.delete<{ success: boolean; message: string }>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/commission-entries/${id}`,
+      { headers: this.headers() },
+    );
+  }
+
+  listPayrollManualDeductions(scope: PayrollManualDeductionScope) {
+    return this.http.get<ItemResponse<PayrollManualDeduction[]>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/manual-deductions`,
+      { headers: this.headers(), params: this.payrollManualDeductionScopeParams(scope) },
+    );
+  }
+
+  createPayrollManualDeduction(
+    scope: PayrollManualDeductionScope,
+    payload: { label: string; amount: number },
+  ) {
+    return this.http.post<ItemResponse<PayrollManualDeduction>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/manual-deductions`,
+      payload,
+      { headers: this.headers(), params: this.payrollManualDeductionScopeParams(scope) },
+    );
+  }
+
+  updatePayrollManualDeduction(
+    id: number,
+    payload: { label?: string; amount?: number },
+  ) {
+    return this.http.patch<ItemResponse<PayrollManualDeduction>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/manual-deductions/${id}`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  deletePayrollManualDeduction(id: number) {
+    return this.http.delete<{ success: boolean; message: string }>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/manual-deductions/${id}`,
+      { headers: this.headers() },
+    );
+  }
+
+  listPayrollLoans(scope: PayrollLoanScope) {
+    return this.http.get<ItemResponse<PayrollLoan[]>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/loans`,
+      { headers: this.headers(), params: this.payrollLoanScopeParams(scope) },
+    );
+  }
+
+  getPayrollLoanDetail(id: number) {
+    return this.http.get<ItemResponse<PayrollLoanDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/loans/${id}/detail`,
+      { headers: this.headers() },
+    );
+  }
+
+  createPayrollLoan(payload: PayrollLoanScope & {
+    label: string;
+    principal: number;
+    termStyle: 'equal_installments' | 'fixed_per_cutoff';
+    installmentCount?: number;
+    fixedInstallmentAmount?: number;
+    notes?: string;
+  }) {
+    return this.http.post<ItemResponse<PayrollLoan>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/loans`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  updatePayrollLoan(
+    id: number,
+    payload: {
+      status?: 'cancelled' | 'active' | 'deleted';
+      label?: string;
+      balance?: number;
+      notes?: string | null;
+    },
+  ) {
+    return this.http.patch<ItemResponse<PayrollLoan>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/loans/${id}`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  upsertPayrollLoanPeriodOverride(
+    id: number,
+    payload: {
+      dateFrom: string;
+      dateTo: string;
+      action: 'skip' | 'custom';
+      customAmount?: number;
+    },
+  ) {
+    return this.http.put<ItemResponse<PayrollLoanPeriodOverride>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/loans/${id}/period-override`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  deletePayrollLoanPeriodOverride(id: number, dateFrom: string, dateTo: string) {
+    const params = new HttpParams().set('dateFrom', dateFrom).set('dateTo', dateTo);
+    return this.http.delete<{ success: boolean; message: string }>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/loans/${id}/period-override`,
+      { headers: this.headers(), params },
+    );
+  }
+
+  updatePayrollPayslipRemarks(id: string | number, remarks: string | null) {
+    return this.http.patch<ItemResponse<{ id: string; remarks: string | null }>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/payslips/${id}/remarks`,
+      { remarks },
       { headers: this.headers() },
     );
   }
@@ -3109,10 +3481,17 @@ export class AdminApiService {
     );
   }
 
-  downloadEmployeePayslipPdf(payslipId: string | number, download = false) {
+  downloadEmployeePayslipPdf(
+    payslipId: string | number,
+    download = false,
+    includeRemarks = false,
+  ) {
     let params = new HttpParams();
     if (download) {
       params = params.set('download', '1');
+    }
+    if (includeRemarks) {
+      params = params.set('includeRemarks', '1');
     }
     return this.http.get(`${APP_CONFIG.apiUrl}/admin/employee-workspace/payslips/${payslipId}/pdf`, {
       headers: this.headers(),
@@ -3304,6 +3683,30 @@ export class AdminApiService {
       params = params.set('search', search.trim());
     }
     return params;
+  }
+
+  private payrollCommissionScopeParams(scope: PayrollCommissionEntryScope): HttpParams {
+    return new HttpParams()
+      .set('userId', String(scope.userId))
+      .set('userSource', scope.userSource)
+      .set('dateFrom', scope.dateFrom)
+      .set('dateTo', scope.dateTo);
+  }
+
+  private payrollManualDeductionScopeParams(
+    scope: PayrollManualDeductionScope,
+  ): HttpParams {
+    return new HttpParams()
+      .set('userId', String(scope.userId))
+      .set('userSource', scope.userSource)
+      .set('dateFrom', scope.dateFrom)
+      .set('dateTo', scope.dateTo);
+  }
+
+  private payrollLoanScopeParams(scope: PayrollLoanScope): HttpParams {
+    return new HttpParams()
+      .set('userId', String(scope.userId))
+      .set('userSource', scope.userSource);
   }
 
   private appendPortalTimeClockLocation(

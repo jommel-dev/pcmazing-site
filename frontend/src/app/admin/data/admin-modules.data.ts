@@ -188,15 +188,15 @@ export const ADMIN_MODULES: AdminModuleItem[] = [
   {
     key: 'settings',
     label: 'Settings',
-    route: '/admin/modules/settings',
-    description: 'Business profile, branches, RBAC, and system configuration.',
-    status: 'coming_soon',
+    route: '/admin/settings',
+    description: 'Roles, access control, and printing generator.',
+    status: 'active',
     referenceMenu: 'settings',
   },
   {
     key: 'printing_generator',
     label: 'Printing Generator',
-    route: '/admin/modules/printing-generator',
+    route: '/admin/settings/printing',
     description: 'Design printable documents with dynamic, draggable receipt templates.',
     status: 'active',
   },
@@ -255,9 +255,7 @@ export const ADMIN_NAV_SECTIONS: AdminNavSection[] = [
     key: 'system_management',
     title: 'System Management',
     items: ADMIN_MODULES.filter((item) =>
-      ['payroll', 'accounting', 'user_management', 'settings', 'printing_generator'].includes(
-        item.key,
-      ),
+      ['payroll', 'accounting', 'user_management', 'settings'].includes(item.key),
     ),
   },
   {
@@ -270,17 +268,24 @@ export const ADMIN_NAV_SECTIONS: AdminNavSection[] = [
 export function filterNavSectionsForRole(
   role: string | null | undefined,
   allowed: Set<string> | 'all',
+  options?: { payrollEnabled?: boolean },
 ): AdminNavSection[] {
   const sections: AdminNavSection[] = [];
+  const payrollEnabled = options?.payrollEnabled !== false;
 
   // Super admin keeps classic top dashboard link via layout; sections as today.
   if (allowed === 'all') {
+    const myPortal = payrollEnabled
+      ? [
+          {
+            key: 'my_portal',
+            title: 'My Portal',
+            items: ADMIN_MODULES.filter((item) => item.key === 'time_clock'),
+          },
+        ]
+      : [];
     return [
-      {
-        key: 'my_portal',
-        title: 'My Portal',
-        items: ADMIN_MODULES.filter((item) => item.key === 'time_clock'),
-      },
+      ...myPortal,
       {
         key: 'website',
         title: 'Website',
@@ -321,9 +326,7 @@ export function filterNavSectionsForRole(
         key: 'system_management',
         title: 'System Management',
         items: ADMIN_MODULES.filter((item) =>
-          ['payroll', 'accounting', 'user_management', 'settings', 'printing_generator'].includes(
-            item.key,
-          ),
+          ['payroll', 'accounting', 'user_management', 'settings'].includes(item.key),
         ),
       },
     ];
