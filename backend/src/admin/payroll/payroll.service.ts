@@ -2878,6 +2878,9 @@ export class PayrollService {
       overtimePay: totals.overtimePay,
       lines,
     });
+    if (lines.length === 0) {
+      breakdown.netPay = Number(slip.estimated_pay);
+    }
     totals.estimatedPay = breakdown.netPay;
 
     const generatedAt = new Date(slip.created_at).toLocaleString('en-PH', {
