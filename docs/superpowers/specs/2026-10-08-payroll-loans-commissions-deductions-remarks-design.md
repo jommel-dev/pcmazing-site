@@ -13,9 +13,9 @@ Extend payroll so admins can manage loans, commissions, and deductions that flow
 | Topic | Choice |
 | --- | --- |
 | Architecture | Payslip ledger lines + supporting loan/commission/deduction tables |
-| Loan terms | Per loan: **equal installments** (amount ÷ N cutoffs) **or** **fixed amount per cutoff** until balance zero |
+| Loan terms | Per loan: **equal installments** (amount ÷ N cutoffs, frozen as `fixed_installment_amount`) **or** **fixed amount per cutoff** until balance zero |
 | Loan skip | Skip this cutoff → installment deferred to end of schedule; balance unchanged until deducted |
-| Loan manual | Custom amount for this period allowed; reduces balance; equal-installment remaining schedule recalculates |
+| Loan manual | Custom amount for this period allowed and reduces balance; the equal-installment amount stays fixed, so custom/skip shifts the schedule end until the balance is paid |
 | Late definition | Global shift start + late grace minutes; clock-in after start+grace = late |
 | Late amount | Configurable fixed ₱ and/or per-minute after grace (settings) |
 | Commissions | Commission types catalog + “Other” free-text; multiple lines per employee/period |

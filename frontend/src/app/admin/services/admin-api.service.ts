@@ -967,8 +967,11 @@ export interface PayrollPeriodItem {
   periodDateTo?: string;
   payslipId?: string | number | null;
   commissionsTotal?: number;
+  grossPay?: number;
   totalDeductions?: number;
   netPay?: number;
+  deductionsExceedGross?: boolean;
+  regenerationNeeded?: boolean;
   remarks?: string | null;
 }
 

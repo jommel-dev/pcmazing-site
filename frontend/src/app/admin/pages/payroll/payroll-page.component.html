@@ -580,11 +580,19 @@
                 </td>
                 <td class="px-4 py-3 font-medium text-emerald-700">{{ formatMoney(item.commissionsTotal ?? 0) }}</td>
                 <td class="px-4 py-3 font-medium text-red-700">{{ formatMoney(item.totalDeductions ?? 0) }}</td>
-                <td class="px-4 py-3 font-semibold text-slate-900 dark:text-white">{{ formatMoney(item.netPay ?? item.estimatedPay) }}</td>
+                <td class="px-4 py-3 font-semibold text-slate-900 dark:text-white">
+                  {{ formatMoney(item.netPay ?? item.estimatedPay) }}
+                  @if (item.deductionsExceedGross) {
+                    <span class="mt-1 block text-[11px] font-bold text-red-700 dark:text-red-300">Deductions exceed gross — net floored at ₱0</span>
+                  }
+                </td>
                 <td class="px-4 py-3">
                   <div class="flex min-w-48 flex-col gap-2">
                     <button type="button" class="self-start rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200" [disabled]="previewLoading() || generating()" (click)="openPayslipPreview(item)">Preview</button>
                     @if (item.payslipId != null) {
+                      @if (item.regenerationNeeded) {
+                        <span class="self-start rounded-full bg-amber-100 px-2 py-1 text-[11px] font-bold text-amber-800 dark:bg-amber-950/60 dark:text-amber-200">Regenerate needed</span>
+                      }
                       <textarea rows="2" class="rounded-lg border border-slate-200 px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-950" placeholder="Payslip remarks" [ngModel]="remarksDraft(item)" (ngModelChange)="setRemarksDraft(item, $event)" [ngModelOptions]="{standalone: true}"></textarea>
                       <button type="button" class="self-start text-xs font-bold text-pcmazing-500 disabled:opacity-50" [disabled]="savingRemarksId() != null" (click)="savePayslipRemarks(item)">
                         @if (savingRemarksId() === item.payslipId) { Saving... } @else { Save remarks }
@@ -1104,6 +1112,11 @@
                   <p class="text-red-700">Manual deductions: {{ formatMoney(breakdown.manualTotal) }}</p>
                   <p>Gross pay: {{ formatMoney(breakdown.grossPay) }}</p>
                   <p>Total deductions: {{ formatMoney(breakdown.totalDeductions) }}</p>
+                  @if (breakdown.totalDeductions > breakdown.grossPay) {
+                    <p class="font-bold text-red-700 dark:text-red-300 sm:col-span-2">
+                      Warning: deductions exceed gross pay. Net pay is floored at ₱0.
+                    </p>
+                  }
                 }
                 <p class="pt-2 text-base font-bold text-pcmazing-500 sm:col-span-2">
                   Net estimated pay: {{ formatMoney(detail.netPay ?? detail.totals.estimatedPay) }}
