@@ -52,6 +52,7 @@ import { AdminModulePlaceholderPageComponent } from './pages/modules/admin-modul
 import { PrintingGeneratorPageComponent } from './pages/printing/printing-generator-page.component';
 import { SettingsShellPageComponent } from './pages/settings/settings-shell-page.component';
 import { SettingsRolesPageComponent } from './pages/settings/settings-roles-page.component';
+import { SettingsPayrollPageComponent } from './pages/settings/settings-payroll-page.component';
 import { CompanyExpensesPageComponent } from './pages/company-expenses/company-expenses-page.component';
 import { PortalTimeClockPageComponent } from './pages/time-clock/portal-time-clock-page.component';
 
@@ -455,6 +456,13 @@ export const adminRoutes: Routes = [
             title: 'Roles & access | PCMazing Admin',
             canActivate: [adminRoleGuard],
             data: { module: 'settings' },
+          },
+          {
+            path: 'payroll',
+            component: SettingsPayrollPageComponent,
+            title: 'Payroll settings | PCMazing Admin',
+            canActivate: [adminRoleGuard],
+            data: { module: 'payroll' },
           },
           {
             path: 'printing',

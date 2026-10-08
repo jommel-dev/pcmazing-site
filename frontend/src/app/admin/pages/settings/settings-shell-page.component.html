@@ -16,13 +16,24 @@
         >
           Roles &amp; access
         </a>
-        <a
-          routerLink="/admin/settings/printing"
-          routerLinkActive="bg-slate-900 text-white dark:bg-white dark:text-slate-900"
-          class="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
-        >
-          Printing Generator
-        </a>
+        @if (canSee('payroll')) {
+          <a
+            routerLink="/admin/settings/payroll"
+            routerLinkActive="bg-slate-900 text-white dark:bg-white dark:text-slate-900"
+            class="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            Payroll settings
+          </a>
+        }
+        @if (canSee('printing_generator')) {
+          <a
+            routerLink="/admin/settings/printing"
+            routerLinkActive="bg-slate-900 text-white dark:bg-white dark:text-slate-900"
+            class="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            Printing Generator
+          </a>
+        }
       </nav>
     </aside>
 
