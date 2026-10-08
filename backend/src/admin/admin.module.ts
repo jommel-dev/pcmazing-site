@@ -29,6 +29,8 @@ import { QuotationController } from './quotation/quotation.controller';
 import { PublicQuotationsController } from './quotation/public-quotations.controller';
 import { QuotationService } from './quotation/quotation.service';
 import { RbacService } from './rbac/rbac.service';
+import { RolesAdminController } from './rbac/roles-admin.controller';
+import { RolesAdminService } from './rbac/roles-admin.service';
 import { RolesGuard } from './rbac/roles.guard';
 import { UsersController } from './users/users.controller';
 import { UsersService } from './users/users.service';
@@ -65,6 +67,7 @@ import { LocalPriceListsService } from './local-price-lists/local-price-lists.se
     PartsPriceSearchController,
     LocalPriceListsController,
     UsersController,
+    RolesAdminController,
     PayrollController,
     MarketingTeamsController,
     ClientProspectsController,
@@ -88,6 +91,7 @@ import { LocalPriceListsService } from './local-price-lists/local-price-lists.se
     PartsPriceSearchService,
     LocalPriceListsService,
     RbacService,
+    RolesAdminService,
     RolesGuard,
     UsersService,
     MarketingTeamsService,

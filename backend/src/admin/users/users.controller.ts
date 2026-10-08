@@ -31,10 +31,10 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Get('rbac-status')
-  getRbacStatus() {
+  async getRbacStatus() {
     return {
       success: true,
-      data: this.usersService.getRbacStatus(),
+      data: await this.usersService.getRbacStatus(),
     };
   }
 
