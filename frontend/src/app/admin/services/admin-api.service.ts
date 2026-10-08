@@ -999,6 +999,27 @@ export interface PayrollCommissionEntryScope {
   dateTo: string;
 }
 
+export interface PayrollManualDeduction {
+  id: number;
+  userId: number;
+  userSource: 'pcmazing_admin_users' | 'tblusers';
+  payrollRunId: number | null;
+  dateFrom: string;
+  dateTo: string;
+  label: string;
+  amount: number;
+  createdBy: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PayrollManualDeductionScope {
+  userId: number;
+  userSource: 'pcmazing_admin_users' | 'tblusers';
+  dateFrom: string;
+  dateTo: string;
+}
+
 export interface PayrollLoanPeriodOverride {
   id: number;
   loanId: number;
@@ -2647,6 +2668,31 @@ export class AdminApiService {
     );
   }
 
+  listPayrollManualDeductions(scope: PayrollManualDeductionScope) {
+    return this.http.get<ItemResponse<PayrollManualDeduction[]>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/manual-deductions`,
+      { headers: this.headers(), params: this.payrollManualDeductionScopeParams(scope) },
+    );
+  }
+
+  createPayrollManualDeduction(
+    scope: PayrollManualDeductionScope,
+    payload: { label: string; amount: number },
+  ) {
+    return this.http.post<ItemResponse<PayrollManualDeduction>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/manual-deductions`,
+      payload,
+      { headers: this.headers(), params: this.payrollManualDeductionScopeParams(scope) },
+    );
+  }
+
+  deletePayrollManualDeduction(id: number) {
+    return this.http.delete<{ success: boolean; message: string }>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/manual-deductions/${id}`,
+      { headers: this.headers() },
+    );
+  }
+
   listPayrollLoans(scope: PayrollLoanScope) {
     return this.http.get<ItemResponse<PayrollLoan[]>>(
       `${APP_CONFIG.apiUrl}/admin/payroll/loans`,
@@ -3536,6 +3582,16 @@ export class AdminApiService {
   }
 
   private payrollCommissionScopeParams(scope: PayrollCommissionEntryScope): HttpParams {
+    return new HttpParams()
+      .set('userId', String(scope.userId))
+      .set('userSource', scope.userSource)
+      .set('dateFrom', scope.dateFrom)
+      .set('dateTo', scope.dateTo);
+  }
+
+  private payrollManualDeductionScopeParams(
+    scope: PayrollManualDeductionScope,
+  ): HttpParams {
     return new HttpParams()
       .set('userId', String(scope.userId))
       .set('userSource', scope.userSource)

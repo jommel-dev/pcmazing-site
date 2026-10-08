@@ -21,6 +21,10 @@ import {
   LoanPeriodDto,
   UpsertLoanPeriodOverrideDto,
 } from './dto/loan-period-override.dto';
+import {
+  CreateManualDeductionDto,
+  ManualDeductionQueryDto,
+} from './dto/manual-deduction.dto';
 import { PayrollService } from './payroll.service';
 
 @Controller('admin/payroll')
@@ -153,6 +157,52 @@ export class PayrollController {
     return this.payrollService.deleteCommissionEntry(id).then(() => ({
       success: true,
       message: 'Commission entry deleted.',
+    }));
+  }
+
+  @Get('manual-deductions')
+  @RequirePermissions('payroll.view')
+  listManualDeductions(@Query() query: ManualDeductionQueryDto) {
+    return this.payrollService
+      .listManualDeductions(query.userId, query.userSource, query.dateFrom, query.dateTo)
+      .then((data) => ({
+        success: true,
+        data,
+      }));
+  }
+
+  @Post('manual-deductions')
+  @RequirePermissions('payroll.edit')
+  createManualDeduction(
+    @Query() query: ManualDeductionQueryDto,
+    @Body() body: CreateManualDeductionDto,
+    @Req() req: Request & { user?: AdminJwtPayload },
+  ) {
+    const createdBy =
+      req.user?.sub != null && Number.isFinite(Number(req.user.sub))
+        ? Number(req.user.sub)
+        : undefined;
+    return this.payrollService
+      .createManualDeduction(
+        query.userId,
+        query.userSource,
+        query.dateFrom,
+        query.dateTo,
+        body,
+        createdBy,
+      )
+      .then((data) => ({
+        success: true,
+        data,
+      }));
+  }
+
+  @Delete('manual-deductions/:id')
+  @RequirePermissions('payroll.edit')
+  deleteManualDeduction(@Param('id', ParseIntPipe) id: number) {
+    return this.payrollService.deleteManualDeduction(id).then(() => ({
+      success: true,
+      message: 'Manual deduction deleted.',
     }));
   }
 

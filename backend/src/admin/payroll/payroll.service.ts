@@ -27,6 +27,7 @@ import {
   CreateCommissionTypeDto,
   UpdateCommissionTypeDto,
 } from './dto/commission-type.dto';
+import { CreateManualDeductionDto } from './dto/manual-deduction.dto';
 import { CreateLoanDto, LoanTermStyle, UpdateLoanDto } from './dto/loan.dto';
 import { UpsertLoanPeriodOverrideDto } from './dto/loan-period-override.dto';
 import { PAYROLL_WORK_WEEKS, PayrollWorkWeek, UNDERTIME_CATEGORIES, UndertimeCategory } from './dto/payroll-settings.dto';
@@ -225,6 +226,20 @@ export interface CommissionEntry {
   typeId: number | null;
   typeName: string | null;
   label: string | null;
+  amount: number;
+  createdBy: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ManualDeduction {
+  id: number;
+  userId: number;
+  userSource: CommissionUserSource;
+  payrollRunId: number | null;
+  dateFrom: string;
+  dateTo: string;
+  label: string;
   amount: number;
   createdBy: number | null;
   createdAt: string;
@@ -654,6 +669,93 @@ export class PayrollService {
     );
     if (!result.rows[0]) {
       throw new NotFoundException('Commission entry not found.');
+    }
+  }
+
+  async listManualDeductions(
+    userId: number,
+    userSource: CommissionUserSource,
+    dateFrom: string,
+    dateTo: string,
+  ): Promise<ManualDeduction[]> {
+    await this.ensureReady();
+    this.validateManualDeductionScope(userId, userSource, dateFrom, dateTo);
+    const result = await this.databaseService.query<{
+      id: string | number;
+      user_id: string | number;
+      user_source: CommissionUserSource;
+      payroll_run_id: string | number | null;
+      date_from: string;
+      date_to: string;
+      label: string;
+      amount: string | number;
+      created_by: string | number | null;
+      created_at: string;
+      updated_at: string;
+    }>(
+      `SELECT id, user_id, user_source, payroll_run_id,
+              date_from::text AS date_from, date_to::text AS date_to,
+              label, amount, created_by, created_at::text AS created_at,
+              updated_at::text AS updated_at
+       FROM pcmazing_payroll_manual_deductions
+       WHERE user_id = $1 AND user_source = $2
+         AND date_from = $3::date AND date_to = $4::date
+       ORDER BY created_at ASC, id ASC`,
+      [userId, userSource, dateFrom, dateTo],
+    );
+    return result.rows.map((row) => this.mapManualDeduction(row));
+  }
+
+  async createManualDeduction(
+    userId: number,
+    userSource: CommissionUserSource,
+    dateFrom: string,
+    dateTo: string,
+    input: CreateManualDeductionDto,
+    createdBy?: number,
+  ): Promise<ManualDeduction> {
+    await this.ensureReady();
+    this.validateManualDeductionScope(userId, userSource, dateFrom, dateTo);
+    const label = input.label.trim();
+    if (!label) {
+      throw new BadRequestException('Deduction label is required.');
+    }
+    const result = await this.databaseService.query<{
+      id: string | number;
+      user_id: string | number;
+      user_source: CommissionUserSource;
+      payroll_run_id: string | number | null;
+      date_from: string;
+      date_to: string;
+      label: string;
+      amount: string | number;
+      created_by: string | number | null;
+      created_at: string;
+      updated_at: string;
+    }>(
+      `INSERT INTO pcmazing_payroll_manual_deductions (
+         user_id, user_source, date_from, date_to, label, amount, created_by
+       )
+       VALUES ($1, $2, $3::date, $4::date, $5, $6, $7)
+       RETURNING id, user_id, user_source, payroll_run_id,
+                 date_from::text AS date_from, date_to::text AS date_to,
+                 label, amount, created_by, created_at::text AS created_at,
+                 updated_at::text AS updated_at`,
+      [userId, userSource, dateFrom, dateTo, label, input.amount, createdBy ?? null],
+    );
+    return this.mapManualDeduction(result.rows[0]);
+  }
+
+  async deleteManualDeduction(id: number): Promise<void> {
+    await this.ensureReady();
+    const result = await this.databaseService.query<{ id: string | number }>(
+      `DELETE FROM pcmazing_payroll_manual_deductions
+       WHERE id = $1
+       RETURNING id`,
+      [id],
+    );
+    if (!result.rows[0]) {
+      throw new NotFoundException('Manual deduction not found.');
     }
   }
 
@@ -3265,6 +3367,34 @@ export class PayrollService {
     };
   }
 
+  private mapManualDeduction(row: {
+    id: string | number;
+    user_id: string | number;
+    user_source: CommissionUserSource;
+    payroll_run_id: string | number | null;
+    date_from: string;
+    date_to: string;
+    label: string;
+    amount: string | number;
+    created_by: string | number | null;
+    created_at: string;
+    updated_at: string;
+  }): ManualDeduction {
+    return {
+      id: Number(row.id),
+      userId: Number(row.user_id),
+      userSource: row.user_source,
+      payrollRunId: row.payroll_run_id == null ? null : Number(row.payroll_run_id),
+      dateFrom: row.date_from,
+      dateTo: row.date_to,
+      label: row.label,
+      amount: Number(row.amount),
+      createdBy: row.created_by == null ? null : Number(row.created_by),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
   private mapLoan(row: PayrollLoanRow): PayrollLoan {
     return {
       id: Number(row.id),
@@ -3336,6 +3466,26 @@ export class PayrollService {
     }
     if (!this.isIsoDate(dateFrom) || !this.isIsoDate(dateTo)) {
       throw new BadRequestException('Enter a valid commission period.');
+    }
+    if (dateFrom > dateTo) {
+      throw new BadRequestException('dateFrom must be on or before dateTo.');
+    }
+  }
+
+  private validateManualDeductionScope(
+    userId: number,
+    userSource: string,
+    dateFrom: string,
+    dateTo: string,
+  ): void {
+    if (!Number.isInteger(userId) || userId <= 0) {
+      throw new BadRequestException('Invalid deduction employee.');
+    }
+    if (userSource !== 'pcmazing_admin_users' && userSource !== 'tblusers') {
+      throw new BadRequestException('Invalid deduction employee source.');
+    }
+    if (!this.isIsoDate(dateFrom) || !this.isIsoDate(dateTo)) {
+      throw new BadRequestException('Enter a valid deduction period.');
     }
     if (dateFrom > dateTo) {
       throw new BadRequestException('dateFrom must be on or before dateTo.');
