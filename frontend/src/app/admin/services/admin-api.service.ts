@@ -2771,6 +2771,7 @@ export class AdminApiService {
     payload: {
       status?: 'cancelled' | 'active' | 'deleted';
       label?: string;
+      balance?: number;
       notes?: string | null;
     },
   ) {

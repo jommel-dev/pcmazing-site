@@ -668,9 +668,10 @@
                 @if (editingLoanId() === loan.id) {
                   <div class="grid gap-2">
                     <input class="h-9 rounded-lg border px-2 text-xs dark:border-slate-700 dark:bg-slate-950" [ngModel]="editLoanLabel()" (ngModelChange)="editLoanLabel.set($event)" name="editLoanLabel" placeholder="Loan name" />
+                    <input type="number" min="0" [attr.max]="loan.principal" step="0.01" class="h-9 rounded-lg border px-2 text-xs dark:border-slate-700 dark:bg-slate-950" [ngModel]="editLoanBalance()" (ngModelChange)="editLoanBalance.set(+$event || 0)" name="editLoanBalance" placeholder="Amount (remaining balance)" title="Remaining balance (0 to principal)" />
                     <input class="h-9 rounded-lg border px-2 text-xs dark:border-slate-700 dark:bg-slate-950" [ngModel]="editLoanNotes()" (ngModelChange)="editLoanNotes.set($event)" name="editLoanNotes" placeholder="Notes (optional)" />
                     <div class="flex gap-1">
-                      <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-emerald-600 hover:bg-emerald-50" title="Save" aria-label="Save loan" [disabled]="savingPayrollTool() || !editLoanLabel().trim()" (click)="saveEditLoan(loan)">
+                      <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-emerald-600 hover:bg-emerald-50" title="Save" aria-label="Save loan" [disabled]="savingPayrollTool() || !editLoanLabel().trim() || editLoanBalance() < 0 || editLoanBalance() > loan.principal" (click)="saveEditLoan(loan)">
                         <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m5 13 4 4L19 7" /></svg>
                       </button>
                       <button type="button" class="inline-flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100" title="Cancel edit" aria-label="Cancel edit loan" (click)="cancelEditLoan()">

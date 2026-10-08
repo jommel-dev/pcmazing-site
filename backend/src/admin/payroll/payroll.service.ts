@@ -1044,7 +1044,8 @@ export class PayrollService {
     if (
       input.status === undefined &&
       input.notes === undefined &&
-      input.label === undefined
+      input.label === undefined &&
+      input.balance === undefined
     ) {
       throw new BadRequestException('Provide a loan change.');
     }
@@ -1082,11 +1083,24 @@ export class PayrollService {
       throw new BadRequestException('Loan name/label is required.');
     }
 
+    const principal = Number(current.principal);
+    let nextBalance: number | null = null;
+    if (input.balance !== undefined) {
+      const balance = Number(input.balance);
+      if (!Number.isFinite(balance) || balance < 0 || balance > principal) {
+        throw new BadRequestException(
+          `Balance must be between 0 and ${principal.toFixed(2)}.`,
+        );
+      }
+      nextBalance = Math.round(balance * 100) / 100;
+    }
+
     const result = await this.databaseService.query<PayrollLoanRow>(
       `UPDATE pcmazing_payroll_loans
        SET status = COALESCE($2, status),
            label = CASE WHEN $3::boolean THEN $4 ELSE label END,
            notes = CASE WHEN $5::boolean THEN $6 ELSE notes END,
+           balance = CASE WHEN $7::boolean THEN $8 ELSE balance END,
            updated_at = NOW()
        WHERE id = $1
          AND status <> 'deleted'
@@ -1098,6 +1112,8 @@ export class PayrollService {
         nextLabel,
         input.notes !== undefined,
         input.notes?.trim() || null,
+        input.balance !== undefined,
+        nextBalance,
       ],
     );
     if (!result.rows[0]) throw new NotFoundException('Loan not found.');

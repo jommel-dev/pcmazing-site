@@ -72,6 +72,13 @@ export class UpdateLoanDto {
   label?: string;
 
   @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(9999999999.99)
+  balance?: number;
+
+  @IsOptional()
   @IsString()
   @MaxLength(2000)
   notes?: string;

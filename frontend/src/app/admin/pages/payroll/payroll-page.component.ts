@@ -164,6 +164,7 @@ export class PayrollPageComponent implements OnInit {
   readonly overrideAmount = signal(0);
   readonly editingLoanId = signal<number | null>(null);
   readonly editLoanLabel = signal('');
+  readonly editLoanBalance = signal(0);
   readonly editLoanNotes = signal('');
   readonly commissionTypeId = signal<number | null>(null);
   readonly commissionLabel = signal('');
@@ -407,6 +408,7 @@ export class PayrollPageComponent implements OnInit {
   startEditLoan(item: PayrollLoan): void {
     this.editingLoanId.set(item.id);
     this.editLoanLabel.set(item.label);
+    this.editLoanBalance.set(item.balance);
     this.editLoanNotes.set(item.notes ?? '');
     this.overrideLoanId.set(null);
   }
@@ -414,17 +416,20 @@ export class PayrollPageComponent implements OnInit {
   cancelEditLoan(): void {
     this.editingLoanId.set(null);
     this.editLoanLabel.set('');
+    this.editLoanBalance.set(0);
     this.editLoanNotes.set('');
   }
 
   async saveEditLoan(item: PayrollLoan): Promise<void> {
     const label = this.editLoanLabel().trim();
-    if (!label) return;
+    const balance = this.editLoanBalance();
+    if (!label || balance < 0 || balance > item.principal) return;
     if (!this.confirmAction(`Save changes to loan "${label}"?`)) return;
     await this.runPayrollTool(async () => {
       await firstValueFrom(
         this.adminApi.updatePayrollLoan(item.id, {
           label,
+          balance,
           notes: this.editLoanNotes().trim(),
         }),
       );

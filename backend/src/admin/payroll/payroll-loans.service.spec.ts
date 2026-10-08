@@ -86,6 +86,31 @@ describe('PayrollService loans', () => {
     );
   });
 
+  it('updates remaining balance within principal', async () => {
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce({ rows: [loanRow({ balance: '1000.00', principal: '1000.00' })] })
+      .mockResolvedValueOnce({ rows: [loanRow({ balance: '750.00', principal: '1000.00' })] });
+    const service = createService(query);
+
+    await expect(service.updateLoan(7, { balance: 750 })).resolves.toEqual(
+      expect.objectContaining({ balance: 750 }),
+    );
+    expect(query.mock.calls[1][1]).toEqual(
+      expect.arrayContaining([true, 750]),
+    );
+  });
+
+  it('rejects balance above principal', async () => {
+    const query = jest.fn().mockResolvedValueOnce({
+      rows: [loanRow({ balance: '500.00', principal: '1000.00' })],
+    });
+    const service = createService(query);
+    await expect(service.updateLoan(7, { balance: 1200 })).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+  });
+
   it('soft-deletes a loan and rejects restoring deleted loans', async () => {
     const query = jest
       .fn()
