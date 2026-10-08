@@ -1,7 +1,7 @@
 # Payroll Loans, Commissions, Late Deductions, and Payslip Remarks
 
 **Date:** 2026-10-08  
-**Status:** Approved for planning  
+**Status:** Implemented  
 **Scope:** Employee loans/cash advances with terms and period overrides; multi-line commissions; attendance-linked late deductions with settings plus manual deductions; per-payslip notes/remarks with optional print inclusion.
 
 ## Goal
