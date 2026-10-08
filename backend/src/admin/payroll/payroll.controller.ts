@@ -1,4 +1,17 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  Put,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import { AdminJwtPayload, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
@@ -25,6 +38,7 @@ import {
   CreateManualDeductionDto,
   ManualDeductionQueryDto,
 } from './dto/manual-deduction.dto';
+import { UpdatePayslipRemarksDto } from './dto/update-payslip-remarks.dto';
 import { PayrollService } from './payroll.service';
 
 @Controller('admin/payroll')
@@ -118,7 +132,12 @@ export class PayrollController {
   @RequirePermissions('payroll.view')
   listCommissionEntries(@Query() query: CommissionEntryQueryDto) {
     return this.payrollService
-      .listCommissionEntries(query.userId, query.userSource, query.dateFrom, query.dateTo)
+      .listCommissionEntries(
+        query.userId,
+        query.userSource,
+        query.dateFrom,
+        query.dateTo,
+      )
       .then((data) => ({
         success: true,
         data,
@@ -164,7 +183,12 @@ export class PayrollController {
   @RequirePermissions('payroll.view')
   listManualDeductions(@Query() query: ManualDeductionQueryDto) {
     return this.payrollService
-      .listManualDeductions(query.userId, query.userSource, query.dateFrom, query.dateTo)
+      .listManualDeductions(
+        query.userId,
+        query.userSource,
+        query.dateFrom,
+        query.dateTo,
+      )
       .then((data) => ({
         success: true,
         data,
@@ -209,10 +233,12 @@ export class PayrollController {
   @Get('loans')
   @RequirePermissions('payroll.view')
   listLoans(@Query() query: LoanQueryDto) {
-    return this.payrollService.listLoans(query.userId, query.userSource).then((data) => ({
-      success: true,
-      data,
-    }));
+    return this.payrollService
+      .listLoans(query.userId, query.userSource)
+      .then((data) => ({
+        success: true,
+        data,
+      }));
   }
 
   @Post('loans')
@@ -242,10 +268,12 @@ export class PayrollController {
     @Param('id', ParseIntPipe) id: number,
     @Body() body: UpsertLoanPeriodOverrideDto,
   ) {
-    return this.payrollService.upsertLoanPeriodOverride(id, body).then((data) => ({
-      success: true,
-      data,
-    }));
+    return this.payrollService
+      .upsertLoanPeriodOverride(id, body)
+      .then((data) => ({
+        success: true,
+        data,
+      }));
   }
 
   @Delete('loans/:id/period-override')
@@ -256,7 +284,10 @@ export class PayrollController {
   ) {
     return this.payrollService
       .deleteLoanPeriodOverride(id, query.dateFrom, query.dateTo)
-      .then(() => ({ success: true, message: 'Loan period override deleted.' }));
+      .then(() => ({
+        success: true,
+        message: 'Loan period override deleted.',
+      }));
   }
 
   @Get('period')
@@ -266,27 +297,34 @@ export class PayrollController {
     @Query('dateTo') dateTo?: string,
     @Query('periodType') periodType?: string,
   ) {
-    return this.payrollService.getPeriodSummary(dateFrom, dateTo, periodType).then((result) => ({
-      success: true,
-      data: result.items,
-      meta: {
-        dateFrom: result.dateFrom,
-        dateTo: result.dateTo,
-        periodType: result.periodType,
-        workWeek: result.workWeek,
-        undertimeGraceMinutes: result.undertimeGraceMinutes,
-        periodDays: result.periodDays,
-        totals: result.totals,
-        overlaps: result.overlaps,
-      },
-    }));
+    return this.payrollService
+      .getPeriodSummary(dateFrom, dateTo, periodType)
+      .then((result) => ({
+        success: true,
+        data: result.items,
+        meta: {
+          dateFrom: result.dateFrom,
+          dateTo: result.dateTo,
+          periodType: result.periodType,
+          workWeek: result.workWeek,
+          undertimeGraceMinutes: result.undertimeGraceMinutes,
+          periodDays: result.periodDays,
+          totals: result.totals,
+          overlaps: result.overlaps,
+        },
+      }));
   }
 
   @Post('period/preview')
   @RequirePermissions('payroll.view')
   previewPeriod(@Body() body: GeneratePayslipsDto) {
     return this.payrollService
-      .previewPayslips(body?.dateFrom, body?.dateTo, body?.employees, body?.periodType)
+      .previewPayslips(
+        body?.dateFrom,
+        body?.dateTo,
+        body?.employees,
+        body?.periodType,
+      )
       .then((data) => ({
         success: true,
         data,
@@ -319,6 +357,20 @@ export class PayrollController {
       }));
   }
 
+  @Patch('payslips/:id/remarks')
+  @RequirePermissions('payroll.edit')
+  updatePayslipRemarks(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: UpdatePayslipRemarksDto,
+  ) {
+    return this.payrollService
+      .updatePayslipRemarks(id, body.remarks)
+      .then((data) => ({
+        success: true,
+        data,
+      }));
+  }
+
   @Get('attendance')
   @RequirePermissions('payroll.view')
   listAttendance(
@@ -326,12 +378,14 @@ export class PayrollController {
     @Query('limit') limit?: string,
     @Query('workDate') workDate?: string,
   ) {
-    return this.payrollService.listAttendance(page, limit, workDate).then((result) => ({
-      success: true,
-      data: result.items,
-      meta: result.meta,
-      workDate: result.workDate,
-    }));
+    return this.payrollService
+      .listAttendance(page, limit, workDate)
+      .then((result) => ({
+        success: true,
+        data: result.items,
+        meta: result.meta,
+        workDate: result.workDate,
+      }));
   }
 
   @Get('overtime')
@@ -341,12 +395,14 @@ export class PayrollController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.payrollService.listOvertime(status, page, limit).then((result) => ({
-      success: true,
-      data: result.items,
-      meta: result.meta,
-      status: result.status,
-    }));
+    return this.payrollService
+      .listOvertime(status, page, limit)
+      .then((result) => ({
+        success: true,
+        data: result.items,
+        meta: result.meta,
+        status: result.status,
+      }));
   }
 
   @Patch('overtime/:id')
@@ -376,12 +432,14 @@ export class PayrollController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.payrollService.listAdjustments(status, page, limit).then((result) => ({
-      success: true,
-      data: result.items,
-      meta: result.meta,
-      status: result.status,
-    }));
+    return this.payrollService
+      .listAdjustments(status, page, limit)
+      .then((result) => ({
+        success: true,
+        data: result.items,
+        meta: result.meta,
+        status: result.status,
+      }));
   }
 
   @Patch('adjustments/:id')

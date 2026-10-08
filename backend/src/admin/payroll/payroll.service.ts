@@ -30,16 +30,33 @@ import {
 import { CreateManualDeductionDto } from './dto/manual-deduction.dto';
 import { CreateLoanDto, LoanTermStyle, UpdateLoanDto } from './dto/loan.dto';
 import { UpsertLoanPeriodOverrideDto } from './dto/loan-period-override.dto';
-import { PAYROLL_WORK_WEEKS, PayrollWorkWeek, UNDERTIME_CATEGORIES, UndertimeCategory } from './dto/payroll-settings.dto';
+import {
+  PAYROLL_WORK_WEEKS,
+  PayrollWorkWeek,
+  UNDERTIME_CATEGORIES,
+  UndertimeCategory,
+} from './dto/payroll-settings.dto';
 import { saveAttendanceSelfieFile } from './attendance-selfie.util';
-import { deletePayrollQrImageFile, savePayrollQrImageFile } from './payroll-qr-image.util';
+import {
+  deletePayrollQrImageFile,
+  savePayrollQrImageFile,
+} from './payroll-qr-image.util';
 import { ensurePayrollTables, manilaWorkDate } from './payroll.schema';
-import { buildPayslipPdfBuffer, PayslipDayBreakdownRow, PayslipPdfPayload } from './payslip-pdf.util';
+import {
+  buildPayslipPdfBuffer,
+  PayslipDayBreakdownRow,
+  PayslipPdfPayload,
+} from './payslip-pdf.util';
+import { assemblePayslipLedger } from './payroll-payslip-ledger.util';
 import {
   locationPayLabelSuffix,
   pickSalaryAmountForLocation,
 } from './location-pay.util';
-import { computeEqualInstallmentAmount } from './payroll-ledger.util';
+import {
+  computeEqualInstallmentAmount,
+  computePayslipNet,
+  PayslipLedgerLine,
+} from './payroll-ledger.util';
 import {
   isWorkLocationType,
   normalizeWeeklyLocationSchedule,
@@ -181,6 +198,8 @@ export interface PayrollPeriodRow {
   totalHours: number;
   approvedOvertimeHours: number;
   pendingOvertimeHours: number;
+  basePay: number;
+  overtimePay: number;
   estimatedPay: number;
   payslipPeriod: PayrollSalaryType;
   periodDateFrom: string;
@@ -326,7 +345,13 @@ export interface TimeClockStatus {
   timeOut: string | null;
   canTimeIn: boolean;
   canTimeOut: boolean;
-  status: 'ready' | 'timed_in' | 'completed' | 'not_enrolled' | 'not_found' | 'inactive';
+  status:
+    | 'ready'
+    | 'timed_in'
+    | 'completed'
+    | 'not_enrolled'
+    | 'not_found'
+    | 'inactive';
   message: string;
   /** Authoritative server timestamp (ISO). Never use device clock for punches. */
   serverNow: string;
@@ -375,10 +400,12 @@ export class PayrollService {
 
   async ensureReady(): Promise<void> {
     if (!this.ensureReadyPromise) {
-      this.ensureReadyPromise = ensurePayrollTables(this.databaseService).catch((error) => {
-        this.ensureReadyPromise = null;
-        throw error;
-      });
+      this.ensureReadyPromise = ensurePayrollTables(this.databaseService).catch(
+        (error) => {
+          this.ensureReadyPromise = null;
+          throw error;
+        },
+      );
     }
     await this.ensureReadyPromise;
   }
@@ -399,10 +426,18 @@ export class PayrollService {
     );
     return {
       workWeek: this.normalizeWorkWeek(result.rows[0]?.work_week),
-      undertimeGraceMinutes: this.normalizeUndertimeGrace(result.rows[0]?.undertime_grace_minutes),
-      shiftStartTime: this.normalizeShiftStartTime(result.rows[0]?.shift_start_time),
-      lateGraceMinutes: this.normalizeLateGrace(result.rows[0]?.late_grace_minutes),
-      lateDeductionFixed: this.normalizeNonNegativeMoney(result.rows[0]?.late_deduction_fixed),
+      undertimeGraceMinutes: this.normalizeUndertimeGrace(
+        result.rows[0]?.undertime_grace_minutes,
+      ),
+      shiftStartTime: this.normalizeShiftStartTime(
+        result.rows[0]?.shift_start_time,
+      ),
+      lateGraceMinutes: this.normalizeLateGrace(
+        result.rows[0]?.late_grace_minutes,
+      ),
+      lateDeductionFixed: this.normalizeNonNegativeMoney(
+        result.rows[0]?.late_deduction_fixed,
+      ),
       lateDeductionPerMinute: this.normalizeNonNegativeMoney(
         result.rows[0]?.late_deduction_per_minute,
       ),
@@ -484,7 +519,9 @@ export class PayrollService {
     return result.rows.map((row) => this.mapCommissionType(row));
   }
 
-  async createCommissionType(input: CreateCommissionTypeDto): Promise<CommissionType> {
+  async createCommissionType(
+    input: CreateCommissionTypeDto,
+  ): Promise<CommissionType> {
     await this.ensureReady();
     const name = input.name.trim();
     if (!name) {
@@ -532,14 +569,18 @@ export class PayrollService {
       throw new BadRequestException('Commission type name is required.');
     }
     if (name) {
-      const duplicate = await this.databaseService.query<{ id: string | number }>(
+      const duplicate = await this.databaseService.query<{
+        id: string | number;
+      }>(
         `SELECT id FROM pcmazing_payroll_commission_types
          WHERE LOWER(name) = LOWER($1) AND id <> $2
          LIMIT 1`,
         [name, id],
       );
       if (duplicate.rows[0]) {
-        throw new ConflictException(`Commission type "${name}" already exists.`);
+        throw new ConflictException(
+          `Commission type "${name}" already exists.`,
+        );
       }
     }
     const result = await this.databaseService.query<{
@@ -612,7 +653,9 @@ export class PayrollService {
     const label = input.label?.trim() || null;
     const typeId = input.typeId ?? null;
     if (typeId == null && !label) {
-      throw new BadRequestException('Label is required for an Other commission.');
+      throw new BadRequestException(
+        'Label is required for an Other commission.',
+      );
     }
     if (typeId != null) {
       const type = await this.databaseService.query<{ id: string | number }>(
@@ -654,7 +697,16 @@ export class PayrollService {
               i.updated_at::text AS updated_at
        FROM inserted i
        LEFT JOIN pcmazing_payroll_commission_types t ON t.id = i.type_id`,
-      [userId, userSource, dateFrom, dateTo, typeId, label, input.amount, createdBy ?? null],
+      [
+        userId,
+        userSource,
+        dateFrom,
+        dateTo,
+        typeId,
+        label,
+        input.amount,
+        createdBy ?? null,
+      ],
     );
     return this.mapCommissionEntry(result.rows[0]);
   }
@@ -741,7 +793,15 @@ export class PayrollService {
                  date_from::text AS date_from, date_to::text AS date_to,
                  label, amount, created_by, created_at::text AS created_at,
                  updated_at::text AS updated_at`,
-      [userId, userSource, dateFrom, dateTo, label, input.amount, createdBy ?? null],
+      [
+        userId,
+        userSource,
+        dateFrom,
+        dateTo,
+        label,
+        input.amount,
+        createdBy ?? null,
+      ],
     );
     return this.mapManualDeduction(result.rows[0]);
   }
@@ -796,10 +856,15 @@ export class PayrollService {
     this.validateLoanEmployee(input.userId, input.userSource);
     const equal = input.termStyle === 'equal_installments';
     if (
-      (equal && (!input.installmentCount || input.fixedInstallmentAmount != null)) ||
-      (!equal && (input.installmentCount != null || input.fixedInstallmentAmount == null))
+      (equal &&
+        (!input.installmentCount || input.fixedInstallmentAmount != null)) ||
+      (!equal &&
+        (input.installmentCount != null ||
+          input.fixedInstallmentAmount == null))
     ) {
-      throw new BadRequestException('Enter term details matching the selected loan style.');
+      throw new BadRequestException(
+        'Enter term details matching the selected loan style.',
+      );
     }
     const fixedAmount = equal
       ? computeEqualInstallmentAmount(input.principal, input.installmentCount!)
@@ -813,8 +878,14 @@ export class PayrollService {
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING *, created_at::text AS created_at, updated_at::text AS updated_at`,
       [
-        input.userId, input.userSource, input.principal, input.principal, input.termStyle,
-        equal ? input.installmentCount : null, fixedAmount, notes,
+        input.userId,
+        input.userSource,
+        input.principal,
+        input.principal,
+        input.termStyle,
+        equal ? input.installmentCount : null,
+        fixedAmount,
+        notes,
       ],
     );
     return this.mapLoan(result.rows[0]);
@@ -832,7 +903,12 @@ export class PayrollService {
            updated_at = NOW()
        WHERE id = $1
        RETURNING *, created_at::text AS created_at, updated_at::text AS updated_at`,
-      [id, input.status ?? null, input.notes !== undefined, input.notes?.trim() || null],
+      [
+        id,
+        input.status ?? null,
+        input.notes !== undefined,
+        input.notes?.trim() || null,
+      ],
     );
     if (!result.rows[0]) throw new NotFoundException('Loan not found.');
     return this.mapLoan(result.rows[0]);
@@ -848,7 +924,9 @@ export class PayrollService {
       (input.action === 'skip' && input.customAmount != null) ||
       (input.action === 'custom' && input.customAmount == null)
     ) {
-      throw new BadRequestException('customAmount is required only for custom overrides.');
+      throw new BadRequestException(
+        'customAmount is required only for custom overrides.',
+      );
     }
     await this.assertLoanExists(loanId);
     const result = await this.databaseService.query<LoanPeriodOverrideRow>(
@@ -861,7 +939,13 @@ export class PayrollService {
        RETURNING id, loan_id, payroll_run_id, date_from::text AS date_from,
                  date_to::text AS date_to, action, custom_amount,
                  created_at::text AS created_at, updated_at::text AS updated_at`,
-      [loanId, input.dateFrom, input.dateTo, input.action, input.customAmount ?? null],
+      [
+        loanId,
+        input.dateFrom,
+        input.dateTo,
+        input.action,
+        input.customAmount ?? null,
+      ],
     );
     return this.mapLoanPeriodOverride(result.rows[0]);
   }
@@ -879,7 +963,8 @@ export class PayrollService {
        RETURNING id`,
       [loanId, dateFrom, dateTo],
     );
-    if (!result.rows[0]) throw new NotFoundException('Loan period override not found.');
+    if (!result.rows[0])
+      throw new NotFoundException('Loan period override not found.');
   }
 
   async getProfilesForUsers(
@@ -929,7 +1014,10 @@ export class PayrollService {
     return map;
   }
 
-  async getProfile(userId: number, userSource: AdminUserRecord['source']): Promise<PayrollProfile> {
+  async getProfile(
+    userId: number,
+    userSource: AdminUserRecord['source'],
+  ): Promise<PayrollProfile> {
     await this.ensureReady();
     const result = await this.databaseService.query<{
       employee_code: string | null;
@@ -954,7 +1042,9 @@ export class PayrollService {
       [userId, userSource],
     );
 
-    return result.rows[0] ? this.mapProfile(result.rows[0]) : { ...EMPTY_PAYROLL };
+    return result.rows[0]
+      ? this.mapProfile(result.rows[0])
+      : { ...EMPTY_PAYROLL };
   }
 
   async upsertProfile(
@@ -966,13 +1056,21 @@ export class PayrollService {
 
     const existing = await this.getProfile(userId, userSource);
     const employeeCode =
-      dto.employeeCode !== undefined ? dto.employeeCode.trim() || null : existing.employeeCode;
+      dto.employeeCode !== undefined
+        ? dto.employeeCode.trim() || null
+        : existing.employeeCode;
     const department =
-      dto.department !== undefined ? dto.department.trim() || null : existing.department;
+      dto.department !== undefined
+        ? dto.department.trim() || null
+        : existing.department;
     const positionTitle =
-      dto.positionTitle !== undefined ? dto.positionTitle.trim() || null : existing.positionTitle;
+      dto.positionTitle !== undefined
+        ? dto.positionTitle.trim() || null
+        : existing.positionTitle;
     const salaryType =
-      dto.salaryType !== undefined ? this.normalizeSalaryType(dto.salaryType) : existing.salaryType;
+      dto.salaryType !== undefined
+        ? this.normalizeSalaryType(dto.salaryType)
+        : existing.salaryType;
     const monthlySalary =
       dto.monthlySalary !== undefined
         ? dto.monthlySalary == null
@@ -1000,13 +1098,17 @@ export class PayrollService {
         ? dto.bankDetails?.trim() || null
         : existing.bankDetails;
     const payrollEnabled =
-      dto.payrollEnabled !== undefined ? Boolean(dto.payrollEnabled) : existing.payrollEnabled;
+      dto.payrollEnabled !== undefined
+        ? Boolean(dto.payrollEnabled)
+        : existing.payrollEnabled;
     let weeklyLocationSchedule = existing.weeklyLocationSchedule;
     if (dto.weeklyLocationSchedule !== undefined) {
       if (dto.weeklyLocationSchedule === null) {
         weeklyLocationSchedule = null;
       } else {
-        const normalized = normalizeWeeklyLocationSchedule(dto.weeklyLocationSchedule);
+        const normalized = normalizeWeeklyLocationSchedule(
+          dto.weeklyLocationSchedule,
+        );
         if (!normalized) {
           throw new BadRequestException(
             'weeklyLocationSchedule must include mon–sun with office, wfh, or off.',
@@ -1164,7 +1266,11 @@ export class PayrollService {
 
     const items: AttendanceRecord[] = [];
     for (const row of result.rows) {
-      const fullName = await this.resolveFullName(row.user_id, row.user_source, row.username);
+      const fullName = await this.resolveFullName(
+        row.user_id,
+        row.user_source,
+        row.username,
+      );
       items.push({
         id: row.id,
         userId: row.user_id,
@@ -1187,7 +1293,9 @@ export class PayrollService {
         overtimeHours: Number(row.overtime_hours ?? 0) || 0,
         overtimeStatus: this.normalizeOvertimeStatus(row.overtime_status),
         adjustmentStatus: this.normalizeOvertimeStatus(row.adjustment_status),
-        workLocationType: this.normalizeStoredLocationType(row.work_location_type),
+        workLocationType: this.normalizeStoredLocationType(
+          row.work_location_type,
+        ),
         locationLat: row.location_lat == null ? null : Number(row.location_lat),
         locationLng: row.location_lng == null ? null : Number(row.location_lng),
         locationLabel: row.location_label,
@@ -1258,7 +1366,11 @@ export class PayrollService {
 
     const items: OvertimeRecord[] = [];
     for (const row of result.rows) {
-      const fullName = await this.resolveFullName(row.user_id, row.user_source, row.username);
+      const fullName = await this.resolveFullName(
+        row.user_id,
+        row.user_source,
+        row.username,
+      );
       items.push({
         id: row.id,
         userId: row.user_id,
@@ -1318,7 +1430,9 @@ export class PayrollService {
       throw new NotFoundException('Attendance record not found.');
     }
     if ((Number(row.overtime_hours) || 0) <= 0) {
-      throw new BadRequestException('This attendance record has no overtime to review.');
+      throw new BadRequestException(
+        'This attendance record has no overtime to review.',
+      );
     }
 
     const result = await this.databaseService.query<{
@@ -1351,7 +1465,11 @@ export class PayrollService {
     };
   }
 
-  async listAdjustments(statusRaw?: string, pageRaw?: string, limitRaw?: string) {
+  async listAdjustments(
+    statusRaw?: string,
+    pageRaw?: string,
+    limitRaw?: string,
+  ) {
     await this.ensureReady();
 
     const page = Math.max(1, Number(pageRaw) || 1);
@@ -1406,7 +1524,11 @@ export class PayrollService {
 
     const items: AdjustmentRecord[] = [];
     for (const row of result.rows) {
-      const fullName = await this.resolveFullName(row.user_id, row.user_source, row.username);
+      const fullName = await this.resolveFullName(
+        row.user_id,
+        row.user_source,
+        row.username,
+      );
       items.push({
         id: row.id,
         userId: row.user_id,
@@ -1417,13 +1539,18 @@ export class PayrollService {
         timeIn: row.time_in,
         timeOut: row.time_out,
         requestedTimeOut: row.requested_time_out,
-        hoursWorked: this.computeHours(row.time_in, row.requested_time_out ?? row.time_out),
+        hoursWorked: this.computeHours(
+          row.time_in,
+          row.requested_time_out ?? row.time_out,
+        ),
         employeeCode: row.employee_code,
         department: row.department,
         timeInSelfieUrl: row.time_in_selfie_url,
         adjustmentSelfieUrl: row.adjustment_selfie_url,
         adjustmentNote: row.adjustment_note,
-        undertimeCategory: this.normalizeUndertimeCategory(row.undertime_category),
+        undertimeCategory: this.normalizeUndertimeCategory(
+          row.undertime_category,
+        ),
         adjustmentStatus: this.normalizeOvertimeStatus(row.adjustment_status),
         adjustmentReviewedAt: row.adjustment_reviewed_at,
         adjustmentReviewNote: row.adjustment_review_note,
@@ -1476,16 +1603,26 @@ export class PayrollService {
     }
 
     const currentStatus = this.normalizeOvertimeStatus(row.adjustment_status);
-    if (currentStatus !== 'pending' && currentStatus !== 'approved' && currentStatus !== 'rejected') {
-      throw new BadRequestException('There is no time-out adjustment to review.');
+    if (
+      currentStatus !== 'pending' &&
+      currentStatus !== 'approved' &&
+      currentStatus !== 'rejected'
+    ) {
+      throw new BadRequestException(
+        'There is no time-out adjustment to review.',
+      );
     }
 
     if (status === 'approved') {
       if (row.time_out) {
-        throw new BadRequestException('This day already has a time out. Reject the request instead.');
+        throw new BadRequestException(
+          'This day already has a time out. Reject the request instead.',
+        );
       }
       if (!row.requested_time_out) {
-        throw new BadRequestException('This request is missing the claimed time out.');
+        throw new BadRequestException(
+          'This request is missing the claimed time out.',
+        );
       }
 
       const result = await this.databaseService.query<{
@@ -1519,15 +1656,23 @@ export class PayrollService {
 
       const updated = result.rows[0];
       if (!updated) {
-        throw new BadRequestException('Unable to approve this time-out adjustment.');
+        throw new BadRequestException(
+          'Unable to approve this time-out adjustment.',
+        );
       }
 
-      await this.syncOvertimeAfterTimeOut(updated.id, updated.time_in, updated.time_out);
+      await this.syncOvertimeAfterTimeOut(
+        updated.id,
+        updated.time_in,
+        updated.time_out,
+      );
       return {
         id: updated.id,
         timeOut: updated.time_out,
         requestedTimeOut: updated.requested_time_out,
-        adjustmentStatus: this.normalizeOvertimeStatus(updated.adjustment_status),
+        adjustmentStatus: this.normalizeOvertimeStatus(
+          updated.adjustment_status,
+        ),
         adjustmentReviewedAt: updated.adjustment_reviewed_at,
         adjustmentReviewNote: updated.adjustment_review_note,
         adjustmentSelfieUrl: updated.adjustment_selfie_url,
@@ -1639,19 +1784,29 @@ export class PayrollService {
     const settings = await this.getSettings();
 
     for (const row of profiles.rows) {
-      const identity = await this.resolveUserIdentity(row.user_id, row.user_source);
+      const identity = await this.resolveUserIdentity(
+        row.user_id,
+        row.user_source,
+      );
       if (!identity) {
         continue;
       }
 
-      const attendance = await this.getTodayAttendance(row.user_id, row.user_source, workDate);
-      const todayStatus: PayrollEmployeeRecord['todayStatus'] = !attendance?.time_in
-        ? 'not_started'
-        : attendance.time_out
-          ? 'completed'
-          : 'timed_in';
+      const attendance = await this.getTodayAttendance(
+        row.user_id,
+        row.user_source,
+        workDate,
+      );
+      const todayStatus: PayrollEmployeeRecord['todayStatus'] =
+        !attendance?.time_in
+          ? 'not_started'
+          : attendance.time_out
+            ? 'completed'
+            : 'timed_in';
 
-      const weeklyLocationSchedule = normalizeWeeklyLocationSchedule(row.weekly_location_schedule);
+      const weeklyLocationSchedule = normalizeWeeklyLocationSchedule(
+        row.weekly_location_schedule,
+      );
       const item: PayrollEmployeeRecord = {
         userId: Number(row.user_id),
         userSource: row.user_source,
@@ -1662,10 +1817,13 @@ export class PayrollService {
         department: row.department,
         positionTitle: row.position_title,
         salaryType: this.normalizeSalaryType(row.salary_type),
-        monthlySalary: row.monthly_salary == null ? null : Number(row.monthly_salary),
+        monthlySalary:
+          row.monthly_salary == null ? null : Number(row.monthly_salary),
         wfhSalary: row.wfh_salary == null ? null : Number(row.wfh_salary),
         fixedMonthlySalary:
-          row.fixed_monthly_salary == null ? null : Number(row.fixed_monthly_salary),
+          row.fixed_monthly_salary == null
+            ? null
+            : Number(row.fixed_monthly_salary),
         payoutMethod: this.normalizePayoutMethod(row.payout_method),
         bankDetails: row.bank_details,
         qrImageUrl: row.qr_image_url,
@@ -1706,7 +1864,10 @@ export class PayrollService {
     employee: PayrollEmployeeRecord,
     periodType: PayrollSalaryType,
   ): PayrollSalaryType {
-    if (employee.fixedMonthlySalary != null && employee.fixedMonthlySalary > 0) {
+    if (
+      employee.fixedMonthlySalary != null &&
+      employee.fixedMonthlySalary > 0
+    ) {
       return periodType;
     }
     return employee.salaryType;
@@ -1756,8 +1917,14 @@ export class PayrollService {
       const key = `${employee.userSource}:${employee.userId}`;
       const punches = byUser.get(key) ?? [];
       const dayOffDates = dayOffsByUser.get(key) ?? new Set<string>();
-      const restDayCount = calendarDays.filter((day) => this.isRestDay(day, workWeek, dayOffDates)).length;
-      const weeklyHourBase = this.weeklyHourBase(workWeek, periodDays, restDayCount);
+      const restDayCount = calendarDays.filter((day) =>
+        this.isRestDay(day, workWeek, dayOffDates),
+      ).length;
+      const weeklyHourBase = this.weeklyHourBase(
+        workWeek,
+        periodDays,
+        restDayCount,
+      );
       const payType = this.payTypeForRun(employee, periodType);
       return this.buildPeriodRow(
         employee,
@@ -1776,12 +1943,21 @@ export class PayrollService {
       rows,
       totals: {
         employees: rows.length,
-        totalHours: Math.round(rows.reduce((sum, row) => sum + row.totalHours, 0) * 100) / 100,
+        totalHours:
+          Math.round(rows.reduce((sum, row) => sum + row.totalHours, 0) * 100) /
+          100,
         approvedOvertimeHours:
-          Math.round(rows.reduce((sum, row) => sum + row.approvedOvertimeHours, 0) * 100) / 100,
+          Math.round(
+            rows.reduce((sum, row) => sum + row.approvedOvertimeHours, 0) * 100,
+          ) / 100,
         pendingOvertimeHours:
-          Math.round(rows.reduce((sum, row) => sum + row.pendingOvertimeHours, 0) * 100) / 100,
-        estimatedPay: Math.round(rows.reduce((sum, row) => sum + row.estimatedPay, 0) * 100) / 100,
+          Math.round(
+            rows.reduce((sum, row) => sum + row.pendingOvertimeHours, 0) * 100,
+          ) / 100,
+        estimatedPay:
+          Math.round(
+            rows.reduce((sum, row) => sum + row.estimatedPay, 0) * 100,
+          ) / 100,
       },
     };
   }
@@ -1795,6 +1971,7 @@ export class PayrollService {
       user_source: string;
       full_name: string;
       estimated_pay: string;
+      remarks: string | null;
       run_id: number;
       label: string;
       date_from: string;
@@ -1820,11 +1997,16 @@ export class PayrollService {
       dateFrom: String(row.date_from).slice(0, 10),
       dateTo: String(row.date_to).slice(0, 10),
       exactMatch:
-        String(row.date_from).slice(0, 10) === dateFrom && String(row.date_to).slice(0, 10) === dateTo,
+        String(row.date_from).slice(0, 10) === dateFrom &&
+        String(row.date_to).slice(0, 10) === dateTo,
     }));
   }
 
-  async getPeriodSummary(dateFromRaw?: string, dateToRaw?: string, periodTypeRaw?: string) {
+  async getPeriodSummary(
+    dateFromRaw?: string,
+    dateToRaw?: string,
+    periodTypeRaw?: string,
+  ) {
     await this.ensureReady();
 
     const today = manilaWorkDate();
@@ -1856,6 +2038,213 @@ export class PayrollService {
       totals: computed.totals,
       overlaps,
     };
+  }
+
+  private async assembleLedgerForPeriod(
+    query: DatabaseService['query'],
+    item: Pick<
+      PayrollPeriodRow,
+      'userId' | 'userSource' | 'basePay' | 'overtimePay'
+    >,
+    dateFrom: string,
+    dateTo: string,
+    settings: PayrollSettings,
+  ) {
+    const [commissions, deductions, attendance, loans] = await Promise.all([
+      query<{
+        id: number;
+        label: string | null;
+        type_name: string | null;
+        amount: string;
+      }>(
+        `SELECT e.id, e.label, t.name AS type_name, e.amount::text AS amount
+         FROM pcmazing_payroll_commission_entries e
+         LEFT JOIN pcmazing_payroll_commission_types t ON t.id = e.type_id
+         WHERE e.user_id = $1 AND e.user_source = $2
+           AND e.date_from = $3::date AND e.date_to = $4::date
+         ORDER BY e.id`,
+        [item.userId, item.userSource, dateFrom, dateTo],
+      ),
+      query<{ id: number; label: string; amount: string }>(
+        `SELECT id, label, amount::text AS amount
+         FROM pcmazing_payroll_manual_deductions
+         WHERE user_id = $1 AND user_source = $2
+           AND date_from = $3::date AND date_to = $4::date
+         ORDER BY id`,
+        [item.userId, item.userSource, dateFrom, dateTo],
+      ),
+      query<{ work_date: string; time_in: string | null }>(
+        `SELECT work_date::text AS work_date, time_in::text AS time_in
+         FROM pcmazing_attendance
+         WHERE user_id = $1 AND user_source = $2
+           AND work_date BETWEEN $3::date AND $4::date
+           AND time_in IS NOT NULL
+         ORDER BY work_date`,
+        [item.userId, item.userSource, dateFrom, dateTo],
+      ),
+      query<{
+        id: number;
+        balance: string;
+        term_style: 'equal_installments' | 'fixed_per_cutoff';
+        installment_count: number | null;
+        fixed_installment_amount: string | null;
+        override_action: 'skip' | 'custom' | null;
+        custom_amount: string | null;
+      }>(
+        `SELECT l.id, l.balance::text AS balance, l.term_style, l.installment_count,
+                l.fixed_installment_amount::text AS fixed_installment_amount,
+                o.action AS override_action, o.custom_amount::text AS custom_amount
+         FROM pcmazing_payroll_loans l
+         LEFT JOIN pcmazing_payroll_loan_period_overrides o
+           ON o.loan_id = l.id AND o.date_from = $3::date AND o.date_to = $4::date
+         WHERE l.user_id = $1 AND l.user_source = $2 AND l.status = 'active'
+         ORDER BY l.id
+         FOR UPDATE OF l`,
+        [item.userId, item.userSource, dateFrom, dateTo],
+      ),
+    ]);
+
+    return assemblePayslipLedger({
+      basePay: item.basePay,
+      overtimePay: item.overtimePay,
+      settings,
+      commissions: commissions.rows.map((row) => ({
+        id: Number(row.id),
+        label: row.label,
+        typeName: row.type_name,
+        amount: Number(row.amount),
+      })),
+      manualDeductions: deductions.rows.map((row) => ({
+        id: Number(row.id),
+        label: row.label,
+        amount: Number(row.amount),
+      })),
+      attendance: attendance.rows.map((row) => ({
+        workDate: String(row.work_date).slice(0, 10),
+        timeIn: row.time_in,
+      })),
+      loans: loans.rows.map((row) => ({
+        id: Number(row.id),
+        balance: Number(row.balance),
+        termStyle: row.term_style,
+        installmentCount:
+          row.installment_count == null ? null : Number(row.installment_count),
+        fixedInstallmentAmount:
+          row.fixed_installment_amount == null
+            ? null
+            : Number(row.fixed_installment_amount),
+        override:
+          row.override_action == null
+            ? null
+            : {
+                action: row.override_action,
+                customAmount:
+                  row.custom_amount == null
+                    ? undefined
+                    : Number(row.custom_amount),
+              },
+      })),
+    });
+  }
+
+  private async replacePayslipLedger(
+    payslipId: number,
+    runId: number,
+    item: PayrollPeriodRow,
+    dateFrom: string,
+    dateTo: string,
+    settings: PayrollSettings,
+  ) {
+    return this.databaseService.withTransaction(async (client) => {
+      const query = client.query.bind(client) as DatabaseService['query'];
+      const previous = await query<{
+        amount: string;
+        meta: { loanId?: number } | null;
+      }>(
+        `SELECT amount::text AS amount, meta
+         FROM pcmazing_payroll_payslip_ledger
+         WHERE payslip_id = $1 AND line_type = 'loan_deduction'`,
+        [payslipId],
+      );
+
+      for (const line of previous.rows) {
+        const loanId = Number(line.meta?.loanId);
+        if (!Number.isFinite(loanId) || loanId <= 0) continue;
+        await query(
+          `UPDATE pcmazing_payroll_loans
+           SET balance = LEAST(principal, balance + $2),
+               status = CASE WHEN status = 'paid' THEN 'active' ELSE status END,
+               updated_at = NOW()
+           WHERE id = $1`,
+          [loanId, Number(line.amount)],
+        );
+      }
+
+      const assembled = await this.assembleLedgerForPeriod(
+        query,
+        item,
+        dateFrom,
+        dateTo,
+        settings,
+      );
+      await query(
+        `DELETE FROM pcmazing_payroll_payslip_ledger WHERE payslip_id = $1`,
+        [payslipId],
+      );
+      for (const line of assembled.lines) {
+        await query(
+          `INSERT INTO pcmazing_payroll_payslip_ledger
+             (payslip_id, line_type, label, amount, source, meta)
+           VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
+          [
+            payslipId,
+            line.lineType,
+            line.label,
+            line.amount,
+            line.source,
+            line.meta == null ? null : JSON.stringify(line.meta),
+          ],
+        );
+      }
+      for (const deduction of assembled.loanDeductions) {
+        await query(
+          `UPDATE pcmazing_payroll_loans
+           SET balance = GREATEST(0, balance - $2),
+               status = CASE WHEN balance - $2 <= 0 THEN 'paid' ELSE status END,
+               updated_at = NOW()
+           WHERE id = $1`,
+          [deduction.loanId, deduction.amount],
+        );
+      }
+      await query(
+        `UPDATE pcmazing_generated_payslips SET estimated_pay = $2 WHERE id = $1`,
+        [payslipId, assembled.net.netPay],
+      );
+      await query(
+        `UPDATE pcmazing_payroll_commission_entries
+         SET payroll_run_id = $5, updated_at = NOW()
+         WHERE user_id = $1 AND user_source = $2
+           AND date_from = $3::date AND date_to = $4::date`,
+        [item.userId, item.userSource, dateFrom, dateTo, runId],
+      );
+      await query(
+        `UPDATE pcmazing_payroll_manual_deductions
+         SET payroll_run_id = $5, updated_at = NOW()
+         WHERE user_id = $1 AND user_source = $2
+           AND date_from = $3::date AND date_to = $4::date`,
+        [item.userId, item.userSource, dateFrom, dateTo, runId],
+      );
+      await query(
+        `UPDATE pcmazing_payroll_loan_period_overrides o
+         SET payroll_run_id = $5, updated_at = NOW()
+         FROM pcmazing_payroll_loans l
+         WHERE o.loan_id = l.id
+           AND l.user_id = $1 AND l.user_source = $2
+           AND o.date_from = $3::date AND o.date_to = $4::date`,
+        [item.userId, item.userSource, dateFrom, dateTo, runId],
+      );
+      return assembled;
+    });
   }
 
   /**
@@ -1909,6 +2298,7 @@ export class PayrollService {
 
     let runId = 0;
     let replaced = false;
+    let generatedNetTotal = 0;
     for (const group of grouped.values()) {
       const groupFrom = group[0].periodDateFrom;
       const groupTo = group[0].periodDateTo;
@@ -1943,7 +2333,13 @@ export class PayrollService {
           `UPDATE pcmazing_payroll_runs
            SET period_days = $2, label = $3, generated_by_user_id = $4, generated_by_username = $5
            WHERE id = $1`,
-          [groupRunId, periodDays, label, generatedBy?.userId ?? null, generatedBy?.username ?? null],
+          [
+            groupRunId,
+            periodDays,
+            label,
+            generatedBy?.userId ?? null,
+            generatedBy?.username ?? null,
+          ],
         );
       }
 
@@ -1953,7 +2349,7 @@ export class PayrollService {
 
       runId = Number(groupRunId);
       for (const item of group) {
-        await this.databaseService.query(
+        const payslip = await this.databaseService.query<{ id: number }>(
           `INSERT INTO pcmazing_generated_payslips (
              run_id, user_id, user_source, username, full_name, employee_code, department,
              salary_type, salary_amount, days_present, days_completed, total_hours,
@@ -1974,7 +2370,8 @@ export class PayrollService {
              days_completed = EXCLUDED.days_completed,
              total_hours = EXCLUDED.total_hours,
              estimated_pay = EXCLUDED.estimated_pay,
-             payroll_enabled = TRUE`,
+             payroll_enabled = TRUE
+           RETURNING id`,
           [
             groupRunId,
             item.userId,
@@ -1991,6 +2388,19 @@ export class PayrollService {
             item.estimatedPay,
           ],
         );
+        const payslipId = Number(payslip.rows[0]?.id);
+        if (!Number.isFinite(payslipId) || payslipId <= 0) {
+          throw new BadRequestException('Unable to create employee payslip.');
+        }
+        const assembled = await this.replacePayslipLedger(
+          payslipId,
+          Number(groupRunId),
+          item,
+          groupFrom,
+          groupTo,
+          settings,
+        );
+        generatedNetTotal += assembled.net.netPay;
       }
     }
 
@@ -2006,12 +2416,18 @@ export class PayrollService {
       employeeCount: rows.length,
       totals: {
         employees: rows.length,
-        totalHours: Math.round(rows.reduce((sum, row) => sum + row.totalHours, 0) * 100) / 100,
+        totalHours:
+          Math.round(rows.reduce((sum, row) => sum + row.totalHours, 0) * 100) /
+          100,
         approvedOvertimeHours:
-          Math.round(rows.reduce((sum, row) => sum + row.approvedOvertimeHours, 0) * 100) / 100,
+          Math.round(
+            rows.reduce((sum, row) => sum + row.approvedOvertimeHours, 0) * 100,
+          ) / 100,
         pendingOvertimeHours:
-          Math.round(rows.reduce((sum, row) => sum + row.pendingOvertimeHours, 0) * 100) / 100,
-        estimatedPay: Math.round(rows.reduce((sum, row) => sum + row.estimatedPay, 0) * 100) / 100,
+          Math.round(
+            rows.reduce((sum, row) => sum + row.pendingOvertimeHours, 0) * 100,
+          ) / 100,
+        estimatedPay: Math.round(generatedNetTotal * 100) / 100,
       },
       replaced,
       overlaps,
@@ -2042,14 +2458,20 @@ export class PayrollService {
     const employees = await this.listEmployees('');
     const onlySpecified =
       Array.isArray(employeePeriods) && employeePeriods.length > 0
-        ? new Set(employeePeriods.map((item) => `${item.userSource}:${item.userId}`))
+        ? new Set(
+            employeePeriods.map((item) => `${item.userSource}:${item.userId}`),
+          )
         : null;
     const selectedEmployees = onlySpecified
-      ? employees.filter((employee) => onlySpecified.has(`${employee.userSource}:${employee.userId}`))
+      ? employees.filter((employee) =>
+          onlySpecified.has(`${employee.userSource}:${employee.userId}`),
+        )
       : employees;
 
     if (selectedEmployees.length === 0) {
-      throw new BadRequestException('No employees selected for payslip preview.');
+      throw new BadRequestException(
+        'No employees selected for payslip preview.',
+      );
     }
 
     const attendance = await this.databaseService.query<{
@@ -2090,48 +2512,71 @@ export class PayrollService {
     const periodDays = this.countInclusiveDays(dateFrom, dateTo);
     const label = this.formatPeriodLabel(dateFrom, dateTo);
 
-    const items = selectedEmployees
-      .map((employee) => {
-        const key = `${employee.userSource}:${employee.userId}`;
-        const payType = this.payTypeForRun(employee, periodType);
-        const punches = byUser.get(key) ?? [];
-        const dayOffDates = dayOffsByUser.get(key) ?? new Set<string>();
-        const { days, totals } = this.buildPayslipDaysAndTotals({
-          salaryType: payType,
-          salaryAmount: employee.monthlySalary,
-          wfhSalary: employee.wfhSalary,
-          fixedMonthlySalary: employee.fixedMonthlySalary,
-          periodDays,
-          punches,
-          dateFrom,
-          dateTo,
-          dayOffDates,
-          workWeek: settings.workWeek,
-          undertimeGraceMinutes: settings.undertimeGraceMinutes,
-        });
+    const items = (
+      await Promise.all(
+        selectedEmployees.map(async (employee) => {
+          const key = `${employee.userSource}:${employee.userId}`;
+          const payType = this.payTypeForRun(employee, periodType);
+          const punches = byUser.get(key) ?? [];
+          const dayOffDates = dayOffsByUser.get(key) ?? new Set<string>();
+          const { days, totals } = this.buildPayslipDaysAndTotals({
+            salaryType: payType,
+            salaryAmount: employee.monthlySalary,
+            wfhSalary: employee.wfhSalary,
+            fixedMonthlySalary: employee.fixedMonthlySalary,
+            periodDays,
+            punches,
+            dateFrom,
+            dateTo,
+            dayOffDates,
+            workWeek: settings.workWeek,
+            undertimeGraceMinutes: settings.undertimeGraceMinutes,
+          });
+          const assembled = await this.assembleLedgerForPeriod(
+            this.databaseService.query.bind(this.databaseService),
+            {
+              userId: employee.userId,
+              userSource: employee.userSource,
+              basePay: totals.basePay,
+              overtimePay: totals.overtimePay,
+            },
+            dateFrom,
+            dateTo,
+            settings,
+          );
 
-        return {
-          id: `preview:${employee.userSource}:${employee.userId}`,
-          label,
-          dateFrom,
-          dateTo,
-          generatedAt,
-          isPreview: true as const,
-          salaryType: employee.salaryType,
-          userId: employee.userId,
-          userSource: employee.userSource,
-          employee: {
-            fullName: employee.fullName,
-            positionTitle: employee.positionTitle,
-            username: employee.username,
-            employeeCode: employee.employeeCode,
-            department: employee.department,
-          },
-          days,
-          totals,
-        };
-      })
-      .sort((a, b) => a.employee.fullName.localeCompare(b.employee.fullName));
+          return {
+            id: `preview:${employee.userSource}:${employee.userId}`,
+            label,
+            dateFrom,
+            dateTo,
+            generatedAt,
+            isPreview: true as const,
+            salaryType: employee.salaryType,
+            userId: employee.userId,
+            userSource: employee.userSource,
+            employee: {
+              fullName: employee.fullName,
+              positionTitle: employee.positionTitle,
+              username: employee.username,
+              employeeCode: employee.employeeCode,
+              department: employee.department,
+            },
+            days,
+            lines: assembled.lines,
+            remarks: null,
+            basePay: totals.basePay,
+            overtimePay: totals.overtimePay,
+            netPay: assembled.net.netPay,
+            breakdown: assembled.net,
+            totals: {
+              ...totals,
+              estimatedPay: assembled.net.netPay,
+            },
+          };
+        }),
+      )
+    ).sort((a, b) => a.employee.fullName.localeCompare(b.employee.fullName));
 
     return {
       dateFrom,
@@ -2175,7 +2620,7 @@ export class PayrollService {
               p.total_hours::text AS total_hours,
               p.salary_type,
               p.salary_amount::text AS salary_amount,
-              p.estimated_pay::text AS estimated_pay,
+              p.estimated_pay::text AS estimated_pay, p.remarks,
               p.payroll_enabled
        FROM pcmazing_generated_payslips p
        INNER JOIN pcmazing_payroll_runs r ON r.id = p.run_id
@@ -2196,10 +2641,32 @@ export class PayrollService {
       daysCompleted: Number(row.days_completed) || 0,
       totalHours: Math.round(Number(row.total_hours || 0) * 100) / 100,
       salaryType: this.normalizeSalaryType(row.salary_type),
-      salaryAmount: row.salary_amount == null ? null : Number(row.salary_amount),
+      salaryAmount:
+        row.salary_amount == null ? null : Number(row.salary_amount),
       estimatedPay: Math.round(Number(row.estimated_pay || 0) * 100) / 100,
       payrollEnabled: Boolean(row.payroll_enabled),
     }));
+  }
+
+  async updatePayslipRemarks(
+    payslipId: number,
+    remarksRaw: string | null,
+  ): Promise<{ id: string; remarks: string | null }> {
+    await this.ensureReady();
+    const remarks = remarksRaw?.trim() || null;
+    const result = await this.databaseService.query<{
+      id: number;
+      remarks: string | null;
+    }>(
+      `UPDATE pcmazing_generated_payslips
+       SET remarks = $2
+       WHERE id = $1
+       RETURNING id, remarks`,
+      [payslipId, remarks],
+    );
+    const row = result.rows[0];
+    if (!row) throw new NotFoundException('Payslip not found.');
+    return { id: String(row.id), remarks: row.remarks };
   }
 
   async getEmployeePayslipDetail(
@@ -2263,10 +2730,13 @@ export class PayrollService {
     }
 
     const salaryType = this.normalizeSalaryType(slip.salary_type);
-    const salaryAmount = slip.salary_amount == null ? null : Number(slip.salary_amount);
+    const salaryAmount =
+      slip.salary_amount == null ? null : Number(slip.salary_amount);
     const wfhSalary = slip.wfh_salary == null ? null : Number(slip.wfh_salary);
     const fixedMonthlySalary =
-      slip.fixed_monthly_salary == null ? null : Number(slip.fixed_monthly_salary);
+      slip.fixed_monthly_salary == null
+        ? null
+        : Number(slip.fixed_monthly_salary);
     const periodDays = Number(slip.period_days) || 0;
 
     const attendance = await this.databaseService.query<{
@@ -2302,10 +2772,41 @@ export class PayrollService {
       punches: attendance.rows,
       dateFrom: String(slip.date_from).slice(0, 10),
       dateTo: String(slip.date_to).slice(0, 10),
-      dayOffDates: await this.loadDayOffDates(userId, userSource, slip.date_from, slip.date_to),
+      dayOffDates: await this.loadDayOffDates(
+        userId,
+        userSource,
+        slip.date_from,
+        slip.date_to,
+      ),
       workWeek: settings.workWeek,
       undertimeGraceMinutes: settings.undertimeGraceMinutes,
     });
+    const ledger = await this.databaseService.query<{
+      line_type: PayslipLedgerLine['lineType'];
+      label: string;
+      amount: string;
+      source: PayslipLedgerLine['source'];
+      meta: Record<string, unknown> | null;
+    }>(
+      `SELECT line_type, label, amount::text AS amount, source, meta
+       FROM pcmazing_payroll_payslip_ledger
+       WHERE payslip_id = $1
+       ORDER BY id`,
+      [payslipId],
+    );
+    const lines: PayslipLedgerLine[] = ledger.rows.map((line) => ({
+      lineType: line.line_type,
+      label: line.label,
+      amount: Number(line.amount),
+      source: line.source,
+      ...(line.meta == null ? {} : { meta: line.meta }),
+    }));
+    const breakdown = computePayslipNet({
+      basePay: totals.basePay,
+      overtimePay: totals.overtimePay,
+      lines,
+    });
+    totals.estimatedPay = breakdown.netPay;
 
     const generatedAt = new Date(slip.created_at).toLocaleString('en-PH', {
       timeZone: 'Asia/Manila',
@@ -2327,7 +2828,7 @@ export class PayrollService {
       totals,
     };
 
-    const safeLabel = slip.label.replace(/[^\w\-]+/g, '_').replace(/_+/g, '_');
+    const safeLabel = slip.label.replace(/[^\w-]+/g, '_').replace(/_+/g, '_');
     return {
       id: String(slip.id),
       label: slip.label,
@@ -2341,6 +2842,12 @@ export class PayrollService {
         employeeCode: slip.employee_code,
         department: slip.department,
       },
+      lines,
+      remarks: slip.remarks,
+      basePay: totals.basePay,
+      overtimePay: totals.overtimePay,
+      netPay: breakdown.netPay,
+      breakdown,
       days: pdfPayload.days,
       totals: pdfPayload.totals,
       filename: `payslip-${safeLabel}-${slip.username}.pdf`,
@@ -2353,7 +2860,11 @@ export class PayrollService {
     userId: number,
     userSource: AdminUserRecord['source'],
   ): Promise<{ filename: string; buffer: Buffer }> {
-    const detail = await this.getEmployeePayslipDetail(payslipIdRaw, userId, userSource);
+    const detail = await this.getEmployeePayslipDetail(
+      payslipIdRaw,
+      userId,
+      userSource,
+    );
     const buffer = await buildPayslipPdfBuffer(detail.pdfPayload);
     return {
       filename: detail.filename,
@@ -2389,14 +2900,22 @@ export class PayrollService {
     const calendarDays = this.eachIsoDate(input.dateFrom, input.dateTo);
     const dayOffDates = input.dayOffDates ?? new Set<string>();
     const workWeek = this.normalizeWorkWeek(input.workWeek);
-    const undertimeGraceMinutes = this.normalizeUndertimeGrace(input.undertimeGraceMinutes);
-    const restDayCount = calendarDays.filter((day) => this.isRestDay(day, workWeek, dayOffDates)).length;
-    const weeklyHourBase = this.weeklyHourBase(workWeek, input.periodDays, restDayCount);
+    const undertimeGraceMinutes = this.normalizeUndertimeGrace(
+      input.undertimeGraceMinutes,
+    );
+    const restDayCount = calendarDays.filter((day) =>
+      this.isRestDay(day, workWeek, dayOffDates),
+    ).length;
+    const weeklyHourBase = this.weeklyHourBase(
+      workWeek,
+      input.periodDays,
+      restDayCount,
+    );
 
     const fixedRates = usesFixedSalary
       ? {
           dailyRate: 0,
-          hourlyRate: (fixedMonthly / 22) / FULL_DAY_HOURS,
+          hourlyRate: fixedMonthly / 22 / FULL_DAY_HOURS,
         }
       : null;
 
@@ -2422,7 +2941,11 @@ export class PayrollService {
           timeInLabel: '—',
           timeOutLabel: '—',
           hoursWorked: 0,
-          dayType: rest ? (dayOffDates.has(workDate) ? 'Day off' : 'Rest day') : 'Absent',
+          dayType: rest
+            ? dayOffDates.has(workDate)
+              ? 'Day off'
+              : 'Rest day'
+            : 'Absent',
           paidUnits: 0,
           dayPay: 0,
           overtimeHours: 0,
@@ -2431,7 +2954,9 @@ export class PayrollService {
         };
       }
 
-      const punchedType = this.normalizeStoredLocationType(row.work_location_type);
+      const punchedType = this.normalizeStoredLocationType(
+        row.work_location_type,
+      );
       const hours = this.computeHours(row.time_in, row.time_out);
       const otHours = Number(row.overtime_hours ?? 0) || 0;
       const otStatus = this.normalizeOvertimeStatus(row.overtime_status);
@@ -2479,7 +3004,8 @@ export class PayrollService {
           dayPay = Math.round(units * rates.dailyRate * 100) / 100;
           overtimePay =
             otHours > 0 && otStatus === 'approved'
-              ? Math.round(otHours * hourlyRate * OVERTIME_MULTIPLIER * 100) / 100
+              ? Math.round(otHours * hourlyRate * OVERTIME_MULTIPLIER * 100) /
+                100
               : 0;
         }
       }
@@ -2560,7 +3086,11 @@ export class PayrollService {
         estimatedPay,
         periodDays: input.periodDays,
         salaryTypeLabel: this.salaryTypeLabel(input.salaryType),
-        payBasis: this.describePayBasis(input.salaryType, input.salaryAmount, input.fixedMonthlySalary),
+        payBasis: this.describePayBasis(
+          input.salaryType,
+          input.salaryAmount,
+          input.fixedMonthlySalary,
+        ),
       },
     };
   }
@@ -2575,10 +3105,13 @@ export class PayrollService {
       return `Fixed monthly PHP ${fixedMonthlySalary.toLocaleString('en-PH', {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
-      })} · ${this.salaryTypeLabel(salaryType)} PHP ${periodPay.toLocaleString('en-PH', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })}`;
+      })} · ${this.salaryTypeLabel(salaryType)} PHP ${periodPay.toLocaleString(
+        'en-PH',
+        {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        },
+      )}`;
     }
 
     const amount = salaryAmount == null || salaryAmount <= 0 ? 0 : salaryAmount;
@@ -2661,6 +3194,7 @@ export class PayrollService {
     periodDays: number,
     weeklyHourBase = 40,
   ): { dailyRate: number; hourlyRate: number } {
+    void weeklyHourBase;
     const amount = salaryAmount == null || salaryAmount <= 0 ? 0 : salaryAmount;
     switch (salaryType) {
       case 'weekly':
@@ -2678,7 +3212,11 @@ export class PayrollService {
     }
   }
 
-  private dayPayLabel(units: number, hours: number | null, undertimeGraceMinutes = 30): string {
+  private dayPayLabel(
+    units: number,
+    hours: number | null,
+    undertimeGraceMinutes = 30,
+  ): string {
     if (hours == null) {
       return 'Incomplete';
     }
@@ -2722,7 +3260,9 @@ export class PayrollService {
   private formatPeriodLabel(dateFrom: string, dateTo: string): string {
     const [fromYear, fromMonth, fromDay] = dateFrom.split('-').map(Number);
     const [, , toDay] = dateTo.split('-').map(Number);
-    const monthLabel = new Date(Date.UTC(fromYear, fromMonth - 1, 1)).toLocaleString('en-PH', {
+    const monthLabel = new Date(
+      Date.UTC(fromYear, fromMonth - 1, 1),
+    ).toLocaleString('en-PH', {
       month: 'short',
       year: 'numeric',
       timeZone: 'UTC',
@@ -2733,10 +3273,18 @@ export class PayrollService {
     }
 
     const lastDay = new Date(Date.UTC(fromYear, fromMonth, 0)).getUTCDate();
-    if (fromDay === 1 && toDay === 15 && dateFrom.slice(0, 7) === dateTo.slice(0, 7)) {
+    if (
+      fromDay === 1 &&
+      toDay === 15 &&
+      dateFrom.slice(0, 7) === dateTo.slice(0, 7)
+    ) {
       return `${monthLabel} · 1–15`;
     }
-    if (fromDay === 16 && toDay === lastDay && dateFrom.slice(0, 7) === dateTo.slice(0, 7)) {
+    if (
+      fromDay === 16 &&
+      toDay === lastDay &&
+      dateFrom.slice(0, 7) === dateTo.slice(0, 7)
+    ) {
       return `${monthLabel} · 16–${lastDay}`;
     }
 
@@ -2771,7 +3319,10 @@ export class PayrollService {
     const workDate = clock.workDate;
     const username = usernameRaw.trim();
     const undertimeGraceMinutes = settings.undertimeGraceMinutes;
-    const emptyLocation = this.emptyTimeClockLocationFields(workDate, settings.workWeek);
+    const emptyLocation = this.emptyTimeClockLocationFields(
+      workDate,
+      settings.workWeek,
+    );
 
     const user = await this.findActiveUserByUsername(username);
     if (!user) {
@@ -2842,7 +3393,11 @@ export class PayrollService {
       };
     }
 
-    const attendance = await this.getTodayAttendance(user.id, user.source, workDate);
+    const attendance = await this.getTodayAttendance(
+      user.id,
+      user.source,
+      workDate,
+    );
     // expectedLocation always from schedule; punch only supplies GPS/label fields.
     const recorded = {
       expectedLocation,
@@ -2924,7 +3479,9 @@ export class PayrollService {
 
     const picked = (workLocationType ?? '').trim().toLowerCase();
     if (picked !== 'office' && picked !== 'wfh') {
-      throw new BadRequestException('Choose Office or Work from home before time in.');
+      throw new BadRequestException(
+        'Choose Office or Work from home before time in.',
+      );
     }
 
     const user = await this.findActiveUserByUsername(usernameRaw);
@@ -2933,7 +3490,11 @@ export class PayrollService {
     }
 
     const punchLocation = this.resolvePunchLocation(picked, location);
-    const selfieUrl = await saveAttendanceSelfieFile('in', user.username, selfie);
+    const selfieUrl = await saveAttendanceSelfieFile(
+      'in',
+      user.username,
+      selfie,
+    );
     const workDate = status.workDate;
     await this.databaseService.query(
       `INSERT INTO pcmazing_attendance (
@@ -2968,7 +3529,9 @@ export class PayrollService {
 
     const refreshed = await this.getTimeClockStatus(user.username);
     if (refreshed.status !== 'timed_in' && refreshed.status !== 'completed') {
-      throw new BadRequestException('Unable to record time in. You may already be timed in.');
+      throw new BadRequestException(
+        'Unable to record time in. You may already be timed in.',
+      );
     }
 
     return refreshed;
@@ -2977,7 +3540,6 @@ export class PayrollService {
   async timeOut(
     usernameRaw: string,
     selfie: Express.Multer.File,
-    _location?: TimeClockLocationInput | null,
   ): Promise<TimeClockStatus> {
     const status = await this.getTimeClockStatus(usernameRaw);
     if (status.status === 'not_found') {
@@ -2992,7 +3554,11 @@ export class PayrollService {
       throw new NotFoundException('Username not found.');
     }
 
-    const selfieUrl = await saveAttendanceSelfieFile('out', user.username, selfie);
+    const selfieUrl = await saveAttendanceSelfieFile(
+      'out',
+      user.username,
+      selfie,
+    );
     const workDate = status.workDate;
     const result = await this.databaseService.query<{
       id: number;
@@ -3017,7 +3583,11 @@ export class PayrollService {
       throw new BadRequestException('Unable to record time out.');
     }
 
-    await this.syncOvertimeAfterTimeOut(punched.id, punched.time_in, punched.time_out);
+    await this.syncOvertimeAfterTimeOut(
+      punched.id,
+      punched.time_in,
+      punched.time_out,
+    );
     await this.clearPendingAdjustment(punched.id);
 
     return this.getTimeClockStatus(user.username);
@@ -3128,7 +3698,9 @@ export class PayrollService {
       throw new BadRequestException('Overtime approval is already pending.');
     }
     if (currentStatus === 'approved') {
-      throw new BadRequestException('Overtime for this day is already approved.');
+      throw new BadRequestException(
+        'Overtime for this day is already approved.',
+      );
     }
 
     const result = await this.databaseService.query<{
@@ -3174,7 +3746,9 @@ export class PayrollService {
       throw new BadRequestException('Invalid attendance id.');
     }
     if (!selfie) {
-      throw new BadRequestException('Upload a time-out photo before submitting.');
+      throw new BadRequestException(
+        'Upload a time-out photo before submitting.',
+      );
     }
 
     const existing = await this.databaseService.query<{
@@ -3200,7 +3774,9 @@ export class PayrollService {
       throw new NotFoundException('Attendance record not found.');
     }
     if (!row.time_in) {
-      throw new BadRequestException('Time in is required before requesting a time-out adjustment.');
+      throw new BadRequestException(
+        'Time in is required before requesting a time-out adjustment.',
+      );
     }
     if (row.time_out) {
       throw new BadRequestException('This day already has a time out.');
@@ -3208,10 +3784,14 @@ export class PayrollService {
 
     const currentStatus = this.normalizeOvertimeStatus(row.adjustment_status);
     if (currentStatus === 'pending') {
-      throw new BadRequestException('A time-out adjustment is already waiting for admin approval.');
+      throw new BadRequestException(
+        'A time-out adjustment is already waiting for admin approval.',
+      );
     }
     if (currentStatus === 'approved') {
-      throw new BadRequestException('This time-out adjustment is already approved.');
+      throw new BadRequestException(
+        'This time-out adjustment is already approved.',
+      );
     }
 
     const requestedTimeOut = this.parseManilaDateTime(requestedTimeOutRaw);
@@ -3223,7 +3803,9 @@ export class PayrollService {
       throw new BadRequestException('Time out cannot be in the future.');
     }
 
-    const requestedDate = requestedTimeOut.toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+    const requestedDate = requestedTimeOut.toLocaleDateString('en-CA', {
+      timeZone: 'Asia/Manila',
+    });
     const nextDay = this.shiftIsoDate(row.work_date, 1);
     if (requestedDate !== row.work_date && requestedDate !== nextDay) {
       throw new BadRequestException(
@@ -3233,14 +3815,23 @@ export class PayrollService {
 
     const reason = note?.trim() ?? '';
     if (reason.length < 8) {
-      throw new BadRequestException('Explain why you missed clocking out (at least 8 characters).');
+      throw new BadRequestException(
+        'Explain why you missed clocking out (at least 8 characters).',
+      );
     }
-    const undertimeCategory = this.normalizeUndertimeCategory(undertimeCategoryRaw);
+    const undertimeCategory =
+      this.normalizeUndertimeCategory(undertimeCategoryRaw);
     if (!undertimeCategory) {
-      throw new BadRequestException('Select why you left early: emergency, appointment, event, or other.');
+      throw new BadRequestException(
+        'Select why you left early: emergency, appointment, event, or other.',
+      );
     }
 
-    const selfieUrl = await saveAttendanceSelfieFile('out', row.username, selfie);
+    const selfieUrl = await saveAttendanceSelfieFile(
+      'out',
+      row.username,
+      selfie,
+    );
     const result = await this.databaseService.query<{
       id: number;
       work_date: string;
@@ -3263,7 +3854,13 @@ export class PayrollService {
        RETURNING id, work_date::text AS work_date,
                  requested_time_out::text AS requested_time_out,
                  adjustment_status`,
-      [attendanceId, requestedTimeOut.toISOString(), selfieUrl, reason.slice(0, 255), undertimeCategory],
+      [
+        attendanceId,
+        requestedTimeOut.toISOString(),
+        selfieUrl,
+        reason.slice(0, 255),
+        undertimeCategory,
+      ],
     );
 
     const updated = result.rows[0];
@@ -3287,7 +3884,9 @@ export class PayrollService {
   ): Promise<void> {
     const hours = this.computeHours(timeIn, timeOut) ?? 0;
     const overtimeHours =
-      hours > FULL_DAY_HOURS ? Math.round((hours - FULL_DAY_HOURS) * 100) / 100 : 0;
+      hours > FULL_DAY_HOURS
+        ? Math.round((hours - FULL_DAY_HOURS) * 100) / 100
+        : 0;
 
     await this.databaseService.query(
       `UPDATE pcmazing_attendance
@@ -3354,7 +3953,8 @@ export class PayrollService {
       id: Number(row.id),
       userId: Number(row.user_id),
       userSource: row.user_source,
-      payrollRunId: row.payroll_run_id == null ? null : Number(row.payroll_run_id),
+      payrollRunId:
+        row.payroll_run_id == null ? null : Number(row.payroll_run_id),
       dateFrom: row.date_from,
       dateTo: row.date_to,
       typeId: row.type_id == null ? null : Number(row.type_id),
@@ -3384,7 +3984,8 @@ export class PayrollService {
       id: Number(row.id),
       userId: Number(row.user_id),
       userSource: row.user_source,
-      payrollRunId: row.payroll_run_id == null ? null : Number(row.payroll_run_id),
+      payrollRunId:
+        row.payroll_run_id == null ? null : Number(row.payroll_run_id),
       dateFrom: row.date_from,
       dateTo: row.date_to,
       label: row.label,
@@ -3403,7 +4004,8 @@ export class PayrollService {
       principal: Number(row.principal),
       balance: Number(row.balance),
       termStyle: row.term_style,
-      installmentCount: row.installment_count == null ? null : Number(row.installment_count),
+      installmentCount:
+        row.installment_count == null ? null : Number(row.installment_count),
       fixedInstallmentAmount: Number(row.fixed_installment_amount),
       status: row.status,
       notes: row.notes,
@@ -3412,15 +4014,19 @@ export class PayrollService {
     };
   }
 
-  private mapLoanPeriodOverride(row: LoanPeriodOverrideRow): LoanPeriodOverride {
+  private mapLoanPeriodOverride(
+    row: LoanPeriodOverrideRow,
+  ): LoanPeriodOverride {
     return {
       id: Number(row.id),
       loanId: Number(row.loan_id),
-      payrollRunId: row.payroll_run_id == null ? null : Number(row.payroll_run_id),
+      payrollRunId:
+        row.payroll_run_id == null ? null : Number(row.payroll_run_id),
       dateFrom: row.date_from,
       dateTo: row.date_to,
       action: row.action,
-      customAmount: row.custom_amount == null ? null : Number(row.custom_amount),
+      customAmount:
+        row.custom_amount == null ? null : Number(row.custom_amount),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -3497,12 +4103,17 @@ export class PayrollService {
       return false;
     }
     const parsed = new Date(`${value}T00:00:00.000Z`);
-    return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+    return (
+      Number.isFinite(parsed.getTime()) &&
+      parsed.toISOString().slice(0, 10) === value
+    );
   }
 
   private parseManilaDateTime(value: string): Date {
     const trimmed = (value ?? '').trim();
-    const match = trimmed.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})(?::(\d{2}))?/);
+    const match = trimmed.match(
+      /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})(?::(\d{2}))?/,
+    );
     if (!match) {
       throw new BadRequestException('Enter the time you actually left.');
     }
@@ -3540,7 +4151,9 @@ export class PayrollService {
     return result.rows[0] ?? null;
   }
 
-  private async findActiveUserByUsername(username: string): Promise<AdminUserRecord | null> {
+  private async findActiveUserByUsername(
+    username: string,
+  ): Promise<AdminUserRecord | null> {
     const trimmed = username.trim();
     if (!trimmed) {
       return null;
@@ -3615,7 +4228,9 @@ export class PayrollService {
   ): Promise<string> {
     try {
       if (userSource === 'tblusers') {
-        const result = await this.databaseService.query<{ fullname: string | null }>(
+        const result = await this.databaseService.query<{
+          fullname: string | null;
+        }>(
           `SELECT COALESCE(
              to_jsonb(u)->>'fullname',
              to_jsonb(u)->>'fullName',
@@ -3659,15 +4274,20 @@ export class PayrollService {
       department: row.department,
       positionTitle: row.position_title,
       salaryType: this.normalizeSalaryType(row.salary_type),
-      monthlySalary: row.monthly_salary == null ? null : Number(row.monthly_salary),
+      monthlySalary:
+        row.monthly_salary == null ? null : Number(row.monthly_salary),
       wfhSalary: row.wfh_salary == null ? null : Number(row.wfh_salary),
       fixedMonthlySalary:
-        row.fixed_monthly_salary == null ? null : Number(row.fixed_monthly_salary),
+        row.fixed_monthly_salary == null
+          ? null
+          : Number(row.fixed_monthly_salary),
       payoutMethod: this.normalizePayoutMethod(row.payout_method),
       bankDetails: row.bank_details ?? null,
       qrImageUrl: row.qr_image_url ?? null,
       payrollEnabled: Boolean(row.payroll_enabled),
-      weeklyLocationSchedule: normalizeWeeklyLocationSchedule(row.weekly_location_schedule),
+      weeklyLocationSchedule: normalizeWeeklyLocationSchedule(
+        row.weekly_location_schedule,
+      ),
     };
   }
 
@@ -3676,7 +4296,11 @@ export class PayrollService {
     workWeek: PayrollWorkWeek,
   ): Pick<
     TimeClockStatus,
-    'expectedLocation' | 'locationLabel' | 'locationLat' | 'locationLng' | 'locationMismatch'
+    | 'expectedLocation'
+    | 'locationLabel'
+    | 'locationLat'
+    | 'locationLng'
+    | 'locationMismatch'
   > {
     const expectedLocation = resolveExpectedLocation(null, workWeek, workDate);
     return {
@@ -3688,11 +4312,15 @@ export class PayrollService {
     };
   }
 
-  private normalizeStoredLocationType(value?: string | null): WorkLocationType | null {
+  private normalizeStoredLocationType(
+    value?: string | null,
+  ): WorkLocationType | null {
     return isWorkLocationType(value) ? value : null;
   }
 
-  private toNullableNumber(value: string | number | null | undefined): number | null {
+  private toNullableNumber(
+    value: string | number | null | undefined,
+  ): number | null {
     if (value == null || value === '') {
       return null;
     }
@@ -3751,7 +4379,11 @@ export class PayrollService {
     return 'mon_fri';
   }
 
-  private weeklyHourBase(workWeek: PayrollWorkWeek, periodDays: number, restDayCount: number): number {
+  private weeklyHourBase(
+    workWeek: PayrollWorkWeek,
+    periodDays: number,
+    restDayCount: number,
+  ): number {
     switch (workWeek) {
       case 'mon_fri':
         return 5 * FULL_DAY_HOURS;
@@ -3766,11 +4398,18 @@ export class PayrollService {
   }
 
   private weekdayUtc(isoDate: string): number {
-    const [year, month, day] = String(isoDate).slice(0, 10).split('-').map(Number);
+    const [year, month, day] = String(isoDate)
+      .slice(0, 10)
+      .split('-')
+      .map(Number);
     return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
   }
 
-  private isRestDay(isoDate: string, workWeek: PayrollWorkWeek, dayOffDates: Set<string>): boolean {
+  private isRestDay(
+    isoDate: string,
+    workWeek: PayrollWorkWeek,
+    dayOffDates: Set<string>,
+  ): boolean {
     if (dayOffDates.has(isoDate)) {
       return true;
     }
@@ -3786,7 +4425,10 @@ export class PayrollService {
     }
   }
 
-  private computeHours(timeIn: string | null, timeOut: string | null): number | null {
+  private computeHours(
+    timeIn: string | null,
+    timeOut: string | null,
+  ): number | null {
     if (!timeIn || !timeOut) {
       return null;
     }
@@ -3835,7 +4477,9 @@ export class PayrollService {
         continue;
       }
 
-      const punchedType = this.normalizeStoredLocationType(punch.work_location_type);
+      const punchedType = this.normalizeStoredLocationType(
+        punch.work_location_type,
+      );
       const otHours = Number(punch.overtime_hours ?? 0) || 0;
       const otStatus = this.normalizeOvertimeStatus(punch.overtime_status);
 
@@ -3869,7 +4513,9 @@ export class PayrollService {
           dayPayTotal += dayPay;
           if (otHours > 0 && otStatus === 'approved') {
             const overtimePay =
-              Math.round(otHours * rates.hourlyRate * OVERTIME_MULTIPLIER * 100) / 100;
+              Math.round(
+                otHours * rates.hourlyRate * OVERTIME_MULTIPLIER * 100,
+              ) / 100;
             overtimePayTotal += overtimePay;
           }
         }
@@ -3889,7 +4535,19 @@ export class PayrollService {
       }
     }
 
-    const estimatedPay = usesFixedSalary
+    const basePay = usesFixedSalary
+      ? this.estimatePay({
+          salaryType: payslipPeriod,
+          salaryAmount: employee.monthlySalary,
+          fixedMonthlySalary: employee.fixedMonthlySalary,
+          regularHours,
+          paidDayUnits,
+          periodDays,
+          approvedOvertimeHours: 0,
+          weeklyHourBase,
+        })
+      : dayPayTotal;
+    const overtimePay = usesFixedSalary
       ? this.estimatePay({
           salaryType: payslipPeriod,
           salaryAmount: employee.monthlySalary,
@@ -3899,8 +4557,9 @@ export class PayrollService {
           periodDays,
           approvedOvertimeHours,
           weeklyHourBase,
-        })
-      : dayPayTotal + overtimePayTotal;
+        }) - basePay
+      : overtimePayTotal;
+    const estimatedPay = basePay + overtimePay;
 
     return {
       userId: Number(employee.userId),
@@ -3918,6 +4577,8 @@ export class PayrollService {
       totalHours: Math.round(totalHours * 100) / 100,
       approvedOvertimeHours: Math.round(approvedOvertimeHours * 100) / 100,
       pendingOvertimeHours: Math.round(pendingOvertimeHours * 100) / 100,
+      basePay: Math.round(basePay * 100) / 100,
+      overtimePay: Math.round(overtimePay * 100) / 100,
       estimatedPay: Math.round(estimatedPay * 100) / 100,
       payslipPeriod,
       periodDateFrom,
@@ -3950,16 +4611,25 @@ export class PayrollService {
         if (day <= 15) {
           return { dateFrom: `${yearMonth}-01`, dateTo: `${yearMonth}-15` };
         }
-        return { dateFrom: `${yearMonth}-16`, dateTo: `${yearMonth}-${pad(lastDay)}` };
+        return {
+          dateFrom: `${yearMonth}-16`,
+          dateTo: `${yearMonth}-${pad(lastDay)}`,
+        };
       case 'monthly':
-        return { dateFrom: `${yearMonth}-01`, dateTo: `${yearMonth}-${pad(lastDay)}` };
+        return {
+          dateFrom: `${yearMonth}-01`,
+          dateTo: `${yearMonth}-${pad(lastDay)}`,
+        };
       case 'cutoff':
       default:
         return { dateFrom, dateTo };
     }
   }
 
-  private scheduledFixedPay(monthly: number, period: PayrollSalaryType): number {
+  private scheduledFixedPay(
+    monthly: number,
+    period: PayrollSalaryType,
+  ): number {
     switch (period) {
       case 'weekly':
         return Math.round((monthly / 4) * 100) / 100;
@@ -4006,7 +4676,7 @@ export class PayrollService {
 
     if (fixedMonthly != null) {
       const basePay = this.scheduledFixedPay(fixedMonthly, input.salaryType);
-      const hourlyRate = (fixedMonthly / 22) / FULL_DAY_HOURS;
+      const hourlyRate = fixedMonthly / 22 / FULL_DAY_HOURS;
       const overtimePay =
         input.approvedOvertimeHours > 0 && hourlyRate > 0
           ? input.approvedOvertimeHours * hourlyRate * OVERTIME_MULTIPLIER
@@ -4063,12 +4733,18 @@ export class PayrollService {
    * Half day (≥4h and below the full-day threshold) = 0.5 unit.
    * Below 4h = unpaid.
    */
-  private dayPayUnits(hours: number | null | undefined, undertimeGraceMinutes = 30): number {
+  private dayPayUnits(
+    hours: number | null | undefined,
+    undertimeGraceMinutes = 30,
+  ): number {
     if (hours == null || !Number.isFinite(hours) || hours <= 0) {
       return 0;
     }
     const graceHours = this.normalizeUndertimeGrace(undertimeGraceMinutes) / 60;
-    const fullDayThreshold = Math.max(HALF_DAY_MIN_HOURS, FULL_DAY_HOURS - graceHours);
+    const fullDayThreshold = Math.max(
+      HALF_DAY_MIN_HOURS,
+      FULL_DAY_HOURS - graceHours,
+    );
     if (hours + 0.0001 >= fullDayThreshold) {
       return 1;
     }
@@ -4078,7 +4754,9 @@ export class PayrollService {
     return 0;
   }
 
-  private normalizeUndertimeGrace(value: string | number | null | undefined): number {
+  private normalizeUndertimeGrace(
+    value: string | number | null | undefined,
+  ): number {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) {
       return 30;
@@ -4091,7 +4769,9 @@ export class PayrollService {
     return /^\d{2}:\d{2}$/.test(normalized) ? normalized : '09:00';
   }
 
-  private normalizeLateGrace(value: string | number | null | undefined): number {
+  private normalizeLateGrace(
+    value: string | number | null | undefined,
+  ): number {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) {
       return 15;
@@ -4099,12 +4779,16 @@ export class PayrollService {
     return Math.min(120, Math.max(0, Math.round(parsed)));
   }
 
-  private normalizeNonNegativeMoney(value: string | number | null | undefined): number {
+  private normalizeNonNegativeMoney(
+    value: string | number | null | undefined,
+  ): number {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
   }
 
-  private normalizeUndertimeCategory(value?: string | null): UndertimeCategory | null {
+  private normalizeUndertimeCategory(
+    value?: string | null,
+  ): UndertimeCategory | null {
     const normalized = (value ?? '').trim().toLowerCase();
     if ((UNDERTIME_CATEGORIES as readonly string[]).includes(normalized)) {
       return normalized as UndertimeCategory;
@@ -4112,7 +4796,9 @@ export class PayrollService {
     return null;
   }
 
-  private normalizeOvertimeStatus(value: string | null | undefined): OvertimeStatus {
+  private normalizeOvertimeStatus(
+    value: string | null | undefined,
+  ): OvertimeStatus {
     switch ((value ?? '').trim().toLowerCase()) {
       case 'pending':
         return 'pending';
