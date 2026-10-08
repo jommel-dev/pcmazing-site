@@ -8,11 +8,13 @@ import {
   Max,
   MaxLength,
   Min,
+  MinLength,
 } from 'class-validator';
 import { COMMISSION_USER_SOURCES } from './commission-entry.dto';
 import type { CommissionUserSource } from './commission-entry.dto';
 
 export type LoanTermStyle = 'equal_installments' | 'fixed_per_cutoff';
+export type LoanStatus = 'active' | 'paid' | 'cancelled' | 'deleted';
 
 export class LoanQueryDto {
   @Type(() => Number)
@@ -25,6 +27,11 @@ export class LoanQueryDto {
 }
 
 export class CreateLoanDto extends LoanQueryDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(120)
+  label!: string;
+
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0.01)
@@ -55,8 +62,14 @@ export class CreateLoanDto extends LoanQueryDto {
 
 export class UpdateLoanDto {
   @IsOptional()
-  @IsIn(['cancelled'])
-  status?: 'cancelled';
+  @IsIn(['cancelled', 'active', 'deleted'])
+  status?: 'cancelled' | 'active' | 'deleted';
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(120)
+  label?: string;
 
   @IsOptional()
   @IsString()

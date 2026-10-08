@@ -286,7 +286,8 @@ export interface PayrollLoan {
   termStyle: LoanTermStyle;
   installmentCount: number | null;
   fixedInstallmentAmount: number;
-  status: 'active' | 'paid' | 'cancelled';
+  status: 'active' | 'paid' | 'cancelled' | 'deleted';
+  label: string;
   notes: string | null;
   createdAt: string;
   updatedAt: string;
@@ -314,7 +315,8 @@ type PayrollLoanRow = {
   term_style: LoanTermStyle;
   installment_count: string | number | null;
   fixed_installment_amount: string | number;
-  status: 'active' | 'paid' | 'cancelled';
+  status: 'active' | 'paid' | 'cancelled' | 'deleted';
+  label: string;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -839,6 +841,7 @@ export class PayrollService {
        FROM pcmazing_payroll_loans l
        LEFT JOIN pcmazing_payroll_loan_period_overrides o ON o.loan_id = l.id
        WHERE l.user_id = $1 AND l.user_source = $2
+         AND l.status <> 'deleted'
        GROUP BY l.id
        ORDER BY l.created_at DESC, l.id DESC`,
       [userId, userSource],
@@ -869,13 +872,17 @@ export class PayrollService {
     const fixedAmount = equal
       ? computeEqualInstallmentAmount(input.principal, input.installmentCount!)
       : input.fixedInstallmentAmount!;
+    const label = input.label.trim();
+    if (!label) {
+      throw new BadRequestException('Loan name/label is required.');
+    }
     const notes = input.notes?.trim() || null;
     const result = await this.databaseService.query<PayrollLoanRow>(
       `INSERT INTO pcmazing_payroll_loans (
          user_id, user_source, principal, balance, term_style,
-         installment_count, fixed_installment_amount, notes
+         installment_count, fixed_installment_amount, label, notes
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING *, created_at::text AS created_at, updated_at::text AS updated_at`,
       [
         input.userId,
@@ -885,6 +892,7 @@ export class PayrollService {
         input.termStyle,
         equal ? input.installmentCount : null,
         fixedAmount,
+        label,
         notes,
       ],
     );
@@ -893,19 +901,61 @@ export class PayrollService {
 
   async updateLoan(id: number, input: UpdateLoanDto): Promise<PayrollLoan> {
     await this.ensureReady();
-    if (input.status === undefined && input.notes === undefined) {
+    if (
+      input.status === undefined &&
+      input.notes === undefined &&
+      input.label === undefined
+    ) {
       throw new BadRequestException('Provide a loan change.');
     }
+
+    const currentResult = await this.databaseService.query<PayrollLoanRow>(
+      `SELECT *
+       FROM pcmazing_payroll_loans
+       WHERE id = $1
+       LIMIT 1`,
+      [id],
+    );
+    const current = currentResult.rows[0];
+    if (!current || current.status === 'deleted') {
+      throw new NotFoundException('Loan not found.');
+    }
+
+    if (input.status !== undefined) {
+      const from = current.status;
+      const to = input.status;
+      const allowed =
+        (to === 'cancelled' && from === 'active') ||
+        (to === 'active' && from === 'cancelled') ||
+        (to === 'deleted' &&
+          (from === 'active' || from === 'cancelled' || from === 'paid'));
+      if (!allowed) {
+        throw new BadRequestException(
+          `Cannot change loan status from ${from} to ${to}.`,
+        );
+      }
+    }
+
+    const nextLabel =
+      input.label === undefined ? null : input.label.trim() || null;
+    if (input.label !== undefined && !nextLabel) {
+      throw new BadRequestException('Loan name/label is required.');
+    }
+
     const result = await this.databaseService.query<PayrollLoanRow>(
       `UPDATE pcmazing_payroll_loans
        SET status = COALESCE($2, status),
-           notes = CASE WHEN $3::boolean THEN $4 ELSE notes END,
+           label = CASE WHEN $3::boolean THEN $4 ELSE label END,
+           notes = CASE WHEN $5::boolean THEN $6 ELSE notes END,
            updated_at = NOW()
        WHERE id = $1
+         AND status <> 'deleted'
        RETURNING *, created_at::text AS created_at, updated_at::text AS updated_at`,
       [
         id,
         input.status ?? null,
+        input.label !== undefined,
+        nextLabel,
         input.notes !== undefined,
         input.notes?.trim() || null,
       ],
@@ -2190,6 +2240,7 @@ export class PayrollService {
       ),
       query<{
         id: number;
+        label: string;
         balance: string;
         term_style: 'equal_installments' | 'fixed_per_cutoff';
         installment_count: number | null;
@@ -2197,7 +2248,7 @@ export class PayrollService {
         override_action: 'skip' | 'custom' | null;
         custom_amount: string | null;
       }>(
-        `SELECT l.id, l.balance::text AS balance, l.term_style, l.installment_count,
+        `SELECT l.id, l.label, l.balance::text AS balance, l.term_style, l.installment_count,
                 l.fixed_installment_amount::text AS fixed_installment_amount,
                 o.action AS override_action, o.custom_amount::text AS custom_amount
          FROM pcmazing_payroll_loans l
@@ -2241,6 +2292,7 @@ export class PayrollService {
       lateExcludedDates,
       loans: loans.rows.map((row) => ({
         id: Number(row.id),
+        label: row.label,
         balance: Number(row.balance),
         termStyle: row.term_style,
         installmentCount:
@@ -4155,6 +4207,7 @@ export class PayrollService {
         row.installment_count == null ? null : Number(row.installment_count),
       fixedInstallmentAmount: Number(row.fixed_installment_amount),
       status: row.status,
+      label: row.label,
       notes: row.notes,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -4199,7 +4252,9 @@ export class PayrollService {
 
   private async assertLoanExists(id: number): Promise<void> {
     const result = await this.databaseService.query<{ id: string | number }>(
-      `SELECT id FROM pcmazing_payroll_loans WHERE id = $1 LIMIT 1`,
+      `SELECT id FROM pcmazing_payroll_loans
+       WHERE id = $1 AND status <> 'deleted'
+       LIMIT 1`,
       [id],
     );
     if (!result.rows[0]) throw new NotFoundException('Loan not found.');
