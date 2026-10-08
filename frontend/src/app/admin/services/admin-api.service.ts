@@ -839,6 +839,26 @@ export interface EmployeePayslipDetail {
   salaryType?: string;
   userId?: number;
   userSource?: string;
+  lines?: Array<{
+    lineType: 'commission' | 'late_deduction' | 'loan_deduction' | 'manual_deduction';
+    label: string;
+    amount: number;
+    source: string;
+    meta?: Record<string, unknown> | null;
+  }>;
+  remarks?: string | null;
+  basePay?: number;
+  overtimePay?: number;
+  netPay?: number;
+  breakdown?: {
+    grossPay: number;
+    totalDeductions: number;
+    netPay: number;
+    commissionsTotal: number;
+    lateTotal: number;
+    loanTotal: number;
+    manualTotal: number;
+  };
 }
 
 export interface EmployeeWorkspaceDashboard {
@@ -945,6 +965,11 @@ export interface PayrollPeriodItem {
   payslipPeriod?: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
   periodDateFrom?: string;
   periodDateTo?: string;
+  payslipId?: string | number | null;
+  commissionsTotal?: number;
+  totalDeductions?: number;
+  netPay?: number;
+  remarks?: string | null;
 }
 
 export interface PayrollOverlapItem {
@@ -2743,6 +2768,14 @@ export class AdminApiService {
     return this.http.delete<{ success: boolean; message: string }>(
       `${APP_CONFIG.apiUrl}/admin/payroll/loans/${id}/period-override`,
       { headers: this.headers(), params },
+    );
+  }
+
+  updatePayrollPayslipRemarks(id: string | number, remarks: string | null) {
+    return this.http.patch<ItemResponse<{ id: string; remarks: string | null }>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/payslips/${id}/remarks`,
+      { remarks },
+      { headers: this.headers() },
     );
   }
 

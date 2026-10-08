@@ -9,7 +9,11 @@ import {
   PaginationMeta,
   PayrollAdjustmentItem,
   PayrollAttendanceItem,
+  PayrollCommissionEntry,
+  PayrollCommissionType,
   PayrollEmployeeItem,
+  PayrollLoan,
+  PayrollManualDeduction,
   PayrollOverlapItem,
   PayrollOverview,
   PayrollOvertimeItem,
@@ -21,7 +25,7 @@ import {
   WorkLocationType,
 } from '../../services/admin-api.service';
 
-type PayrollTab = 'overview' | 'attendance' | 'employees' | 'period' | 'overtime' | 'adjustments';
+type PayrollTab = 'overview' | 'attendance' | 'employees' | 'period' | 'tools' | 'commissions' | 'overtime' | 'adjustments';
 type PeriodType = 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
 type WorkWeek = 'mon_fri' | 'mon_sat' | 'day_off_basis';
 
@@ -54,6 +58,8 @@ export class PayrollPageComponent implements OnInit {
     { key: 'attendance', label: 'Attendance' },
     { key: 'employees', label: 'Employees' },
     { key: 'period', label: 'Period pay' },
+    { key: 'tools', label: 'Employee tools' },
+    { key: 'commissions', label: 'Commission types' },
     { key: 'overtime', label: 'Overtime' },
     { key: 'adjustments', label: 'Adjustments' },
   ];
@@ -138,6 +144,31 @@ export class PayrollPageComponent implements OnInit {
   readonly adjustmentPage = signal(1);
   readonly reviewingAdjustmentId = signal<number | null>(null);
 
+  readonly commissionTypes = signal<PayrollCommissionType[]>([]);
+  readonly commissionTypeName = signal('');
+  readonly editingCommissionTypeId = signal<number | null>(null);
+  readonly savingPayrollTool = signal(false);
+  readonly payrollToolMessage = signal('');
+  readonly selectedEmployeeKey = signal('');
+  readonly employeeLoans = signal<PayrollLoan[]>([]);
+  readonly employeeCommissions = signal<PayrollCommissionEntry[]>([]);
+  readonly employeeDeductions = signal<PayrollManualDeduction[]>([]);
+  readonly loanPrincipal = signal(0);
+  readonly loanTermStyle = signal<'equal_installments' | 'fixed_per_cutoff'>('equal_installments');
+  readonly loanInstallmentCount = signal(1);
+  readonly loanFixedAmount = signal(0);
+  readonly loanNotes = signal('');
+  readonly overrideLoanId = signal<number | null>(null);
+  readonly overrideAction = signal<'skip' | 'custom'>('skip');
+  readonly overrideAmount = signal(0);
+  readonly commissionTypeId = signal<number | null>(null);
+  readonly commissionLabel = signal('');
+  readonly commissionAmount = signal(0);
+  readonly deductionLabel = signal('');
+  readonly deductionAmount = signal(0);
+  readonly remarksDrafts = signal<Record<string, string>>({});
+  readonly savingRemarksId = signal<string | number | null>(null);
+
   readonly timeClockUrl = `${APP_CONFIG.publicSiteUrl.replace(/\/$/, '')}/user/login?returnUrl=${encodeURIComponent('/admin/time-clock')}`;
 
   ngOnInit(): void {
@@ -184,6 +215,12 @@ export class PayrollPageComponent implements OnInit {
           break;
         case 'period':
           await this.loadPeriod();
+          break;
+        case 'tools':
+          await this.loadEmployeeToolsBase();
+          break;
+        case 'commissions':
+          await this.loadCommissionTypes();
           break;
         case 'overtime':
           await this.loadOvertime();
@@ -257,6 +294,207 @@ export class PayrollPageComponent implements OnInit {
     this.adjustmentItems.set(response.data);
     this.adjustmentMeta.set(response.meta);
     this.adjustmentStatus.set(response.status);
+  }
+
+  private async loadCommissionTypes(): Promise<void> {
+    const response = await firstValueFrom(this.adminApi.listPayrollCommissionTypes());
+    this.commissionTypes.set(response.data);
+  }
+
+  private async loadEmployeeToolsBase(): Promise<void> {
+    await Promise.all([this.loadEmployees(), this.loadCommissionTypes()]);
+    if (this.selectedEmployeeKey()) {
+      await this.loadSelectedEmployeeTools();
+    }
+  }
+
+  selectedToolEmployee(): PayrollEmployeeItem | null {
+    return this.employees().find((item) => this.employeeKey(item) === this.selectedEmployeeKey()) ?? null;
+  }
+
+  private employeePeriodScope() {
+    const employee = this.selectedToolEmployee();
+    return employee
+      ? { userId: employee.userId, userSource: employee.userSource, dateFrom: this.dateFrom(), dateTo: this.dateTo() }
+      : null;
+  }
+
+  async selectToolEmployee(key: string): Promise<void> {
+    this.selectedEmployeeKey.set(key);
+    this.payrollToolMessage.set('');
+    await this.loadSelectedEmployeeTools();
+  }
+
+  async loadSelectedEmployeeTools(): Promise<void> {
+    const scope = this.employeePeriodScope();
+    if (!scope) {
+      this.employeeLoans.set([]);
+      this.employeeCommissions.set([]);
+      this.employeeDeductions.set([]);
+      return;
+    }
+    this.error.set('');
+    try {
+      const [loans, commissions, deductions] = await Promise.all([
+        firstValueFrom(this.adminApi.listPayrollLoans({ userId: scope.userId, userSource: scope.userSource })),
+        firstValueFrom(this.adminApi.listPayrollCommissionEntries(scope)),
+        firstValueFrom(this.adminApi.listPayrollManualDeductions(scope)),
+      ]);
+      this.employeeLoans.set(loans.data);
+      this.employeeCommissions.set(commissions.data);
+      this.employeeDeductions.set(deductions.data);
+    } catch (err) {
+      this.error.set(this.readHttpError(err, 'Unable to load employee payroll tools.'));
+    }
+  }
+
+  async saveCommissionType(): Promise<void> {
+    const name = this.commissionTypeName().trim();
+    if (!name || this.savingPayrollTool()) return;
+    await this.runPayrollTool(async () => {
+      const id = this.editingCommissionTypeId();
+      if (id == null) await firstValueFrom(this.adminApi.createPayrollCommissionType({ name }));
+      else await firstValueFrom(this.adminApi.updatePayrollCommissionType(id, { name }));
+      this.commissionTypeName.set('');
+      this.editingCommissionTypeId.set(null);
+      await this.loadCommissionTypes();
+    }, 'Commission type saved.');
+  }
+
+  editCommissionType(item: PayrollCommissionType): void {
+    this.editingCommissionTypeId.set(item.id);
+    this.commissionTypeName.set(item.name);
+  }
+
+  async toggleCommissionType(item: PayrollCommissionType): Promise<void> {
+    await this.runPayrollTool(async () => {
+      await firstValueFrom(this.adminApi.updatePayrollCommissionType(item.id, { isActive: !item.isActive }));
+      await this.loadCommissionTypes();
+    }, `Commission type ${item.isActive ? 'disabled' : 'enabled'}.`);
+  }
+
+  async createLoan(): Promise<void> {
+    const employee = this.selectedToolEmployee();
+    if (!employee || this.loanPrincipal() <= 0) return;
+    await this.runPayrollTool(async () => {
+      await firstValueFrom(this.adminApi.createPayrollLoan({
+        userId: employee.userId,
+        userSource: employee.userSource,
+        principal: this.loanPrincipal(),
+        termStyle: this.loanTermStyle(),
+        ...(this.loanTermStyle() === 'equal_installments'
+          ? { installmentCount: Math.max(1, this.loanInstallmentCount()) }
+          : { fixedInstallmentAmount: this.loanFixedAmount() }),
+        notes: this.loanNotes().trim() || undefined,
+      }));
+      this.loanPrincipal.set(0);
+      this.loanNotes.set('');
+      await this.loadSelectedEmployeeTools();
+    }, 'Loan created.');
+  }
+
+  async cancelLoan(item: PayrollLoan): Promise<void> {
+    await this.runPayrollTool(async () => {
+      await firstValueFrom(this.adminApi.updatePayrollLoan(item.id, { status: 'cancelled' }));
+      await this.loadSelectedEmployeeTools();
+    }, 'Loan cancelled.');
+  }
+
+  async saveLoanOverride(): Promise<void> {
+    const loanId = this.overrideLoanId();
+    if (loanId == null) return;
+    await this.runPayrollTool(async () => {
+      await firstValueFrom(this.adminApi.upsertPayrollLoanPeriodOverride(loanId, {
+        dateFrom: this.dateFrom(),
+        dateTo: this.dateTo(),
+        action: this.overrideAction(),
+        ...(this.overrideAction() === 'custom' ? { customAmount: this.overrideAmount() } : {}),
+      }));
+      await this.loadSelectedEmployeeTools();
+    }, 'Period override saved.');
+  }
+
+  async addCommissionEntry(): Promise<void> {
+    const scope = this.employeePeriodScope();
+    if (!scope || this.commissionAmount() <= 0) return;
+    await this.runPayrollTool(async () => {
+      await firstValueFrom(this.adminApi.createPayrollCommissionEntry(scope, {
+        typeId: this.commissionTypeId(),
+        label: this.commissionLabel().trim() || undefined,
+        amount: this.commissionAmount(),
+      }));
+      this.commissionLabel.set('');
+      this.commissionAmount.set(0);
+      await this.loadSelectedEmployeeTools();
+    }, 'Commission added.');
+  }
+
+  async deleteCommissionEntry(id: number): Promise<void> {
+    await this.runPayrollTool(async () => {
+      await firstValueFrom(this.adminApi.deletePayrollCommissionEntry(id));
+      await this.loadSelectedEmployeeTools();
+    }, 'Commission removed.');
+  }
+
+  async addManualDeduction(): Promise<void> {
+    const scope = this.employeePeriodScope();
+    if (!scope || !this.deductionLabel().trim() || this.deductionAmount() <= 0) return;
+    await this.runPayrollTool(async () => {
+      await firstValueFrom(this.adminApi.createPayrollManualDeduction(scope, {
+        label: this.deductionLabel().trim(),
+        amount: this.deductionAmount(),
+      }));
+      this.deductionLabel.set('');
+      this.deductionAmount.set(0);
+      await this.loadSelectedEmployeeTools();
+    }, 'Deduction added.');
+  }
+
+  async deleteManualDeduction(id: number): Promise<void> {
+    await this.runPayrollTool(async () => {
+      await firstValueFrom(this.adminApi.deletePayrollManualDeduction(id));
+      await this.loadSelectedEmployeeTools();
+    }, 'Deduction removed.');
+  }
+
+  setRemarksDraft(item: PayrollPeriodItem, value: string): void {
+    if (item.payslipId == null) return;
+    this.remarksDrafts.update((drafts) => ({ ...drafts, [String(item.payslipId)]: value }));
+  }
+
+  remarksDraft(item: PayrollPeriodItem): string {
+    return item.payslipId == null
+      ? ''
+      : this.remarksDrafts()[String(item.payslipId)] ?? item.remarks ?? '';
+  }
+
+  async savePayslipRemarks(item: PayrollPeriodItem): Promise<void> {
+    if (item.payslipId == null) return;
+    this.savingRemarksId.set(item.payslipId);
+    try {
+      const value = this.remarksDraft(item).trim();
+      await firstValueFrom(this.adminApi.updatePayrollPayslipRemarks(item.payslipId, value || null));
+      this.generateMessage.set(`Remarks saved for ${item.fullName}.`);
+    } catch (err) {
+      this.error.set(this.readHttpError(err, 'Unable to save payslip remarks.'));
+    } finally {
+      this.savingRemarksId.set(null);
+    }
+  }
+
+  private async runPayrollTool(action: () => Promise<void>, success: string): Promise<void> {
+    if (this.savingPayrollTool()) return;
+    this.savingPayrollTool.set(true);
+    this.error.set('');
+    this.payrollToolMessage.set('');
+    try {
+      await action();
+      this.payrollToolMessage.set(success);
+    } catch (err) {
+      this.error.set(this.readHttpError(err, 'Unable to save payroll changes.'));
+    } finally {
+      this.savingPayrollTool.set(false);
+    }
   }
 
   async applyAttendanceFilter(): Promise<void> {
