@@ -993,6 +993,27 @@ export interface PayrollGenerateResult {
   replaced: boolean;
 }
 
+export interface AdminRolePermission {
+  key: string;
+  label: string;
+}
+
+export interface AdminPermissionGroup {
+  id: string;
+  label: string;
+  permissions: AdminRolePermission[];
+}
+
+export interface AdminRoleRecord {
+  id: number;
+  name: string;
+  slug: string;
+  isSystem: boolean;
+  isActive: boolean;
+  deletedAt: string | null;
+  permissionKeys: string[];
+}
+
 export interface RbacStatus {
   enabled: boolean;
   roles: string[];
@@ -2219,6 +2240,44 @@ export class AdminApiService {
   listUserRoles() {
     return this.http.get<ItemResponse<string[]>>(
       `${APP_CONFIG.apiUrl}/admin/users/roles`,
+      { headers: this.headers() },
+    );
+  }
+
+  listAdminRoles() {
+    return this.http.get<ItemResponse<AdminRoleRecord[]>>(`${APP_CONFIG.apiUrl}/admin/roles`, {
+      headers: this.headers(),
+    });
+  }
+
+  getPermissionCatalog() {
+    return this.http.get<ItemResponse<AdminPermissionGroup[]>>(
+      `${APP_CONFIG.apiUrl}/admin/roles/catalog`,
+      { headers: this.headers() },
+    );
+  }
+
+  createAdminRole(payload: { name: string; permissionKeys: string[] }) {
+    return this.http.post<ItemResponse<AdminRoleRecord>>(`${APP_CONFIG.apiUrl}/admin/roles`, payload, {
+      headers: this.headers(),
+    });
+  }
+
+  updateAdminRole(
+    id: number,
+    payload: { name?: string; isActive?: boolean; permissionKeys?: string[] },
+  ) {
+    return this.http.patch<ItemResponse<AdminRoleRecord>>(
+      `${APP_CONFIG.apiUrl}/admin/roles/${id}`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  softDeleteAdminRole(id: number) {
+    return this.http.post<ItemResponse<{ id: number }>>(
+      `${APP_CONFIG.apiUrl}/admin/roles/${id}/soft-delete`,
+      {},
       { headers: this.headers() },
     );
   }

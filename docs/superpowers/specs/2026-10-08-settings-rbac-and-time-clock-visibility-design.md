@@ -1,7 +1,7 @@
 # Settings RBAC, Printing Hub, and Time Clock Visibility
 
 **Date:** 2026-10-08  
-**Status:** Approved for planning  
+**Status:** Implemented  
 **Scope:** Activate Settings; fine-grained role/permission management; move Printing Generator under Settings; hide Time Clock when payroll is disabled.
 
 ## Goal

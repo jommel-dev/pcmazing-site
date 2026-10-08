@@ -1,8 +1,8 @@
 import { inject } from '@angular/core';
 import { CanActivateFn, Router, UrlTree } from '@angular/router';
+import { canAccessModuleWithPermissions } from '../rbac/admin-permissions';
 import {
   AdminModuleKey,
-  canAccessModule,
   getRoleHomeRoute,
   isSalesRestrictedInventory,
   isSuperAdmin,
@@ -58,7 +58,8 @@ export const adminAuthGuard: CanActivateFn = () => {
 export const adminRoleGuard: CanActivateFn = (route) => {
   const adminAuth = inject(AdminAuthService);
   const router = inject(Router);
-  const role = adminAuth.getStoredUser()?.role;
+  const user = adminAuth.getStoredUser();
+  const role = user?.role;
   const moduleKey = (route.data?.['module'] ?? null) as AdminModuleKey | null;
 
   if (!moduleKey) {
@@ -73,7 +74,16 @@ export const adminRoleGuard: CanActivateFn = (route) => {
     return router.createUrlTree(['/admin/inventory']);
   }
 
-  if (canAccessModule(role, moduleKey)) {
+  if (
+    canAccessModuleWithPermissions(
+      {
+        role,
+        permissionKeys: user?.permissionKeys,
+        payrollEnabled: Boolean(user?.payrollEnabled),
+      },
+      moduleKey,
+    )
+  ) {
     return true;
   }
 

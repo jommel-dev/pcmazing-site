@@ -50,6 +50,8 @@ import { ProjectTasksPageComponent } from './pages/projects/project-tasks-page.c
 import { KanbanHubPageComponent } from './pages/projects/kanban-hub-page.component';
 import { AdminModulePlaceholderPageComponent } from './pages/modules/admin-module-placeholder-page.component';
 import { PrintingGeneratorPageComponent } from './pages/printing/printing-generator-page.component';
+import { SettingsShellPageComponent } from './pages/settings/settings-shell-page.component';
+import { SettingsRolesPageComponent } from './pages/settings/settings-roles-page.component';
 import { CompanyExpensesPageComponent } from './pages/company-expenses/company-expenses-page.component';
 import { PortalTimeClockPageComponent } from './pages/time-clock/portal-time-clock-page.component';
 
@@ -440,11 +442,38 @@ export const adminRoutes: Routes = [
         data: { module: 'organization_team' },
       },
       {
-        path: 'modules/printing-generator',
-        component: PrintingGeneratorPageComponent,
-        title: 'Printing Generator | PCMazing Admin',
+        path: 'settings',
+        component: SettingsShellPageComponent,
+        title: 'Settings | PCMazing Admin',
         canActivate: [adminRoleGuard],
-        data: { module: 'printing_generator' },
+        data: { module: 'settings' },
+        children: [
+          { path: '', pathMatch: 'full', redirectTo: 'roles' },
+          {
+            path: 'roles',
+            component: SettingsRolesPageComponent,
+            title: 'Roles & access | PCMazing Admin',
+            canActivate: [adminRoleGuard],
+            data: { module: 'settings' },
+          },
+          {
+            path: 'printing',
+            component: PrintingGeneratorPageComponent,
+            title: 'Printing Generator | PCMazing Admin',
+            canActivate: [adminRoleGuard],
+            data: { module: 'printing_generator' },
+          },
+        ],
+      },
+      {
+        path: 'modules/printing-generator',
+        redirectTo: 'settings/printing',
+        pathMatch: 'full',
+      },
+      {
+        path: 'modules/settings',
+        redirectTo: 'settings',
+        pathMatch: 'full',
       },
       {
         path: 'modules/:moduleKey',

@@ -1,0 +1,33 @@
+<section>
+  <div class="mb-6">
+    <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Settings</h2>
+    <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
+      Manage roles, access, and system tools in one place.
+    </p>
+  </div>
+
+  <div class="flex flex-col gap-6 lg:flex-row">
+    <aside class="w-full shrink-0 lg:w-56">
+      <nav class="flex flex-row gap-2 overflow-x-auto lg:flex-col lg:overflow-visible">
+        <a
+          routerLink="/admin/settings/roles"
+          routerLinkActive="bg-slate-900 text-white dark:bg-white dark:text-slate-900"
+          class="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+        >
+          Roles &amp; access
+        </a>
+        <a
+          routerLink="/admin/settings/printing"
+          routerLinkActive="bg-slate-900 text-white dark:bg-white dark:text-slate-900"
+          class="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+        >
+          Printing Generator
+        </a>
+      </nav>
+    </aside>
+
+    <div class="min-w-0 flex-1">
+      <router-outlet />
+    </div>
+  </div>
+</section>
