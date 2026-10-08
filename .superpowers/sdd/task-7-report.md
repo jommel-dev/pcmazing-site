@@ -28,3 +28,18 @@ Implemented.
 ## Concerns
 
 - Payslip base/overtime detail remains derived from attendance/profile data, matching the existing detail design; only ledger lines and net pay are persisted snapshots.
+
+## Review Fix — 2026-10-08
+
+- Employee payslip detail now selects and returns `p.remarks`, and forwards it into the PDF payload.
+- Each payslip upsert, prior loan-deduction reversal, ledger replacement, replacement loan deduction, and final net-pay update now use one database transaction.
+- Regeneration locks the payslip row with `SELECT ... FOR UPDATE` before reading prior loan ledger lines, serializing concurrent replacements and preventing duplicate loan credits.
+- Remarks validation now requires the `remarks` key while continuing to allow an explicit `null`.
+- Added regression coverage for remarks selection/validation and transaction/lock ordering.
+
+### Review Fix Verification
+
+- `npm test -- --runInBand admin/payroll` — 11 suites, 45 tests passed.
+- `npm run build` — passed.
+- ESLint on the five changed payroll TypeScript files — passed.
+- Cursor diagnostics on the five changed payroll TypeScript files — no errors.

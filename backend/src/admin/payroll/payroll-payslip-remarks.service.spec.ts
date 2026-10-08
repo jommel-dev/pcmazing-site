@@ -33,4 +33,16 @@ describe('PayrollService payslip remarks', () => {
       NotFoundException,
     );
   });
+
+  it('selects remarks when loading employee payslip detail', async () => {
+    const query = jest.fn().mockResolvedValue({ rows: [] });
+    const service = createService(query);
+
+    await expect(
+      service.getEmployeePayslipDetail(9, 4, 'pcmazing_admin_users'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(query.mock.calls[0]?.[0]).toContain('p.remarks');
+  });
 });

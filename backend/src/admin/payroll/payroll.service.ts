@@ -2148,6 +2148,7 @@ export class PayrollService {
   }
 
   private async replacePayslipLedger(
+    query: DatabaseService['query'],
     payslipId: number,
     runId: number,
     item: PayrollPeriodRow,
@@ -2155,96 +2156,100 @@ export class PayrollService {
     dateTo: string,
     settings: PayrollSettings,
   ) {
-    return this.databaseService.withTransaction(async (client) => {
-      const query = client.query.bind(client) as DatabaseService['query'];
-      const previous = await query<{
-        amount: string;
-        meta: { loanId?: number } | null;
-      }>(
-        `SELECT amount::text AS amount, meta
-         FROM pcmazing_payroll_payslip_ledger
-         WHERE payslip_id = $1 AND line_type = 'loan_deduction'`,
-        [payslipId],
-      );
+    await query(
+      `SELECT id
+       FROM pcmazing_generated_payslips
+       WHERE id = $1
+       FOR UPDATE`,
+      [payslipId],
+    );
+    const previous = await query<{
+      amount: string;
+      meta: { loanId?: number } | null;
+    }>(
+      `SELECT amount::text AS amount, meta
+       FROM pcmazing_payroll_payslip_ledger
+       WHERE payslip_id = $1 AND line_type = 'loan_deduction'`,
+      [payslipId],
+    );
 
-      for (const line of previous.rows) {
-        const loanId = Number(line.meta?.loanId);
-        if (!Number.isFinite(loanId) || loanId <= 0) continue;
-        await query(
-          `UPDATE pcmazing_payroll_loans
-           SET balance = LEAST(principal, balance + $2),
-               status = CASE WHEN status = 'paid' THEN 'active' ELSE status END,
-               updated_at = NOW()
-           WHERE id = $1`,
-          [loanId, Number(line.amount)],
-        );
-      }
-
-      const assembled = await this.assembleLedgerForPeriod(
-        query,
-        item,
-        dateFrom,
-        dateTo,
-        settings,
-      );
+    for (const line of previous.rows) {
+      const loanId = Number(line.meta?.loanId);
+      if (!Number.isFinite(loanId) || loanId <= 0) continue;
       await query(
-        `DELETE FROM pcmazing_payroll_payslip_ledger WHERE payslip_id = $1`,
-        [payslipId],
+        `UPDATE pcmazing_payroll_loans
+         SET balance = LEAST(principal, balance + $2),
+             status = CASE WHEN status = 'paid' THEN 'active' ELSE status END,
+             updated_at = NOW()
+         WHERE id = $1`,
+        [loanId, Number(line.amount)],
       );
-      for (const line of assembled.lines) {
-        await query(
-          `INSERT INTO pcmazing_payroll_payslip_ledger
+    }
+
+    const assembled = await this.assembleLedgerForPeriod(
+      query,
+      item,
+      dateFrom,
+      dateTo,
+      settings,
+    );
+    await query(
+      `DELETE FROM pcmazing_payroll_payslip_ledger WHERE payslip_id = $1`,
+      [payslipId],
+    );
+    for (const line of assembled.lines) {
+      await query(
+        `INSERT INTO pcmazing_payroll_payslip_ledger
              (payslip_id, line_type, label, amount, source, meta)
            VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
-          [
-            payslipId,
-            line.lineType,
-            line.label,
-            line.amount,
-            line.source,
-            line.meta == null ? null : JSON.stringify(line.meta),
-          ],
-        );
-      }
-      for (const deduction of assembled.loanDeductions) {
-        await query(
-          `UPDATE pcmazing_payroll_loans
+        [
+          payslipId,
+          line.lineType,
+          line.label,
+          line.amount,
+          line.source,
+          line.meta == null ? null : JSON.stringify(line.meta),
+        ],
+      );
+    }
+    for (const deduction of assembled.loanDeductions) {
+      await query(
+        `UPDATE pcmazing_payroll_loans
            SET balance = GREATEST(0, balance - $2),
                status = CASE WHEN balance - $2 <= 0 THEN 'paid' ELSE status END,
                updated_at = NOW()
            WHERE id = $1`,
-          [deduction.loanId, deduction.amount],
-        );
-      }
-      await query(
-        `UPDATE pcmazing_generated_payslips SET estimated_pay = $2 WHERE id = $1`,
-        [payslipId, assembled.net.netPay],
+        [deduction.loanId, deduction.amount],
       );
-      await query(
-        `UPDATE pcmazing_payroll_commission_entries
+    }
+    await query(
+      `UPDATE pcmazing_generated_payslips SET estimated_pay = $2 WHERE id = $1`,
+      [payslipId, assembled.net.netPay],
+    );
+    await query(
+      `UPDATE pcmazing_payroll_commission_entries
          SET payroll_run_id = $5, updated_at = NOW()
          WHERE user_id = $1 AND user_source = $2
            AND date_from = $3::date AND date_to = $4::date`,
-        [item.userId, item.userSource, dateFrom, dateTo, runId],
-      );
-      await query(
-        `UPDATE pcmazing_payroll_manual_deductions
+      [item.userId, item.userSource, dateFrom, dateTo, runId],
+    );
+    await query(
+      `UPDATE pcmazing_payroll_manual_deductions
          SET payroll_run_id = $5, updated_at = NOW()
          WHERE user_id = $1 AND user_source = $2
            AND date_from = $3::date AND date_to = $4::date`,
-        [item.userId, item.userSource, dateFrom, dateTo, runId],
-      );
-      await query(
-        `UPDATE pcmazing_payroll_loan_period_overrides o
+      [item.userId, item.userSource, dateFrom, dateTo, runId],
+    );
+    await query(
+      `UPDATE pcmazing_payroll_loan_period_overrides o
          SET payroll_run_id = $5, updated_at = NOW()
          FROM pcmazing_payroll_loans l
          WHERE o.loan_id = l.id
            AND l.user_id = $1 AND l.user_source = $2
            AND o.date_from = $3::date AND o.date_to = $4::date`,
-        [item.userId, item.userSource, dateFrom, dateTo, runId],
-      );
-      return assembled;
-    });
+      [item.userId, item.userSource, dateFrom, dateTo, runId],
+    );
+    return assembled;
   }
 
   /**
@@ -2349,56 +2354,64 @@ export class PayrollService {
 
       runId = Number(groupRunId);
       for (const item of group) {
-        const payslip = await this.databaseService.query<{ id: number }>(
-          `INSERT INTO pcmazing_generated_payslips (
-             run_id, user_id, user_source, username, full_name, employee_code, department,
-             salary_type, salary_amount, days_present, days_completed, total_hours,
-             estimated_pay, payroll_enabled
-           ) VALUES (
-             $1, $2, $3, $4, $5, $6, $7,
-             $8, $9, $10, $11, $12,
-             $13, TRUE
-           )
-           ON CONFLICT (run_id, user_id, user_source) DO UPDATE SET
-             username = EXCLUDED.username,
-             full_name = EXCLUDED.full_name,
-             employee_code = EXCLUDED.employee_code,
-             department = EXCLUDED.department,
-             salary_type = EXCLUDED.salary_type,
-             salary_amount = EXCLUDED.salary_amount,
-             days_present = EXCLUDED.days_present,
-             days_completed = EXCLUDED.days_completed,
-             total_hours = EXCLUDED.total_hours,
-             estimated_pay = EXCLUDED.estimated_pay,
-             payroll_enabled = TRUE
-           RETURNING id`,
-          [
-            groupRunId,
-            item.userId,
-            item.userSource,
-            item.username,
-            item.fullName,
-            item.employeeCode,
-            item.department,
-            item.payslipPeriod,
-            item.fixedMonthlySalary ?? item.salaryAmount,
-            item.daysPresent,
-            item.daysCompleted,
-            item.totalHours,
-            item.estimatedPay,
-          ],
-        );
-        const payslipId = Number(payslip.rows[0]?.id);
-        if (!Number.isFinite(payslipId) || payslipId <= 0) {
-          throw new BadRequestException('Unable to create employee payslip.');
-        }
-        const assembled = await this.replacePayslipLedger(
-          payslipId,
-          Number(groupRunId),
-          item,
-          groupFrom,
-          groupTo,
-          settings,
+        const assembled = await this.databaseService.withTransaction(
+          async (client) => {
+            const query = client.query.bind(client) as DatabaseService['query'];
+            const payslip = await query<{ id: number }>(
+              `INSERT INTO pcmazing_generated_payslips (
+                 run_id, user_id, user_source, username, full_name, employee_code, department,
+                 salary_type, salary_amount, days_present, days_completed, total_hours,
+                 estimated_pay, payroll_enabled
+               ) VALUES (
+                 $1, $2, $3, $4, $5, $6, $7,
+                 $8, $9, $10, $11, $12,
+                 $13, TRUE
+               )
+               ON CONFLICT (run_id, user_id, user_source) DO UPDATE SET
+                 username = EXCLUDED.username,
+                 full_name = EXCLUDED.full_name,
+                 employee_code = EXCLUDED.employee_code,
+                 department = EXCLUDED.department,
+                 salary_type = EXCLUDED.salary_type,
+                 salary_amount = EXCLUDED.salary_amount,
+                 days_present = EXCLUDED.days_present,
+                 days_completed = EXCLUDED.days_completed,
+                 total_hours = EXCLUDED.total_hours,
+                 estimated_pay = EXCLUDED.estimated_pay,
+                 payroll_enabled = TRUE
+               RETURNING id`,
+              [
+                groupRunId,
+                item.userId,
+                item.userSource,
+                item.username,
+                item.fullName,
+                item.employeeCode,
+                item.department,
+                item.payslipPeriod,
+                item.fixedMonthlySalary ?? item.salaryAmount,
+                item.daysPresent,
+                item.daysCompleted,
+                item.totalHours,
+                item.estimatedPay,
+              ],
+            );
+            const payslipId = Number(payslip.rows[0]?.id);
+            if (!Number.isFinite(payslipId) || payslipId <= 0) {
+              throw new BadRequestException(
+                'Unable to create employee payslip.',
+              );
+            }
+            return this.replacePayslipLedger(
+              query,
+              payslipId,
+              Number(groupRunId),
+              item,
+              groupFrom,
+              groupTo,
+              settings,
+            );
+          },
         );
         generatedNetTotal += assembled.net.netPay;
       }
@@ -2702,6 +2715,7 @@ export class PayrollService {
       date_to: string;
       period_days: number;
       created_at: string;
+      remarks: string | null;
     }>(
       `SELECT p.id, p.username, p.full_name, p.employee_code, p.department,
               pay.position_title,
@@ -2712,7 +2726,7 @@ export class PayrollService {
               p.days_present, p.days_completed, p.total_hours::text AS total_hours,
               p.estimated_pay::text AS estimated_pay,
               r.label, r.date_from::text AS date_from, r.date_to::text AS date_to,
-              r.period_days, p.created_at::text AS created_at
+              r.period_days, p.created_at::text AS created_at, p.remarks
        FROM pcmazing_generated_payslips p
        INNER JOIN pcmazing_payroll_runs r ON r.id = p.run_id
        LEFT JOIN pcmazing_user_payroll pay
@@ -2826,6 +2840,7 @@ export class PayrollService {
       },
       days,
       totals,
+      remarks: slip.remarks,
     };
 
     const safeLabel = slip.label.replace(/[^\w-]+/g, '_').replace(/_+/g, '_');
