@@ -1,8 +1,16 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { AdminJwtPayload, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
+import {
+  CommissionEntryQueryDto,
+  CreateCommissionEntryDto,
+} from './dto/commission-entry.dto';
+import {
+  CreateCommissionTypeDto,
+  UpdateCommissionTypeDto,
+} from './dto/commission-type.dto';
 import { GeneratePayslipsDto } from './dto/generate-payslips.dto';
 import { UpdateEmployeeLocationScheduleDto } from './dto/update-employee-location-schedule.dto';
 import { UpdatePayrollSettingsDto } from './dto/payroll-settings.dto';
@@ -64,6 +72,82 @@ export class PayrollController {
     return this.payrollService.updateSettings(body).then((data) => ({
       success: true,
       data,
+    }));
+  }
+
+  @Get('commission-types')
+  @RequirePermissions('payroll.view')
+  listCommissionTypes() {
+    return this.payrollService.listCommissionTypes().then((data) => ({
+      success: true,
+      data,
+    }));
+  }
+
+  @Post('commission-types')
+  @RequirePermissions('payroll.edit')
+  createCommissionType(@Body() body: CreateCommissionTypeDto) {
+    return this.payrollService.createCommissionType(body).then((data) => ({
+      success: true,
+      data,
+    }));
+  }
+
+  @Patch('commission-types/:id')
+  @RequirePermissions('payroll.edit')
+  updateCommissionType(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: UpdateCommissionTypeDto,
+  ) {
+    return this.payrollService.updateCommissionType(id, body).then((data) => ({
+      success: true,
+      data,
+    }));
+  }
+
+  @Get('commission-entries')
+  @RequirePermissions('payroll.view')
+  listCommissionEntries(@Query() query: CommissionEntryQueryDto) {
+    return this.payrollService
+      .listCommissionEntries(query.userId, query.userSource, query.dateFrom, query.dateTo)
+      .then((data) => ({
+        success: true,
+        data,
+      }));
+  }
+
+  @Post('commission-entries')
+  @RequirePermissions('payroll.edit')
+  createCommissionEntry(
+    @Query() query: CommissionEntryQueryDto,
+    @Body() body: CreateCommissionEntryDto,
+    @Req() req: Request & { user?: AdminJwtPayload },
+  ) {
+    const createdBy =
+      req.user?.sub != null && Number.isFinite(Number(req.user.sub))
+        ? Number(req.user.sub)
+        : undefined;
+    return this.payrollService
+      .createCommissionEntry(
+        query.userId,
+        query.userSource,
+        query.dateFrom,
+        query.dateTo,
+        body,
+        createdBy,
+      )
+      .then((data) => ({
+        success: true,
+        data,
+      }));
+  }
+
+  @Delete('commission-entries/:id')
+  @RequirePermissions('payroll.edit')
+  deleteCommissionEntry(@Param('id', ParseIntPipe) id: number) {
+    return this.payrollService.deleteCommissionEntry(id).then(() => ({
+      success: true,
+      message: 'Commission entry deleted.',
     }));
   }
 

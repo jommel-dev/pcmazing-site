@@ -968,6 +968,37 @@ export interface PayrollSettings {
   lateDeductionPerMinute: number;
 }
 
+export interface PayrollCommissionType {
+  id: number;
+  name: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PayrollCommissionEntry {
+  id: number;
+  userId: number;
+  userSource: 'pcmazing_admin_users' | 'tblusers';
+  payrollRunId: number | null;
+  dateFrom: string;
+  dateTo: string;
+  typeId: number | null;
+  typeName: string | null;
+  label: string | null;
+  amount: number;
+  createdBy: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PayrollCommissionEntryScope {
+  userId: number;
+  userSource: 'pcmazing_admin_users' | 'tblusers';
+  dateFrom: string;
+  dateTo: string;
+}
+
 export interface PayrollPeriodMeta {
   dateFrom: string;
   dateTo: string;
@@ -2532,6 +2563,57 @@ export class AdminApiService {
     );
   }
 
+  listPayrollCommissionTypes() {
+    return this.http.get<ItemResponse<PayrollCommissionType[]>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/commission-types`,
+      { headers: this.headers() },
+    );
+  }
+
+  createPayrollCommissionType(payload: { name: string; isActive?: boolean }) {
+    return this.http.post<ItemResponse<PayrollCommissionType>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/commission-types`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  updatePayrollCommissionType(
+    id: number,
+    payload: { name?: string; isActive?: boolean },
+  ) {
+    return this.http.patch<ItemResponse<PayrollCommissionType>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/commission-types/${id}`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  listPayrollCommissionEntries(scope: PayrollCommissionEntryScope) {
+    return this.http.get<ItemResponse<PayrollCommissionEntry[]>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/commission-entries`,
+      { headers: this.headers(), params: this.payrollCommissionScopeParams(scope) },
+    );
+  }
+
+  createPayrollCommissionEntry(
+    scope: PayrollCommissionEntryScope,
+    payload: { typeId?: number | null; label?: string; amount: number },
+  ) {
+    return this.http.post<ItemResponse<PayrollCommissionEntry>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/commission-entries`,
+      payload,
+      { headers: this.headers(), params: this.payrollCommissionScopeParams(scope) },
+    );
+  }
+
+  deletePayrollCommissionEntry(id: number) {
+    return this.http.delete<{ success: boolean; message: string }>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/commission-entries/${id}`,
+      { headers: this.headers() },
+    );
+  }
+
   listPayrollOvertime(status: PayrollOvertimeStatus | 'pending' = 'pending', page = 1, limit = 50) {
     let params = this.listParams(page, limit, '');
     params = params.set('status', status);
@@ -3365,6 +3447,14 @@ export class AdminApiService {
       params = params.set('search', search.trim());
     }
     return params;
+  }
+
+  private payrollCommissionScopeParams(scope: PayrollCommissionEntryScope): HttpParams {
+    return new HttpParams()
+      .set('userId', String(scope.userId))
+      .set('userSource', scope.userSource)
+      .set('dateFrom', scope.dateFrom)
+      .set('dateTo', scope.dateTo);
   }
 
   private appendPortalTimeClockLocation(

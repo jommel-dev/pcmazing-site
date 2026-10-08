@@ -19,6 +19,14 @@ import {
   PayrollProfileFieldsDto,
   PayrollSalaryType,
 } from './dto/payroll-profile-fields.dto';
+import {
+  CommissionUserSource,
+  CreateCommissionEntryDto,
+} from './dto/commission-entry.dto';
+import {
+  CreateCommissionTypeDto,
+  UpdateCommissionTypeDto,
+} from './dto/commission-type.dto';
 import { PAYROLL_WORK_WEEKS, PayrollWorkWeek, UNDERTIME_CATEGORIES, UndertimeCategory } from './dto/payroll-settings.dto';
 import { saveAttendanceSelfieFile } from './attendance-selfie.util';
 import { deletePayrollQrImageFile, savePayrollQrImageFile } from './payroll-qr-image.util';
@@ -196,6 +204,30 @@ export interface PayrollSettings {
   lateDeductionPerMinute: number;
 }
 
+export interface CommissionType {
+  id: number;
+  name: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CommissionEntry {
+  id: number;
+  userId: number;
+  userSource: CommissionUserSource;
+  payrollRunId: number | null;
+  dateFrom: string;
+  dateTo: string;
+  typeId: number | null;
+  typeName: string | null;
+  label: string | null;
+  amount: number;
+  createdBy: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface EmployeePayslipItem {
   id: string;
   label: string;
@@ -360,6 +392,210 @@ export class PayrollService {
       lateDeductionFixed,
       lateDeductionPerMinute,
     };
+  }
+
+  async listCommissionTypes(): Promise<CommissionType[]> {
+    await this.ensureReady();
+    const result = await this.databaseService.query<{
+      id: string | number;
+      name: string;
+      is_active: boolean;
+      created_at: string;
+      updated_at: string;
+    }>(
+      `SELECT id, name, is_active, created_at::text AS created_at, updated_at::text AS updated_at
+       FROM pcmazing_payroll_commission_types
+       ORDER BY name ASC, id ASC`,
+    );
+    return result.rows.map((row) => this.mapCommissionType(row));
+  }
+
+  async createCommissionType(input: CreateCommissionTypeDto): Promise<CommissionType> {
+    await this.ensureReady();
+    const name = input.name.trim();
+    if (!name) {
+      throw new BadRequestException('Commission type name is required.');
+    }
+    const duplicate = await this.databaseService.query<{ id: string | number }>(
+      `SELECT id FROM pcmazing_payroll_commission_types
+       WHERE LOWER(name) = LOWER($1)
+       LIMIT 1`,
+      [name],
+    );
+    if (duplicate.rows[0]) {
+      throw new ConflictException(`Commission type "${name}" already exists.`);
+    }
+    const result = await this.databaseService.query<{
+      id: string | number;
+      name: string;
+      is_active: boolean;
+      created_at: string;
+      updated_at: string;
+    }>(
+      `INSERT INTO pcmazing_payroll_commission_types (name, is_active)
+       VALUES ($1, $2)
+       RETURNING id, name, is_active, created_at::text AS created_at,
+                 updated_at::text AS updated_at`,
+      [name, input.isActive ?? true],
+    );
+    return this.mapCommissionType(result.rows[0]);
+  }
+
+  async updateCommissionType(
+    id: number,
+    input: UpdateCommissionTypeDto,
+  ): Promise<CommissionType> {
+    await this.ensureReady();
+    const existing = await this.databaseService.query<{ id: string | number }>(
+      `SELECT id FROM pcmazing_payroll_commission_types WHERE id = $1 LIMIT 1`,
+      [id],
+    );
+    if (!existing.rows[0]) {
+      throw new NotFoundException('Commission type not found.');
+    }
+    const name = input.name === undefined ? null : input.name.trim();
+    if (input.name !== undefined && !name) {
+      throw new BadRequestException('Commission type name is required.');
+    }
+    if (name) {
+      const duplicate = await this.databaseService.query<{ id: string | number }>(
+        `SELECT id FROM pcmazing_payroll_commission_types
+         WHERE LOWER(name) = LOWER($1) AND id <> $2
+         LIMIT 1`,
+        [name, id],
+      );
+      if (duplicate.rows[0]) {
+        throw new ConflictException(`Commission type "${name}" already exists.`);
+      }
+    }
+    const result = await this.databaseService.query<{
+      id: string | number;
+      name: string;
+      is_active: boolean;
+      created_at: string;
+      updated_at: string;
+    }>(
+      `UPDATE pcmazing_payroll_commission_types
+       SET name = COALESCE($2, name),
+           is_active = COALESCE($3, is_active),
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING id, name, is_active, created_at::text AS created_at,
+                 updated_at::text AS updated_at`,
+      [id, name, input.isActive ?? null],
+    );
+    return this.mapCommissionType(result.rows[0]);
+  }
+
+  async listCommissionEntries(
+    userId: number,
+    userSource: CommissionUserSource,
+    dateFrom: string,
+    dateTo: string,
+  ): Promise<CommissionEntry[]> {
+    await this.ensureReady();
+    this.validateCommissionEntryScope(userId, userSource, dateFrom, dateTo);
+    const result = await this.databaseService.query<{
+      id: string | number;
+      user_id: string | number;
+      user_source: CommissionUserSource;
+      payroll_run_id: string | number | null;
+      date_from: string;
+      date_to: string;
+      type_id: string | number | null;
+      type_name: string | null;
+      label: string | null;
+      amount: string | number;
+      created_by: string | number | null;
+      created_at: string;
+      updated_at: string;
+    }>(
+      `SELECT e.id, e.user_id, e.user_source, e.payroll_run_id,
+              e.date_from::text AS date_from, e.date_to::text AS date_to,
+              e.type_id, t.name AS type_name, e.label, e.amount,
+              e.created_by, e.created_at::text AS created_at,
+              e.updated_at::text AS updated_at
+       FROM pcmazing_payroll_commission_entries e
+       LEFT JOIN pcmazing_payroll_commission_types t ON t.id = e.type_id
+       WHERE e.user_id = $1 AND e.user_source = $2
+         AND e.date_from = $3::date AND e.date_to = $4::date
+       ORDER BY e.created_at ASC, e.id ASC`,
+      [userId, userSource, dateFrom, dateTo],
+    );
+    return result.rows.map((row) => this.mapCommissionEntry(row));
+  }
+
+  async createCommissionEntry(
+    userId: number,
+    userSource: CommissionUserSource,
+    dateFrom: string,
+    dateTo: string,
+    input: CreateCommissionEntryDto,
+    createdBy?: number,
+  ): Promise<CommissionEntry> {
+    await this.ensureReady();
+    this.validateCommissionEntryScope(userId, userSource, dateFrom, dateTo);
+    const label = input.label?.trim() || null;
+    const typeId = input.typeId ?? null;
+    if (typeId == null && !label) {
+      throw new BadRequestException('Label is required for an Other commission.');
+    }
+    if (typeId != null) {
+      const type = await this.databaseService.query<{ id: string | number }>(
+        `SELECT id FROM pcmazing_payroll_commission_types
+         WHERE id = $1 AND is_active = TRUE
+         LIMIT 1`,
+        [typeId],
+      );
+      if (!type.rows[0]) {
+        throw new BadRequestException('Select an active commission type.');
+      }
+    }
+    const result = await this.databaseService.query<{
+      id: string | number;
+      user_id: string | number;
+      user_source: CommissionUserSource;
+      payroll_run_id: string | number | null;
+      date_from: string;
+      date_to: string;
+      type_id: string | number | null;
+      type_name: string | null;
+      label: string | null;
+      amount: string | number;
+      created_by: string | number | null;
+      created_at: string;
+      updated_at: string;
+    }>(
+      `WITH inserted AS (
+         INSERT INTO pcmazing_payroll_commission_entries (
+           user_id, user_source, date_from, date_to, type_id, label, amount, created_by
+         )
+         VALUES ($1, $2, $3::date, $4::date, $5, $6, $7, $8)
+         RETURNING *
+       )
+       SELECT i.id, i.user_id, i.user_source, i.payroll_run_id,
+              i.date_from::text AS date_from, i.date_to::text AS date_to,
+              i.type_id, t.name AS type_name, i.label, i.amount,
+              i.created_by, i.created_at::text AS created_at,
+              i.updated_at::text AS updated_at
+       FROM inserted i
+       LEFT JOIN pcmazing_payroll_commission_types t ON t.id = i.type_id`,
+      [userId, userSource, dateFrom, dateTo, typeId, label, input.amount, createdBy ?? null],
+    );
+    return this.mapCommissionEntry(result.rows[0]);
+  }
+
+  async deleteCommissionEntry(id: number): Promise<void> {
+    await this.ensureReady();
+    const result = await this.databaseService.query<{ id: string | number }>(
+      `DELETE FROM pcmazing_payroll_commission_entries
+       WHERE id = $1
+       RETURNING id`,
+      [id],
+    );
+    if (!result.rows[0]) {
+      throw new NotFoundException('Commission entry not found.');
+    }
   }
 
   async getProfilesForUsers(
@@ -2797,6 +3033,82 @@ export class PayrollService {
        WHERE id = $1`,
       [attendanceId],
     );
+  }
+
+  private mapCommissionType(row: {
+    id: string | number;
+    name: string;
+    is_active: boolean;
+    created_at: string;
+    updated_at: string;
+  }): CommissionType {
+    return {
+      id: Number(row.id),
+      name: row.name,
+      isActive: Boolean(row.is_active),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  private mapCommissionEntry(row: {
+    id: string | number;
+    user_id: string | number;
+    user_source: CommissionUserSource;
+    payroll_run_id: string | number | null;
+    date_from: string;
+    date_to: string;
+    type_id: string | number | null;
+    type_name: string | null;
+    label: string | null;
+    amount: string | number;
+    created_by: string | number | null;
+    created_at: string;
+    updated_at: string;
+  }): CommissionEntry {
+    return {
+      id: Number(row.id),
+      userId: Number(row.user_id),
+      userSource: row.user_source,
+      payrollRunId: row.payroll_run_id == null ? null : Number(row.payroll_run_id),
+      dateFrom: row.date_from,
+      dateTo: row.date_to,
+      typeId: row.type_id == null ? null : Number(row.type_id),
+      typeName: row.type_name,
+      label: row.label,
+      amount: Number(row.amount),
+      createdBy: row.created_by == null ? null : Number(row.created_by),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  private validateCommissionEntryScope(
+    userId: number,
+    userSource: string,
+    dateFrom: string,
+    dateTo: string,
+  ): void {
+    if (!Number.isInteger(userId) || userId <= 0) {
+      throw new BadRequestException('Invalid commission employee.');
+    }
+    if (userSource !== 'pcmazing_admin_users' && userSource !== 'tblusers') {
+      throw new BadRequestException('Invalid commission employee source.');
+    }
+    if (!this.isIsoDate(dateFrom) || !this.isIsoDate(dateTo)) {
+      throw new BadRequestException('Enter a valid commission period.');
+    }
+    if (dateFrom > dateTo) {
+      throw new BadRequestException('dateFrom must be on or before dateTo.');
+    }
+  }
+
+  private isIsoDate(value: string): boolean {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      return false;
+    }
+    const parsed = new Date(`${value}T00:00:00.000Z`);
+    return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
   }
 
   private parseManilaDateTime(value: string): Date {
