@@ -27,6 +27,8 @@ import {
   CreateCommissionTypeDto,
   UpdateCommissionTypeDto,
 } from './dto/commission-type.dto';
+import { CreateLoanDto, LoanTermStyle, UpdateLoanDto } from './dto/loan.dto';
+import { UpsertLoanPeriodOverrideDto } from './dto/loan-period-override.dto';
 import { PAYROLL_WORK_WEEKS, PayrollWorkWeek, UNDERTIME_CATEGORIES, UndertimeCategory } from './dto/payroll-settings.dto';
 import { saveAttendanceSelfieFile } from './attendance-selfie.util';
 import { deletePayrollQrImageFile, savePayrollQrImageFile } from './payroll-qr-image.util';
@@ -36,6 +38,7 @@ import {
   locationPayLabelSuffix,
   pickSalaryAmountForLocation,
 } from './location-pay.util';
+import { computeEqualInstallmentAmount } from './payroll-ledger.util';
 import {
   isWorkLocationType,
   normalizeWeeklyLocationSchedule,
@@ -227,6 +230,62 @@ export interface CommissionEntry {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface LoanPeriodOverride {
+  id: number;
+  loanId: number;
+  payrollRunId: number | null;
+  dateFrom: string;
+  dateTo: string;
+  action: 'skip' | 'custom';
+  customAmount: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PayrollLoan {
+  id: number;
+  userId: number;
+  userSource: CommissionUserSource;
+  principal: number;
+  balance: number;
+  termStyle: LoanTermStyle;
+  installmentCount: number | null;
+  fixedInstallmentAmount: number;
+  status: 'active' | 'paid' | 'cancelled';
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  periodOverrides?: LoanPeriodOverride[];
+}
+
+type LoanPeriodOverrideRow = {
+  id: string | number;
+  loan_id: string | number;
+  payroll_run_id: string | number | null;
+  date_from: string;
+  date_to: string;
+  action: 'skip' | 'custom';
+  custom_amount: string | number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type PayrollLoanRow = {
+  id: string | number;
+  user_id: string | number;
+  user_source: CommissionUserSource;
+  principal: string | number;
+  balance: string | number;
+  term_style: LoanTermStyle;
+  installment_count: string | number | null;
+  fixed_installment_amount: string | number;
+  status: 'active' | 'paid' | 'cancelled';
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  period_overrides?: LoanPeriodOverrideRow[];
+};
 
 export interface EmployeePayslipItem {
   id: string;
@@ -596,6 +655,129 @@ export class PayrollService {
     if (!result.rows[0]) {
       throw new NotFoundException('Commission entry not found.');
     }
+  }
+
+  async listLoans(
+    userId: number,
+    userSource: CommissionUserSource,
+  ): Promise<PayrollLoan[]> {
+    await this.ensureReady();
+    this.validateLoanEmployee(userId, userSource);
+    const result = await this.databaseService.query<PayrollLoanRow>(
+      `SELECT l.*,
+              COALESCE(
+                json_agg(json_build_object(
+                  'id', o.id, 'loan_id', o.loan_id, 'payroll_run_id', o.payroll_run_id,
+                  'date_from', o.date_from::text, 'date_to', o.date_to::text,
+                  'action', o.action, 'custom_amount', o.custom_amount,
+                  'created_at', o.created_at::text, 'updated_at', o.updated_at::text
+                ) ORDER BY o.date_from, o.id) FILTER (WHERE o.id IS NOT NULL),
+                '[]'::json
+              ) AS period_overrides
+       FROM pcmazing_payroll_loans l
+       LEFT JOIN pcmazing_payroll_loan_period_overrides o ON o.loan_id = l.id
+       WHERE l.user_id = $1 AND l.user_source = $2
+       GROUP BY l.id
+       ORDER BY l.created_at DESC, l.id DESC`,
+      [userId, userSource],
+    );
+    return result.rows.map((row) => ({
+      ...this.mapLoan(row),
+      periodOverrides: (row.period_overrides ?? []).map((override) =>
+        this.mapLoanPeriodOverride(override),
+      ),
+    }));
+  }
+
+  async createLoan(input: CreateLoanDto): Promise<PayrollLoan> {
+    await this.ensureReady();
+    this.validateLoanEmployee(input.userId, input.userSource);
+    const equal = input.termStyle === 'equal_installments';
+    if (
+      (equal && (!input.installmentCount || input.fixedInstallmentAmount != null)) ||
+      (!equal && (input.installmentCount != null || input.fixedInstallmentAmount == null))
+    ) {
+      throw new BadRequestException('Enter term details matching the selected loan style.');
+    }
+    const fixedAmount = equal
+      ? computeEqualInstallmentAmount(input.principal, input.installmentCount!)
+      : input.fixedInstallmentAmount!;
+    const notes = input.notes?.trim() || null;
+    const result = await this.databaseService.query<PayrollLoanRow>(
+      `INSERT INTO pcmazing_payroll_loans (
+         user_id, user_source, principal, balance, term_style,
+         installment_count, fixed_installment_amount, notes
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING *, created_at::text AS created_at, updated_at::text AS updated_at`,
+      [
+        input.userId, input.userSource, input.principal, input.principal, input.termStyle,
+        equal ? input.installmentCount : null, fixedAmount, notes,
+      ],
+    );
+    return this.mapLoan(result.rows[0]);
+  }
+
+  async updateLoan(id: number, input: UpdateLoanDto): Promise<PayrollLoan> {
+    await this.ensureReady();
+    if (input.status === undefined && input.notes === undefined) {
+      throw new BadRequestException('Provide a loan change.');
+    }
+    const result = await this.databaseService.query<PayrollLoanRow>(
+      `UPDATE pcmazing_payroll_loans
+       SET status = COALESCE($2, status),
+           notes = CASE WHEN $3::boolean THEN $4 ELSE notes END,
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING *, created_at::text AS created_at, updated_at::text AS updated_at`,
+      [id, input.status ?? null, input.notes !== undefined, input.notes?.trim() || null],
+    );
+    if (!result.rows[0]) throw new NotFoundException('Loan not found.');
+    return this.mapLoan(result.rows[0]);
+  }
+
+  async upsertLoanPeriodOverride(
+    loanId: number,
+    input: UpsertLoanPeriodOverrideDto,
+  ): Promise<LoanPeriodOverride> {
+    await this.ensureReady();
+    this.validateLoanPeriod(input.dateFrom, input.dateTo);
+    if (
+      (input.action === 'skip' && input.customAmount != null) ||
+      (input.action === 'custom' && input.customAmount == null)
+    ) {
+      throw new BadRequestException('customAmount is required only for custom overrides.');
+    }
+    await this.assertLoanExists(loanId);
+    const result = await this.databaseService.query<LoanPeriodOverrideRow>(
+      `INSERT INTO pcmazing_payroll_loan_period_overrides (
+         loan_id, date_from, date_to, action, custom_amount
+       )
+       VALUES ($1, $2::date, $3::date, $4, $5)
+       ON CONFLICT (loan_id, date_from, date_to) DO UPDATE SET
+         action = EXCLUDED.action, custom_amount = EXCLUDED.custom_amount, updated_at = NOW()
+       RETURNING id, loan_id, payroll_run_id, date_from::text AS date_from,
+                 date_to::text AS date_to, action, custom_amount,
+                 created_at::text AS created_at, updated_at::text AS updated_at`,
+      [loanId, input.dateFrom, input.dateTo, input.action, input.customAmount ?? null],
+    );
+    return this.mapLoanPeriodOverride(result.rows[0]);
+  }
+
+  async deleteLoanPeriodOverride(
+    loanId: number,
+    dateFrom: string,
+    dateTo: string,
+  ): Promise<void> {
+    await this.ensureReady();
+    this.validateLoanPeriod(dateFrom, dateTo);
+    const result = await this.databaseService.query<{ id: string | number }>(
+      `DELETE FROM pcmazing_payroll_loan_period_overrides
+       WHERE loan_id = $1 AND date_from = $2::date AND date_to = $3::date
+       RETURNING id`,
+      [loanId, dateFrom, dateTo],
+    );
+    if (!result.rows[0]) throw new NotFoundException('Loan period override not found.');
   }
 
   async getProfilesForUsers(
@@ -3081,6 +3263,63 @@ export class PayrollService {
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
+  }
+
+  private mapLoan(row: PayrollLoanRow): PayrollLoan {
+    return {
+      id: Number(row.id),
+      userId: Number(row.user_id),
+      userSource: row.user_source,
+      principal: Number(row.principal),
+      balance: Number(row.balance),
+      termStyle: row.term_style,
+      installmentCount: row.installment_count == null ? null : Number(row.installment_count),
+      fixedInstallmentAmount: Number(row.fixed_installment_amount),
+      status: row.status,
+      notes: row.notes,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  private mapLoanPeriodOverride(row: LoanPeriodOverrideRow): LoanPeriodOverride {
+    return {
+      id: Number(row.id),
+      loanId: Number(row.loan_id),
+      payrollRunId: row.payroll_run_id == null ? null : Number(row.payroll_run_id),
+      dateFrom: row.date_from,
+      dateTo: row.date_to,
+      action: row.action,
+      customAmount: row.custom_amount == null ? null : Number(row.custom_amount),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  private validateLoanEmployee(userId: number, userSource: string): void {
+    if (!Number.isInteger(userId) || userId <= 0) {
+      throw new BadRequestException('Invalid loan employee.');
+    }
+    if (userSource !== 'pcmazing_admin_users' && userSource !== 'tblusers') {
+      throw new BadRequestException('Invalid loan employee source.');
+    }
+  }
+
+  private validateLoanPeriod(dateFrom: string, dateTo: string): void {
+    if (!this.isIsoDate(dateFrom) || !this.isIsoDate(dateTo)) {
+      throw new BadRequestException('Enter a valid loan period.');
+    }
+    if (dateFrom > dateTo) {
+      throw new BadRequestException('dateFrom must be on or before dateTo.');
+    }
+  }
+
+  private async assertLoanExists(id: number): Promise<void> {
+    const result = await this.databaseService.query<{ id: string | number }>(
+      `SELECT id FROM pcmazing_payroll_loans WHERE id = $1 LIMIT 1`,
+      [id],
+    );
+    if (!result.rows[0]) throw new NotFoundException('Loan not found.');
   }
 
   private validateCommissionEntryScope(

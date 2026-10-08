@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { AdminJwtPayload, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
@@ -16,6 +16,11 @@ import { UpdateEmployeeLocationScheduleDto } from './dto/update-employee-locatio
 import { UpdatePayrollSettingsDto } from './dto/payroll-settings.dto';
 import { ReviewAdjustmentDto } from './dto/review-adjustment.dto';
 import { ReviewOvertimeDto } from './dto/review-overtime.dto';
+import { CreateLoanDto, LoanQueryDto, UpdateLoanDto } from './dto/loan.dto';
+import {
+  LoanPeriodDto,
+  UpsertLoanPeriodOverrideDto,
+} from './dto/loan-period-override.dto';
 import { PayrollService } from './payroll.service';
 
 @Controller('admin/payroll')
@@ -149,6 +154,59 @@ export class PayrollController {
       success: true,
       message: 'Commission entry deleted.',
     }));
+  }
+
+  @Get('loans')
+  @RequirePermissions('payroll.view')
+  listLoans(@Query() query: LoanQueryDto) {
+    return this.payrollService.listLoans(query.userId, query.userSource).then((data) => ({
+      success: true,
+      data,
+    }));
+  }
+
+  @Post('loans')
+  @RequirePermissions('payroll.edit')
+  createLoan(@Body() body: CreateLoanDto) {
+    return this.payrollService.createLoan(body).then((data) => ({
+      success: true,
+      data,
+    }));
+  }
+
+  @Patch('loans/:id')
+  @RequirePermissions('payroll.edit')
+  updateLoan(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: UpdateLoanDto,
+  ) {
+    return this.payrollService.updateLoan(id, body).then((data) => ({
+      success: true,
+      data,
+    }));
+  }
+
+  @Put('loans/:id/period-override')
+  @RequirePermissions('payroll.edit')
+  upsertLoanPeriodOverride(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: UpsertLoanPeriodOverrideDto,
+  ) {
+    return this.payrollService.upsertLoanPeriodOverride(id, body).then((data) => ({
+      success: true,
+      data,
+    }));
+  }
+
+  @Delete('loans/:id/period-override')
+  @RequirePermissions('payroll.edit')
+  deleteLoanPeriodOverride(
+    @Param('id', ParseIntPipe) id: number,
+    @Query() query: LoanPeriodDto,
+  ) {
+    return this.payrollService
+      .deleteLoanPeriodOverride(id, query.dateFrom, query.dateTo)
+      .then(() => ({ success: true, message: 'Loan period override deleted.' }));
   }
 
   @Get('period')

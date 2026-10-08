@@ -999,6 +999,39 @@ export interface PayrollCommissionEntryScope {
   dateTo: string;
 }
 
+export interface PayrollLoanPeriodOverride {
+  id: number;
+  loanId: number;
+  payrollRunId: number | null;
+  dateFrom: string;
+  dateTo: string;
+  action: 'skip' | 'custom';
+  customAmount: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PayrollLoan {
+  id: number;
+  userId: number;
+  userSource: 'pcmazing_admin_users' | 'tblusers';
+  principal: number;
+  balance: number;
+  termStyle: 'equal_installments' | 'fixed_per_cutoff';
+  installmentCount: number | null;
+  fixedInstallmentAmount: number;
+  status: 'active' | 'paid' | 'cancelled';
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  periodOverrides?: PayrollLoanPeriodOverride[];
+}
+
+export interface PayrollLoanScope {
+  userId: number;
+  userSource: 'pcmazing_admin_users' | 'tblusers';
+}
+
 export interface PayrollPeriodMeta {
   dateFrom: string;
   dateTo: string;
@@ -2614,6 +2647,59 @@ export class AdminApiService {
     );
   }
 
+  listPayrollLoans(scope: PayrollLoanScope) {
+    return this.http.get<ItemResponse<PayrollLoan[]>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/loans`,
+      { headers: this.headers(), params: this.payrollLoanScopeParams(scope) },
+    );
+  }
+
+  createPayrollLoan(payload: PayrollLoanScope & {
+    principal: number;
+    termStyle: 'equal_installments' | 'fixed_per_cutoff';
+    installmentCount?: number;
+    fixedInstallmentAmount?: number;
+    notes?: string;
+  }) {
+    return this.http.post<ItemResponse<PayrollLoan>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/loans`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  updatePayrollLoan(id: number, payload: { status?: 'cancelled'; notes?: string }) {
+    return this.http.patch<ItemResponse<PayrollLoan>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/loans/${id}`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  upsertPayrollLoanPeriodOverride(
+    id: number,
+    payload: {
+      dateFrom: string;
+      dateTo: string;
+      action: 'skip' | 'custom';
+      customAmount?: number;
+    },
+  ) {
+    return this.http.put<ItemResponse<PayrollLoanPeriodOverride>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/loans/${id}/period-override`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  deletePayrollLoanPeriodOverride(id: number, dateFrom: string, dateTo: string) {
+    const params = new HttpParams().set('dateFrom', dateFrom).set('dateTo', dateTo);
+    return this.http.delete<{ success: boolean; message: string }>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/loans/${id}/period-override`,
+      { headers: this.headers(), params },
+    );
+  }
+
   listPayrollOvertime(status: PayrollOvertimeStatus | 'pending' = 'pending', page = 1, limit = 50) {
     let params = this.listParams(page, limit, '');
     params = params.set('status', status);
@@ -3455,6 +3541,12 @@ export class AdminApiService {
       .set('userSource', scope.userSource)
       .set('dateFrom', scope.dateFrom)
       .set('dateTo', scope.dateTo);
+  }
+
+  private payrollLoanScopeParams(scope: PayrollLoanScope): HttpParams {
+    return new HttpParams()
+      .set('userId', String(scope.userId))
+      .set('userSource', scope.userSource);
   }
 
   private appendPortalTimeClockLocation(
