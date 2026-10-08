@@ -190,6 +190,10 @@ export interface PayrollOverlapItem {
 export interface PayrollSettings {
   workWeek: PayrollWorkWeek;
   undertimeGraceMinutes: number;
+  shiftStartTime: string;
+  lateGraceMinutes: number;
+  lateDeductionFixed: number;
+  lateDeductionPerMinute: number;
 }
 
 export interface EmployeePayslipItem {
@@ -278,19 +282,34 @@ export class PayrollService {
     const result = await this.databaseService.query<{
       work_week: string;
       undertime_grace_minutes: string | number | null;
+      shift_start_time: string | null;
+      late_grace_minutes: string | number | null;
+      late_deduction_fixed: string | number | null;
+      late_deduction_per_minute: string | number | null;
     }>(
-      `SELECT work_week, undertime_grace_minutes
+      `SELECT work_week, undertime_grace_minutes, shift_start_time::text,
+              late_grace_minutes, late_deduction_fixed, late_deduction_per_minute
        FROM pcmazing_payroll_settings WHERE id = 1 LIMIT 1`,
     );
     return {
       workWeek: this.normalizeWorkWeek(result.rows[0]?.work_week),
       undertimeGraceMinutes: this.normalizeUndertimeGrace(result.rows[0]?.undertime_grace_minutes),
+      shiftStartTime: this.normalizeShiftStartTime(result.rows[0]?.shift_start_time),
+      lateGraceMinutes: this.normalizeLateGrace(result.rows[0]?.late_grace_minutes),
+      lateDeductionFixed: this.normalizeNonNegativeMoney(result.rows[0]?.late_deduction_fixed),
+      lateDeductionPerMinute: this.normalizeNonNegativeMoney(
+        result.rows[0]?.late_deduction_per_minute,
+      ),
     };
   }
 
   async updateSettings(input: {
     workWeek?: string;
     undertimeGraceMinutes?: number;
+    shiftStartTime?: string;
+    lateGraceMinutes?: number;
+    lateDeductionFixed?: number;
+    lateDeductionPerMinute?: number;
   }): Promise<PayrollSettings> {
     await this.ensureReady();
     const current = await this.getSettings();
@@ -298,16 +317,49 @@ export class PayrollService {
     const undertimeGraceMinutes = this.normalizeUndertimeGrace(
       input.undertimeGraceMinutes ?? current.undertimeGraceMinutes,
     );
+    const shiftStartTime = this.normalizeShiftStartTime(
+      input.shiftStartTime ?? current.shiftStartTime,
+    );
+    const lateGraceMinutes = this.normalizeLateGrace(
+      input.lateGraceMinutes ?? current.lateGraceMinutes,
+    );
+    const lateDeductionFixed = this.normalizeNonNegativeMoney(
+      input.lateDeductionFixed ?? current.lateDeductionFixed,
+    );
+    const lateDeductionPerMinute = this.normalizeNonNegativeMoney(
+      input.lateDeductionPerMinute ?? current.lateDeductionPerMinute,
+    );
     await this.databaseService.query(
-      `INSERT INTO pcmazing_payroll_settings (id, work_week, undertime_grace_minutes, updated_at)
-       VALUES (1, $1, $2, NOW())
+      `INSERT INTO pcmazing_payroll_settings (
+         id, work_week, undertime_grace_minutes, shift_start_time, late_grace_minutes,
+         late_deduction_fixed, late_deduction_per_minute, updated_at
+       )
+       VALUES (1, $1, $2, $3::time, $4, $5, $6, NOW())
        ON CONFLICT (id) DO UPDATE SET
          work_week = EXCLUDED.work_week,
          undertime_grace_minutes = EXCLUDED.undertime_grace_minutes,
+         shift_start_time = EXCLUDED.shift_start_time,
+         late_grace_minutes = EXCLUDED.late_grace_minutes,
+         late_deduction_fixed = EXCLUDED.late_deduction_fixed,
+         late_deduction_per_minute = EXCLUDED.late_deduction_per_minute,
          updated_at = NOW()`,
-      [workWeek, undertimeGraceMinutes],
+      [
+        workWeek,
+        undertimeGraceMinutes,
+        shiftStartTime,
+        lateGraceMinutes,
+        lateDeductionFixed,
+        lateDeductionPerMinute,
+      ],
     );
-    return { workWeek, undertimeGraceMinutes };
+    return {
+      workWeek,
+      undertimeGraceMinutes,
+      shiftStartTime,
+      lateGraceMinutes,
+      lateDeductionFixed,
+      lateDeductionPerMinute,
+    };
   }
 
   async getProfilesForUsers(
@@ -3331,6 +3383,24 @@ export class PayrollService {
       return 30;
     }
     return Math.min(90, Math.max(0, Math.round(parsed)));
+  }
+
+  private normalizeShiftStartTime(value: string | null | undefined): string {
+    const normalized = (value ?? '').trim().slice(0, 5);
+    return /^\d{2}:\d{2}$/.test(normalized) ? normalized : '09:00';
+  }
+
+  private normalizeLateGrace(value: string | number | null | undefined): number {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) {
+      return 15;
+    }
+    return Math.min(120, Math.max(0, Math.round(parsed)));
+  }
+
+  private normalizeNonNegativeMoney(value: string | number | null | undefined): number {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
   }
 
   private normalizeUndertimeCategory(value?: string | null): UndertimeCategory | null {

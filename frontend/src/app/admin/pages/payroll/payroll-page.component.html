@@ -366,6 +366,73 @@
         </div>
       </div>
 
+      <div class="mt-4 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-2 xl:grid-cols-4 dark:border-slate-800">
+        <div>
+          <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Shift start</label>
+          <input
+            type="time"
+            class="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 focus:border-pcmazing-400 focus:outline-none focus:ring-2 focus:ring-pcmazing-400/30 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+            [ngModel]="shiftStartTime()"
+            (ngModelChange)="shiftStartTime.set($event)"
+            (change)="setLateSettings()"
+            name="shiftStartTime"
+            [disabled]="savingWorkWeek()"
+          />
+        </div>
+        <div>
+          <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Late grace</label>
+          <div class="relative">
+            <input
+              type="number"
+              min="0"
+              max="120"
+              step="1"
+              class="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 pr-10 text-sm text-slate-900 focus:border-pcmazing-400 focus:outline-none focus:ring-2 focus:ring-pcmazing-400/30 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              [ngModel]="lateGraceMinutes()"
+              (ngModelChange)="lateGraceMinutes.set(+$event || 0)"
+              (change)="setLateSettings()"
+              name="lateGraceMinutes"
+              [disabled]="savingWorkWeek()"
+            />
+            <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-bold text-slate-400">min</span>
+          </div>
+        </div>
+        <div>
+          <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Fixed late deduction</label>
+          <div class="relative">
+            <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-slate-400">₱</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              class="h-11 w-full rounded-xl border border-slate-200 bg-white pl-7 pr-3 text-sm text-slate-900 focus:border-pcmazing-400 focus:outline-none focus:ring-2 focus:ring-pcmazing-400/30 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              [ngModel]="lateDeductionFixed()"
+              (ngModelChange)="lateDeductionFixed.set(+$event || 0)"
+              (change)="setLateSettings()"
+              name="lateDeductionFixed"
+              [disabled]="savingWorkWeek()"
+            />
+          </div>
+        </div>
+        <div>
+          <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Per-minute deduction</label>
+          <div class="relative">
+            <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-slate-400">₱</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              class="h-11 w-full rounded-xl border border-slate-200 bg-white pl-7 pr-3 text-sm text-slate-900 focus:border-pcmazing-400 focus:outline-none focus:ring-2 focus:ring-pcmazing-400/30 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              [ngModel]="lateDeductionPerMinute()"
+              (ngModelChange)="lateDeductionPerMinute.set(+$event || 0)"
+              (change)="setLateSettings()"
+              name="lateDeductionPerMinute"
+              [disabled]="savingWorkWeek()"
+            />
+          </div>
+        </div>
+      </div>
+
       <div class="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800">
         <div class="flex flex-wrap gap-2">
           @if (periodType() === 'weekly') {

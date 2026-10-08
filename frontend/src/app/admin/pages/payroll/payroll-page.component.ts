@@ -107,6 +107,10 @@ export class PayrollPageComponent implements OnInit {
   readonly periodType = signal<PeriodType>('weekly');
   readonly workWeek = signal<WorkWeek>('mon_fri');
   readonly undertimeGraceMinutes = signal(30);
+  readonly shiftStartTime = signal('09:00');
+  readonly lateGraceMinutes = signal(15);
+  readonly lateDeductionFixed = signal(0);
+  readonly lateDeductionPerMinute = signal(0);
   readonly savingWorkWeek = signal(false);
   readonly overlaps = signal<PayrollOverlapItem[]>([]);
   readonly confirmOverlap = signal(false);
@@ -147,6 +151,10 @@ export class PayrollPageComponent implements OnInit {
       const settings = await firstValueFrom(this.adminApi.getPayrollSettings());
       this.workWeek.set(settings.data.workWeek);
       this.undertimeGraceMinutes.set(settings.data.undertimeGraceMinutes ?? 30);
+      this.shiftStartTime.set(settings.data.shiftStartTime ?? '09:00');
+      this.lateGraceMinutes.set(settings.data.lateGraceMinutes ?? 15);
+      this.lateDeductionFixed.set(settings.data.lateDeductionFixed ?? 0);
+      this.lateDeductionPerMinute.set(settings.data.lateDeductionPerMinute ?? 0);
     } catch {
       // Keep default Mon–Fri until settings load with Period pay.
     }
@@ -227,6 +235,10 @@ export class PayrollPageComponent implements OnInit {
     this.overlaps.set(periodResponse.meta.overlaps ?? []);
     this.workWeek.set(settingsResponse.data.workWeek);
     this.undertimeGraceMinutes.set(settingsResponse.data.undertimeGraceMinutes ?? 30);
+    this.shiftStartTime.set(settingsResponse.data.shiftStartTime ?? '09:00');
+    this.lateGraceMinutes.set(settingsResponse.data.lateGraceMinutes ?? 15);
+    this.lateDeductionFixed.set(settingsResponse.data.lateDeductionFixed ?? 0);
+    this.lateDeductionPerMinute.set(settingsResponse.data.lateDeductionPerMinute ?? 0);
   }
 
   private async loadOvertime(): Promise<void> {
@@ -648,6 +660,41 @@ export class PayrollPageComponent implements OnInit {
       await this.applyPeriodFilter();
     } catch {
       this.error.set('Unable to save undertime grace.');
+    } finally {
+      this.savingWorkWeek.set(false);
+    }
+  }
+
+  async setLateSettings(): Promise<void> {
+    const lateGraceMinutes = Math.min(
+      120,
+      Math.max(0, Math.round(Number(this.lateGraceMinutes()) || 0)),
+    );
+    const lateDeductionFixed = Math.max(0, Number(this.lateDeductionFixed()) || 0);
+    const lateDeductionPerMinute = Math.max(0, Number(this.lateDeductionPerMinute()) || 0);
+    this.lateGraceMinutes.set(lateGraceMinutes);
+    this.lateDeductionFixed.set(lateDeductionFixed);
+    this.lateDeductionPerMinute.set(lateDeductionPerMinute);
+    if (this.savingWorkWeek()) {
+      return;
+    }
+    this.savingWorkWeek.set(true);
+    this.error.set('');
+    try {
+      const response = await firstValueFrom(
+        this.adminApi.updatePayrollSettings({
+          shiftStartTime: this.shiftStartTime(),
+          lateGraceMinutes,
+          lateDeductionFixed,
+          lateDeductionPerMinute,
+        }),
+      );
+      this.shiftStartTime.set(response.data.shiftStartTime);
+      this.lateGraceMinutes.set(response.data.lateGraceMinutes);
+      this.lateDeductionFixed.set(response.data.lateDeductionFixed);
+      this.lateDeductionPerMinute.set(response.data.lateDeductionPerMinute);
+    } catch {
+      this.error.set('Unable to save late deduction settings.');
     } finally {
       this.savingWorkWeek.set(false);
     }

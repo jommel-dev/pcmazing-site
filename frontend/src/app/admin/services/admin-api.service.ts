@@ -959,6 +959,15 @@ export interface PayrollOverlapItem {
   exactMatch: boolean;
 }
 
+export interface PayrollSettings {
+  workWeek: 'mon_fri' | 'mon_sat' | 'day_off_basis';
+  undertimeGraceMinutes: number;
+  shiftStartTime: string;
+  lateGraceMinutes: number;
+  lateDeductionFixed: number;
+  lateDeductionPerMinute: number;
+}
+
 export interface PayrollPeriodMeta {
   dateFrom: string;
   dateTo: string;
@@ -2509,21 +2518,14 @@ export class AdminApiService {
   }
 
   getPayrollSettings() {
-    return this.http.get<
-      ItemResponse<{ workWeek: 'mon_fri' | 'mon_sat' | 'day_off_basis'; undertimeGraceMinutes: number }>
-    >(
+    return this.http.get<ItemResponse<PayrollSettings>>(
       `${APP_CONFIG.apiUrl}/admin/payroll/settings`,
       { headers: this.headers() },
     );
   }
 
-  updatePayrollSettings(payload: {
-    workWeek?: 'mon_fri' | 'mon_sat' | 'day_off_basis';
-    undertimeGraceMinutes?: number;
-  }) {
-    return this.http.patch<
-      ItemResponse<{ workWeek: 'mon_fri' | 'mon_sat' | 'day_off_basis'; undertimeGraceMinutes: number }>
-    >(
+  updatePayrollSettings(payload: Partial<PayrollSettings>) {
+    return this.http.patch<ItemResponse<PayrollSettings>>(
       `${APP_CONFIG.apiUrl}/admin/payroll/settings`,
       payload,
       { headers: this.headers() },
