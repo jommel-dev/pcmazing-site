@@ -2025,7 +2025,64 @@ export class PayrollService {
       settings.workWeek,
       settings.undertimeGraceMinutes,
     );
-    const overlaps = await this.findOverlappingPayslips(dateFrom, dateTo);
+    const query = this.databaseService.query.bind(
+      this.databaseService,
+    ) as DatabaseService['query'];
+    const [overlaps, generatedPayslips, assembledLedgers] = await Promise.all([
+      this.findOverlappingPayslips(dateFrom, dateTo),
+      query<{
+        id: number | string;
+        user_id: number | string;
+        user_source: string;
+        remarks: string | null;
+      }>(
+        `SELECT p.id, p.user_id, p.user_source, p.remarks
+         FROM pcmazing_generated_payslips p
+         INNER JOIN pcmazing_payroll_runs r ON r.id = p.run_id
+         WHERE r.date_from = $1::date AND r.date_to = $2::date`,
+        [dateFrom, dateTo],
+      ),
+      Promise.all(
+        computed.rows.map((item) =>
+          this.assembleLedgerForPeriod(
+            query,
+            item,
+            dateFrom,
+            dateTo,
+            settings,
+            false,
+          ),
+        ),
+      ),
+    ]);
+    const payslipByEmployee = new Map<
+      string,
+      {
+        id: number | string;
+        user_id: number | string;
+        user_source: string;
+        remarks: string | null;
+      }
+    >(
+      generatedPayslips.rows.map((payslip) => [
+        `${payslip.user_source}:${payslip.user_id}`,
+        payslip,
+      ]),
+    );
+    const items = computed.rows.map((item, index) => {
+      const assembled = assembledLedgers[index];
+      const payslip = payslipByEmployee.get(
+        `${item.userSource}:${item.userId}`,
+      );
+      return {
+        ...item,
+        commissionsTotal: assembled.net.commissionsTotal,
+        totalDeductions: assembled.net.totalDeductions,
+        netPay: assembled.net.netPay,
+        payslipId: payslip == null ? null : Number(payslip.id),
+        remarks: payslip?.remarks ?? null,
+      };
+    });
 
     return {
       dateFrom,
@@ -2034,7 +2091,7 @@ export class PayrollService {
       workWeek: settings.workWeek,
       undertimeGraceMinutes: settings.undertimeGraceMinutes,
       periodDays: this.countInclusiveDays(dateFrom, dateTo),
-      items: computed.rows,
+      items,
       totals: computed.totals,
       overlaps,
     };
@@ -2049,6 +2106,7 @@ export class PayrollService {
     dateFrom: string,
     dateTo: string,
     settings: PayrollSettings,
+    lockLoans = true,
   ) {
     const [commissions, deductions, attendance, loans] = await Promise.all([
       query<{
@@ -2099,7 +2157,7 @@ export class PayrollService {
            ON o.loan_id = l.id AND o.date_from = $3::date AND o.date_to = $4::date
          WHERE l.user_id = $1 AND l.user_source = $2 AND l.status = 'active'
          ORDER BY l.id
-         FOR UPDATE OF l`,
+         ${lockLoans ? 'FOR UPDATE OF l' : ''}`,
         [item.userId, item.userSource, dateFrom, dateTo],
       ),
     ]);

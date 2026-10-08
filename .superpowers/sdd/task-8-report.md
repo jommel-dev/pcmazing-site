@@ -25,5 +25,19 @@ Implemented.
 
 ## Concerns
 
-- The current period endpoint's TypeScript contract does not guarantee generated `payslipId`, remarks, or ledger totals. The UI renders remarks and ledger columns opportunistically when those optional fields are returned; preview always shows the ledger breakdown supplied by the preview API.
+- The original Task 8 implementation depended on optional period-row ledger and payslip fields; the review follow-up below resolves that backend contract gap.
 - Existing unrelated workspace modifications were not included in the Task 8 commit.
+
+## Review follow-up
+
+- Enriched `GET /admin/payroll/period` rows with `commissionsTotal`, `totalDeductions`, and `netPay` by reusing Task 7's `assembleLedgerForPeriod` / `assemblePayslipLedger` path.
+- Added exact-period generated-payslip lookup so matching rows include `payslipId` and `remarks`; the existing admin period table and post-generation reload now populate ledger columns and the remarks editor.
+- Kept summary reads non-locking while retaining loan row locks for generation.
+- Added a focused period-summary regression test covering assembled totals, exact-period payslip metadata, and helper reuse.
+
+## Review verification
+
+- `npm test -- --runInBand admin/payroll` (backend) — 12 suites, 46 tests passed.
+- `npm run build` (backend) — passed.
+- `npm run build` (frontend) — passed with pre-existing CSS budget warnings.
+- Cursor diagnostics for the changed backend files — no errors.
