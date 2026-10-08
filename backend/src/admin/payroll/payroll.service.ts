@@ -298,6 +298,28 @@ export interface PayrollLoan {
   periodOverrides?: LoanPeriodOverride[];
 }
 
+export interface PayrollLoanDeductionHistoryItem {
+  id: number;
+  amount: number;
+  source: string;
+  label: string;
+  dateFrom: string;
+  dateTo: string;
+  runLabel: string;
+  balanceBefore: number | null;
+  createdAt: string;
+}
+
+export interface PayrollLoanDetail {
+  loan: PayrollLoan;
+  deductedTotal: number;
+  remainingBalance: number;
+  scheduledInstallmentAmount: number;
+  estimatedRemainingInstallments: number | null;
+  deductions: PayrollLoanDeductionHistoryItem[];
+  periodOverrides: LoanPeriodOverride[];
+}
+
 type LoanPeriodOverrideRow = {
   id: string | number;
   loan_id: string | number;
@@ -1118,6 +1140,90 @@ export class PayrollService {
     );
     if (!result.rows[0]) throw new NotFoundException('Loan not found.');
     return this.mapLoan(result.rows[0]);
+  }
+
+  async getLoanDetail(id: number): Promise<PayrollLoanDetail> {
+    await this.ensureReady();
+    const loanResult = await this.databaseService.query<PayrollLoanRow>(
+      `SELECT *, created_at::text AS created_at, updated_at::text AS updated_at
+       FROM pcmazing_payroll_loans
+       WHERE id = $1 AND status <> 'deleted'
+       LIMIT 1`,
+      [id],
+    );
+    const loanRow = loanResult.rows[0];
+    if (!loanRow) throw new NotFoundException('Loan not found.');
+    const loan = this.mapLoan(loanRow);
+
+    const [deductionsResult, overridesResult] = await Promise.all([
+      this.databaseService.query<{
+        id: string | number;
+        amount: string | number;
+        source: string;
+        label: string;
+        meta: { loanId?: number; balanceBefore?: number } | null;
+        created_at: string;
+        date_from: string;
+        date_to: string;
+        run_label: string;
+      }>(
+        `SELECT l.id, l.amount::text AS amount, l.source, l.label, l.meta,
+                l.created_at::text AS created_at,
+                r.date_from::text AS date_from, r.date_to::text AS date_to,
+                r.label AS run_label
+         FROM pcmazing_payroll_payslip_ledger l
+         INNER JOIN pcmazing_generated_payslips p ON p.id = l.payslip_id
+         INNER JOIN pcmazing_payroll_runs r ON r.id = p.run_id
+         WHERE l.line_type = 'loan_deduction'
+           AND (l.meta->>'loanId')::bigint = $1
+         ORDER BY r.date_from ASC, l.id ASC`,
+        [id],
+      ),
+      this.databaseService.query<LoanPeriodOverrideRow>(
+        `SELECT id, loan_id, payroll_run_id, date_from::text AS date_from,
+                date_to::text AS date_to, action, custom_amount,
+                created_at::text AS created_at, updated_at::text AS updated_at
+         FROM pcmazing_payroll_loan_period_overrides
+         WHERE loan_id = $1
+         ORDER BY date_from ASC, id ASC`,
+        [id],
+      ),
+    ]);
+
+    const deductions = deductionsResult.rows.map((row) => ({
+      id: Number(row.id),
+      amount: Number(row.amount),
+      source: row.source,
+      label: row.label,
+      dateFrom: row.date_from,
+      dateTo: row.date_to,
+      runLabel: row.run_label,
+      balanceBefore:
+        row.meta?.balanceBefore == null ? null : Number(row.meta.balanceBefore),
+      createdAt: row.created_at,
+    }));
+    const deductedTotal = Math.round(
+      deductions.reduce((sum, row) => sum + row.amount, 0) * 100,
+    ) / 100;
+    const scheduledInstallmentAmount = Number(loan.fixedInstallmentAmount) || 0;
+    const estimatedRemainingInstallments =
+      scheduledInstallmentAmount > 0 && loan.balance > 0
+        ? Math.ceil(loan.balance / scheduledInstallmentAmount)
+        : loan.balance <= 0
+          ? 0
+          : null;
+
+    return {
+      loan,
+      deductedTotal,
+      remainingBalance: loan.balance,
+      scheduledInstallmentAmount,
+      estimatedRemainingInstallments,
+      deductions,
+      periodOverrides: overridesResult.rows.map((row) =>
+        this.mapLoanPeriodOverride(row),
+      ),
+    };
   }
 
   async upsertLoanPeriodOverride(

@@ -288,6 +288,15 @@ export class PayrollController {
     }));
   }
 
+  @Get('loans/:id/detail')
+  @RequirePermissions('payroll.view')
+  getLoanDetail(@Param('id', ParseIntPipe) id: number) {
+    return this.payrollService.getLoanDetail(id).then((data) => ({
+      success: true,
+      data,
+    }));
+  }
+
   @Put('loans/:id/period-override')
   @RequirePermissions('payroll.edit')
   upsertLoanPeriodOverride(

@@ -55,6 +55,8 @@ cd backend; npx jest src/admin/payroll/payroll-ledger.util.spec.ts --no-cache
 
 ## Review fixes (Important)
 
+**Commit:** `1016efb` — fix(payroll): equal installment preference and ledger tests
+
 ### Changes
 
 1. **`computeLoanPeriodAmount` / `equal_installments`:** Prefer `fixedInstallmentAmount` when set; otherwise `computeEqualInstallmentAmount(balance, installmentCount)`. Inline comment documents caller contract. Final amount still capped at `balance`.

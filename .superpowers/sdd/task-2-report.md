@@ -1,3 +1,62 @@
+# Task 2 Report: Migration 074
+
+## Status
+
+Completed Migration 074 for payroll loans, period overrides, commission types and entries, manual deductions, persisted payslip ledger lines, late-deduction settings, and payslip remarks.
+
+## Implementation
+
+- Added `backend/src/sql/migrations/074_payroll_ledger_loans_commissions.sql`.
+- Added `backend/scripts/apply-payroll-ledger-migration.mjs` with transactional execution, SHA-256 migration tracking, and post-apply schema verification.
+- Synchronized the same DDL into the `ensurePayrollTables` path in `backend/src/admin/payroll/payroll.schema.ts`.
+- Added the four payroll settings fields:
+  - `shift_start_time`
+  - `late_grace_minutes`
+  - `late_deduction_fixed`
+  - `late_deduction_per_minute`
+- Added nullable `remarks` to `pcmazing_generated_payslips`.
+- Added all six requested tables with foreign keys, checks, timestamps, period indexes, and lookup indexes.
+- Commission entries, manual deductions, and loan overrides use nullable `payroll_run_id` plus required `date_from` / `date_to`, allowing pre-generation staging and later run attachment.
+
+## Apply and Verification
+
+Executed from `backend`:
+
+```text
+node scripts/apply-payroll-ledger-migration.mjs
+```
+
+Result:
+
+```json
+{
+  "ok": true,
+  "filename": "074_payroll_ledger_loans_commissions.sql",
+  "tables": 6,
+  "settings_columns": 4,
+  "remarks_column": 1
+}
+```
+
+The apply script was executed a second time with the same successful result, confirming the migration's idempotent apply path against the local `DATABASE_URL`.
+
+Additional verification:
+
+- `npm test -- --runInBand src/admin/payroll/payroll-ledger.util.spec.ts`: 1 suite passed, 12 tests passed.
+- `npm run build`: passed.
+- IDE diagnostics for the changed schema and apply script: no linter errors.
+- Scoped `git diff --check` for the three implementation files: passed.
+
+## Commit
+
+- `a52282f feat(payroll): migration for loans commissions ledger remarks`
+
+Only the three implementation files listed in the brief were included in the commit. Existing unrelated `.superpowers/sdd` working-tree changes were left untouched.
+
+## Concerns
+
+- This task is schema-only; service/API integration and mutation of loan balances remain for later tasks.
+- `payroll_run_id` uses `ON DELETE SET NULL`, preserving staged period identity through `date_from` / `date_to` if a payroll run is deleted.
 # Task 2 Report: Schema + profile API (`wfhSalary`)
 
 ## Status

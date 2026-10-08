@@ -1,3 +1,37 @@
+# Task 3 Report: Settings API — late fields
+
+## Status
+
+Completed the backend settings API and payroll-page inputs for shift start, late grace, fixed late deduction, and per-minute late deduction.
+
+## Implementation
+
+- Extended `UpdatePayrollSettingsDto` with:
+  - `shiftStartTime` matching `/^\d{2}:\d{2}$/`
+  - integer `lateGraceMinutes` from 0 through 120
+  - non-negative `lateDeductionFixed`
+  - non-negative `lateDeductionPerMinute`
+- Extended `PayrollService.getSettings()` and `updateSettings()` to read, normalize, preserve on partial updates, and persist all four Migration 074 columns.
+- Added the frontend `PayrollSettings` interface and used it for settings GET/PATCH requests.
+- Added payroll-page inputs for shift start, late grace, fixed deduction, and per-minute deduction.
+- Added DTO and service unit coverage for validation, database mapping, partial-update preservation, and persistence.
+
+## Verification
+
+- Backend full test suite: 14 suites passed, 72 tests passed.
+- Backend build: passed.
+- Frontend build: passed with four pre-existing CSS budget warnings.
+- IDE diagnostics for all changed files: no linter errors.
+- Scoped `git diff --check`: passed.
+
+## Commit
+
+- `de41926 feat(payroll): late deduction settings`
+
+## Concerns
+
+- This task only configures late settings; it does not calculate late deductions or add loans/commissions UI.
+- Existing unrelated `.superpowers/sdd` working-tree changes were left untouched.
 # Task 3 Report: Period + payslip day pay uses location rates
 
 ## Status

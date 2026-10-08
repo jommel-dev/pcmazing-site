@@ -86,6 +86,43 @@ describe('PayrollService loans', () => {
     );
   });
 
+  it('returns loan detail with deduction breakdown', async () => {
+    const query = jest
+      .fn()
+      .mockResolvedValueOnce({ rows: [loanRow({ balance: '700.00', principal: '1000.00' })] })
+      .mockResolvedValueOnce({
+        rows: [{
+          id: '11',
+          amount: '300.00',
+          source: 'auto',
+          label: 'Laptop advance',
+          meta: { loanId: 7, balanceBefore: 1000 },
+          created_at: '2026-10-01T01:00:00.000Z',
+          date_from: '2026-10-01',
+          date_to: '2026-10-15',
+          run_label: 'Oct 1–15',
+        }],
+      })
+      .mockResolvedValueOnce({ rows: [] });
+    const service = createService(query);
+
+    await expect(service.getLoanDetail(7)).resolves.toEqual(
+      expect.objectContaining({
+        deductedTotal: 300,
+        remainingBalance: 700,
+        scheduledInstallmentAmount: 333.33,
+        estimatedRemainingInstallments: 3,
+        deductions: [
+          expect.objectContaining({
+            amount: 300,
+            runLabel: 'Oct 1–15',
+            balanceBefore: 1000,
+          }),
+        ],
+      }),
+    );
+  });
+
   it('updates remaining balance within principal', async () => {
     const query = jest
       .fn()

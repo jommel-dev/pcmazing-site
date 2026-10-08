@@ -1077,6 +1077,28 @@ export interface PayrollLoan {
   periodOverrides?: PayrollLoanPeriodOverride[];
 }
 
+export interface PayrollLoanDeductionHistoryItem {
+  id: number;
+  amount: number;
+  source: string;
+  label: string;
+  dateFrom: string;
+  dateTo: string;
+  runLabel: string;
+  balanceBefore: number | null;
+  createdAt: string;
+}
+
+export interface PayrollLoanDetail {
+  loan: PayrollLoan;
+  deductedTotal: number;
+  remainingBalance: number;
+  scheduledInstallmentAmount: number;
+  estimatedRemainingInstallments: number | null;
+  deductions: PayrollLoanDeductionHistoryItem[];
+  periodOverrides: PayrollLoanPeriodOverride[];
+}
+
 export interface PayrollLoanScope {
   userId: number;
   userSource: 'pcmazing_admin_users' | 'tblusers';
@@ -2748,6 +2770,13 @@ export class AdminApiService {
     return this.http.get<ItemResponse<PayrollLoan[]>>(
       `${APP_CONFIG.apiUrl}/admin/payroll/loans`,
       { headers: this.headers(), params: this.payrollLoanScopeParams(scope) },
+    );
+  }
+
+  getPayrollLoanDetail(id: number) {
+    return this.http.get<ItemResponse<PayrollLoanDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/loans/${id}/detail`,
+      { headers: this.headers() },
     );
   }
 

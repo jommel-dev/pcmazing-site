@@ -13,6 +13,8 @@ import {
   DashboardPeriod,
 } from '../../data/dashboard.types';
 import { AdminApiService } from '../../services/admin-api.service';
+import { AdminAuthService } from '../../services/admin-auth.service';
+import { SalesEmployeeDashboardComponent } from './sales-employee-dashboard.component';
 
 @Component({
   selector: 'app-admin-dashboard-page',
@@ -23,11 +25,17 @@ import { AdminApiService } from '../../services/admin-api.service';
     DashboardChartComponent,
     DashboardDetailsPanelComponent,
     CompanyExpensesWidgetComponent,
+    SalesEmployeeDashboardComponent,
   ],
   templateUrl: './admin-dashboard-page.component.html',
 })
 export class AdminDashboardPageComponent implements OnInit {
   private readonly adminApi = inject(AdminApiService);
+  private readonly adminAuth = inject(AdminAuthService);
+
+  readonly showEmployeeWorkspace = computed(
+    () => this.adminAuth.getStoredUser()?.payrollEnabled === true,
+  );
 
   readonly loading = signal(true);
   readonly overview = signal<DashboardOverview | null>(null);

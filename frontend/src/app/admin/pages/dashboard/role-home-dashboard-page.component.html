@@ -12,6 +12,11 @@
   }
 
   @if (kind() === 'marketing') {
+    @if (showEmployeeWorkspace()) {
+      <div class="mb-2">
+        <app-sales-employee-dashboard variant="notices" />
+      </div>
+    }
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       <a routerLink="/admin/lead-generation" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-pcmazing-400 dark:border-slate-700 dark:bg-slate-900">
         <p class="text-xs font-bold uppercase tracking-wide text-pcmazing-500">Module</p>
@@ -29,18 +34,24 @@
   }
 
   @if (kind() === 'sales') {
-    <p class="mt-1 text-sm text-slate-500 dark:text-slate-400 md:hidden">Your hours, schedule, and day offs.</p>
-    <p class="mt-1 hidden text-sm text-slate-500 dark:text-slate-400 md:block">Daily sales performance and reporting.</p>
+    <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
+      Your hours, schedule, and day offs
+      <span class="hidden md:inline">, plus daily sales performance</span>.
+    </p>
 
-    <div class="md:hidden">
-      <app-sales-employee-dashboard />
-    </div>
+    <app-sales-employee-dashboard />
+
     <div class="hidden md:block">
       <app-sales-reporting-dashboard />
     </div>
   }
 
   @if (kind() === 'developers') {
+    @if (showEmployeeWorkspace()) {
+      <div class="mb-2">
+        <app-sales-employee-dashboard variant="notices" />
+      </div>
+    }
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       <a routerLink="/admin/projects" class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-pcmazing-400 dark:border-slate-700 dark:bg-slate-900">
         <p class="text-xs font-bold uppercase tracking-wide text-pcmazing-500">Projects</p>

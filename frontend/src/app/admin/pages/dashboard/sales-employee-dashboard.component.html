@@ -1,11 +1,14 @@
 <section class="space-y-6">
-  @if (loading()) {
+  @if (variant() === 'full' && loading()) {
     <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
       Loading your workspace...
     </div>
-  } @else if (error() && !dashboard()) {
+  } @else if (variant() === 'full' && error() && !dashboard()) {
     <div class="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/50 dark:text-red-300">{{ error() }}</div>
   } @else if (dashboard(); as data) {
+    @if (variant() === 'notices' && !hasNoticeContent() && !dayOffModalOpen()) {
+      <!-- Silent when there is nothing to request -->
+    } @else {
     @if (error()) {
       <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">{{ error() }}</div>
     }
@@ -21,8 +24,6 @@
         {{ adjustmentMessage() }}
       </div>
     }
-
-    <app-portal-time-clock mode="compact" (punched)="onTimeClockPunched()" />
 
     @if (data.adjustmentNotice?.message; as adjustmentNoticeMessage) {
       <div class="rounded-2xl border border-sky-200 bg-sky-50 px-5 py-4 dark:border-sky-900 dark:bg-sky-950/40">
@@ -84,6 +85,7 @@
       </div>
     }
 
+    @if (variant() === 'full') {
     <div class="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
       <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 dark:border-slate-700 dark:bg-slate-900">
         <p class="text-[10px] font-bold uppercase tracking-wide text-pcmazing-500 sm:text-xs dark:text-pcmazing-400">Working hours</p>
@@ -292,6 +294,8 @@
         </div>
       </div>
     </div>
+    }
+    }
   }
 
   @if (dayOffModalOpen()) {
@@ -321,7 +325,7 @@
           @if (punch.canRequestTimeOutAdjustment) {
             <div class="mt-3 space-y-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-3 text-xs text-sky-950 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-100">
               <p class="font-bold">Forgot to clock out?</p>
-              <p>Upload a time-out photo, why you left (emergency, appointment, or event), and the time you left. Admin must approve before payroll uses it. If you left within the undertime grace, that day still pays as a full day.</p>
+              <p>Capture a time-out selfie, why you left (emergency, appointment, or event), and the time you left. Admin must approve before payroll uses it. If you left within the undertime grace, that day still pays as a full day.</p>
               @if (punch.adjustmentStatus === 'rejected') {
                 <p class="font-semibold text-red-600">Previous request was rejected. Submit again.</p>
               }
@@ -334,32 +338,51 @@
                 name="requestedTimeOut"
               />
               <label class="block text-xs font-bold text-slate-700 dark:text-slate-200">Time-out photo <span class="text-red-500">*</span></label>
-              <label
-                class="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-sky-300 bg-white px-3 py-4 text-center transition hover:border-pcmazing-400 hover:bg-sky-50/80 dark:border-sky-800 dark:bg-slate-950 dark:hover:border-pcmazing-400"
-              >
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/*"
-                  capture="environment"
-                  class="sr-only"
-                  (change)="onAdjustmentPhoto($event)"
-                />
-                @if (adjustmentPhotoPreview(); as preview) {
-                  <img [src]="preview" alt="Time-out photo preview" class="h-28 w-full rounded-lg object-cover" />
-                  <p class="mt-2 text-xs font-bold text-pcmazing-600">Tap to change photo</p>
-                  @if (adjustmentPhoto(); as photo) {
-                    <p class="mt-0.5 truncate text-[11px] text-slate-500">{{ photo.name }}</p>
+              @if (adjustmentCameraError()) {
+                <div class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                  {{ adjustmentCameraError() }}
+                  <button type="button" class="ml-2 font-bold underline" (click)="startAdjustmentCamera()">Retry camera</button>
+                </div>
+              }
+              @if (adjustmentPhotoPreview(); as preview) {
+                <img [src]="preview" alt="Time-out photo preview" class="aspect-square w-full rounded-xl border border-sky-200 object-cover dark:border-sky-800" />
+                <button
+                  type="button"
+                  class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-200"
+                  [disabled]="requestingAdjustmentId() != null"
+                  (click)="retakeAdjustmentPhoto()"
+                >
+                  Retake photo
+                </button>
+              } @else {
+                <div class="relative overflow-hidden rounded-xl border border-sky-200 bg-black dark:border-sky-800">
+                  <video
+                    #adjustmentCameraVideo
+                    class="aspect-square w-full scale-x-[-1] object-cover"
+                    autoplay
+                    playsinline
+                    muted
+                  ></video>
+                  @if (adjustmentCameraStarting() || !adjustmentCameraReady()) {
+                    <div class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-900/70 text-xs text-white">
+                      <span class="size-7 animate-spin rounded-full border-2 border-white/30 border-t-white"></span>
+                      <span>Opening camera...</span>
+                    </div>
                   }
-                } @else {
-                  <span class="inline-flex size-10 items-center justify-center rounded-full bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-200">
-                    <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                      <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
-                    </svg>
-                  </span>
-                  <p class="mt-2 text-sm font-bold text-slate-800 dark:text-slate-100">Tap to upload photo</p>
-                  <p class="mt-0.5 text-[11px] text-slate-500">JPEG, PNG, or WEBP · up to 2MB</p>
-                }
-              </label>
+                </div>
+                <button
+                  type="button"
+                  class="w-full rounded-lg bg-white px-3 py-2 text-xs font-bold text-slate-900 ring-1 ring-slate-300 disabled:opacity-50 dark:bg-slate-950 dark:text-slate-100 dark:ring-slate-600"
+                  [disabled]="!adjustmentCameraReady() || adjustmentCameraStarting() || requestingAdjustmentId() != null"
+                  (click)="captureAdjustmentPhoto()"
+                >
+                  @if (adjustmentCameraStarting()) {
+                    Waiting for camera...
+                  } @else {
+                    Capture photo
+                  }
+                </button>
+              }
               <label class="block text-xs font-bold text-slate-700 dark:text-slate-200">Why you left early <span class="text-red-500">*</span></label>
               <select
                 class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"

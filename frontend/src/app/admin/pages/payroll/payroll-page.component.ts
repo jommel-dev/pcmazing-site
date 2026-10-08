@@ -13,6 +13,7 @@ import {
   PayrollCommissionType,
   PayrollEmployeeItem,
   PayrollLoan,
+  PayrollLoanDetail,
   PayrollManualDeduction,
   PayrollOverlapItem,
   PayrollOverview,
@@ -28,6 +29,15 @@ import {
 type PayrollTab = 'overview' | 'attendance' | 'employees' | 'period' | 'tools' | 'overtime' | 'adjustments';
 type PeriodType = 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
 type WorkWeek = 'mon_fri' | 'mon_sat' | 'day_off_basis';
+type ConfirmTone = 'default' | 'danger' | 'warning';
+
+interface ConfirmDialogState {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  cancelLabel: string;
+  tone: ConfirmTone;
+}
 
 const LOCATION_DAY_KEYS: WorkLocationDayKey[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 
@@ -146,7 +156,13 @@ export class PayrollPageComponent implements OnInit {
   readonly commissionTypes = signal<PayrollCommissionType[]>([]);
   readonly savingPayrollTool = signal(false);
   readonly payrollToolMessage = signal('');
-  readonly selectedEmployeeKey = signal('');
+  readonly selectedToolEmployeeItem = signal<PayrollEmployeeItem | null>(null);
+  readonly toolEmployeeQuery = signal('');
+  readonly toolEmployeeResults = signal<PayrollEmployeeItem[]>([]);
+  readonly toolEmployeeMenuOpen = signal(false);
+  readonly toolEmployeeSearching = signal(false);
+  private toolEmployeeSearchTimer: ReturnType<typeof setTimeout> | null = null;
+  private toolEmployeeSearchSeq = 0;
   readonly employeeLoans = signal<PayrollLoan[]>([]);
   readonly employeeCommissions = signal<PayrollCommissionEntry[]>([]);
   readonly employeeDeductions = signal<PayrollManualDeduction[]>([]);
@@ -166,6 +182,10 @@ export class PayrollPageComponent implements OnInit {
   readonly editLoanLabel = signal('');
   readonly editLoanBalance = signal(0);
   readonly editLoanNotes = signal('');
+  readonly loanDetail = signal<PayrollLoanDetail | null>(null);
+  readonly loanDetailLoading = signal(false);
+  readonly confirmDialog = signal<ConfirmDialogState | null>(null);
+  private confirmResolver: ((value: boolean) => void) | null = null;
   readonly commissionTypeId = signal<number | null>(null);
   readonly commissionLabel = signal('');
   readonly commissionAmount = signal(0);
@@ -312,13 +332,15 @@ export class PayrollPageComponent implements OnInit {
 
   private async loadEmployeeToolsBase(): Promise<void> {
     await Promise.all([this.loadEmployees(), this.loadCommissionTypes()]);
-    if (this.selectedEmployeeKey()) {
+    if (this.selectedToolEmployeeItem()) {
       await this.loadSelectedEmployeeTools();
+    } else {
+      void this.searchToolEmployees('');
     }
   }
 
   selectedToolEmployee(): PayrollEmployeeItem | null {
-    return this.employees().find((item) => this.employeeKey(item) === this.selectedEmployeeKey()) ?? null;
+    return this.selectedToolEmployeeItem();
   }
 
   private employeePeriodScope() {
@@ -328,10 +350,78 @@ export class PayrollPageComponent implements OnInit {
       : null;
   }
 
-  async selectToolEmployee(key: string): Promise<void> {
-    this.selectedEmployeeKey.set(key);
+  toolEmployeeLabel(item: PayrollEmployeeItem): string {
+    return `${item.fullName} · ${item.employeeCode || item.username}`;
+  }
+
+  onToolEmployeeQuery(value: string): void {
+    this.toolEmployeeQuery.set(value);
+    this.toolEmployeeMenuOpen.set(true);
+    const selected = this.selectedToolEmployeeItem();
+    if (selected && value.trim() !== this.toolEmployeeLabel(selected)) {
+      this.clearToolEmployeeSelection(false);
+    }
+    this.scheduleToolEmployeeSearch(value);
+  }
+
+  openToolEmployeeMenu(): void {
+    this.toolEmployeeMenuOpen.set(true);
+    if (this.toolEmployeeResults().length === 0 && !this.toolEmployeeSearching()) {
+      void this.searchToolEmployees(this.toolEmployeeQuery());
+    }
+  }
+
+  closeToolEmployeeMenuSoon(): void {
+    setTimeout(() => this.toolEmployeeMenuOpen.set(false), 150);
+  }
+
+  private scheduleToolEmployeeSearch(value: string): void {
+    if (this.toolEmployeeSearchTimer) {
+      clearTimeout(this.toolEmployeeSearchTimer);
+    }
+    this.toolEmployeeSearchTimer = setTimeout(() => {
+      void this.searchToolEmployees(value);
+    }, 250);
+  }
+
+  private async searchToolEmployees(query: string): Promise<void> {
+    const seq = ++this.toolEmployeeSearchSeq;
+    this.toolEmployeeSearching.set(true);
+    try {
+      const response = await firstValueFrom(this.adminApi.listPayrollEmployees(query));
+      if (seq !== this.toolEmployeeSearchSeq) return;
+      this.toolEmployeeResults.set(response.data.slice(0, 25));
+    } catch {
+      if (seq !== this.toolEmployeeSearchSeq) return;
+      this.toolEmployeeResults.set([]);
+    } finally {
+      if (seq === this.toolEmployeeSearchSeq) {
+        this.toolEmployeeSearching.set(false);
+      }
+    }
+  }
+
+  async pickToolEmployee(item: PayrollEmployeeItem): Promise<void> {
+    this.selectedToolEmployeeItem.set(item);
+    this.toolEmployeeQuery.set(this.toolEmployeeLabel(item));
+    this.toolEmployeeMenuOpen.set(false);
     this.payrollToolMessage.set('');
     await this.loadSelectedEmployeeTools();
+  }
+
+  private clearToolEmployeeSelection(clearQuery: boolean): void {
+    this.selectedToolEmployeeItem.set(null);
+    if (clearQuery) {
+      this.toolEmployeeQuery.set('');
+    }
+    this.employeeLoans.set([]);
+    this.employeeCommissions.set([]);
+    this.employeeDeductions.set([]);
+    this.cancelEditLoan();
+    this.cancelEditCommission();
+    this.cancelEditDeduction();
+    this.cancelLoanOverride();
+    this.closeLoanDetail();
   }
 
   async loadSelectedEmployeeTools(): Promise<void> {
@@ -357,8 +447,33 @@ export class PayrollPageComponent implements OnInit {
     }
   }
 
-  private confirmAction(message: string): boolean {
-    return confirm(message);
+  private confirmAction(
+    message: string,
+    options?: {
+      title?: string;
+      confirmLabel?: string;
+      cancelLabel?: string;
+      tone?: ConfirmTone;
+    },
+  ): Promise<boolean> {
+    this.confirmResolver?.(false);
+    return new Promise((resolve) => {
+      this.confirmResolver = resolve;
+      this.confirmDialog.set({
+        title: options?.title ?? 'Confirm',
+        message,
+        confirmLabel: options?.confirmLabel ?? 'Yes',
+        cancelLabel: options?.cancelLabel ?? 'Cancel',
+        tone: options?.tone ?? 'default',
+      });
+    });
+  }
+
+  resolveConfirm(ok: boolean): void {
+    const resolve = this.confirmResolver;
+    this.confirmResolver = null;
+    this.confirmDialog.set(null);
+    resolve?.(ok);
   }
 
   toggleLoanForm(): void {
@@ -387,7 +502,10 @@ export class PayrollPageComponent implements OnInit {
     const employee = this.selectedToolEmployee();
     const label = this.loanLabel().trim();
     if (!employee || !label || this.loanPrincipal() <= 0) return;
-    if (!this.confirmAction(`Create loan "${label}" for ${employee.fullName}?`)) return;
+    if (!(await this.confirmAction(`Create loan "${label}" for ${employee.fullName}?`, {
+      title: 'Create loan?',
+      confirmLabel: 'Create',
+    }))) return;
     await this.runPayrollTool(async () => {
       await firstValueFrom(this.adminApi.createPayrollLoan({
         userId: employee.userId,
@@ -424,7 +542,10 @@ export class PayrollPageComponent implements OnInit {
     const label = this.editLoanLabel().trim();
     const balance = this.editLoanBalance();
     if (!label || balance < 0 || balance > item.principal) return;
-    if (!this.confirmAction(`Save changes to loan "${label}"?`)) return;
+    if (!(await this.confirmAction(`Save changes to loan "${label}"?`, {
+      title: 'Save loan changes?',
+      confirmLabel: 'Save',
+    }))) return;
     await this.runPayrollTool(async () => {
       await firstValueFrom(
         this.adminApi.updatePayrollLoan(item.id, {
@@ -439,7 +560,10 @@ export class PayrollPageComponent implements OnInit {
   }
 
   async cancelLoan(item: PayrollLoan): Promise<void> {
-    if (!this.confirmAction(`Cancel loan "${item.label}"? It will stay listed and can be restored.`)) {
+    if (!(await this.confirmAction(
+      `Cancel loan "${item.label}"? It will stay listed and can be restored.`,
+      { title: 'Cancel loan?', confirmLabel: 'Cancel loan', tone: 'warning' },
+    ))) {
       return;
     }
     await this.runPayrollTool(async () => {
@@ -450,7 +574,10 @@ export class PayrollPageComponent implements OnInit {
   }
 
   async restoreLoan(item: PayrollLoan): Promise<void> {
-    if (!this.confirmAction(`Restore loan "${item.label}"?`)) return;
+    if (!(await this.confirmAction(`Restore loan "${item.label}"?`, {
+      title: 'Restore loan?',
+      confirmLabel: 'Restore',
+    }))) return;
     await this.runPayrollTool(async () => {
       await firstValueFrom(this.adminApi.updatePayrollLoan(item.id, { status: 'active' }));
       await this.loadSelectedEmployeeTools();
@@ -458,11 +585,10 @@ export class PayrollPageComponent implements OnInit {
   }
 
   async deleteLoan(item: PayrollLoan): Promise<void> {
-    if (
-      !this.confirmAction(
-        `Delete loan "${item.label}"? It will be hidden and cannot be restored.`,
-      )
-    ) {
+    if (!(await this.confirmAction(
+      `Delete loan "${item.label}"? It will be hidden and cannot be restored.`,
+      { title: 'Delete loan?', confirmLabel: 'Delete', tone: 'danger' },
+    ))) {
       return;
     }
     await this.runPayrollTool(async () => {
@@ -478,6 +604,34 @@ export class PayrollPageComponent implements OnInit {
     this.overrideAmount.set(0);
   }
 
+  async openLoanDetail(item: PayrollLoan): Promise<void> {
+    this.loanDetailLoading.set(true);
+    this.error.set('');
+    try {
+      const response = await firstValueFrom(this.adminApi.getPayrollLoanDetail(item.id));
+      this.loanDetail.set(response.data);
+    } catch (err) {
+      this.error.set(this.readHttpError(err, 'Unable to load loan details.'));
+    } finally {
+      this.loanDetailLoading.set(false);
+    }
+  }
+
+  closeLoanDetail(): void {
+    this.loanDetail.set(null);
+  }
+
+  loanTermLabel(loan: PayrollLoan): string {
+    if (loan.termStyle === 'equal_installments') {
+      return `${loan.installmentCount ?? '—'} equal installments · ${this.formatMoney(loan.fixedInstallmentAmount)} each`;
+    }
+    return `Fixed ${this.formatMoney(loan.fixedInstallmentAmount)} per cutoff`;
+  }
+
+  loanBalanceDrift(detail: PayrollLoanDetail): boolean {
+    return Math.abs(detail.loan.principal - detail.deductedTotal - detail.remainingBalance) > 0.009;
+  }
+
   async saveLoanOverride(): Promise<void> {
     const loanId = this.overrideLoanId();
     if (loanId == null) return;
@@ -487,7 +641,10 @@ export class PayrollPageComponent implements OnInit {
       this.overrideAction() === 'custom'
         ? `custom amount ${this.formatMoney(this.overrideAmount())}`
         : 'skip this period';
-    if (!this.confirmAction(`Save period override (${detail}) for "${label}"?`)) return;
+    if (!(await this.confirmAction(`Save period override (${detail}) for "${label}"?`, {
+      title: 'Save period override?',
+      confirmLabel: 'Save',
+    }))) return;
     await this.runPayrollTool(async () => {
       await firstValueFrom(this.adminApi.upsertPayrollLoanPeriodOverride(loanId, {
         dateFrom: this.dateFrom(),
@@ -503,7 +660,10 @@ export class PayrollPageComponent implements OnInit {
   async addCommissionEntry(): Promise<void> {
     const scope = this.employeePeriodScope();
     if (!scope || this.commissionAmount() <= 0) return;
-    if (!this.confirmAction(`Add commission of ${this.formatMoney(this.commissionAmount())}?`)) {
+    if (!(await this.confirmAction(`Add commission of ${this.formatMoney(this.commissionAmount())}?`, {
+      title: 'Add commission?',
+      confirmLabel: 'Add',
+    }))) {
       return;
     }
     await this.runPayrollTool(async () => {
@@ -537,7 +697,10 @@ export class PayrollPageComponent implements OnInit {
   async saveEditCommission(entry: PayrollCommissionEntry): Promise<void> {
     if (this.editCommissionAmount() <= 0) return;
     const name = this.editCommissionLabel().trim() || entry.typeName || 'Commission';
-    if (!this.confirmAction(`Save changes to commission "${name}"?`)) return;
+    if (!(await this.confirmAction(`Save changes to commission "${name}"?`, {
+      title: 'Save commission changes?',
+      confirmLabel: 'Save',
+    }))) return;
     await this.runPayrollTool(async () => {
       await firstValueFrom(
         this.adminApi.updatePayrollCommissionEntry(entry.id, {
@@ -553,7 +716,10 @@ export class PayrollPageComponent implements OnInit {
 
   async deleteCommissionEntry(entry: PayrollCommissionEntry): Promise<void> {
     const name = entry.typeName || entry.label || 'Commission';
-    if (!this.confirmAction(`Remove commission "${name}" (${this.formatMoney(entry.amount)})?`)) {
+    if (!(await this.confirmAction(
+      `Remove commission "${name}" (${this.formatMoney(entry.amount)})?`,
+      { title: 'Remove commission?', confirmLabel: 'Remove', tone: 'danger' },
+    ))) {
       return;
     }
     await this.runPayrollTool(async () => {
@@ -567,7 +733,10 @@ export class PayrollPageComponent implements OnInit {
     const scope = this.employeePeriodScope();
     const label = this.deductionLabel().trim();
     if (!scope || !label || this.deductionAmount() <= 0) return;
-    if (!this.confirmAction(`Add deduction "${label}" for ${this.formatMoney(this.deductionAmount())}?`)) {
+    if (!(await this.confirmAction(
+      `Add deduction "${label}" for ${this.formatMoney(this.deductionAmount())}?`,
+      { title: 'Add deduction?', confirmLabel: 'Add' },
+    ))) {
       return;
     }
     await this.runPayrollTool(async () => {
@@ -597,7 +766,10 @@ export class PayrollPageComponent implements OnInit {
   async saveEditDeduction(entry: PayrollManualDeduction): Promise<void> {
     const label = this.editDeductionLabel().trim();
     if (!label || this.editDeductionAmount() <= 0) return;
-    if (!this.confirmAction(`Save changes to deduction "${label}"?`)) return;
+    if (!(await this.confirmAction(`Save changes to deduction "${label}"?`, {
+      title: 'Save deduction changes?',
+      confirmLabel: 'Save',
+    }))) return;
     await this.runPayrollTool(async () => {
       await firstValueFrom(
         this.adminApi.updatePayrollManualDeduction(entry.id, {
@@ -611,7 +783,10 @@ export class PayrollPageComponent implements OnInit {
   }
 
   async deleteManualDeduction(entry: PayrollManualDeduction): Promise<void> {
-    if (!this.confirmAction(`Remove deduction "${entry.label}" (${this.formatMoney(entry.amount)})?`)) {
+    if (!(await this.confirmAction(
+      `Remove deduction "${entry.label}" (${this.formatMoney(entry.amount)})?`,
+      { title: 'Remove deduction?', confirmLabel: 'Remove', tone: 'danger' },
+    ))) {
       return;
     }
     await this.runPayrollTool(async () => {
@@ -959,6 +1134,14 @@ export class PayrollPageComponent implements OnInit {
 
   @HostListener('document:keydown.escape')
   onEscape(): void {
+    if (this.confirmDialog()) {
+      this.resolveConfirm(false);
+      return;
+    }
+    if (this.loanDetail()) {
+      this.closeLoanDetail();
+      return;
+    }
     if (this.previewOpen()) {
       this.closePayslipPreview();
       return;
