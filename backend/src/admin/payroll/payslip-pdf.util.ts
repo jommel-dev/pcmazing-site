@@ -48,8 +48,16 @@ function money(value: number): string {
   })}`;
 }
 
+export function shouldRenderPayslipRemarks(
+  remarks: string | null | undefined,
+  includeRemarks: boolean,
+): boolean {
+  return includeRemarks && Boolean(remarks?.trim());
+}
+
 export async function buildPayslipPdfBuffer(
   payload: PayslipPdfPayload,
+  options?: { includeRemarks?: boolean },
 ): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const pageMargin = { top: 48, bottom: 72, left: 48, right: 48 };
@@ -239,11 +247,16 @@ export async function buildPayslipPdfBuffer(
     doc.moveDown(0.35);
     writeLine(`Base pay: ${money(t.basePay)}`);
     writeLine(`Overtime pay: ${money(t.overtimePay)}`);
-    if (payload.remarks?.trim()) {
+    if (
+      shouldRenderPayslipRemarks(
+        payload.remarks,
+        options?.includeRemarks === true,
+      )
+    ) {
       doc.moveDown(0.35);
       doc.fontSize(10).fillColor('#0f172a');
       writeLine('Remarks', { underline: true });
-      writeLine(payload.remarks.trim());
+      writeLine(payload.remarks!.trim());
     }
     doc.moveDown(0.25);
     doc.fontSize(13).fillColor('#0047FF');

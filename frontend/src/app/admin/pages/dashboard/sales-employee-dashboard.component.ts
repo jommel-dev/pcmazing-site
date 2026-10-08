@@ -50,6 +50,7 @@ export class SalesEmployeeDashboardComponent implements OnInit {
   readonly payslipDetailOpen = signal(false);
   readonly payslipDetailLoading = signal(false);
   readonly downloadingPayslip = signal(false);
+  readonly includePayslipRemarks = signal(false);
 
   readonly calendarDays = computed(() => this.buildCalendar(this.month(), this.dashboard()));
 
@@ -205,6 +206,7 @@ export class SalesEmployeeDashboardComponent implements OnInit {
     this.payslipDetailLoading.set(true);
     this.payslipDetailOpen.set(true);
     this.payslipDetail.set(null);
+    this.includePayslipRemarks.set(false);
     this.error.set('');
     try {
       const response = await firstValueFrom(this.adminApi.getEmployeePayslipDetail(payslipId));
@@ -221,6 +223,7 @@ export class SalesEmployeeDashboardComponent implements OnInit {
   closePayslipDetail(): void {
     this.payslipDetailOpen.set(false);
     this.payslipDetail.set(null);
+    this.includePayslipRemarks.set(false);
   }
 
   async downloadPayslipPdf(payslipId: string): Promise<void> {
@@ -231,7 +234,13 @@ export class SalesEmployeeDashboardComponent implements OnInit {
     this.downloadingPayslip.set(true);
     this.error.set('');
     try {
-      const blob = await firstValueFrom(this.adminApi.downloadEmployeePayslipPdf(payslipId, true));
+      const blob = await firstValueFrom(
+        this.adminApi.downloadEmployeePayslipPdf(
+          payslipId,
+          true,
+          this.includePayslipRemarks(),
+        ),
+      );
       const detail = this.payslipDetail();
       const filename = detail
         ? `payslip-${detail.dateFrom}_${detail.dateTo}.pdf`

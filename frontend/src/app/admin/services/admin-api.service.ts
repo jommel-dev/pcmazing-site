@@ -3417,10 +3417,17 @@ export class AdminApiService {
     );
   }
 
-  downloadEmployeePayslipPdf(payslipId: string | number, download = false) {
+  downloadEmployeePayslipPdf(
+    payslipId: string | number,
+    download = false,
+    includeRemarks = false,
+  ) {
     let params = new HttpParams();
     if (download) {
       params = params.set('download', '1');
+    }
+    if (includeRemarks) {
+      params = params.set('includeRemarks', '1');
     }
     return this.http.get(`${APP_CONFIG.apiUrl}/admin/employee-workspace/payslips/${payslipId}/pdf`, {
       headers: this.headers(),

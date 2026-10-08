@@ -2932,13 +2932,16 @@ export class PayrollService {
     payslipIdRaw: string | number,
     userId: number,
     userSource: AdminUserRecord['source'],
+    includeRemarks = false,
   ): Promise<{ filename: string; buffer: Buffer }> {
     const detail = await this.getEmployeePayslipDetail(
       payslipIdRaw,
       userId,
       userSource,
     );
-    const buffer = await buildPayslipPdfBuffer(detail.pdfPayload);
+    const buffer = await buildPayslipPdfBuffer(detail.pdfPayload, {
+      includeRemarks,
+    });
     return {
       filename: detail.filename,
       buffer,

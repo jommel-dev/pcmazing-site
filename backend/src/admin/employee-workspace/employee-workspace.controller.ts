@@ -128,9 +128,17 @@ export class EmployeeWorkspaceController {
     @Req() req: Request & { user?: AdminJwtPayload },
     @Param('id', ParseIntPipe) id: number,
     @Query('download') download?: string,
+    @Query('includeRemarks') includeRemarks?: string,
   ) {
     const { userId, source } = this.actor(req);
-    const { filename, buffer } = await this.workspaceService.getPayslipPdf(userId, source, id);
+    const shouldIncludeRemarks =
+      includeRemarks === '1' || includeRemarks === 'true';
+    const { filename, buffer } = await this.workspaceService.getPayslipPdf(
+      userId,
+      source,
+      id,
+      shouldIncludeRemarks,
+    );
     const forceDownload = download === '1' || download === 'true';
     return new StreamableFile(buffer, {
       type: 'application/pdf',
