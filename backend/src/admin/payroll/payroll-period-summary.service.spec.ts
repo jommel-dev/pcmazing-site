@@ -158,4 +158,66 @@ describe('PayrollService period summary', () => {
       }),
     );
   });
+
+  it('does not flag a paid loan when the stored loan deduction still matches', async () => {
+    const query = jest.fn(async (sql: string) => {
+      if (sql.includes('FROM pcmazing_generated_payslips')) {
+        return {
+          rows: [
+            {
+              id: '99',
+              user_id: '4',
+              user_source: 'pcmazing_admin_users',
+              estimated_pay: '10200.00',
+              remarks: null,
+              stored_loan_total: '300.00',
+              has_ledger: true,
+            },
+          ],
+        };
+      }
+      throw new Error(`Unexpected query: ${sql}`);
+    });
+    const service = new PayrollService({
+      query,
+    } as unknown as DatabaseService);
+    jest.spyOn(service, 'ensureReady').mockResolvedValue();
+    jest.spyOn(service, 'getSettings').mockResolvedValue(settings);
+    Object.assign(service as unknown as Record<string, unknown>, {
+      computeRunRows: jest.fn().mockResolvedValue({
+        rows: [row],
+        totals: { employees: 1, estimatedPay: 10_500 },
+        dayOffsByUser: new Map(),
+      }),
+      findOverlappingPayslips: jest.fn().mockResolvedValue([]),
+      assembleLedgerForPeriod: jest.fn().mockResolvedValue({
+        lines: [],
+        net: {
+          commissionsTotal: 0,
+          lateTotal: 0,
+          loanTotal: 0,
+          manualTotal: 0,
+          grossPay: 10_500,
+          totalDeductions: 0,
+          netPay: 10_500,
+        },
+        loanDeductions: [],
+      }),
+    });
+
+    const result = await service.getPeriodSummary(
+      '2026-10-01',
+      '2026-10-15',
+      'semi_monthly',
+    );
+
+    expect(result.items[0]).toEqual(
+      expect.objectContaining({
+        loanTotal: 300,
+        totalDeductions: 300,
+        netPay: 10_200,
+        regenerationNeeded: false,
+      }),
+    );
+  });
 });

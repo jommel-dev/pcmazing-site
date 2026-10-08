@@ -2037,9 +2037,22 @@ export class PayrollService {
         user_source: string;
         estimated_pay: string;
         remarks: string | null;
+        stored_loan_total: string;
+        has_ledger: boolean;
       }>(
         `SELECT p.id, p.user_id, p.user_source,
-                p.estimated_pay::text AS estimated_pay, p.remarks
+                p.estimated_pay::text AS estimated_pay, p.remarks,
+                COALESCE((
+                  SELECT SUM(l.amount)
+                  FROM pcmazing_payroll_payslip_ledger l
+                  WHERE l.payslip_id = p.id
+                    AND l.line_type = 'loan_deduction'
+                ), 0)::text AS stored_loan_total,
+                EXISTS (
+                  SELECT 1
+                  FROM pcmazing_payroll_payslip_ledger l
+                  WHERE l.payslip_id = p.id
+                ) AS has_ledger
          FROM pcmazing_generated_payslips p
          INNER JOIN pcmazing_payroll_runs r ON r.id = p.run_id
          WHERE r.date_from = $1::date AND r.date_to = $2::date`,
@@ -2069,6 +2082,8 @@ export class PayrollService {
         user_source: string;
         estimated_pay: string;
         remarks: string | null;
+        stored_loan_total: string;
+        has_ledger: boolean;
       }
     >(
       generatedPayslips.rows.map((payslip) => [
@@ -2081,19 +2096,37 @@ export class PayrollService {
       const payslip = payslipByEmployee.get(
         `${item.userSource}:${item.userId}`,
       );
+      const summaryNet =
+        payslip?.has_ledger === true
+          ? computePayslipNet({
+              basePay: item.basePay,
+              overtimePay: item.overtimePay,
+              lines: [
+                ...assembled.lines.filter(
+                  (line) => line.lineType !== 'loan_deduction',
+                ),
+                {
+                  lineType: 'loan_deduction',
+                  label: 'Stored payslip loan deductions',
+                  amount: Number(payslip.stored_loan_total),
+                  source: 'auto',
+                },
+              ],
+            })
+          : assembled.net;
       return {
         ...item,
-        commissionsTotal: assembled.net.commissionsTotal,
-        grossPay: assembled.net.grossPay,
-        totalDeductions: assembled.net.totalDeductions,
-        netPay: assembled.net.netPay,
+        commissionsTotal: summaryNet.commissionsTotal,
+        grossPay: summaryNet.grossPay,
+        totalDeductions: summaryNet.totalDeductions,
+        netPay: summaryNet.netPay,
+        loanTotal: summaryNet.loanTotal,
         payslipId: payslip == null ? null : Number(payslip.id),
-        deductionsExceedGross:
-          assembled.net.totalDeductions > assembled.net.grossPay,
+        deductionsExceedGross: summaryNet.totalDeductions > summaryNet.grossPay,
         regenerationNeeded:
           payslip != null &&
           Math.round(Number(payslip.estimated_pay) * 100) !==
-            Math.round(assembled.net.netPay * 100),
+            Math.round(summaryNet.netPay * 100),
         remarks: payslip?.remarks ?? null,
       };
     });
