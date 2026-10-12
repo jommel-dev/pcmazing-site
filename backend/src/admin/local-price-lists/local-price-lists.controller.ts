@@ -41,6 +41,15 @@ export class LocalPriceListsController {
     }));
   }
 
+  @Post('sync/pc-concept')
+  syncPcConcept() {
+    return this.localPriceListsService.syncPcConceptCatalog().then((data) => ({
+      success: true,
+      message: `PC Concept sync complete: ${data.imported} item(s).`,
+      data,
+    }));
+  }
+
   @Patch(':id')
   updateStore(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateLocalPriceStoreDto) {
     return this.localPriceListsService.updateStore(id, dto).then((data) => ({
