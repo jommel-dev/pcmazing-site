@@ -21,6 +21,7 @@ export class LocalPriceListsPageComponent implements OnInit {
   readonly savingStore = signal(false);
   readonly savingItem = signal(false);
   readonly importLoading = signal(false);
+  readonly syncingPcConcept = signal(false);
   readonly error = signal('');
   readonly success = signal('');
   readonly importMessage = signal('');
@@ -51,6 +52,10 @@ export class LocalPriceListsPageComponent implements OnInit {
     }
     return this.stores().find((store) => store.id === id) ?? null;
   });
+
+  readonly pcConceptStore = computed(
+    () => this.stores().find((store) => store.name === 'PC Concept') ?? null,
+  );
 
   readonly isEditingStore = computed(() => this.editingStoreId() !== null);
   readonly isEditingItem = computed(() => this.editingItemId() !== null);
@@ -275,6 +280,43 @@ export class LocalPriceListsPageComponent implements OnInit {
     } catch (err: unknown) {
       this.error.set(this.readError(err, 'Unable to delete item.'));
     }
+  }
+
+  async refreshPcConcept(): Promise<void> {
+    this.error.set('');
+    this.success.set('');
+    this.syncingPcConcept.set(true);
+
+    try {
+      const response = await firstValueFrom(this.adminApi.syncPcConceptLocalPrices());
+      const imported = response.data?.imported ?? 0;
+      this.success.set(
+        response.message || `PC Concept sync complete: ${imported} item(s).`,
+      );
+      await this.loadStores(response.data?.storeId ?? null);
+    } catch (err: unknown) {
+      this.error.set(this.readError(err, 'PC Concept sync failed.'));
+    } finally {
+      this.syncingPcConcept.set(false);
+    }
+  }
+
+  formatManilaDateTime(value: string | null | undefined): string {
+    if (!value) {
+      return 'Never';
+    }
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+    return date.toLocaleString('en-PH', {
+      timeZone: 'Asia/Manila',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   }
 
   async downloadImportTemplate(): Promise<void> {
