@@ -859,6 +859,7 @@ export interface EmployeePayslipDetail {
     loanTotal: number;
     manualTotal: number;
   };
+  qrImageUrl?: string | null;
 }
 
 export interface EmployeeWorkspaceDashboard {

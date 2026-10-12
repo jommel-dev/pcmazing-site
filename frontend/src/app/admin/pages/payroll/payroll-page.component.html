@@ -1318,6 +1318,13 @@
                 </div>
               }
             </div>
+
+            @if (resolvePayslipQrUrl(detail.qrImageUrl); as qrUrl) {
+              <div class="mt-5 flex flex-col items-center rounded-2xl border border-slate-200 bg-white px-4 py-4 dark:border-slate-700 dark:bg-slate-950/40">
+                <p class="text-xs font-bold uppercase tracking-wide text-slate-500">Scan to pay</p>
+                <img [src]="qrUrl" alt="Payment QR code" class="mt-3 size-40 rounded-xl border border-slate-200 object-contain dark:border-slate-700" />
+              </div>
+            }
           } @else {
             <p class="py-10 text-center text-sm text-slate-500">No payslips to preview for this cutoff.</p>
           }

@@ -1120,6 +1120,10 @@ export class PayrollPageComponent implements OnInit {
     return `${value.toFixed(2)} h`;
   }
 
+  resolvePayslipQrUrl(url: string | null | undefined): string | null {
+    return this.adminApi.resolveProfileImageUrl(url);
+  }
+
   selfieUrl(path: string | null | undefined): string | null {
     return this.adminApi.resolveAttendanceSelfieUrl(path);
   }
