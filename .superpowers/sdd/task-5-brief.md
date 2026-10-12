@@ -1,21 +1,21 @@
-### Task 5: Loans + period overrides API
+### Task 5: Verification pass
 
-**Files:**
-- DTOs + `payroll.service` methods + controller routes
-- Frontend API methods (UI in Task 8)
+- [ ] **Step 1: Backend tests**
 
-**Routes:**
-- `GET /admin/payroll/loans?userId&userSource`
-- `POST /admin/payroll/loans` create (`principal`, `termStyle`, counts/amounts, notes)
-- `PATCH /admin/payroll/loans/:id` (cancel, notes)
-- `PUT /admin/payroll/loans/:id/period-override` `{ dateFrom, dateTo, action: 'skip'|'custom', customAmount? }`
-- `DELETE /admin/payroll/loans/:id/period-override?dateFrom&dateTo`
+`cd backend && npx jest src/admin/payroll/payslip-pdf.util.spec.ts --no-cache`
 
-On create: `balance = principal`. Status `paid` when balance hits 0 after a generate deduction.
+Expected: PASS
 
-- [ ] **Step 1: Implement**
+- [ ] **Step 2: Frontend build**
 
-- [ ] **Step 2: Commit** `feat(payroll): employee loans and period overrides API`
+`cd frontend && npx ng build --configuration=development`
 
----
+Expected: success
 
+- [ ] **Step 3: Spec checklist**
+
+Walk through Verification section in `docs/superpowers/specs/2026-10-12-payslip-payment-qr-design.md`.
+
+- [ ] **Step 4: Final commit only if docs/plan checkboxes need updating**
+
+Optional: mark plan tasks complete in the plan file and commit `docs: mark payslip QR plan complete` if the team tracks that way.

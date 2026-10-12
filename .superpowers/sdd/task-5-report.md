@@ -63,7 +63,7 @@ Plan file `docs/superpowers/plans/2026-10-12-payslip-payment-qr.md` checkboxes m
 
 ## Commits
 
-See git log after docs commit (if applied in this task).
+- `3211217` — `docs: mark payslip QR plan complete` (plan checkboxes; report is gitignored under `.superpowers`)
 
 ## Recommendations for manual follow-up
 
@@ -75,3 +75,56 @@ See git log after docs commit (if applied in this task).
 
 - No automated E2E or service-level tests for `payslipQrImageUrl` payout gating.
 - Checklist items 1, 2, and 4 need manual UI/DB verification before calling the feature fully signed off in production.
+
+## Task 5 review fix (Important)
+
+**Finding:** Task 3 Step 3 and Task 4 Step 3 (Manual check) in `docs/superpowers/plans/2026-10-12-payslip-payment-qr.md` were marked complete without a browser/manual UI check.
+
+**Fix:** Reverted those two Manual check steps to unchecked `[ ]`. All other implementation/verification checkboxes in the plan remain `[x]`.
+
+**Test note:** N/A (docs-only change).
+
+## Whole-Branch Review Fix Pass (Important 1 & 2)
+
+**Date:** 2026-10-12  
+**Branch:** RonDev  
+**Commit:** `05a5203` (`fix(payroll): harden payslip QR PDF for format and page breaks`)  
+
+### Item 1: WebP/GIF orphan "Scan to pay" label
+- **Issue:** PDFKit only supports JPEG and PNG. Previously, `writeLine('Scan to pay', ...)` ran before `doc.image(diskPath, ...)`. When an unsupported image (such as WebP or GIF) was passed, `doc.image()` threw an exception caught by the enclosing try-catch, leaving an orphan "Scan to pay" label with no image below it.
+- **Fix:** Validated and loaded the image before writing any text using `(doc as unknown as { openImage: (src: string) => unknown }).openImage(diskPath)`. If the file is not a supported JPEG/PNG or is corrupt, `openImage` throws synchronously before any text or spacing is added, silently skipping the entire QR block without failing PDF generation.
+- **TDD / Tests:**
+  - Added fixture `MINIMAL_GIF` and unit test `omits Scan to pay when image format is unsupported (e.g. GIF)`.
+  - Confirmed test failed initially with orphan label `"Scan to pay"` present in PDF stream.
+  - Confirmed test passes after fix.
+  - Also added missing-file unit test `omits Scan to pay when qrImageUrl points to a missing file`.
+
+### Item 2: QR block page-break / footer overflow
+- **Issue:** The QR block requires ~150pt of vertical space (label, margins, and 120pt image). If the payslip summary ended near `contentBottom()`, the QR block risked overflowing into the footer disclaimer area or clipping.
+- **Fix:** Added page break guard before rendering the QR block:
+  ```ts
+  if (doc.y + 150 > contentBottom()) {
+    doc.addPage();
+    resetCursor(doc.page.margins.top);
+  }
+  ```
+- **Tests:** Added focused unit test `breaks to a new page when QR block would overflow content bottom` asserting that a payslip with 18 attendance days and 6 breakdown lines remains 1 page (`Page 1 of 1`) without QR, but breaks cleanly onto page 2 (`Page 2 of 2`) when the QR block is included.
+
+### Test Results
+Command: `cd backend && npx jest src/admin/payroll/payslip-pdf.util.spec.ts --no-cache`
+```
+Test Suites: 1 passed, 1 total
+Tests:       8 passed, 8 total
+Snapshots:   0 total
+Time:        1.967 s
+```
+All payroll unit tests (`src/admin/payroll/`):
+```
+Test Suites: 13 passed, 13 total
+Tests:       66 passed, 66 total
+Snapshots:   0 total
+```
+Code formatting and linting:
+- Prettier: Clean
+- ESLint: Clean (0 errors, 0 warnings)
+

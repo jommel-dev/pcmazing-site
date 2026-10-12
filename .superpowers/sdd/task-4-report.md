@@ -1,38 +1,52 @@
-# Task 4 Report: Commission types + entries API
+# Task 4 Report: Employee dashboard payslip detail QR
 
 ## Status
 
-Completed the commission type and employee-period commission entry APIs.
+**DONE**
 
-## Implementation
+## Summary
 
-- Added validated DTOs for commission type writes, commission entry scope queries, and entry creation.
-- Added payroll service methods to list/create/update commission types and list/create/delete commission entries.
-- Enforced active type selection, custom labels for “Other”, valid employee sources, valid periods, and non-negative amounts.
-- Added guarded controller routes with `payroll.view` for reads and `payroll.edit` for writes.
-- Added typed `AdminApiService` models and client methods for all routes.
-- Added service tests for row mapping, custom-label validation, inactive/missing types, and missing entry deletion.
+Mirrored the Task 3 **Scan to pay** block on the employee dashboard payslip detail modal, using `detail.qrImageUrl` from `getEmployeePayslipDetail` and resolving URLs via `adminApi.resolveProfileImageUrl`.
 
-## Routes
+## Implementation Details
 
-- `GET|POST /admin/payroll/commission-types`
-- `PATCH /admin/payroll/commission-types/:id`
-- `GET|POST /admin/payroll/commission-entries?userId&userSource&dateFrom&dateTo`
-- `DELETE /admin/payroll/commission-entries/:id`
+### Markup (`sales-employee-dashboard.component.html`)
+- Inserted after the Notes / remarks block (~617–622), before the system-generated disclaimer paragraph.
+- Conditional `@if (resolvePayslipQrUrl(detail.qrImageUrl); as qrUrl)` — same classes and copy as payroll Preview.
 
-## Verification
+### Component helper (`sales-employee-dashboard.component.ts`)
+- `resolvePayslipQrUrl(url)` delegates to `this.adminApi.resolveProfileImageUrl(url)` (same as payroll page).
 
-- Backend tests: 15 suites passed, 76 tests passed.
-- Nest backend build: passed.
-- Angular development build: passed.
-- Backend and frontend TypeScript checks: passed.
-- IDE diagnostics on changed source files: no linter errors.
+## Verification Evidence
+
+### Frontend build
+Command:
+```powershell
+cd frontend; npx ng build --configuration=development
+```
+Result: **PASS** (exit code 0).
+
+### Manual browser check
+Not run — dev servers were not started. Expected: online employee with QR → block at bottom of detail modal; PDF download still includes QR (Tasks 1–2).
+
+## Files Changed
+
+| File | Change |
+|------|--------|
+| `frontend/src/app/admin/pages/dashboard/sales-employee-dashboard.component.html` | Scan to pay QR block in payslip detail modal. |
+| `frontend/src/app/admin/pages/dashboard/sales-employee-dashboard.component.ts` | `resolvePayslipQrUrl` helper. |
 
 ## Commit
 
-- `feat(payroll): commission types and entries API`
+- **SHA:** `8a37a66`
+- **Subject:** `feat(admin): show Scan to pay QR on employee payslip detail`
+
+## Self-Review
+
+- Markup matches task brief / Task 3 verbatim.
+- No payroll-page or backend changes.
+- Helper placement follows payroll-page pattern next to formatting helpers.
 
 ## Concerns
 
-- The API is complete; payroll admin UI remains intentionally deferred to Task 8.
-- Existing unrelated `.superpowers/sdd` working-tree changes were left untouched.
+- Manual UI verification deferred until dev servers are available.
