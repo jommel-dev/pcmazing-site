@@ -42,11 +42,15 @@ import {
 } from './dto/payroll-settings.dto';
 import { saveAttendanceSelfieFile } from './attendance-selfie.util';
 import {
+  assertBypassAllowed,
   lunchMinutes,
+  nextBypassActions,
   overbreakMinutes,
   punchOutRequiresLunchConfirm,
+  type BypassAction,
   type PunchOutIntent,
 } from './attendance-lunch.util';
+import { BypassAttendanceDto } from './dto/bypass-attendance.dto';
 import {
   deletePayrollQrImageFile,
   savePayrollQrImageFile,
@@ -102,12 +106,24 @@ export interface AttendanceRecord {
   workDate: string;
   timeIn: string | null;
   timeOut: string | null;
+  lunchOut: string | null;
+  lunchIn: string | null;
   hoursWorked: number | null;
   status: 'timed_in' | 'completed' | 'incomplete';
   employeeCode: string | null;
   department: string | null;
   timeInSelfieUrl: string | null;
   timeOutSelfieUrl: string | null;
+  lunchOutSelfieUrl: string | null;
+  lunchInSelfieUrl: string | null;
+  lunchMinutes: number | null;
+  overbreakMinutes: number;
+  isOverbreak: boolean;
+  timeInBypassedByAdminId: number | null;
+  lunchOutBypassedByAdminId: number | null;
+  lunchInBypassedByAdminId: number | null;
+  timeOutBypassedByAdminId: number | null;
+  nextBypassActions: BypassAction[];
   overtimeHours: number;
   overtimeStatus: OvertimeStatus;
   adjustmentStatus: AdjustmentStatus;
@@ -1561,8 +1577,16 @@ export class PayrollService {
       work_date: string;
       time_in: string | null;
       time_out: string | null;
+      lunch_out: string | null;
+      lunch_in: string | null;
       time_in_selfie_url: string | null;
       time_out_selfie_url: string | null;
+      lunch_out_selfie_url: string | null;
+      lunch_in_selfie_url: string | null;
+      time_in_bypassed_by_admin_id: string | number | null;
+      lunch_out_bypassed_by_admin_id: string | number | null;
+      lunch_in_bypassed_by_admin_id: string | number | null;
+      time_out_bypassed_by_admin_id: string | number | null;
       overtime_hours: string | number | null;
       overtime_status: string | null;
       adjustment_status: string | null;
@@ -1576,7 +1600,11 @@ export class PayrollService {
     }>(
       `SELECT a.id, a.user_id, a.user_source, a.username, a.work_date::text AS work_date,
               a.time_in::text AS time_in, a.time_out::text AS time_out,
+              a.lunch_out::text AS lunch_out, a.lunch_in::text AS lunch_in,
               a.time_in_selfie_url, a.time_out_selfie_url,
+              a.lunch_out_selfie_url, a.lunch_in_selfie_url,
+              a.time_in_bypassed_by_admin_id, a.lunch_out_bypassed_by_admin_id,
+              a.lunch_in_bypassed_by_admin_id, a.time_out_bypassed_by_admin_id,
               a.overtime_hours, a.overtime_status, a.adjustment_status,
               a.work_location_type, a.location_lat, a.location_lng, a.location_label,
               a.location_mismatch,
@@ -1597,36 +1625,7 @@ export class PayrollService {
         row.user_source,
         row.username,
       );
-      items.push({
-        id: row.id,
-        userId: row.user_id,
-        userSource: row.user_source,
-        username: row.username,
-        fullName,
-        workDate: row.work_date,
-        timeIn: row.time_in,
-        timeOut: row.time_out,
-        hoursWorked: this.computeHours(row.time_in, row.time_out),
-        status: !row.time_in
-          ? 'incomplete'
-          : row.time_out
-            ? 'completed'
-            : 'timed_in',
-        employeeCode: row.employee_code,
-        department: row.department,
-        timeInSelfieUrl: row.time_in_selfie_url,
-        timeOutSelfieUrl: row.time_out_selfie_url,
-        overtimeHours: Number(row.overtime_hours ?? 0) || 0,
-        overtimeStatus: this.normalizeOvertimeStatus(row.overtime_status),
-        adjustmentStatus: this.normalizeOvertimeStatus(row.adjustment_status),
-        workLocationType: this.normalizeStoredLocationType(
-          row.work_location_type,
-        ),
-        locationLat: row.location_lat == null ? null : Number(row.location_lat),
-        locationLng: row.location_lng == null ? null : Number(row.location_lng),
-        locationLabel: row.location_label,
-        locationMismatch: Boolean(row.location_mismatch),
-      });
+      items.push(this.mapAttendanceRecord(row, fullName));
     }
 
     return {
@@ -1639,6 +1638,322 @@ export class PayrollService {
       },
       workDate: date,
     };
+  }
+
+  async bypassAttendancePunch(
+    body: BypassAttendanceDto,
+    adminId: number,
+  ): Promise<AttendanceRecord> {
+    await this.ensureReady();
+
+    const userId = Number(body.userId);
+    const userSource = body.userSource;
+    const workDate = (body.workDate ?? '').trim();
+    const action = body.action;
+    if (
+      !Number.isFinite(userId) ||
+      (userSource !== 'tblusers' && userSource !== 'pcmazing_admin_users') ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(workDate)
+    ) {
+      throw new BadRequestException('Invalid bypass request.');
+    }
+    if (
+      action !== 'time_in' &&
+      action !== 'lunch_out' &&
+      action !== 'lunch_in' &&
+      action !== 'time_out'
+    ) {
+      throw new BadRequestException('Invalid bypass action.');
+    }
+
+    const adminPhoto = await this.databaseService.query<{
+      profile_image_url: string | null;
+    }>(
+      `SELECT profile_image_url
+       FROM pcmazing_admin_users
+       WHERE id = $1
+       LIMIT 1`,
+      [adminId],
+    );
+    const profileImageUrl = adminPhoto.rows[0]?.profile_image_url?.trim() || null;
+    if (!profileImageUrl) {
+      throw new BadRequestException(
+        'Set your profile photo before bypassing punches.',
+      );
+    }
+
+    const identity = await this.resolveUserIdentity(userId, userSource);
+    if (!identity) {
+      throw new NotFoundException('Employee not found.');
+    }
+    const profile = await this.getProfile(userId, userSource);
+    if (!profile.payrollEnabled) {
+      throw new BadRequestException('Employee is not enabled for payroll.');
+    }
+
+    const at = body.at?.trim()
+      ? new Date(body.at.trim())
+      : new Date();
+    if (!Number.isFinite(at.getTime())) {
+      throw new BadRequestException('Invalid bypass time.');
+    }
+
+    let row = await this.loadAttendanceDayRow(userId, userSource, workDate);
+    if (!row) {
+      if (action !== 'time_in') {
+        throw new BadRequestException(
+          'No attendance row for this day. Bypass time in first.',
+        );
+      }
+      await this.databaseService.query(
+        `INSERT INTO pcmazing_attendance (
+           user_id, user_source, username, work_date
+         ) VALUES ($1, $2, $3, $4::date)
+         ON CONFLICT (user_id, user_source, work_date) DO NOTHING`,
+        [userId, userSource, identity.username, workDate],
+      );
+      row = await this.loadAttendanceDayRow(userId, userSource, workDate);
+      if (!row) {
+        throw new BadRequestException('Unable to create attendance row.');
+      }
+    }
+
+    try {
+      assertBypassAllowed(
+        action,
+        {
+          timeIn: row.time_in,
+          lunchOut: row.lunch_out,
+          lunchIn: row.lunch_in,
+          timeOut: row.time_out,
+          workDate,
+        },
+        at,
+      );
+    } catch (err) {
+      throw new BadRequestException(
+        err instanceof Error ? err.message : 'Bypass not allowed.',
+      );
+    }
+
+    const stamp = at.toISOString();
+    const columnByAction: Record<
+      BypassAction,
+      { timeCol: string; selfieCol: string; adminCol: string }
+    > = {
+      time_in: {
+        timeCol: 'time_in',
+        selfieCol: 'time_in_selfie_url',
+        adminCol: 'time_in_bypassed_by_admin_id',
+      },
+      lunch_out: {
+        timeCol: 'lunch_out',
+        selfieCol: 'lunch_out_selfie_url',
+        adminCol: 'lunch_out_bypassed_by_admin_id',
+      },
+      lunch_in: {
+        timeCol: 'lunch_in',
+        selfieCol: 'lunch_in_selfie_url',
+        adminCol: 'lunch_in_bypassed_by_admin_id',
+      },
+      time_out: {
+        timeCol: 'time_out',
+        selfieCol: 'time_out_selfie_url',
+        adminCol: 'time_out_bypassed_by_admin_id',
+      },
+    };
+    const cols = columnByAction[action];
+    const updated = await this.databaseService.query<{
+      id: number;
+      time_in: string | null;
+      time_out: string | null;
+    }>(
+      `UPDATE pcmazing_attendance
+       SET ${cols.timeCol} = $2::timestamptz,
+           ${cols.selfieCol} = $3,
+           ${cols.adminCol} = $4,
+           username = $5,
+           updated_at = NOW()
+       WHERE id = $1
+         AND ${cols.timeCol} IS NULL
+       RETURNING id, time_in::text AS time_in, time_out::text AS time_out`,
+      [row.id, stamp, profileImageUrl, adminId, identity.username],
+    );
+
+    const punched = updated.rows[0];
+    if (!punched) {
+      throw new BadRequestException('Unable to record bypass punch.');
+    }
+
+    if (action === 'time_out') {
+      await this.syncOvertimeAfterTimeOut(
+        punched.id,
+        punched.time_in,
+        punched.time_out,
+      );
+      await this.clearPendingAdjustment(punched.id);
+    }
+
+    const refreshed = await this.loadAttendanceDayRow(userId, userSource, workDate);
+    if (!refreshed) {
+      throw new BadRequestException('Bypass saved but row could not be reloaded.');
+    }
+    const fullName = await this.resolveFullName(
+      userId,
+      userSource,
+      identity.username,
+    );
+    return this.mapAttendanceRecord(refreshed, fullName);
+  }
+
+  private mapAttendanceRecord(
+    row: {
+      id: number;
+      user_id: number;
+      user_source: 'pcmazing_admin_users' | 'tblusers';
+      username: string;
+      work_date: string;
+      time_in: string | null;
+      time_out: string | null;
+      lunch_out: string | null;
+      lunch_in: string | null;
+      time_in_selfie_url: string | null;
+      time_out_selfie_url: string | null;
+      lunch_out_selfie_url: string | null;
+      lunch_in_selfie_url: string | null;
+      time_in_bypassed_by_admin_id: string | number | null;
+      lunch_out_bypassed_by_admin_id: string | number | null;
+      lunch_in_bypassed_by_admin_id: string | number | null;
+      time_out_bypassed_by_admin_id: string | number | null;
+      overtime_hours: string | number | null;
+      overtime_status: string | null;
+      adjustment_status: string | null;
+      employee_code: string | null;
+      department: string | null;
+      work_location_type: string | null;
+      location_lat: string | number | null;
+      location_lng: string | number | null;
+      location_label: string | null;
+      location_mismatch: boolean | null;
+    },
+    fullName: string,
+  ): AttendanceRecord {
+    const lunchMins = lunchMinutes(row.lunch_out, row.lunch_in);
+    const overMins = overbreakMinutes(lunchMins);
+    const punchRow = {
+      timeIn: row.time_in,
+      lunchOut: row.lunch_out,
+      lunchIn: row.lunch_in,
+      timeOut: row.time_out,
+      workDate: row.work_date,
+    };
+    return {
+      id: row.id,
+      userId: row.user_id,
+      userSource: row.user_source,
+      username: row.username,
+      fullName,
+      workDate: row.work_date,
+      timeIn: row.time_in,
+      timeOut: row.time_out,
+      lunchOut: row.lunch_out,
+      lunchIn: row.lunch_in,
+      hoursWorked: this.computeHours(row.time_in, row.time_out),
+      status: !row.time_in
+        ? 'incomplete'
+        : row.time_out
+          ? 'completed'
+          : 'timed_in',
+      employeeCode: row.employee_code,
+      department: row.department,
+      timeInSelfieUrl: row.time_in_selfie_url,
+      timeOutSelfieUrl: row.time_out_selfie_url,
+      lunchOutSelfieUrl: row.lunch_out_selfie_url,
+      lunchInSelfieUrl: row.lunch_in_selfie_url,
+      lunchMinutes: lunchMins,
+      overbreakMinutes: overMins,
+      isOverbreak: overMins > 0,
+      timeInBypassedByAdminId:
+        row.time_in_bypassed_by_admin_id == null
+          ? null
+          : Number(row.time_in_bypassed_by_admin_id),
+      lunchOutBypassedByAdminId:
+        row.lunch_out_bypassed_by_admin_id == null
+          ? null
+          : Number(row.lunch_out_bypassed_by_admin_id),
+      lunchInBypassedByAdminId:
+        row.lunch_in_bypassed_by_admin_id == null
+          ? null
+          : Number(row.lunch_in_bypassed_by_admin_id),
+      timeOutBypassedByAdminId:
+        row.time_out_bypassed_by_admin_id == null
+          ? null
+          : Number(row.time_out_bypassed_by_admin_id),
+      nextBypassActions: nextBypassActions(punchRow),
+      overtimeHours: Number(row.overtime_hours ?? 0) || 0,
+      overtimeStatus: this.normalizeOvertimeStatus(row.overtime_status),
+      adjustmentStatus: this.normalizeOvertimeStatus(row.adjustment_status),
+      workLocationType: this.normalizeStoredLocationType(row.work_location_type),
+      locationLat: row.location_lat == null ? null : Number(row.location_lat),
+      locationLng: row.location_lng == null ? null : Number(row.location_lng),
+      locationLabel: row.location_label,
+      locationMismatch: Boolean(row.location_mismatch),
+    };
+  }
+
+  private async loadAttendanceDayRow(
+    userId: number,
+    userSource: 'pcmazing_admin_users' | 'tblusers',
+    workDate: string,
+  ) {
+    const result = await this.databaseService.query<{
+      id: number;
+      user_id: number;
+      user_source: 'pcmazing_admin_users' | 'tblusers';
+      username: string;
+      work_date: string;
+      time_in: string | null;
+      time_out: string | null;
+      lunch_out: string | null;
+      lunch_in: string | null;
+      time_in_selfie_url: string | null;
+      time_out_selfie_url: string | null;
+      lunch_out_selfie_url: string | null;
+      lunch_in_selfie_url: string | null;
+      time_in_bypassed_by_admin_id: string | number | null;
+      lunch_out_bypassed_by_admin_id: string | number | null;
+      lunch_in_bypassed_by_admin_id: string | number | null;
+      time_out_bypassed_by_admin_id: string | number | null;
+      overtime_hours: string | number | null;
+      overtime_status: string | null;
+      adjustment_status: string | null;
+      employee_code: string | null;
+      department: string | null;
+      work_location_type: string | null;
+      location_lat: string | number | null;
+      location_lng: string | number | null;
+      location_label: string | null;
+      location_mismatch: boolean | null;
+    }>(
+      `SELECT a.id, a.user_id, a.user_source, a.username, a.work_date::text AS work_date,
+              a.time_in::text AS time_in, a.time_out::text AS time_out,
+              a.lunch_out::text AS lunch_out, a.lunch_in::text AS lunch_in,
+              a.time_in_selfie_url, a.time_out_selfie_url,
+              a.lunch_out_selfie_url, a.lunch_in_selfie_url,
+              a.time_in_bypassed_by_admin_id, a.lunch_out_bypassed_by_admin_id,
+              a.lunch_in_bypassed_by_admin_id, a.time_out_bypassed_by_admin_id,
+              a.overtime_hours, a.overtime_status, a.adjustment_status,
+              a.work_location_type, a.location_lat, a.location_lng, a.location_label,
+              a.location_mismatch,
+              p.employee_code, p.department
+       FROM pcmazing_attendance a
+       LEFT JOIN pcmazing_user_payroll p
+         ON p.user_id = a.user_id AND p.user_source = a.user_source
+       WHERE a.user_id = $1 AND a.user_source = $2 AND a.work_date = $3::date
+       LIMIT 1`,
+      [userId, userSource, workDate],
+    );
+    return result.rows[0] ?? null;
   }
 
   async listOvertime(statusRaw?: string, pageRaw?: string, limitRaw?: string) {
