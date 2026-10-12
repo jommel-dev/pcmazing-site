@@ -262,7 +262,9 @@ export async function buildPayslipPdfBuffer(
       writeLine(`Loan deductions: ${money(payload.breakdown.loanTotal)}`);
       writeLine(`Manual deductions: ${money(payload.breakdown.manualTotal)}`);
       writeLine(`Gross pay: ${money(payload.breakdown.grossPay)}`);
-      writeLine(`Total deductions: ${money(payload.breakdown.totalDeductions)}`);
+      writeLine(
+        `Total deductions: ${money(payload.breakdown.totalDeductions)}`,
+      );
     }
     if (payload.lines?.length) {
       doc.moveDown(0.35);
@@ -285,14 +287,19 @@ export async function buildPayslipPdfBuffer(
     }
     doc.moveDown(0.25);
     doc.fontSize(13).fillColor('#0047FF');
-    writeLine(
-      `Net pay: ${money(payload.breakdown?.netPay ?? t.estimatedPay)}`,
-    );
+    writeLine(`Net pay: ${money(payload.breakdown?.netPay ?? t.estimatedPay)}`);
 
     if (payload.qrImageUrl?.trim()) {
       try {
         const diskPath = resolveUploadDiskPath(payload.qrImageUrl.trim());
         if (existsSync(diskPath)) {
+          (doc as unknown as { openImage: (src: string) => unknown }).openImage(
+            diskPath,
+          );
+          if (doc.y + 150 > contentBottom()) {
+            doc.addPage();
+            resetCursor(doc.page.margins.top);
+          }
           doc.moveDown(0.6);
           doc.fontSize(10).fillColor('#0f172a');
           writeLine('Scan to pay', { align: 'center' });
