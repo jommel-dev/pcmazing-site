@@ -72,6 +72,7 @@ export class SalesEmployeeDashboardComponent implements OnInit, OnDestroy {
   readonly payslipDetailLoading = signal(false);
   readonly downloadingPayslip = signal(false);
   readonly includePayslipRemarks = signal(false);
+  readonly payslipImageModal = signal<{ url: string; label: string } | null>(null);
 
   readonly calendarDays = computed(() => this.buildCalendar(this.month(), this.dashboard()));
 
@@ -522,6 +523,14 @@ export class SalesEmployeeDashboardComponent implements OnInit, OnDestroy {
 
   resolvePayslipQrUrl(url: string | null | undefined): string | null {
     return this.adminApi.resolveProfileImageUrl(url);
+  }
+
+  openPayslipImageModal(url: string, label: string): void {
+    this.payslipImageModal.set({ url, label });
+  }
+
+  closePayslipImageModal(): void {
+    this.payslipImageModal.set(null);
   }
 
   formatActivityTime(value: string): string {

@@ -3,6 +3,7 @@ import {
   forwardRef,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
@@ -13,13 +14,22 @@ import {
   LOCAL_PRICE_LIST_TEMPLATE_CSV,
   parseLocalPriceListCsv,
 } from './local-price-list-csv.util';
+import {
+  extractPccDataJson,
+  mapPcConceptProducts,
+} from './pc-concept-catalog.util';
 import { CreateLocalPriceItemDto, UpdateLocalPriceItemDto } from './dto/local-price-item.dto';
 import { CreateLocalPriceStoreDto, UpdateLocalPriceStoreDto } from './dto/local-price-store.dto';
+
+const PC_CONCEPT_STORE_NAME = 'PC Concept';
+const DEFAULT_PC_CONCEPT_PRODUCTS_URL =
+  'https://pcconcept.com.ph/assets/js/products-data.js';
 
 export type LocalPriceStore = {
   id: number;
   name: string;
   active: boolean;
+  lastSyncedAt: string | null;
   createdAt: string | null;
   updatedAt: string | null;
 };
@@ -47,6 +57,8 @@ export type LocalPriceSearchHit = {
 
 @Injectable()
 export class LocalPriceListsService {
+  private readonly logger = new Logger(LocalPriceListsService.name);
+
   constructor(
     private readonly databaseService: DatabaseService,
     @Inject(forwardRef(() => PartsPriceSearchService))
@@ -60,7 +72,7 @@ export class LocalPriceListsService {
     ]);
     if (!storesOk || !itemsOk) {
       throw new ServiceUnavailableException(
-        'Local price list tables are not available. Apply migration 072_local_price_lists_and_quotation_topup.sql.',
+        'Local price list tables are not available. Apply migration 072_local_price_lists_and_quotation_topup.sql (and 078 for last_synced_at).',
       );
     }
   }
@@ -71,10 +83,11 @@ export class LocalPriceListsService {
       id: number | string;
       name: string;
       active: boolean;
+      last_synced_at: string | null;
       created_at: string | null;
       updated_at: string | null;
     }>(
-      `SELECT id, name, active, created_at::text, updated_at::text
+      `SELECT id, name, active, last_synced_at::text, created_at::text, updated_at::text
        FROM pcmazing_local_price_stores
        ORDER BY name ASC, id ASC`,
     );
@@ -278,6 +291,102 @@ export class LocalPriceListsService {
     return { imported: rows.length };
   }
 
+  async syncPcConceptCatalog(): Promise<{
+    storeId: number;
+    imported: number;
+    lastSyncedAt: string;
+  }> {
+    await this.ensureTables();
+
+    const url =
+      process.env.PC_CONCEPT_PRODUCTS_URL?.trim() || DEFAULT_PC_CONCEPT_PRODUCTS_URL;
+
+    let jsText: string;
+    try {
+      const response = await fetch(url, {
+        headers: { Accept: 'application/javascript,text/javascript,*/*' },
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      jsText = await response.text();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`PC Concept catalog fetch failed: ${message}`);
+      throw new BadRequestException(`Failed to fetch PC Concept catalog: ${message}`);
+    }
+
+    let mapped;
+    try {
+      mapped = mapPcConceptProducts(extractPccDataJson(jsText));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid catalog';
+      throw new BadRequestException(message);
+    }
+
+    if (mapped.length === 0) {
+      throw new BadRequestException('No importable PC Concept products.');
+    }
+
+    const existing = await this.databaseService.query<{ id: number | string }>(
+      `SELECT id FROM pcmazing_local_price_stores WHERE name = $1 LIMIT 1`,
+      [PC_CONCEPT_STORE_NAME],
+    );
+
+    let storeId: number;
+    if (existing.rows[0]) {
+      storeId = Number(existing.rows[0].id);
+    } else {
+      const insert = await this.databaseService.query<{ id: number | string }>(
+        `INSERT INTO pcmazing_local_price_stores (name, active)
+         VALUES ($1, TRUE)
+         RETURNING id`,
+        [PC_CONCEPT_STORE_NAME],
+      );
+      storeId = Number(insert.rows[0].id);
+    }
+
+    try {
+      await this.databaseService.withTransaction(async (client) => {
+        await client.query(
+          `UPDATE pcmazing_local_price_stores
+           SET active = TRUE, updated_at = NOW()
+           WHERE id = $1`,
+          [storeId],
+        );
+        await client.query(`DELETE FROM pcmazing_local_price_items WHERE store_id = $1`, [
+          storeId,
+        ]);
+
+        for (const row of mapped) {
+          await client.query(
+            `INSERT INTO pcmazing_local_price_items (store_id, title, sku, price_php, notes)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [storeId, row.title, row.sku, row.pricePhp, row.notes],
+          );
+        }
+
+        await client.query(
+          `UPDATE pcmazing_local_price_stores
+           SET last_synced_at = NOW(), updated_at = NOW()
+           WHERE id = $1`,
+          [storeId],
+        );
+      });
+    } catch (error) {
+      this.rethrowUniqueSku(error);
+      throw error;
+    }
+
+    this.partsPriceSearch.clearCache();
+    const store = await this.getStore(storeId);
+    return {
+      storeId,
+      imported: mapped.length,
+      lastSyncedAt: store.lastSyncedAt ?? new Date().toISOString(),
+    };
+  }
+
   async searchActiveItems(query: string, limit: number): Promise<LocalPriceSearchHit[]> {
     await this.ensureTables();
 
@@ -334,10 +443,11 @@ export class LocalPriceListsService {
       id: number | string;
       name: string;
       active: boolean;
+      last_synced_at: string | null;
       created_at: string | null;
       updated_at: string | null;
     }>(
-      `SELECT id, name, active, created_at::text, updated_at::text
+      `SELECT id, name, active, last_synced_at::text, created_at::text, updated_at::text
        FROM pcmazing_local_price_stores
        WHERE id = $1
        LIMIT 1`,
@@ -380,6 +490,7 @@ export class LocalPriceListsService {
     id: number | string;
     name: string;
     active: boolean;
+    last_synced_at?: string | null;
     created_at: string | null;
     updated_at: string | null;
   }): LocalPriceStore {
@@ -387,6 +498,7 @@ export class LocalPriceListsService {
       id: Number(row.id),
       name: row.name,
       active: Boolean(row.active),
+      lastSyncedAt: row.last_synced_at ?? null,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
