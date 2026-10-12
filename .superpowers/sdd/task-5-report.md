@@ -1,29 +1,77 @@
-# Task 5 Report: Loans + period overrides API
+# Task 5 Report: Verification pass
 
 ## Status
 
-Completed the employee-loan and loan-period-override APIs.
+**DONE_WITH_CONCERNS**
 
-## Implementation
+Manual browser checks against live/staging data were not run (no dev servers started). Automated tests, frontend build, code inspection, and a missing-file PDF smoke test all succeeded.
 
-- Added validated DTOs and guarded routes for listing, creating, updating/cancelling loans, and upserting/deleting period overrides.
-- Equal-installment creation persists `computeEqualInstallmentAmount(principal, installmentCount)` as the stable fixed installment amount.
-- Override writes never mutate loan balances; balance remains reserved for payroll generation.
-- Added migration 075 and runtime schema backfill/constraint correction for the equal-installment storage contract.
-- Added typed `AdminApiService` models and clients; no admin UI was added.
-- Added loan service tests for stable installment storage, term validation, override upsert behavior, and missing override deletion.
+## Environment
 
-## Verification
+- **Branch:** RonDev
+- **HEAD:** `8a37a66`
+- **Date:** 2026-10-12
 
-- Backend: 16 suites and 80 tests passed; Nest build passed.
-- Frontend TypeScript check passed.
-- IDE diagnostics reported no errors.
-- Targeted ESLint exposed existing CRLF/Prettier failures; new explicit-any findings were removed.
+## Step 1: Backend tests
 
-## Commit
+**Command:**
 
-- `feat(payroll): employee loans and period overrides API`
+```powershell
+cd backend; npx jest src/admin/payroll/payslip-pdf.util.spec.ts --no-cache
+```
+
+**Result:** **PASS** — 1 suite, 5 tests, ~1.9s (exit 0).
+
+| Test | Result |
+| --- | --- |
+| `shouldRenderPayslipRemarks` | Pass |
+| includes payslip ledger lines | Pass |
+| omits remarks when includeRemarks false | Pass |
+| includes Scan to pay when qrImageUrl + file exists | Pass |
+| omits Scan to pay when qrImageUrl is null | Pass |
+
+## Step 2: Frontend build
+
+**Command:**
+
+```powershell
+cd frontend; npx ng build --configuration=development
+```
+
+**Result:** **PASS** — exit 0, initial total ~5.98 MB, output `frontend/dist/pcmazing-site`.
+
+## Step 3: Spec verification checklist
+
+Source: `docs/superpowers/specs/2026-10-12-payslip-payment-qr-design.md` → **Verification**
+
+| # | Criterion | Result | Evidence |
+| --- | --- | --- | --- |
+| 1 | Online employee with QR → Preview and PDF show “Scan to pay” + image at bottom | **Partial** | **PDF:** Jest asserts `Scan to pay` when fixture PNG exists on disk (`payslip-pdf.util.spec.ts`). **Preview / detail UI:** markup present (`payroll-page.component.html`, `sales-employee-dashboard.component.html`) with `@if (resolvePayslipQrUrl(detail.qrImageUrl))`; not exercised in browser this pass. |
+| 2 | Cash or online without QR → no QR block | **Partial** | **PDF:** Jest passes for `qrImageUrl: null`. **API:** `payslipQrImageUrl()` returns `null` unless payout is online and URL non-empty (`payroll.service.ts`). **UI:** blocks gated on truthy resolved URL. End-to-end with cash employee not run in browser. |
+| 3 | Missing file on disk → PDF still downloads without QR | **Pass** | Implementation skips when `!existsSync(diskPath)` and wraps in try/catch (`payslip-pdf.util.ts`). Smoke: `buildPayslipPdfBuffer` with non-existent `/uploads/payroll-qr/does-not-exist-verification.png` → 2360-byte buffer, exit 0 (no throw). No dedicated Jest case for missing file. |
+| 4 | Update QR in User Management → next Preview/PDF shows new image | **Partial** | Live profile lookup (no snapshot) implemented in preview/detail paths; requires manual re-upload + refresh Preview/PDF to confirm. |
+
+### Code-path confirmation (static)
+
+- Payload wiring: `previewPayslips` and `getEmployeePayslipDetail` set `qrImageUrl` via `payslipQrImageUrl` and pass into `pdfPayload`.
+- Frontend type: `EmployeePayslipDetail.qrImageUrl` on admin API service.
+- Surfaces aligned with spec: admin Preview, employee PDF, employee dashboard detail.
+
+## Step 4: Plan / docs
+
+Plan file `docs/superpowers/plans/2026-10-12-payslip-payment-qr.md` checkboxes marked complete (Tasks 1–5).
+
+## Commits
+
+See git log after docs commit (if applied in this task).
+
+## Recommendations for manual follow-up
+
+1. `ng serve` + API: Period pay → Preview online+QR employee; cash employee → no block.
+2. Employee dashboard → payslip detail + PDF download for same users.
+3. Delete QR file on disk while URL remains in DB → confirm PDF omits block and Preview may show broken image vs omit (Preview uses HTTP URL; spec edge case focused on PDF).
 
 ## Concerns
 
-- Migration 075 must be applied in existing environments before creating equal-installment loans.
+- No automated E2E or service-level tests for `payslipQrImageUrl` payout gating.
+- Checklist items 1, 2, and 4 need manual UI/DB verification before calling the feature fully signed off in production.
