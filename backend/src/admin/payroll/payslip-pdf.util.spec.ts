@@ -1,9 +1,20 @@
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { inflateSync } from 'node:zlib';
+import {
+  getUploadSubdir,
+  toPublicUploadUrl,
+} from '../../common/uploads-path.util';
 import {
   buildPayslipPdfBuffer,
   PayslipPdfPayload,
   shouldRenderPayslipRemarks,
 } from './payslip-pdf.util';
+
+const MINIMAL_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+);
 
 function extractPdfText(buffer: Buffer): string {
   const source = buffer.toString('latin1');
@@ -88,5 +99,43 @@ describe('buildPayslipPdfBuffer', () => {
     });
 
     expect(extractPdfText(buffer)).not.toContain('Confidential payroll note');
+  });
+
+  describe('Scan to pay QR block', () => {
+    const qrFilename = 'payslip-spec-qr.png';
+    let qrPublicUrl: string;
+
+    beforeAll(() => {
+      const dir = getUploadSubdir('payroll-qr');
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, qrFilename), MINIMAL_PNG);
+      qrPublicUrl = toPublicUploadUrl('payroll-qr', qrFilename);
+    });
+
+    afterAll(() => {
+      try {
+        rmSync(join(getUploadSubdir('payroll-qr'), qrFilename), {
+          force: true,
+        });
+      } catch {
+        // ignore cleanup errors
+      }
+    });
+
+    it('includes Scan to pay when qrImageUrl points to an existing file', async () => {
+      const buffer = await buildPayslipPdfBuffer(
+        makePayload({ qrImageUrl: qrPublicUrl }),
+      );
+
+      expect(extractPdfText(buffer)).toContain('Scan to pay');
+    });
+
+    it('omits Scan to pay when qrImageUrl is null', async () => {
+      const buffer = await buildPayslipPdfBuffer(
+        makePayload({ qrImageUrl: null }),
+      );
+
+      expect(extractPdfText(buffer)).not.toContain('Scan to pay');
+    });
   });
 });

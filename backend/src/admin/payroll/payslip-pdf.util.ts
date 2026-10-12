@@ -1,4 +1,6 @@
+import { existsSync } from 'node:fs';
 import PDFDocument from 'pdfkit';
+import { resolveUploadDiskPath } from '../../common/uploads-path.util';
 import type {
   computePayslipNet,
   PayslipLedgerLine,
@@ -45,6 +47,7 @@ export interface PayslipPdfPayload {
   };
   lines?: Array<Pick<PayslipLedgerLine, 'lineType' | 'label' | 'amount'>>;
   breakdown?: ReturnType<typeof computePayslipNet>;
+  qrImageUrl?: string | null;
 }
 
 function money(value: number): string {
@@ -285,6 +288,24 @@ export async function buildPayslipPdfBuffer(
     writeLine(
       `Net pay: ${money(payload.breakdown?.netPay ?? t.estimatedPay)}`,
     );
+
+    if (payload.qrImageUrl?.trim()) {
+      try {
+        const diskPath = resolveUploadDiskPath(payload.qrImageUrl.trim());
+        if (existsSync(diskPath)) {
+          doc.moveDown(0.6);
+          doc.fontSize(10).fillColor('#0f172a');
+          writeLine('Scan to pay', { align: 'center' });
+          doc.moveDown(0.25);
+          const qrWidth = 120;
+          const x = left + (pageWidth - qrWidth) / 2;
+          doc.image(diskPath, x, doc.y, { width: qrWidth });
+          doc.y += qrWidth + 8;
+        }
+      } catch {
+        // omit QR; never fail PDF
+      }
+    }
 
     const range = doc.bufferedPageRange();
     const pageCount = range.count;
