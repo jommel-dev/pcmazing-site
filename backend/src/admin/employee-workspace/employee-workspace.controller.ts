@@ -82,16 +82,27 @@ export class EmployeeWorkspaceController {
     if (!selfie) {
       throw new BadRequestException('Selfie photo is required before time in.');
     }
+    const status = await this.workspaceService.getTimeClockStatus(userId, source);
     const picked = (workLocationType ?? '').trim().toLowerCase();
-    if (picked !== 'office' && picked !== 'wfh') {
+    if (!status.canLunchIn && picked !== 'office' && picked !== 'wfh') {
       throw new BadRequestException('Choose Office or Work from home before time in.');
     }
-    const data = await this.workspaceService.timeIn(userId, source, selfie, picked, {
-      locationLat,
-      locationLng,
-      locationLabel,
-    });
-    return { success: true, message: 'Time in recorded.', data };
+    const data = await this.workspaceService.timeIn(
+      userId,
+      source,
+      selfie,
+      status.canLunchIn ? 'office' : (picked as 'office' | 'wfh'),
+      {
+        locationLat,
+        locationLng,
+        locationLabel,
+      },
+    );
+    return {
+      success: true,
+      message: status.canLunchIn ? 'Lunch in recorded.' : 'Time in recorded.',
+      data,
+    };
   }
 
   @Post('time-clock/time-out')
@@ -103,14 +114,30 @@ export class EmployeeWorkspaceController {
   )
   async timeClockTimeOut(
     @Req() req: Request & { user?: AdminJwtPayload },
+    @Body('intent') intentRaw?: string,
     @UploadedFile() selfie?: Express.Multer.File,
   ) {
     const { userId, source } = this.actor(req);
     if (!selfie) {
       throw new BadRequestException('Selfie photo is required before time out.');
     }
-    const data = await this.workspaceService.timeOut(userId, source, selfie);
-    return { success: true, message: 'Time out recorded.', data };
+    const intent = (intentRaw ?? '').trim().toLowerCase();
+    const normalized =
+      intent === 'lunch' || intent === 'end_of_day'
+        ? (intent as 'lunch' | 'end_of_day')
+        : null;
+    const data = await this.workspaceService.timeOut(
+      userId,
+      source,
+      selfie,
+      normalized,
+    );
+    return {
+      success: true,
+      message:
+        normalized === 'lunch' ? 'Lunch out recorded.' : 'Time out recorded.',
+      data,
+    };
   }
 
   @Get('payslips/:id')

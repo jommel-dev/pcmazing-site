@@ -694,6 +694,12 @@ export type WeeklyLocationSchedule = Record<WorkLocationDayKey, WorkLocationType
 
 export type PayrollOvertimeStatus = 'none' | 'pending' | 'approved' | 'rejected';
 
+export type AttendanceBypassAction =
+  | 'time_in'
+  | 'lunch_out'
+  | 'lunch_in'
+  | 'time_out';
+
 export interface PayrollAttendanceItem {
   id: number;
   userId: number;
@@ -703,12 +709,24 @@ export interface PayrollAttendanceItem {
   workDate: string;
   timeIn: string | null;
   timeOut: string | null;
+  lunchOut?: string | null;
+  lunchIn?: string | null;
   hoursWorked?: number | null;
   status?: 'timed_in' | 'completed' | 'incomplete';
   employeeCode: string | null;
   department: string | null;
   timeInSelfieUrl?: string | null;
   timeOutSelfieUrl?: string | null;
+  lunchOutSelfieUrl?: string | null;
+  lunchInSelfieUrl?: string | null;
+  lunchMinutes?: number | null;
+  overbreakMinutes?: number;
+  isOverbreak?: boolean;
+  timeInBypassedByAdminId?: number | null;
+  lunchOutBypassedByAdminId?: number | null;
+  lunchInBypassedByAdminId?: number | null;
+  timeOutBypassedByAdminId?: number | null;
+  nextBypassActions?: AttendanceBypassAction[];
   overtimeHours?: number;
   overtimeStatus?: PayrollOvertimeStatus;
   adjustmentStatus?: PayrollOvertimeStatus;
@@ -859,6 +877,7 @@ export interface EmployeePayslipDetail {
     loanTotal: number;
     manualTotal: number;
   };
+  qrImageUrl?: string | null;
 }
 
 export interface EmployeeWorkspaceDashboard {
@@ -2552,6 +2571,20 @@ export class AdminApiService {
     );
   }
 
+  bypassPayrollAttendance(body: {
+    userId: number;
+    userSource: 'pcmazing_admin_users' | 'tblusers';
+    workDate: string;
+    action: AttendanceBypassAction;
+    at?: string | null;
+  }) {
+    return this.http.post<ItemResponse<PayrollAttendanceItem>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/attendance/bypass`,
+      body,
+      { headers: this.headers() },
+    );
+  }
+
   getPayrollOverview(workDate = '') {
     let params = new HttpParams();
     if (workDate.trim()) {
@@ -3427,9 +3460,12 @@ export class AdminApiService {
     );
   }
 
-  portalTimeOut(selfie: Blob) {
+  portalTimeOut(selfie: Blob, intent?: 'lunch' | 'end_of_day' | null) {
     const formData = new FormData();
     formData.append('selfie', selfie, 'time-out-selfie.jpg');
+    if (intent === 'lunch' || intent === 'end_of_day') {
+      formData.append('intent', intent);
+    }
 
     return this.http.post<{ success: boolean; message: string; data: TimeClockStatus }>(
       `${APP_CONFIG.apiUrl}/admin/employee-workspace/time-clock/time-out`,

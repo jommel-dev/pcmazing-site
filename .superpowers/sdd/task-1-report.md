@@ -1,77 +1,88 @@
-# Task 1 Report: Pure helpers (TDD)
+# Task 1 Report: PDF util — Scan to pay block
 
 ## Status
 
-**DONE**
+Completed successfully.
 
-## Commits
+## Summary
 
-| SHA | Subject |
-|-----|---------|
-| `03ebb52` | feat(payroll): ledger math helpers for loans late and net |
+Added optional `qrImageUrl` to `PayslipPdfPayload` and, when the URL resolves to an existing file on disk, embeds a centered “Scan to pay” label and 120px-wide QR image after the Net pay line on the payslip PDF. Missing files, invalid paths, and resolver errors are ignored so PDF generation never fails.
 
-## TDD
+## TDD Evidence
 
-1. Added `payroll-ledger.util.spec.ts` with the six cases from the plan (verbatim structure).
-2. **RED:** Jest failed — module `./payroll-ledger.util` missing.
-3. Implemented `payroll-ledger.util.ts`.
-4. **GREEN:** `npx jest src/admin/payroll/payroll-ledger.util.spec.ts --no-cache` — 6 passed.
+### RED (Step 2)
 
-## Deliverables
+Command:
 
-| File | Purpose |
-|------|---------|
-| `backend/src/admin/payroll/payroll-ledger.util.ts` | Types + pure math helpers |
-| `backend/src/admin/payroll/payroll-ledger.util.spec.ts` | Unit tests |
+```bash
+cd backend && npx jest src/admin/payroll/payslip-pdf.util.spec.ts --no-cache
+```
 
-### Exported API
+Result: **FAIL** — 1 failed, 4 passed.
 
-- `PayslipLedgerLineType`, `PayslipLedgerLine`
-- `computeLateMinutes` — Asia/Manila wall clock via `Intl.DateTimeFormat`; compares clock-in on `workDateYmd` to `shiftStartHhmm + graceMinutes`; returns whole minutes late (0 if early/on time/wrong date).
-- `computeLateDeduction` — 0 when `minutesLate <= 0`; else `fixed + minutesLate * perMinute`, rounded to 2 decimals.
-- `computeEqualInstallmentAmount` — `roundMoney(principal / installmentCount)`.
-- `computeLoanPeriodAmount` — skip → 0; custom → capped custom; fixed_per_cutoff → fixed amount; equal_installments → prefer `fixedInstallmentAmount` (principal/N at loan create), else balance ÷ count; all capped at `balance`, money rounded.
-- `computePayslipNet` — per design spec: `grossPay = base + OT + commissions`; deductions = late + loan + manual; `netPay = max(0, gross − deductions)`; category subtotals returned.
+- `includes Scan to pay when qrImageUrl points to an existing file` — expected `extractPdfText(buffer)` to contain `Scan to pay`; received string ended at Net pay / footer with no QR label.
 
-## Self-review
+- `omits Scan to pay when qrImageUrl is null` — **passed** (field not yet implemented; absence of URL behaves as omit).
 
-- Matches plan signatures and passing tests.
-- Timezone documented in file header and `computeLateMinutes` JSDoc; test UTC instant `2026-10-08T01:30:00.000Z` = 09:30 Manila, after 09:15 grace boundary → late minutes &gt; 0.
-- `roundMoney` follows existing project pattern (`quotation-topup.util.ts`).
-- No changes to `generatePayslips`, UI, or unrelated payroll code.
+### GREEN (Step 4)
+
+Same command.
+
+Result: **PASS** — 5 passed, 1 suite, ~1.7s.
+
+## Implementation Details
+
+### `PayslipPdfPayload`
+
+- Added `qrImageUrl?: string | null`.
+
+### `buildPayslipPdfBuffer`
+
+- Imports: `existsSync` from `node:fs`, `resolveUploadDiskPath` from `../../common/uploads-path.util`.
+- After Net pay `writeLine(...)`, before the page footer loop:
+  - If `payload.qrImageUrl?.trim()` is truthy, resolve disk path, and when `existsSync(diskPath)`:
+    - `doc.moveDown(0.6)`
+    - Centered `Scan to pay` via `writeLine(..., { align: 'center' })`
+    - `doc.moveDown(0.25)`
+    - `doc.image(diskPath, x, doc.y, { width: 120 })` with `x` centered on page content width
+    - Advance `doc.y` by QR height + 8
+  - Wrapped in `try/catch` — omit QR on any error.
+
+### Tests
+
+- New `describe('Scan to pay QR block')`:
+  - `beforeAll`: writes minimal 1×1 PNG to `getUploadSubdir('payroll-qr')/payslip-spec-qr.png`, sets `qrPublicUrl` via `toPublicUploadUrl('payroll-qr', filename)`.
+  - `afterAll`: removes fixture file with `rmSync(..., { force: true })`.
+  - Include test: payload with `qrImageUrl: qrPublicUrl` → text contains `Scan to pay`.
+  - Omit test: `qrImageUrl: null` → text does not contain `Scan to pay`.
+
+No separate fixture directory under `__fixtures__/`; inline base64 minimal PNG matches brief’s recommended upload-dir approach.
+
+## Files Changed
+
+| File | Change |
+|------|--------|
+| `backend/src/admin/payroll/payslip-pdf.util.ts` | Field + QR drawing block + imports |
+| `backend/src/admin/payroll/payslip-pdf.util.spec.ts` | Scan to pay tests + upload helpers |
+
+## Commit
+
+- **SHA:** `28b5e06`
+- **Subject:** `feat(payroll): embed Scan to pay QR on payslip PDF`
+
+## Self-Review
+
+- Matches task brief verbatim for field name, placement (after Net pay, before footer loop), styling, QR width 120, centered label, silent skip on missing file / errors.
+- Reuses existing `writeLine`, `left`, `pageWidth`, and `contentBottom` patterns elsewhere in the file; QR block does not add explicit `ensureRowSpace` — acceptable for typical payslip length; very long payslips could theoretically overlap footer (pre-existing pattern for Net pay as well).
+- Tests use real filesystem + `resolveUploadDiskPath` integration path, not mocks.
+- Scope limited to PDF util and spec; no backend JSON or frontend changes.
 
 ## Concerns
 
-1. **`equal_installments` fallback:** When `fixedInstallmentAmount` is null, per-period amount still derives from **current balance** ÷ count (legacy path). Task 3+ should persist principal/N on the loan and pass it via `fixedInstallmentAmount`.
-2. **Clock-in on wrong Manila calendar date:** Returns 0 late minutes (no cross-midnight shift handling in helper); overnight shifts may need service-layer work date alignment later.
+- **Minor:** No test for missing file on disk (non-null URL but file deleted) — behavior is silent omit per spec; could add later for regression.
+- **Minor:** `extractPdfText` only validates label text, not embedded image bytes — sufficient for this task.
+- **Environment:** Tests write under process `uploads/payroll-qr/` (or `UPLOADS_DIR` if set); cleanup in `afterAll` should prevent pollution.
 
-## Verification command
+## Out of Scope (per brief)
 
-```powershell
-cd backend; npx jest src/admin/payroll/payroll-ledger.util.spec.ts --no-cache
-```
-
----
-
-## Review fixes (Important)
-
-**Commit:** `1016efb` — fix(payroll): equal installment preference and ledger tests
-
-### Changes
-
-1. **`computeLoanPeriodAmount` / `equal_installments`:** Prefer `fixedInstallmentAmount` when set; otherwise `computeEqualInstallmentAmount(balance, installmentCount)`. Inline comment documents caller contract. Final amount still capped at `balance`.
-2. **Tests added:** custom override (cap + under balance); `fixed_per_cutoff` without skip (incl. balance cap); equal_installments stored fixed vs fallback; balance cap on stored fixed; `computePayslipNet` commission + all deduction types.
-3. **Late minutes:** Assert exact **15** minutes for `2026-10-08T01:30:00.000Z` (09:30 Manila) vs shift 09:00 + 15 grace.
-
-### Verification (post-fix)
-
-```powershell
-cd backend; npx jest src/admin/payroll/payroll-ledger.util.spec.ts --no-cache
-```
-
-```
-Test Suites: 1 passed, 1 total
-Tests:       12 passed, 12 total
-Snapshots:   0 total
-Time:        ~1.1 s
-```
+Backend payload wiring, frontend UI, and other tasks in the payslip payment QR feature were not modified.

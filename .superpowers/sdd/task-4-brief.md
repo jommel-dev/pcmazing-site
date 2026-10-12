@@ -1,21 +1,36 @@
-### Task 4: Commission types + entries API
+### Task 4: Employee dashboard payslip detail
 
 **Files:**
-- Create DTOs under `backend/src/admin/payroll/dto/`
-- Modify: `payroll.controller.ts` / `payroll.service.ts`
-- Modify: `admin-api.service.ts`
+- Modify: `frontend/src/app/admin/pages/dashboard/sales-employee-dashboard.component.html` (after remarks ~617–622, before disclaimer)
+- Modify: `frontend/src/app/admin/pages/dashboard/sales-employee-dashboard.component.ts` (add resolve helper using `adminApi.resolveProfileImageUrl`)
 
-**Routes (all `@RequirePermissions` payroll edit/view as appropriate):**
-- `GET/POST/PATCH /admin/payroll/commission-types`
-- `GET/POST/DELETE /admin/payroll/commission-entries?userId&userSource&dateFrom&dateTo`
+**Interfaces:**
+- Consumes: same `EmployeePayslipDetail.qrImageUrl` from `getEmployeePayslipDetail`
+- Produces: Scan to pay block in detail modal (PDF already covered by Task 1–2)
 
-Entry body: `{ typeId?: number | null; label?: string; amount: number }` — if `typeId` null, `label` required (Other).
+- [ ] **Step 1: Add resolve helper** on the dashboard component (same as payroll page).
 
-- [ ] **Step 1: Implement service + controller**
+- [ ] **Step 2: Markup** after remarks block, before the disclaimer paragraph:
 
-- [ ] **Step 2: Smoke with Nest**
+```html
+@if (resolvePayslipQrUrl(detail.qrImageUrl); as qrUrl) {
+  <div class="mt-5 flex flex-col items-center rounded-2xl border border-slate-200 bg-white px-4 py-4 dark:border-slate-700 dark:bg-slate-950/40">
+    <p class="text-xs font-bold uppercase tracking-wide text-slate-500">Scan to pay</p>
+    <img [src]="qrUrl" alt="Payment QR code" class="mt-3 size-40 rounded-xl border border-slate-200 object-contain dark:border-slate-700" />
+  </div>
+}
+```
 
-- [ ] **Step 3: Commit** `feat(payroll): commission types and entries API`
+- [ ] **Step 3: Manual check**
+
+Employee dashboard → open payslip detail for online+QR user → QR at bottom; Download PDF → QR on PDF.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add frontend/src/app/admin/pages/dashboard/sales-employee-dashboard.component.html frontend/src/app/admin/pages/dashboard/sales-employee-dashboard.component.ts
+git commit -m "feat(admin): show Scan to pay QR on employee payslip detail"
+```
 
 ---
 

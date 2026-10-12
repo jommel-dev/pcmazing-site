@@ -1,83 +1,56 @@
-# Task 3 Report: Settings API — late fields
-
-## Status
-
-Completed the backend settings API and payroll-page inputs for shift start, late grace, fixed late deduction, and per-minute late deduction.
-
-## Implementation
-
-- Extended `UpdatePayrollSettingsDto` with:
-  - `shiftStartTime` matching `/^\d{2}:\d{2}$/`
-  - integer `lateGraceMinutes` from 0 through 120
-  - non-negative `lateDeductionFixed`
-  - non-negative `lateDeductionPerMinute`
-- Extended `PayrollService.getSettings()` and `updateSettings()` to read, normalize, preserve on partial updates, and persist all four Migration 074 columns.
-- Added the frontend `PayrollSettings` interface and used it for settings GET/PATCH requests.
-- Added payroll-page inputs for shift start, late grace, fixed deduction, and per-minute deduction.
-- Added DTO and service unit coverage for validation, database mapping, partial-update preservation, and persistence.
-
-## Verification
-
-- Backend full test suite: 14 suites passed, 72 tests passed.
-- Backend build: passed.
-- Frontend build: passed with four pre-existing CSS budget warnings.
-- IDE diagnostics for all changed files: no linter errors.
-- Scoped `git diff --check`: passed.
-
-## Commit
-
-- `de41926 feat(payroll): late deduction settings`
-
-## Concerns
-
-- This task only configures late settings; it does not calculate late deductions or add loans/commissions UI.
-- Existing unrelated `.superpowers/sdd` working-tree changes were left untouched.
-# Task 3 Report: Period + payslip day pay uses location rates
+# Task 3 Report: Frontend types + admin Preview UI
 
 ## Status
 
 **DONE**
 
-## Commits
+## Summary
 
-| SHA | Subject |
-|-----|---------|
-| `283e0c4` | Apply Office vs WFH rates in period and payslip day pay. |
+Added `qrImageUrl` to `EmployeePayslipDetail` and a conditional **Scan to pay** block at the bottom of the admin payroll Period pay Preview modal, resolving the image URL through `adminApi.resolveProfileImageUrl`.
 
-## Files modified
+## Implementation Details
 
-- `backend/src/admin/payroll/payroll.service.ts` — location-aware day pay in `buildPayslipDaysAndTotals` / `buildPeriodRow`; callers pass `wfhSalary` + `weeklyLocationSchedule`; payslip detail loads those from `pcmazing_user_payroll`
+### Type (`admin-api.service.ts`)
+- Added `qrImageUrl?: string | null` on `EmployeePayslipDetail`.
 
-## Steps completed
+### Preview markup (`payroll-page.component.html`)
+- Inserted after the Summary card (including ledger lines), before the `@else` empty state.
+- Renders only when `resolvePayslipQrUrl(detail.qrImageUrl)` returns a truthy URL.
 
-1. Updated `buildPayslipDaysAndTotals` to resolve expected location per day, pick Office/WFH amount, zero pay on Off, append location label suffixes; non-fixed totals from sum of `dayPay` + OT
-2. Passed `wfhSalary` / `weeklyLocationSchedule` from preview payslip builder and `getEmployeePayslipDetail`
-3. Updated `buildPeriodRow` to accept `workWeek` and compute estimated pay per punch with location rates
-4. Typecheck
-5. Commit (only `payroll.service.ts`)
+### Component helper (`payroll-page.component.ts`)
+- `resolvePayslipQrUrl(url)` delegates to `this.adminApi.resolveProfileImageUrl(url)`.
 
-## Typecheck
+## Verification Evidence
 
+### Frontend build
 Command:
-
 ```powershell
-cd backend; npx tsc --noEmit -p tsconfig.build.json
+cd frontend; npx ng build --configuration=development
 ```
+Result: **PASS** (exit code 0).
 
-Result: exit 0 (no errors)
+### Manual browser check
+Not run — `ng serve` + API were not started in this session. Expected behavior (per brief): online employee with QR → block visible; cash / no URL → no block (backend gating from Task 2).
 
-## Self-review
+## Files Changed
 
-- Scheduled location drives rate via `resolveExpectedLocation` + `pickSalaryAmountForLocation`; punch GPS unused.
-- Fixed monthly still uses `estimatePay` / scheduled fixed path; location amounts ignored; Off days contribute 0 paid units; location suffix still shown on punched days.
-- Non-fixed `basePay` / `estimatedPay` sum per-day `dayPay` (+ OT), not single-amount `estimatePay`.
-- Both callers of `buildPayslipDaysAndTotals` and the `buildPeriodRow` caller updated.
+| File | Change |
+|------|--------|
+| `frontend/src/app/admin/services/admin-api.service.ts` | `qrImageUrl` on `EmployeePayslipDetail`. |
+| `frontend/src/app/admin/pages/payroll/payroll-page.component.html` | Scan to pay QR block in Preview modal. |
+| `frontend/src/app/admin/pages/payroll/payroll-page.component.ts` | `resolvePayslipQrUrl` helper. |
+
+## Commit
+
+- **SHA:** `b05ad20`
+- **Subject:** `feat(admin): show Scan to pay QR on payslip preview`
+
+## Self-Review
+
+- Matches task brief markup and helper verbatim.
+- No backend or employee dashboard changes.
+- `@if (resolvePayslipQrUrl(...); as qrUrl)` avoids showing the block when URL resolves to null/empty.
 
 ## Concerns
 
-- Stored payslip `salary_amount` remains the office amount at generation time; WFH rate and schedule for PDF/detail rebuild come from live `pcmazing_user_payroll` (profile changes after generation can change day breakdown).
-- `describePayBasis` still describes office `salaryAmount` only (no dual-rate summary text).
-
-## Test summary
-
-Backend `tsc --noEmit -p tsconfig.build.json` passed (exit 0). No new unit tests in this task.
+- Manual UI verification deferred until dev servers are available.

@@ -1,9 +1,25 @@
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { inflateSync } from 'node:zlib';
+import {
+  getUploadSubdir,
+  toPublicUploadUrl,
+} from '../../common/uploads-path.util';
 import {
   buildPayslipPdfBuffer,
   PayslipPdfPayload,
   shouldRenderPayslipRemarks,
 } from './payslip-pdf.util';
+
+const MINIMAL_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+);
+
+const MINIMAL_GIF = Buffer.from(
+  'R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==',
+  'base64',
+);
 
 function extractPdfText(buffer: Buffer): string {
   const source = buffer.toString('latin1');
@@ -88,5 +104,103 @@ describe('buildPayslipPdfBuffer', () => {
     });
 
     expect(extractPdfText(buffer)).not.toContain('Confidential payroll note');
+  });
+
+  describe('Scan to pay QR block', () => {
+    const qrFilename = 'payslip-spec-qr.png';
+    let qrPublicUrl: string;
+
+    beforeAll(() => {
+      const dir = getUploadSubdir('payroll-qr');
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, qrFilename), MINIMAL_PNG);
+      qrPublicUrl = toPublicUploadUrl('payroll-qr', qrFilename);
+    });
+
+    afterAll(() => {
+      try {
+        rmSync(join(getUploadSubdir('payroll-qr'), qrFilename), {
+          force: true,
+        });
+      } catch {
+        // ignore cleanup errors
+      }
+    });
+
+    it('includes Scan to pay when qrImageUrl points to an existing file', async () => {
+      const buffer = await buildPayslipPdfBuffer(
+        makePayload({ qrImageUrl: qrPublicUrl }),
+      );
+
+      expect(extractPdfText(buffer)).toContain('Scan to pay');
+    });
+
+    it('omits Scan to pay when qrImageUrl is null', async () => {
+      const buffer = await buildPayslipPdfBuffer(
+        makePayload({ qrImageUrl: null }),
+      );
+
+      expect(extractPdfText(buffer)).not.toContain('Scan to pay');
+    });
+
+    it('omits Scan to pay when image format is unsupported (e.g. GIF)', async () => {
+      const gifFilename = 'payslip-spec-qr.gif';
+      const dir = getUploadSubdir('payroll-qr');
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, gifFilename), MINIMAL_GIF);
+      const gifPublicUrl = toPublicUploadUrl('payroll-qr', gifFilename);
+
+      try {
+        const buffer = await buildPayslipPdfBuffer(
+          makePayload({ qrImageUrl: gifPublicUrl }),
+        );
+
+        expect(extractPdfText(buffer)).not.toContain('Scan to pay');
+      } finally {
+        try {
+          rmSync(join(dir, gifFilename), { force: true });
+        } catch {
+          // ignore cleanup errors
+        }
+      }
+    });
+
+    it('omits Scan to pay when qrImageUrl points to a missing file', async () => {
+      const buffer = await buildPayslipPdfBuffer(
+        makePayload({ qrImageUrl: '/uploads/payroll-qr/missing.png' }),
+      );
+
+      expect(extractPdfText(buffer)).not.toContain('Scan to pay');
+    });
+
+    it('breaks to a new page when QR block would overflow content bottom', async () => {
+      const days = Array.from({ length: 18 }, (_, i) => ({
+        workDate: `2026-10-${String(i + 1).padStart(2, '0')}`,
+        timeInLabel: '09:00 AM',
+        timeOutLabel: '06:00 PM',
+        hoursWorked: 8,
+        dayType: 'REGULAR',
+        paidUnits: 1,
+        dayPay: 500,
+        overtimeHours: 0,
+        overtimeStatus: 'NONE',
+        overtimePay: 0,
+      }));
+      const lines = Array.from({ length: 6 }, (_, i) => ({
+        lineType: 'commission' as const,
+        label: `Commission ${i + 1}`,
+        amount: 250,
+      }));
+
+      const withoutQr = await buildPayslipPdfBuffer(
+        makePayload({ days, lines, qrImageUrl: null }),
+      );
+      expect(extractPdfText(withoutQr)).toContain('Page 1 of 1');
+
+      const withQr = await buildPayslipPdfBuffer(
+        makePayload({ days, lines, qrImageUrl: qrPublicUrl }),
+      );
+      expect(extractPdfText(withQr)).toContain('Page 2 of 2');
+    });
   });
 });

@@ -10,8 +10,16 @@ export interface TimeClockStatus {
   workDate: string;
   timeIn: string | null;
   timeOut: string | null;
+  lunchOut?: string | null;
+  lunchIn?: string | null;
+  onLunch?: boolean;
   canTimeIn: boolean;
+  canLunchIn?: boolean;
   canTimeOut: boolean;
+  punchOutRequiresIntent?: boolean;
+  lunchMinutes?: number | null;
+  overbreakMinutes?: number;
+  isOverbreak?: boolean;
   status: 'ready' | 'timed_in' | 'completed' | 'not_enrolled' | 'not_found' | 'inactive';
   message: string;
   /** Authoritative server/DB timestamp (ISO). */
