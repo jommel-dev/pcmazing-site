@@ -3024,6 +3024,10 @@ export class PayrollService {
               ...totals,
               estimatedPay: assembled.net.netPay,
             },
+            qrImageUrl: this.payslipQrImageUrl(
+              employee.payoutMethod,
+              employee.qrImageUrl,
+            ),
           };
         }),
       )
@@ -3139,6 +3143,8 @@ export class PayrollService {
       employee_code: string | null;
       department: string | null;
       position_title: string | null;
+      payout_method: string | null;
+      qr_image_url: string | null;
       salary_type: string | null;
       salary_amount: string | null;
       wfh_salary: string | null;
@@ -3156,7 +3162,7 @@ export class PayrollService {
       remarks: string | null;
     }>(
       `SELECT p.id, p.username, p.full_name, p.employee_code, p.department,
-              pay.position_title,
+              pay.position_title, pay.payout_method, pay.qr_image_url,
               p.salary_type, p.salary_amount::text AS salary_amount,
               pay.wfh_salary::text AS wfh_salary,
               pay.fixed_monthly_salary::text AS fixed_monthly_salary,
@@ -3180,6 +3186,11 @@ export class PayrollService {
     if (!slip) {
       throw new NotFoundException('Payslip not found.');
     }
+
+    const qrImageUrl = this.payslipQrImageUrl(
+      slip.payout_method,
+      slip.qr_image_url,
+    );
 
     const salaryType = this.normalizeSalaryType(slip.salary_type);
     const salaryAmount =
@@ -3284,6 +3295,7 @@ export class PayrollService {
       lines,
       breakdown,
       remarks: slip.remarks,
+      qrImageUrl,
     };
 
     const safeLabel = slip.label.replace(/[^\w-]+/g, '_').replace(/_+/g, '_');
@@ -3310,6 +3322,7 @@ export class PayrollService {
       totals: pdfPayload.totals,
       filename: `payslip-${safeLabel}-${slip.username}.pdf`,
       pdfPayload,
+      qrImageUrl,
     };
   }
 
@@ -4818,6 +4831,17 @@ export class PayrollService {
 
   private normalizePayoutMethod(value?: string | null): PayrollPayoutMethod {
     return (value ?? '').trim().toLowerCase() === 'online' ? 'online' : 'cash';
+  }
+
+  private payslipQrImageUrl(
+    payoutMethod: string | null | undefined,
+    qrImageUrl: string | null | undefined,
+  ): string | null {
+    if (this.normalizePayoutMethod(payoutMethod) !== 'online') {
+      return null;
+    }
+    const url = qrImageUrl?.trim();
+    return url ? url : null;
   }
 
   private normalizeSalaryType(value?: string | null): PayrollSalaryType {
