@@ -44,6 +44,7 @@ export class PortalTimeClockComponent implements OnInit, OnDestroy {
   readonly locationStatus = signal('');
   readonly requestingLocation = signal(false);
   readonly pickedLocation = signal<'office' | 'wfh' | null>(null);
+  readonly lunchConfirmOpen = signal(false);
 
   private mediaStream: MediaStream | null = null;
   private clockTimer: ReturnType<typeof setInterval> | null = null;
@@ -335,11 +336,32 @@ export class PortalTimeClockComponent implements OnInit, OnDestroy {
     await this.punch('in');
   }
 
-  async punchOut(): Promise<void> {
-    await this.punch('out');
+  async punchLunchIn(): Promise<void> {
+    await this.punch('lunch_in');
   }
 
-  private async punch(kind: 'in' | 'out'): Promise<void> {
+  async punchOut(): Promise<void> {
+    const current = this.status();
+    if (current?.punchOutRequiresIntent) {
+      this.lunchConfirmOpen.set(true);
+      return;
+    }
+    await this.punch('out', 'end_of_day');
+  }
+
+  async confirmPunchOutIntent(intent: 'lunch' | 'end_of_day'): Promise<void> {
+    this.lunchConfirmOpen.set(false);
+    await this.punch('out', intent);
+  }
+
+  cancelLunchConfirm(): void {
+    this.lunchConfirmOpen.set(false);
+  }
+
+  private async punch(
+    kind: 'in' | 'out' | 'lunch_in',
+    intent?: 'lunch' | 'end_of_day' | null,
+  ): Promise<void> {
     const selfie = this.selfieBlob();
     if (!selfie) {
       this.error.set('Take a selfie first before submitting.');
@@ -376,9 +398,13 @@ export class PortalTimeClockComponent implements OnInit, OnDestroy {
 
     try {
       const response = await firstValueFrom(
-        kind === 'in'
-          ? this.adminApi.portalTimeIn(selfie, pick!, location)
-          : this.adminApi.portalTimeOut(selfie),
+        kind === 'out'
+          ? this.adminApi.portalTimeOut(selfie, intent ?? null)
+          : this.adminApi.portalTimeIn(
+              selfie,
+              kind === 'lunch_in' ? 'office' : pick!,
+              kind === 'lunch_in' ? null : location,
+            ),
       );
       this.status.set(response.data);
       this.applyServerNow(response.data.serverNow);
@@ -387,7 +413,7 @@ export class PortalTimeClockComponent implements OnInit, OnDestroy {
       this.stopCamera();
       this.punched.emit();
 
-      if (response.data.canTimeOut) {
+      if (response.data.canTimeOut || response.data.canLunchIn) {
         void this.startCamera();
       }
     } catch (err: unknown) {
@@ -397,9 +423,9 @@ export class PortalTimeClockComponent implements OnInit, OnDestroy {
         'error' in err &&
         typeof (err as { error?: { message?: string } }).error?.message === 'string'
           ? (err as { error: { message: string } }).error.message
-          : kind === 'in'
-            ? 'Unable to record time in.'
-            : 'Unable to record time out.';
+          : kind === 'out'
+            ? 'Unable to record time out.'
+            : 'Unable to record time in.';
       this.error.set(message);
       await this.loadStatus({ preserveMessages: true });
     } finally {
@@ -468,7 +494,7 @@ export class PortalTimeClockComponent implements OnInit, OnDestroy {
 
   needsSelfie(): boolean {
     const current = this.status();
-    return Boolean(current?.canTimeIn || current?.canTimeOut);
+    return Boolean(current?.canTimeIn || current?.canTimeOut || current?.canLunchIn);
   }
 
   private clearSelfiePreviewOnly(): void {
