@@ -43,14 +43,14 @@
 **Files:**
 - Create: `backend/src/sql/migrations/078_local_price_store_last_synced.sql`
 
-- [ ] **Step 1: Write migration**
+- [x] **Step 1: Write migration**
 
 ```sql
 ALTER TABLE pcmazing_local_price_stores
   ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMPTZ;
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add backend/src/sql/migrations/078_local_price_store_last_synced.sql
@@ -80,7 +80,7 @@ export function extractPccDataJson(jsText: string): unknown;
 export function mapPcConceptProducts(data: unknown): PcConceptMappedItem[];
 ```
 
-- [ ] **Step 1: Failing tests**
+- [x] **Step 1: Failing tests**
 
 ```ts
 describe('pc-concept-catalog.util', () => {
@@ -118,11 +118,11 @@ describe('pc-concept-catalog.util', () => {
 });
 ```
 
-- [ ] **Step 2: Run — expect FAIL**
+- [x] **Step 2: Run — expect FAIL**
 
 `cd backend && npx jest src/admin/local-price-lists/pc-concept-catalog.util.spec.ts --no-cache`
 
-- [ ] **Step 3: Implement util**
+- [x] **Step 3: Implement util**
 
 Parse strategy (safe):
 1. Find `window.PCC_DATA=` or `PCC_DATA=`
@@ -136,9 +136,9 @@ Map:
 - first-wins on sku (case-sensitive as source)
 - notes: `[brand] · [cat] · [specs] · Cab:n Pam:m` (omit empty parts)
 
-- [ ] **Step 4: Run — expect PASS**
+- [x] **Step 4: Run — expect PASS**
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/src/admin/local-price-lists/pc-concept-catalog.util.ts backend/src/admin/local-price-lists/pc-concept-catalog.util.spec.ts
@@ -191,15 +191,15 @@ syncPcConcept() {
 
 Place this method **above** `@Patch(':id')` / `@Get(':id/items')` so `sync` is not parsed as an id.
 
-- [ ] **Step 1: Extend store mapping for `lastSyncedAt`**
+- [x] **Step 1: Extend store mapping for `lastSyncedAt`**
 
-- [ ] **Step 2: Implement `syncPcConceptCatalog`**
+- [x] **Step 2: Implement `syncPcConceptCatalog`**
 
-- [ ] **Step 3: Add controller route**
+- [x] **Step 3: Add controller route**
 
-- [ ] **Step 4: Focused test** — unit-test mapping already covers parse; optional service test with mocked `fetch` + mocked DB if easy; otherwise manual smoke after UI.
+- [x] **Step 4: Focused test** — unit-test mapping already covers parse; optional service test with mocked `fetch` + mocked DB if easy; otherwise manual smoke after UI.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/src/admin/local-price-lists/local-price-lists.service.ts backend/src/admin/local-price-lists/local-price-lists.controller.ts
@@ -238,11 +238,11 @@ export class PcConceptSyncScheduler {
 }
 ```
 
-- [ ] **Step 1:** `cd backend && npm install @nestjs/schedule`
+- [x] **Step 1:** `cd backend && npm install @nestjs/schedule`
 
-- [ ] **Step 2:** `ScheduleModule.forRoot()` in `AdminModule` imports; provide `PcConceptSyncScheduler`
+- [x] **Step 2:** `ScheduleModule.forRoot()` in `AdminModule` imports; provide `PcConceptSyncScheduler`
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add backend/package.json backend/package-lock.json backend/src/admin/admin.module.ts backend/src/admin/local-price-lists/pc-concept-sync.scheduler.ts
@@ -277,11 +277,11 @@ syncPcConceptLocalPrices() {
 - While selected store is PC Concept (or always show the card at top): last synced formatted Manila time; disable button while `syncing`
 - On success: reload stores + items; show success message with count
 
-- [ ] **Step 1: API client**
+- [x] **Step 1: API client**
 
-- [ ] **Step 2: Page methods + template**
+- [x] **Step 2: Page methods + template**
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add frontend/src/app/admin/services/admin-api.service.ts frontend/src/app/admin/pages/local-price-lists/local-price-lists-page.component.ts frontend/src/app/admin/pages/local-price-lists/local-price-lists-page.component.html
@@ -292,13 +292,13 @@ git commit -m "feat(admin): PC Concept refresh on local price lists"
 
 ### Task 6: Verification
 
-- [ ] **Step 1:** Apply migration `078` on local/staging DB
+- [x] **Step 1:** Apply migration `078` on local/staging DB
 
-- [ ] **Step 2:** `cd backend && npx jest src/admin/local-price-lists/pc-concept-catalog.util.spec.ts --no-cache` — PASS
+- [x] **Step 2:** `cd backend && npx jest src/admin/local-price-lists/pc-concept-catalog.util.spec.ts --no-cache` — PASS
 
-- [ ] **Step 3:** Manual: POST sync or UI Refresh → item count > 0; quotation search finds a known product labeled **PC Concept**
+- [x] **Step 3:** Manual: POST sync or UI Refresh → item count > 0; quotation search finds a known product labeled **PC Concept**
 
-- [ ] **Step 4:** Optional: mark plan checkboxes + commit `docs: mark PC Concept sync plan complete`
+- [x] **Step 4:** Optional: mark plan checkboxes + commit `docs: mark PC Concept sync plan complete`
 
 ---
 
