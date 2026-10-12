@@ -479,7 +479,7 @@ export class PortalTimeClockComponent implements OnInit, OnDestroy {
     }
   }
 
-  formatPunch(value: string | null): string {
+  formatPunch(value: string | null | undefined): string {
     if (!value) {
       return '—';
     }
