@@ -229,7 +229,7 @@ resolvePayslipQrUrl(url: string | null | undefined): string | null {
 }
 ```
 
-- [x] **Step 3: Manual check**
+- [ ] **Step 3: Manual check**
 
 With `ng serve` + API: Period pay → Preview an online employee with QR → bottom shows Scan to pay; cash employee → no block.
 
@@ -265,7 +265,7 @@ git commit -m "feat(admin): show Scan to pay QR on payslip preview"
 }
 ```
 
-- [x] **Step 3: Manual check**
+- [ ] **Step 3: Manual check**
 
 Employee dashboard → open payslip detail for online+QR user → QR at bottom; Download PDF → QR on PDF.
 
