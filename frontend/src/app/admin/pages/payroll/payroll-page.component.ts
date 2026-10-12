@@ -1273,6 +1273,10 @@ export class PayrollPageComponent implements OnInit {
       this.resolveConfirm(false);
       return;
     }
+    if (this.selfieModal()) {
+      this.closeSelfieModal();
+      return;
+    }
     if (this.loanDetail()) {
       this.closeLoanDetail();
       return;
@@ -1281,7 +1285,6 @@ export class PayrollPageComponent implements OnInit {
       this.closePayslipPreview();
       return;
     }
-    this.closeSelfieModal();
   }
 
   @HostListener('document:keydown.arrowleft')
