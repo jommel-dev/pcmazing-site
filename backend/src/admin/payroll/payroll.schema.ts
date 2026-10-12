@@ -135,6 +135,16 @@ ALTER TABLE pcmazing_attendance
   ADD COLUMN IF NOT EXISTS location_label VARCHAR(200),
   ADD COLUMN IF NOT EXISTS location_mismatch BOOLEAN NOT NULL DEFAULT FALSE;
 
+ALTER TABLE pcmazing_attendance
+  ADD COLUMN IF NOT EXISTS lunch_out TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS lunch_in TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS lunch_out_selfie_url VARCHAR(500),
+  ADD COLUMN IF NOT EXISTS lunch_in_selfie_url VARCHAR(500),
+  ADD COLUMN IF NOT EXISTS time_in_bypassed_by_admin_id BIGINT,
+  ADD COLUMN IF NOT EXISTS lunch_out_bypassed_by_admin_id BIGINT,
+  ADD COLUMN IF NOT EXISTS lunch_in_bypassed_by_admin_id BIGINT,
+  ADD COLUMN IF NOT EXISTS time_out_bypassed_by_admin_id BIGINT;
+
 ALTER TABLE pcmazing_payroll_settings
   ADD COLUMN IF NOT EXISTS shift_start_time TIME NOT NULL DEFAULT '09:00',
   ADD COLUMN IF NOT EXISTS late_grace_minutes SMALLINT NOT NULL DEFAULT 15,
