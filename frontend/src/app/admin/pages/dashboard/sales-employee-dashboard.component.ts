@@ -520,6 +520,10 @@ export class SalesEmployeeDashboardComponent implements OnInit, OnDestroy {
     return `₱${value.toLocaleString('en-PH', { maximumFractionDigits: 2 })}`;
   }
 
+  resolvePayslipQrUrl(url: string | null | undefined): string | null {
+    return this.adminApi.resolveProfileImageUrl(url);
+  }
+
   formatActivityTime(value: string): string {
     return new Date(value).toLocaleString('en-PH', {
       month: 'short',

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -41,6 +42,7 @@ import {
   UpdateManualDeductionDto,
 } from './dto/manual-deduction.dto';
 import { UpdatePayslipRemarksDto } from './dto/update-payslip-remarks.dto';
+import { BypassAttendanceDto } from './dto/bypass-attendance.dto';
 import { PayrollService } from './payroll.service';
 
 @Controller('admin/payroll')
@@ -420,6 +422,28 @@ export class PayrollController {
         data: result.items,
         meta: result.meta,
         workDate: result.workDate,
+      }));
+  }
+
+  @Post('attendance/bypass')
+  @RequirePermissions('payroll.edit')
+  bypassAttendance(
+    @Body() body: BypassAttendanceDto,
+    @Req() req: Request & { user?: AdminJwtPayload },
+  ) {
+    const adminId =
+      req.user?.sub != null && Number.isFinite(Number(req.user.sub))
+        ? Number(req.user.sub)
+        : NaN;
+    if (!Number.isFinite(adminId)) {
+      throw new BadRequestException('Admin identity required.');
+    }
+
+    return this.payrollService
+      .bypassAttendancePunch(body, adminId)
+      .then((data) => ({
+        success: true,
+        data,
       }));
   }
 

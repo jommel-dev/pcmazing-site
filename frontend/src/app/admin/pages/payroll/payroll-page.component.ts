@@ -5,6 +5,7 @@ import { firstValueFrom } from 'rxjs';
 import { APP_CONFIG } from '../../../core/config/app-config';
 import {
   AdminApiService,
+  AttendanceBypassAction,
   EmployeePayslipDetail,
   PaginationMeta,
   PayrollAdjustmentItem,
@@ -62,6 +63,18 @@ export class PayrollPageComponent implements OnInit {
   private readonly adminApi = inject(AdminApiService);
 
   readonly selfieModal = signal<{ url: string; label: string } | null>(null);
+  readonly bypassDialog = signal<{
+    userId: number;
+    userSource: 'pcmazing_admin_users' | 'tblusers';
+    fullName: string;
+    workDate: string;
+    action: AttendanceBypassAction;
+    useCustomTime: boolean;
+    customAt: string;
+  } | null>(null);
+  readonly bypassSaving = signal(false);
+  readonly bypassError = signal('');
+  readonly bypassPickerOpen = signal(false);
 
   readonly tabs: Array<{ key: PayrollTab; label: string }> = [
     { key: 'overview', label: 'Overview' },
@@ -1100,6 +1113,124 @@ export class PayrollPageComponent implements OnInit {
     });
   }
 
+  formatLunchMinutes(value: number | null | undefined): string {
+    if (value == null) {
+      return '—';
+    }
+    return `${value} min`;
+  }
+
+  bypassActionLabel(action: AttendanceBypassAction): string {
+    switch (action) {
+      case 'time_in':
+        return 'Time in';
+      case 'lunch_out':
+        return 'Lunch out';
+      case 'lunch_in':
+        return 'Lunch in';
+      case 'time_out':
+        return 'Time out';
+    }
+  }
+
+  openBypassForRow(item: PayrollAttendanceItem, action: AttendanceBypassAction): void {
+    this.bypassError.set('');
+    this.bypassDialog.set({
+      userId: item.userId,
+      userSource: item.userSource,
+      fullName: item.fullName,
+      workDate: item.workDate || this.workDate() || '',
+      action,
+      useCustomTime: false,
+      customAt: '',
+    });
+  }
+
+  openBypassPicker(): void {
+    this.bypassPickerOpen.set(true);
+    this.toolEmployeeMenuOpen.set(true);
+    void this.searchToolEmployees(this.toolEmployeeQuery());
+  }
+
+  startBypassTimeInForEmployee(item: PayrollEmployeeItem): void {
+    this.bypassPickerOpen.set(false);
+    this.bypassError.set('');
+    this.bypassDialog.set({
+      userId: item.userId,
+      userSource: item.userSource,
+      fullName: item.fullName,
+      workDate: this.workDate() || new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }),
+      action: 'time_in',
+      useCustomTime: false,
+      customAt: '',
+    });
+  }
+
+  closeBypassDialog(): void {
+    if (this.bypassSaving()) return;
+    this.bypassDialog.set(null);
+    this.bypassError.set('');
+  }
+
+  updateBypassDialog(
+    patch: Partial<{
+      useCustomTime: boolean;
+      customAt: string;
+      action: AttendanceBypassAction;
+    }>,
+  ): void {
+    const current = this.bypassDialog();
+    if (!current) return;
+    this.bypassDialog.set({ ...current, ...patch });
+  }
+
+  async submitBypass(): Promise<void> {
+    const dialog = this.bypassDialog();
+    if (!dialog) return;
+
+    this.bypassSaving.set(true);
+    this.bypassError.set('');
+    try {
+      let at: string | null = null;
+      if (dialog.useCustomTime) {
+        const raw = dialog.customAt.trim();
+        if (!raw) {
+          this.bypassError.set('Enter a custom date and time.');
+          return;
+        }
+        const parsed = new Date(raw);
+        if (!Number.isFinite(parsed.getTime())) {
+          this.bypassError.set('Invalid custom time.');
+          return;
+        }
+        at = parsed.toISOString();
+      }
+
+      await firstValueFrom(
+        this.adminApi.bypassPayrollAttendance({
+          userId: dialog.userId,
+          userSource: dialog.userSource,
+          workDate: dialog.workDate,
+          action: dialog.action,
+          at,
+        }),
+      );
+      this.bypassDialog.set(null);
+      await this.loadAttendance();
+    } catch (err: unknown) {
+      const message =
+        typeof err === 'object' &&
+        err !== null &&
+        'error' in err &&
+        typeof (err as { error?: { message?: string } }).error?.message === 'string'
+          ? (err as { error: { message: string } }).error.message
+          : 'Unable to bypass punch.';
+      this.bypassError.set(message);
+    } finally {
+      this.bypassSaving.set(false);
+    }
+  }
+
   formatMoney(value: number | null | undefined): string {
     if (value == null) {
       return '—';
@@ -1118,6 +1249,10 @@ export class PayrollPageComponent implements OnInit {
     }
 
     return `${value.toFixed(2)} h`;
+  }
+
+  resolvePayslipQrUrl(url: string | null | undefined): string | null {
+    return this.adminApi.resolveProfileImageUrl(url);
   }
 
   selfieUrl(path: string | null | undefined): string | null {
