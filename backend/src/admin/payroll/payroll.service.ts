@@ -42,6 +42,12 @@ import {
 } from './dto/payroll-settings.dto';
 import { saveAttendanceSelfieFile } from './attendance-selfie.util';
 import {
+  lunchMinutes,
+  overbreakMinutes,
+  punchOutRequiresLunchConfirm,
+  type PunchOutIntent,
+} from './attendance-lunch.util';
+import {
   deletePayrollQrImageFile,
   savePayrollQrImageFile,
 } from './payroll-qr-image.util';
@@ -371,8 +377,16 @@ export interface TimeClockStatus {
   workDate: string;
   timeIn: string | null;
   timeOut: string | null;
+  lunchOut: string | null;
+  lunchIn: string | null;
+  onLunch: boolean;
   canTimeIn: boolean;
+  canLunchIn: boolean;
   canTimeOut: boolean;
+  punchOutRequiresIntent: boolean;
+  lunchMinutes: number | null;
+  overbreakMinutes: number;
+  isOverbreak: boolean;
   status:
     | 'ready'
     | 'timed_in'
@@ -3798,6 +3812,8 @@ export class PayrollService {
       settings.workWeek,
     );
 
+    const emptyLunch = this.emptyLunchClockFields(clock.serverNow);
+
     const user = await this.findActiveUserByUsername(username);
     if (!user) {
       return {
@@ -3814,6 +3830,7 @@ export class PayrollService {
         serverNow: clock.serverNow,
         undertimeGraceMinutes,
         ...emptyLocation,
+        ...emptyLunch,
       };
     }
 
@@ -3832,6 +3849,7 @@ export class PayrollService {
         serverNow: clock.serverNow,
         undertimeGraceMinutes,
         ...emptyLocation,
+        ...emptyLunch,
       };
     }
 
@@ -3864,6 +3882,7 @@ export class PayrollService {
         serverNow: clock.serverNow,
         undertimeGraceMinutes,
         ...expectedFields,
+        ...emptyLunch,
       };
     }
 
@@ -3880,6 +3899,8 @@ export class PayrollService {
       locationLng: this.toNullableNumber(attendance?.location_lng),
       locationMismatch: false,
     };
+
+    const lunchFields = this.emptyLunchClockFields(clock.serverNow, attendance);
 
     if (!attendance?.time_in) {
       return {
@@ -3899,10 +3920,12 @@ export class PayrollService {
         serverNow: clock.serverNow,
         undertimeGraceMinutes,
         ...expectedFields,
+        ...lunchFields,
       };
     }
 
     if (!attendance.time_out) {
+      const onLunch = lunchFields.onLunch;
       return {
         username: user.username,
         fullName: user.fullName,
@@ -3911,12 +3934,17 @@ export class PayrollService {
         timeIn: attendance.time_in,
         timeOut: null,
         canTimeIn: false,
-        canTimeOut: true,
+        canTimeOut: !onLunch,
         status: 'timed_in',
-        message: 'Already timed in. Use time out when leaving.',
+        message: onLunch
+          ? 'On lunch break. Use lunch in when you return.'
+          : lunchFields.punchOutRequiresIntent
+            ? 'Already timed in. Choose lunch or end of day when leaving.'
+            : 'Already timed in. Use time out when leaving.',
         serverNow: clock.serverNow,
         undertimeGraceMinutes,
         ...recorded,
+        ...lunchFields,
       };
     }
 
@@ -3934,6 +3962,7 @@ export class PayrollService {
       serverNow: clock.serverNow,
       undertimeGraceMinutes,
       ...recorded,
+      ...lunchFields,
     };
   }
 
@@ -3947,6 +3976,37 @@ export class PayrollService {
     if (status.status === 'not_found') {
       throw new NotFoundException(status.message);
     }
+
+    const user = await this.findActiveUserByUsername(usernameRaw);
+    if (!user) {
+      throw new NotFoundException('Username not found.');
+    }
+
+    if (status.canLunchIn) {
+      const selfieUrl = await saveAttendanceSelfieFile(
+        'in',
+        user.username,
+        selfie,
+      );
+      const result = await this.databaseService.query(
+        `UPDATE pcmazing_attendance
+         SET lunch_in = NOW(),
+             lunch_in_selfie_url = $4,
+             updated_at = NOW()
+         WHERE user_id = $1
+           AND user_source = $2
+           AND work_date = $3::date
+           AND lunch_out IS NOT NULL
+           AND lunch_in IS NULL
+           AND time_out IS NULL`,
+        [user.id, user.source, status.workDate, selfieUrl],
+      );
+      if (!result.rowCount) {
+        throw new BadRequestException('Unable to record lunch in.');
+      }
+      return this.getTimeClockStatus(user.username);
+    }
+
     if (!status.canTimeIn) {
       throw new BadRequestException(status.message);
     }
@@ -3956,11 +4016,6 @@ export class PayrollService {
       throw new BadRequestException(
         'Choose Office or Work from home before time in.',
       );
-    }
-
-    const user = await this.findActiveUserByUsername(usernameRaw);
-    if (!user) {
-      throw new NotFoundException('Username not found.');
     }
 
     const punchLocation = this.resolvePunchLocation(picked, location);
@@ -4014,6 +4069,7 @@ export class PayrollService {
   async timeOut(
     usernameRaw: string,
     selfie: Express.Multer.File,
+    intent?: PunchOutIntent | null,
   ): Promise<TimeClockStatus> {
     const status = await this.getTimeClockStatus(usernameRaw);
     if (status.status === 'not_found') {
@@ -4021,6 +4077,12 @@ export class PayrollService {
     }
     if (!status.canTimeOut) {
       throw new BadRequestException(status.message);
+    }
+
+    const normalizedIntent =
+      intent === 'lunch' || intent === 'end_of_day' ? intent : null;
+    if (status.punchOutRequiresIntent && !normalizedIntent) {
+      throw new BadRequestException('Choose lunch or end of day.');
     }
 
     const user = await this.findActiveUserByUsername(usernameRaw);
@@ -4034,6 +4096,26 @@ export class PayrollService {
       selfie,
     );
     const workDate = status.workDate;
+    if (normalizedIntent === 'lunch') {
+      const result = await this.databaseService.query(
+        `UPDATE pcmazing_attendance
+         SET lunch_out = NOW(),
+             lunch_out_selfie_url = $4,
+             updated_at = NOW()
+         WHERE user_id = $1
+           AND user_source = $2
+           AND work_date = $3::date
+           AND time_in IS NOT NULL
+           AND lunch_out IS NULL
+           AND time_out IS NULL`,
+        [user.id, user.source, workDate, selfieUrl],
+      );
+      if (!result.rowCount) {
+        throw new BadRequestException('Unable to record lunch out.');
+      }
+      return this.getTimeClockStatus(user.username);
+    }
+
     const result = await this.databaseService.query<{
       id: number;
       time_in: string | null;
@@ -4048,6 +4130,7 @@ export class PayrollService {
          AND work_date = $3::date
          AND time_in IS NOT NULL
          AND time_out IS NULL
+         AND (lunch_out IS NULL OR lunch_in IS NOT NULL)
        RETURNING id, time_in::text AS time_in, time_out::text AS time_out`,
       [user.id, user.source, workDate, selfieUrl],
     );
@@ -4089,6 +4172,7 @@ export class PayrollService {
         serverNow: clock.serverNow,
         undertimeGraceMinutes: settings.undertimeGraceMinutes,
         ...this.emptyTimeClockLocationFields(clock.workDate, settings.workWeek),
+        ...this.emptyLunchClockFields(clock.serverNow),
       };
     }
     return this.getTimeClockStatus(identity.username);
@@ -4112,12 +4196,13 @@ export class PayrollService {
     userId: number,
     source: 'tblusers' | 'pcmazing_admin_users',
     selfie: Express.Multer.File,
+    intent?: PunchOutIntent | null,
   ): Promise<TimeClockStatus> {
     const identity = await this.resolveUserIdentity(userId, source);
     if (!identity) {
       throw new NotFoundException('Account not found.');
     }
-    return this.timeOut(identity.username, selfie);
+    return this.timeOut(identity.username, selfie, intent);
   }
 
   async requestOvertime(
@@ -4611,6 +4696,8 @@ export class PayrollService {
     const result = await this.databaseService.query<{
       time_in: string | null;
       time_out: string | null;
+      lunch_out: string | null;
+      lunch_in: string | null;
       work_location_type: string | null;
       location_lat: string | number | null;
       location_lng: string | number | null;
@@ -4618,6 +4705,7 @@ export class PayrollService {
       location_mismatch: boolean | null;
     }>(
       `SELECT time_in::text AS time_in, time_out::text AS time_out,
+              lunch_out::text AS lunch_out, lunch_in::text AS lunch_in,
               work_location_type, location_lat, location_lng, location_label, location_mismatch
        FROM pcmazing_attendance
        WHERE user_id = $1 AND user_source = $2 AND work_date = $3::date
@@ -4786,6 +4874,51 @@ export class PayrollService {
       locationLat: null,
       locationLng: null,
       locationMismatch: false,
+    };
+  }
+
+  private emptyLunchClockFields(
+    serverNow?: string,
+    attendance?: {
+      time_in?: string | null;
+      time_out?: string | null;
+      lunch_out?: string | null;
+      lunch_in?: string | null;
+    } | null,
+  ): Pick<
+    TimeClockStatus,
+    | 'lunchOut'
+    | 'lunchIn'
+    | 'onLunch'
+    | 'canLunchIn'
+    | 'punchOutRequiresIntent'
+    | 'lunchMinutes'
+    | 'overbreakMinutes'
+    | 'isOverbreak'
+  > {
+    const lunchOut = attendance?.lunch_out ?? null;
+    const lunchIn = attendance?.lunch_in ?? null;
+    const timeOut = attendance?.time_out ?? null;
+    const onLunch = Boolean(lunchOut && !lunchIn && !timeOut);
+    const mins = lunchMinutes(
+      lunchOut,
+      lunchIn,
+      serverNow ? new Date(serverNow) : new Date(),
+    );
+    const ob = overbreakMinutes(mins);
+    return {
+      lunchOut,
+      lunchIn,
+      onLunch,
+      canLunchIn: onLunch,
+      punchOutRequiresIntent: punchOutRequiresLunchConfirm(serverNow ?? new Date(), {
+        timeIn: attendance?.time_in ?? null,
+        lunchOut,
+        timeOut,
+      }),
+      lunchMinutes: mins,
+      overbreakMinutes: ob,
+      isOverbreak: ob > 0,
     };
   }
 

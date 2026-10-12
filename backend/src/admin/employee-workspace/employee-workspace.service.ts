@@ -69,9 +69,14 @@ export class EmployeeWorkspaceService {
     );
   }
 
-  async timeOut(userId: number, source: UserSource, selfie: Express.Multer.File) {
+  async timeOut(
+    userId: number,
+    source: UserSource,
+    selfie: Express.Multer.File,
+    intent?: 'lunch' | 'end_of_day' | null,
+  ) {
     await this.ensureReady();
-    return this.payrollService.timeOutForUser(userId, source, selfie);
+    return this.payrollService.timeOutForUser(userId, source, selfie, intent);
   }
 
   private parseLocation(
