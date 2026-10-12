@@ -647,6 +647,7 @@ export interface LocalPriceStore {
   id: number;
   name: string;
   active: boolean;
+  lastSyncedAt?: string | null;
   createdAt: string | null;
   updatedAt: string | null;
 }
@@ -2195,6 +2196,12 @@ export class AdminApiService {
       payload,
       { headers: this.headers() },
     );
+  }
+
+  syncPcConceptLocalPrices() {
+    return this.http.post<
+      MessageResponse<{ storeId: number; imported: number; lastSyncedAt: string }>
+    >(`${APP_CONFIG.apiUrl}/admin/local-price-stores/sync/pc-concept`, {}, { headers: this.headers() });
   }
 
   updateLocalPriceStore(id: number, payload: { name?: string; active?: boolean }) {

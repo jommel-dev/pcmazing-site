@@ -27,6 +27,33 @@
     </div>
   }
 
+  <div
+    class="mb-6 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between"
+  >
+    <div class="min-w-0">
+      <h3 class="text-base font-bold text-slate-900">PC Concept catalog</h3>
+      <p class="mt-1 text-sm text-slate-500">
+        Sync the public PC Concept price list into the local “PC Concept” store (regular prices).
+        Last synced:
+        <span class="font-semibold text-slate-700">{{
+          formatManilaDateTime(pcConceptStore()?.lastSyncedAt)
+        }}</span>
+      </p>
+    </div>
+    <button
+      type="button"
+      class="shrink-0 rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-pcmazing-600 disabled:cursor-not-allowed disabled:opacity-60"
+      [disabled]="syncingPcConcept()"
+      (click)="refreshPcConcept()"
+    >
+      @if (syncingPcConcept()) {
+        Syncing…
+      } @else {
+        Refresh from PC Concept
+      }
+    </button>
+  </div>
+
   <div class="grid min-w-0 gap-6 xl:grid-cols-[300px_minmax(0,1fr)]">
     <!-- Stores -->
     <div class="min-w-0 space-y-4">

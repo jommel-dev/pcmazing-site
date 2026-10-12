@@ -1379,7 +1379,19 @@
             @if (resolvePayslipQrUrl(detail.qrImageUrl); as qrUrl) {
               <div class="mt-5 flex flex-col items-center rounded-2xl border border-slate-200 bg-white px-4 py-4 dark:border-slate-700 dark:bg-slate-950/40">
                 <p class="text-xs font-bold uppercase tracking-wide text-slate-500">Scan to pay</p>
-                <img [src]="qrUrl" alt="Payment QR code" class="mt-3 size-40 rounded-xl border border-slate-200 object-contain dark:border-slate-700" />
+                <button
+                  type="button"
+                  class="mt-3 rounded-xl focus:outline-none focus:ring-2 focus:ring-pcmazing-400"
+                  title="View larger QR code"
+                  (click)="openSelfieModal(qrUrl, 'Scan to pay')"
+                >
+                  <img
+                    [src]="qrUrl"
+                    alt="Payment QR code"
+                    class="size-40 rounded-xl border border-slate-200 object-contain transition hover:opacity-90 dark:border-slate-700"
+                  />
+                </button>
+                <p class="mt-2 text-[11px] text-slate-400">Tap to enlarge</p>
               </div>
             }
           } @else {
