@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 import { DatabaseModule } from '../database/database.module';
 import { AuthModule } from './auth/auth.module';
 import { ContactInquiriesController } from './contact-inquiries/contact-inquiries.controller';
@@ -50,9 +51,10 @@ import { PartsPriceSearchController } from './parts-price-search/parts-price-sea
 import { PartsPriceSearchService } from './parts-price-search/parts-price-search.service';
 import { LocalPriceListsController } from './local-price-lists/local-price-lists.controller';
 import { LocalPriceListsService } from './local-price-lists/local-price-lists.service';
+import { PcConceptSyncScheduler } from './local-price-lists/pc-concept-sync.scheduler';
 
 @Module({
-  imports: [DatabaseModule, AuthModule, PayrollModule, ProjectsModule],
+  imports: [DatabaseModule, AuthModule, PayrollModule, ProjectsModule, ScheduleModule.forRoot()],
   controllers: [
     DashboardController,
     ContactInquiriesController,
@@ -91,6 +93,7 @@ import { LocalPriceListsService } from './local-price-lists/local-price-lists.se
     QuotationService,
     PartsPriceSearchService,
     LocalPriceListsService,
+    PcConceptSyncScheduler,
     RbacService,
     RolesAdminService,
     RolesGuard,
