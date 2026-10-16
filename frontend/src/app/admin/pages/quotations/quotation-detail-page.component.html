@@ -17,6 +17,12 @@
           <div class="rounded-xl bg-slate-50 px-4 py-3 text-right">
             <p class="text-xs font-bold uppercase text-slate-400">Total amount</p>
             <p class="mt-1 text-2xl font-bold text-slate-900">{{ formatMoney(quote.totalAmount) }}</p>
+            @if (quote.useManualTotal) {
+              <p class="mt-1 text-[11px] font-semibold text-amber-700">Manual total</p>
+            }
+            @if (quote.hideItemPrices) {
+              <p class="mt-0.5 text-[11px] font-semibold text-slate-500">Item prices hidden from customer</p>
+            }
           </div>
           @if (canEdit()) {
             <a

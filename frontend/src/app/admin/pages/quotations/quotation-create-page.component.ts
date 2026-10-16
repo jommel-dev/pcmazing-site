@@ -96,6 +96,9 @@ export class QuotationCreatePageComponent implements OnInit {
     customerAddress: ['', [Validators.maxLength(2000)]],
     remarks: ['', [Validators.maxLength(2000)]],
     customDiscount: [0, [Validators.min(0)]],
+    useManualTotal: [false],
+    manualTotalAmount: [0 as number, [Validators.min(0)]],
+    hideItemPrices: [false],
     quoteDate: [this.toLocalDateTimeInputValue(new Date())],
     validityDays: [7, [Validators.required, Validators.min(1), Validators.max(365)]],
     items: this.formBuilder.array([]),
@@ -129,6 +132,7 @@ export class QuotationCreatePageComponent implements OnInit {
         this.populateFromQuote(quoteResponse.data);
       } else {
         this.addMaterialItem();
+        this.syncManualTotalControls();
       }
     } catch {
       this.error.set('Unable to load quotation form.');
@@ -141,6 +145,7 @@ export class QuotationCreatePageComponent implements OnInit {
     this.quotation.set(quote);
     this.quoteNo.set(quote.quoteNo);
     this.customerQuery.set(quote.customerName ?? '');
+    const useManualTotal = Boolean(quote.useManualTotal);
     this.form.patchValue({
       customerName: quote.customerName ?? '',
       customerPhone: quote.customerContactNumber ?? '',
@@ -148,9 +153,16 @@ export class QuotationCreatePageComponent implements OnInit {
       customerAddress: quote.customerAddress ?? '',
       remarks: quote.remarks ?? '',
       customDiscount: quote.customDiscount ?? 0,
+      useManualTotal,
+      manualTotalAmount:
+        quote.manualTotalAmount != null
+          ? Number(quote.manualTotalAmount)
+          : Number(quote.totalAmount) || 0,
+      hideItemPrices: useManualTotal ? true : Boolean(quote.hideItemPrices),
       quoteDate: quote.quoteDate ? this.toLocalDateTimeInputValue(new Date(quote.quoteDate)) : '',
       validityDays: quote.validityDays || 7,
     });
+    this.syncManualTotalControls();
     this.itemsArray.clear();
     this.partQueries.set([]);
     for (const item of quote.items) {
@@ -612,8 +624,36 @@ export class QuotationCreatePageComponent implements OnInit {
     return Math.max(0, Number(this.form.controls.customDiscount.value) || 0);
   }
 
-  grandTotal(): number {
+  calculatedGrandTotal(): number {
     return Math.max(0, this.itemsNetSubtotal() - this.customDiscountAmount());
+  }
+
+  grandTotal(): number {
+    if (this.form.controls.useManualTotal.value) {
+      return Math.max(0, Number(this.form.controls.manualTotalAmount.value) || 0);
+    }
+    return this.calculatedGrandTotal();
+  }
+
+  onUseManualTotalChange(): void {
+    this.syncManualTotalControls();
+  }
+
+  private syncManualTotalControls(): void {
+    const useManual = Boolean(this.form.controls.useManualTotal.value);
+    if (useManual) {
+      this.form.controls.hideItemPrices.setValue(true, { emitEvent: false });
+      this.form.controls.hideItemPrices.disable({ emitEvent: false });
+      this.form.controls.manualTotalAmount.enable({ emitEvent: false });
+      if (!Number(this.form.controls.manualTotalAmount.value)) {
+        this.form.controls.manualTotalAmount.setValue(this.calculatedGrandTotal(), {
+          emitEvent: false,
+        });
+      }
+    } else {
+      this.form.controls.hideItemPrices.enable({ emitEvent: false });
+      this.form.controls.manualTotalAmount.disable({ emitEvent: false });
+    }
   }
 
   validUntilLabel(): string {
@@ -661,6 +701,16 @@ export class QuotationCreatePageComponent implements OnInit {
       return;
     }
 
+    this.syncManualTotalControls();
+    const useManualTotal = Boolean(this.form.controls.useManualTotal.value);
+    if (useManualTotal) {
+      const manual = Number(this.form.getRawValue().manualTotalAmount);
+      if (!Number.isFinite(manual) || manual < 0) {
+        this.formError.set('Manual total amount is required and must be zero or greater.');
+        return;
+      }
+    }
+
     const invalidItemIndex = this.itemsArray.controls.findIndex((control, index) => {
       const item = control.getRawValue() as {
         itemKind?: QuoteItemKind;
@@ -687,6 +737,13 @@ export class QuotationCreatePageComponent implements OnInit {
       customerAddress: value.customerAddress.trim() || undefined,
       remarks: value.remarks.trim() || undefined,
       customDiscount: Number(value.customDiscount) || 0,
+      useManualTotal,
+      manualTotalAmount: useManualTotal
+        ? Number(value.manualTotalAmount) || 0
+        : value.manualTotalAmount != null
+          ? Number(value.manualTotalAmount)
+          : null,
+      hideItemPrices: useManualTotal ? true : Boolean(value.hideItemPrices),
       quoteDate: value.quoteDate ? new Date(value.quoteDate).toISOString() : undefined,
       validityDays: Number(value.validityDays) || 7,
       status,

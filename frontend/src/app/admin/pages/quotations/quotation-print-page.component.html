@@ -65,9 +65,11 @@
                       <tr>
                         <th>Item Description</th>
                         <th class="num">Qty</th>
-                        <th class="num">Price</th>
-                        <th class="num">Discount</th>
-                        <th class="num">Amount</th>
+                        @if (!hideItemPrices()) {
+                          <th class="num">Price</th>
+                          <th class="num">Discount</th>
+                          <th class="num">Amount</th>
+                        }
                       </tr>
                     </thead>
                     <tbody>
@@ -75,9 +77,11 @@
                         <tr>
                           <td>{{ line.itemName }}</td>
                           <td class="num">{{ line.isCustomDiscount ? '—' : (line.qty | number:'1.0-2') }}</td>
-                          <td class="num">{{ line.isCustomDiscount ? '—' : formatMoney(line.unitPrice) }}</td>
-                          <td class="num">{{ formatDiscount(line) }}</td>
-                          <td class="num">{{ line.isCustomDiscount ? '—' : formatMoney(line.extPrice) }}</td>
+                          @if (!hideItemPrices()) {
+                            <td class="num">{{ line.isCustomDiscount ? '—' : formatMoney(line.unitPrice) }}</td>
+                            <td class="num">{{ formatDiscount(line) }}</td>
+                            <td class="num">{{ line.isCustomDiscount ? '—' : formatMoney(line.extPrice) }}</td>
+                          }
                         </tr>
                       }
                     </tbody>
@@ -143,9 +147,11 @@
             <tr>
               <th>Item Description</th>
               <th class="num">Qty</th>
-              <th class="num">Price</th>
-              <th class="num">Discount</th>
-              <th class="num">Amount</th>
+              @if (!hideItemPrices()) {
+                <th class="num">Price</th>
+                <th class="num">Discount</th>
+                <th class="num">Amount</th>
+              }
             </tr>
           </thead>
           <tbody>
@@ -153,9 +159,11 @@
               <tr>
                 <td>{{ line.itemName }}</td>
                 <td class="num">{{ line.isCustomDiscount ? '—' : (line.qty | number:'1.0-2') }}</td>
-                <td class="num">{{ line.isCustomDiscount ? '—' : formatMoney(line.unitPrice) }}</td>
-                <td class="num">{{ formatDiscount(line) }}</td>
-                <td class="num">{{ line.isCustomDiscount ? '—' : formatMoney(line.extPrice) }}</td>
+                @if (!hideItemPrices()) {
+                  <td class="num">{{ line.isCustomDiscount ? '—' : formatMoney(line.unitPrice) }}</td>
+                  <td class="num">{{ formatDiscount(line) }}</td>
+                  <td class="num">{{ line.isCustomDiscount ? '—' : formatMoney(line.extPrice) }}</td>
+                }
               </tr>
             }
           </tbody>
@@ -163,7 +171,7 @@
 
         <div class="receipt-totals">
           <div class="receipt-totals-left">
-            @if (discountTotal() > 0) {
+            @if (!hideItemPrices() && discountTotal() > 0) {
               <div>Total Discounts: {{ formatMoney(discountTotal()) }}</div>
             }
             @if (current.remarks) {
@@ -177,10 +185,12 @@
             }
           </div>
           <div class="receipt-totals-right">
-            <div class="totals-row">
-              <span>Subtotal</span>
-              <span>{{ formatMoney(subtotal()) }}</span>
-            </div>
+            @if (!hideItemPrices()) {
+              <div class="totals-row">
+                <span>Subtotal</span>
+                <span>{{ formatMoney(subtotal()) }}</span>
+              </div>
+            }
             <div class="totals-row totals-row-strong">
               <span>QUOTE TOTAL</span>
               <span>{{ formatMoney(quoteTotal()) }}</span>
