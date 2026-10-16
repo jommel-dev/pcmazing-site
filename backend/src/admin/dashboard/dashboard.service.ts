@@ -757,7 +757,7 @@ export class DashboardService {
           amount: string | null;
           date: string | null;
         }>(
-          `SELECT
+        `SELECT
              o.id,
              COALESCE(NULLIF(TRIM(o.customer_name), ''), o.reference_no, 'Sales order') AS title,
              COALESCE(o.reference_no, 'Sales order') AS subtitle,
@@ -772,8 +772,8 @@ export class DashboardService {
              AND COALESCE(o.refunded_at, o.updated_at) <= $2::timestamptz
            ORDER BY COALESCE(o.refunded_at, o.updated_at) DESC
            LIMIT 50`,
-          [start.toISOString(), end.toISOString()],
-        );
+        [start.toISOString(), end.toISOString()],
+      );
 
         rows.push(
           ...result.rows.map((row) => ({

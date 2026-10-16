@@ -43,12 +43,66 @@ import {
 } from './dto/manual-deduction.dto';
 import { UpdatePayslipRemarksDto } from './dto/update-payslip-remarks.dto';
 import { BypassAttendanceDto } from './dto/bypass-attendance.dto';
+import { CreateEmployeeMemoDto } from './dto/employee-memo.dto';
+import { EmployeeMemosService } from './employee-memos.service';
 import { PayrollService } from './payroll.service';
 
 @Controller('admin/payroll')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class PayrollController {
-  constructor(private readonly payrollService: PayrollService) {}
+  constructor(
+    private readonly payrollService: PayrollService,
+    private readonly employeeMemosService: EmployeeMemosService,
+  ) {}
+
+  @Get('memos')
+  @RequirePermissions('payroll.view')
+  listMemos(
+    @Query('employeeUserId') employeeUserId?: string,
+    @Query('memoType') memoType?: string,
+    @Query('ackStatus') ackStatus?: string,
+  ) {
+    const parsedEmployeeId = Number(employeeUserId);
+    return this.employeeMemosService
+      .listAdmin({
+        employeeUserId:
+          Number.isFinite(parsedEmployeeId) && parsedEmployeeId > 0
+            ? parsedEmployeeId
+            : undefined,
+        memoType,
+        ackStatus,
+      })
+      .then((data) => ({ success: true, data }));
+  }
+
+  @Get('memos/:id')
+  @RequirePermissions('payroll.view')
+  getMemo(@Param('id', ParseIntPipe) id: number) {
+    return this.employeeMemosService.getById(id).then((data) => ({
+      success: true,
+      data,
+    }));
+  }
+
+  @Post('memos')
+  @RequirePermissions('payroll.edit')
+  createMemo(
+    @Body() dto: CreateEmployeeMemoDto,
+    @Req() req: Request & { user?: AdminJwtPayload },
+  ) {
+    const issuedBy =
+      req.user?.sub != null && Number.isFinite(Number(req.user.sub))
+        ? Number(req.user.sub)
+        : null;
+    if (!issuedBy) {
+      throw new BadRequestException('Missing authenticated issuer.');
+    }
+    return this.employeeMemosService.create(dto, issuedBy).then((data) => ({
+      success: true,
+      message: 'Memo issued.',
+      data,
+    }));
+  }
 
   @Get('overview')
   @RequirePermissions('payroll.view')

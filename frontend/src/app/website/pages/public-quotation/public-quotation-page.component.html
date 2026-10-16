@@ -38,9 +38,11 @@
             <tr>
               <th>Item Description</th>
               <th class="num">Qty</th>
-              <th class="num">Price</th>
-              <th class="num">Discount</th>
-              <th class="num">Amount</th>
+              @if (!quote.hideItemPrices) {
+                <th class="num">Price</th>
+                <th class="num">Discount</th>
+                <th class="num">Amount</th>
+              }
             </tr>
           </thead>
           <tbody>
@@ -48,9 +50,11 @@
               <tr>
                 <td>{{ lineDescription(item) }}</td>
                 <td class="num">{{ item.quantity }}</td>
-                <td class="num">{{ formatMoney(item.unitPrice) }}</td>
-                <td class="num">{{ discountLabel(item.discountType) }}</td>
-                <td class="num">{{ formatMoney(item.lineTotal) }}</td>
+                @if (!quote.hideItemPrices) {
+                  <td class="num">{{ formatMoney(item.unitPrice) }}</td>
+                  <td class="num">{{ discountLabel(item.discountType) }}</td>
+                  <td class="num">{{ formatMoney(item.lineTotal) }}</td>
+                }
               </tr>
             }
           </tbody>
@@ -63,18 +67,22 @@
             <p class="line-card-title">{{ lineDescription(item) }}</p>
             <dl class="line-card-meta">
               <div><dt>Qty</dt><dd>{{ item.quantity }}</dd></div>
-              <div><dt>Price</dt><dd>{{ formatMoney(item.unitPrice) }}</dd></div>
-              <div><dt>Discount</dt><dd>{{ discountLabel(item.discountType) }}</dd></div>
-              <div><dt>Amount</dt><dd>{{ formatMoney(item.lineTotal) }}</dd></div>
+              @if (!quote.hideItemPrices) {
+                <div><dt>Price</dt><dd>{{ formatMoney(item.unitPrice) }}</dd></div>
+                <div><dt>Discount</dt><dd>{{ discountLabel(item.discountType) }}</dd></div>
+                <div><dt>Amount</dt><dd>{{ formatMoney(item.lineTotal) }}</dd></div>
+              }
             </dl>
           </article>
         }
       </div>
 
       <div class="totals">
-        <div class="row"><span>Subtotal</span><span>{{ formatMoney(quote.subtotal ?? quote.totalAmount) }}</span></div>
-        @if ((quote.discountTotal ?? 0) > 0) {
-          <div class="row"><span>Discounts</span><span>-{{ formatMoney(quote.discountTotal) }}</span></div>
+        @if (!quote.hideItemPrices) {
+          <div class="row"><span>Subtotal</span><span>{{ formatMoney(quote.subtotal ?? quote.totalAmount) }}</span></div>
+          @if ((quote.discountTotal ?? 0) > 0) {
+            <div class="row"><span>Discounts</span><span>-{{ formatMoney(quote.discountTotal) }}</span></div>
+          }
         }
         <div class="row strong"><span>Total</span><span>{{ formatMoney(quote.totalAmount) }}</span></div>
       </div>

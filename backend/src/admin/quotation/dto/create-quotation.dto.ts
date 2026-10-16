@@ -2,6 +2,7 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsDateString,
   IsEmail,
   IsIn,
@@ -115,6 +116,20 @@ export class CreateQuotationDto {
   @IsString()
   @IsIn(['draft', 'finalized'])
   status?: 'draft' | 'finalized';
+
+  @IsOptional()
+  @IsBoolean()
+  useManualTotal?: boolean;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(999999999.99)
+  manualTotalAmount?: number | null;
+
+  @IsOptional()
+  @IsBoolean()
+  hideItemPrices?: boolean;
 
   @IsArray()
   @ArrayMinSize(1)

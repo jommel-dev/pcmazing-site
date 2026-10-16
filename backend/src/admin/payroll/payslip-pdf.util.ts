@@ -21,6 +21,7 @@ export interface PayslipDayBreakdownRow {
 
 export interface PayslipPdfPayload {
   companyName: string;
+  companyPhone?: string;
   label: string;
   dateFrom: string;
   dateTo: string;
@@ -111,7 +112,13 @@ export async function buildPayslipPdfBuffer(
 
     doc.fontSize(18).fillColor('#0047FF');
     writeLine(payload.companyName);
-    doc.moveDown(0.15);
+    const companyPhone = payload.companyPhone?.trim() || '09394133225';
+    if (companyPhone) {
+      doc.moveDown(0.1);
+      doc.fontSize(9).fillColor('#475569');
+      writeLine(`Tel: ${companyPhone}`);
+    }
+    doc.moveDown(0.2);
     doc.fontSize(12).fillColor('#0f172a');
     writeLine('Employee Payslip');
 

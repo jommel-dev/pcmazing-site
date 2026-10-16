@@ -17,6 +17,7 @@ import {
   computeLineTopupTotal,
   TopupMode,
 } from './quotation-topup.util';
+import { resolveManualTotalFlags } from './quotation-manual-total.util';
 
 export type QuotationSource = 'pcmazing' | 'legacy';
 export type QuotationStatus = 'draft' | 'finalized' | 'expired' | 'converted';
@@ -59,12 +60,12 @@ export interface QuotationItem {
   baseUnitPrice?: number;
   topupMode?: TopupMode;
   topupValue?: number;
-  unitPrice: number;
+  unitPrice: number | null;
   sellPrice: number | null;
   discountType: QuotationDiscountType;
   discountPrice: number | null;
   totalSetQty: number | null;
-  lineTotal: number;
+  lineTotal: number | null;
   lineTopupTotal?: number;
   remarks: string | null;
   metadata: Record<string, unknown> | null;
@@ -81,6 +82,9 @@ export interface QuotationDetail extends QuotationListItem {
   subtotal: number;
   discountTotal: number;
   totalTopup?: number;
+  useManualTotal?: boolean;
+  manualTotalAmount?: number | null;
+  hideItemPrices?: boolean;
   items: QuotationItem[];
   hasShareToken?: boolean;
 }
@@ -267,6 +271,7 @@ export class QuotationService {
     const payload = await this.normalizeHeader(dto);
     const items = await this.normalizeItems(dto.items ?? []);
     const totals = this.calculateTotals(items, dto.customDiscount ?? 0);
+    const manual = this.resolveManualTotalsFromDto(dto, totals.totalAmount);
 
     const newId = await this.databaseService.withTransaction(async (client) => {
       const insertResult = await client.query<{ id: number }>(
@@ -281,11 +286,14 @@ export class QuotationService {
           subtotal,
           discount_total,
           total_amount,
+          use_manual_total,
+          manual_total_amount,
+          hide_item_prices,
           status,
           validity_days,
           expires_at,
           created_by
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
         RETURNING id`,
         [
           payload.quoteDate.toISOString(),
@@ -297,7 +305,10 @@ export class QuotationService {
           totals.customDiscount,
           totals.subtotal,
           totals.discountTotal,
-          totals.totalAmount,
+          manual.totalAmount,
+          manual.useManualTotal,
+          manual.manualTotalAmount,
+          manual.hideItemPrices,
           payload.status,
           payload.validityDays,
           payload.expiresAt.toISOString(),
@@ -333,6 +344,7 @@ export class QuotationService {
     const payload = await this.normalizeHeader(dto);
     const items = await this.normalizeItems(dto.items ?? []);
     const totals = this.calculateTotals(items, dto.customDiscount ?? 0);
+    const manual = this.resolveManualTotalsFromDto(dto, totals.totalAmount);
 
     await this.databaseService.withTransaction(async (client) => {
       await client.query(
@@ -347,11 +359,14 @@ export class QuotationService {
              subtotal = $8,
              discount_total = $9,
              total_amount = $10,
-             status = $11,
-             validity_days = $12,
-             expires_at = $13,
+             use_manual_total = $11,
+             manual_total_amount = $12,
+             hide_item_prices = $13,
+             status = $14,
+             validity_days = $15,
+             expires_at = $16,
              updated_at = NOW()
-         WHERE id = $14 AND deleted_at IS NULL`,
+         WHERE id = $17 AND deleted_at IS NULL`,
         [
           payload.quoteDate.toISOString(),
           payload.customerName,
@@ -362,7 +377,10 @@ export class QuotationService {
           totals.customDiscount,
           totals.subtotal,
           totals.discountTotal,
-          totals.totalAmount,
+          manual.totalAmount,
+          manual.useManualTotal,
+          manual.manualTotalAmount,
+          manual.hideItemPrices,
           payload.status,
           payload.validityDays,
           payload.expiresAt.toISOString(),
@@ -404,6 +422,14 @@ export class QuotationService {
       lineTotal: Number(item.lineTotal) || 0,
     }));
     const totals = this.calculateTotals(items, existing.customDiscount ?? 0);
+    const manual = this.resolveManualTotalsFromDto(
+      {
+        useManualTotal: existing.useManualTotal,
+        manualTotalAmount: existing.manualTotalAmount,
+        hideItemPrices: existing.hideItemPrices,
+      },
+      totals.totalAmount,
+    );
 
     const newId = await this.databaseService.withTransaction(async (client) => {
       const insertResult = await client.query<{ id: number }>(
@@ -418,11 +444,14 @@ export class QuotationService {
           subtotal,
           discount_total,
           total_amount,
+          use_manual_total,
+          manual_total_amount,
+          hide_item_prices,
           status,
           validity_days,
           expires_at,
           created_by
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'draft', $11, $12, $13)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'draft', $14, $15, $16)
         RETURNING id`,
         [
           quoteDate.toISOString(),
@@ -434,7 +463,10 @@ export class QuotationService {
           totals.customDiscount,
           totals.subtotal,
           totals.discountTotal,
-          totals.totalAmount,
+          manual.totalAmount,
+          manual.useManualTotal,
+          manual.manualTotalAmount,
+          manual.hideItemPrices,
           validityDays,
           expiresAt.toISOString(),
           createdBy ?? null,
@@ -557,19 +589,48 @@ export class QuotationService {
       throw new NotFoundException('Quotation was not found or the link has expired.');
     }
 
-    const { totalTopup: _totalTopup, ...publicDetail } = detail;
+    const {
+      totalTopup: _totalTopup,
+      manualTotalAmount: _manualTotalAmount,
+      ...publicDetail
+    } = detail;
+
+    const hideItemPrices = Boolean(detail.hideItemPrices);
+    const items = detail.items.map((item) => {
+      const {
+        baseUnitPrice: _baseUnitPrice,
+        topupMode: _topupMode,
+        topupValue: _topupValue,
+        lineTopupTotal: _lineTopupTotal,
+        ...publicItem
+      } = item;
+      if (!hideItemPrices) {
+        return publicItem;
+      }
+      return {
+        ...publicItem,
+        unitPrice: null,
+        sellPrice: null,
+        lineTotal: null,
+        discountPrice: null,
+      };
+    });
+
+    if (!hideItemPrices) {
+      return {
+        ...publicDetail,
+        hideItemPrices: false,
+        items,
+      };
+    }
+
     return {
       ...publicDetail,
-      items: detail.items.map((item) => {
-        const {
-          baseUnitPrice: _baseUnitPrice,
-          topupMode: _topupMode,
-          topupValue: _topupValue,
-          lineTopupTotal: _lineTopupTotal,
-          ...publicItem
-        } = item;
-        return publicItem;
-      }),
+      hideItemPrices: true,
+      customDiscount: 0,
+      subtotal: 0,
+      discountTotal: 0,
+      items,
     };
   }
 
@@ -635,6 +696,9 @@ export class QuotationService {
       custom_discount: string | null;
       subtotal: string | null;
       discount_total: string | null;
+      use_manual_total: boolean | null;
+      manual_total_amount: string | null;
+      hide_item_prices: boolean | null;
       status: string | null;
       validity_days: number | null;
       expires_at: string | null;
@@ -655,6 +719,9 @@ export class QuotationService {
         custom_discount::text,
         subtotal::text,
         discount_total::text,
+        use_manual_total,
+        manual_total_amount::text,
+        hide_item_prices,
         ${this.derivedStatusSql('status', 'expires_at')} AS status,
         validity_days,
         expires_at::text,
@@ -759,6 +826,12 @@ export class QuotationService {
       subtotal: Number(header.subtotal ?? 0),
       discountTotal: Number(header.discount_total ?? 0),
       totalTopup,
+      useManualTotal: Boolean(header.use_manual_total),
+      manualTotalAmount:
+        header.manual_total_amount !== null && header.manual_total_amount !== undefined
+          ? Number(header.manual_total_amount)
+          : null,
+      hideItemPrices: Boolean(header.hide_item_prices),
       items,
       hasShareToken: !!header.share_token,
     };
@@ -893,6 +966,9 @@ export class QuotationService {
       customDiscount: 0,
       subtotal: totalAmount,
       discountTotal: 0,
+      useManualTotal: false,
+      manualTotalAmount: null,
+      hideItemPrices: false,
       items,
     };
   }
@@ -1086,6 +1162,27 @@ export class QuotationService {
       customDiscount: normalizedCustomDiscount,
       totalAmount,
     };
+  }
+
+  private resolveManualTotalsFromDto(
+    dto: {
+      useManualTotal?: boolean | null;
+      manualTotalAmount?: number | null;
+      hideItemPrices?: boolean | null;
+    },
+    calculatedTotalAmount: number,
+  ) {
+    try {
+      return resolveManualTotalFlags({
+        useManualTotal: dto.useManualTotal,
+        manualTotalAmount: dto.manualTotalAmount,
+        hideItemPrices: dto.hideItemPrices,
+        calculatedTotalAmount,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid manual total.';
+      throw new BadRequestException(message);
+    }
   }
 
   private computeLineDiscount(amount: number, discountType: QuotationDiscountType): number {

@@ -348,12 +348,7 @@ export class LocalPriceListsService {
 
     try {
       await this.databaseService.withTransaction(async (client) => {
-        await client.query(
-          `UPDATE pcmazing_local_price_stores
-           SET active = TRUE, updated_at = NOW()
-           WHERE id = $1`,
-          [storeId],
-        );
+        // Preserve store.active so a disabled PC Concept connection stays off after sync.
         await client.query(`DELETE FROM pcmazing_local_price_items WHERE store_id = $1`, [
           storeId,
         ]);
