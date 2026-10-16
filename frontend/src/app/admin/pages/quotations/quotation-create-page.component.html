@@ -109,7 +109,7 @@
           </div>
         </div>
 
-        <div class="rounded-2xl border border-slate-200 p-4">
+        <div class="@container rounded-2xl border border-slate-200 p-4">
           <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
               <p class="text-sm font-semibold text-slate-800">Quoted items</p>
@@ -127,7 +127,7 @@
 
           <div formArrayName="items" class="space-y-2">
             @if (itemsArray.length > 0) {
-              <div class="hidden gap-3 px-3 lg:grid lg:grid-cols-[minmax(0,1.2fr)_72px_100px_110px_90px_130px_auto]">
+              <div class="hidden gap-2 px-3 @min-[60rem]:grid @min-[60rem]:grid-cols-[minmax(14rem,1.5fr)_minmax(3.25rem,4.5rem)_minmax(4rem,6.25rem)_minmax(5.5rem,7rem)_minmax(3.5rem,5.5rem)_minmax(5.5rem,8rem)_2.75rem]">
                 <p class="text-xs font-semibold uppercase text-slate-700">Item</p>
                 <p class="text-xs font-semibold uppercase text-slate-700">Qty</p>
                 <p class="text-xs font-semibold uppercase text-slate-700">Base</p>
@@ -140,14 +140,14 @@
 
             @for (item of itemsArray.controls; track $index; let itemIndex = $index) {
               <div
-                class="grid items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:grid-cols-[minmax(0,1.2fr)_72px_100px_110px_90px_130px_auto]"
+                class="grid items-start gap-2 space-y-0 rounded-xl border border-slate-200 bg-slate-50 p-3 @min-[60rem]:grid-cols-[minmax(14rem,1.5fr)_minmax(3.25rem,4.5rem)_minmax(4rem,6.25rem)_minmax(5.5rem,7rem)_minmax(3.5rem,5.5rem)_minmax(5.5rem,8rem)_2.75rem]"
                 [formGroupName]="itemIndex"
               >
-                <div class="relative min-w-0">
-                  <label class="mb-1 block text-xs font-semibold uppercase text-slate-700 lg:hidden">Item</label>
+                <div class="relative min-w-0 w-full">
+                  <label class="mb-1 block text-xs font-semibold uppercase text-slate-700 @min-[60rem]:hidden">Item</label>
                   <input
                     type="text"
-                    class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none"
+                    class="w-full min-w-0 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none"
                     [value]="partQuery(itemIndex)"
                     (input)="onPartQueryInput(itemIndex, $any($event.target).value)"
                     (focus)="openPartSearch(itemIndex)"
@@ -248,49 +248,64 @@
                   </p>
                 </div>
 
-                <div>
-                  <label class="mb-1 block text-xs font-semibold uppercase text-slate-700 lg:hidden">Qty</label>
-                  <input type="number" min="0.01" step="0.01" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm focus:border-pcmazing-500 focus:outline-none" formControlName="quantity" />
-                </div>
+                <div class="flex items-end gap-1.5 sm:gap-2 @min-[60rem]:contents">
+                  <div class="min-w-0 flex-[0.7]">
+                    <label class="mb-1 block text-xs font-semibold uppercase text-slate-700 @min-[60rem]:hidden">Qty</label>
+                    <input type="number" min="0.01" step="0.01" class="w-full rounded-xl border border-slate-200 bg-white px-2 py-2.5 text-sm focus:border-pcmazing-500 focus:outline-none sm:px-3 sm:py-3" formControlName="quantity" />
+                  </div>
 
-                <div>
-                  <label class="mb-1 block text-xs font-semibold uppercase text-slate-700 lg:hidden">Base</label>
-                  <input type="number" min="0" step="0.01" class="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm focus:border-pcmazing-500 focus:outline-none" formControlName="baseUnitPrice" />
-                </div>
+                  <div class="min-w-0 flex-1">
+                    <label class="mb-1 block text-xs font-semibold uppercase text-slate-700 @min-[60rem]:hidden">Base</label>
+                    <input type="number" min="0" step="0.01" class="w-full rounded-xl border border-slate-200 bg-white px-2 py-2.5 text-sm focus:border-pcmazing-500 focus:outline-none sm:px-3 sm:py-3" formControlName="baseUnitPrice" />
+                  </div>
 
-                <div>
-                  <label class="mb-1 block text-xs font-semibold uppercase text-slate-700 lg:hidden">Topup</label>
-                  <select class="w-full rounded-xl border border-slate-200 bg-white px-2 py-3 text-sm focus:border-pcmazing-500 focus:outline-none" formControlName="topupMode">
-                    @for (option of topupOptions; track option.value) {
-                      <option [value]="option.value">{{ option.label }}</option>
-                    }
-                  </select>
-                </div>
+                  <div class="min-w-0 flex-[1.25]">
+                    <label class="mb-1 block text-xs font-semibold uppercase text-slate-700 @min-[60rem]:hidden">Topup</label>
+                    <select class="w-full rounded-xl border border-slate-200 bg-white px-1.5 py-2.5 text-sm focus:border-pcmazing-500 focus:outline-none sm:px-2 sm:py-3" formControlName="topupMode">
+                      @for (option of topupOptions; track option.value) {
+                        <option [value]="option.value">{{ option.label }}</option>
+                      }
+                    </select>
+                  </div>
 
-                <div>
-                  <label class="mb-1 block text-xs font-semibold uppercase text-slate-700 lg:hidden">Value</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    class="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm focus:border-pcmazing-500 focus:outline-none read-only:bg-slate-100 read-only:text-slate-400"
-                    formControlName="topupValue"
-                    [readOnly]="item.get('topupMode')?.value === 'none'"
-                  />
-                </div>
+                  <div class="min-w-0 flex-[0.9]">
+                    <label class="mb-1 block text-xs font-semibold uppercase text-slate-700 @min-[60rem]:hidden">Value</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      class="w-full rounded-xl border border-slate-200 bg-white px-2 py-2.5 text-sm focus:border-pcmazing-500 focus:outline-none read-only:bg-slate-100 read-only:text-slate-400 sm:px-3 sm:py-3"
+                      formControlName="topupValue"
+                      [readOnly]="item.get('topupMode')?.value === 'none'"
+                    />
+                  </div>
 
-                <div>
-                  <label class="mb-1 block text-xs font-semibold uppercase text-slate-700 lg:hidden">Discount</label>
-                  <select class="w-full rounded-xl border border-slate-200 bg-white px-2 py-3 text-sm focus:border-pcmazing-500 focus:outline-none" formControlName="discountType">
-                    @for (option of discountOptions; track option.value) {
-                      <option [value]="option.value">{{ option.label }}</option>
-                    }
-                  </select>
-                </div>
+                  <div class="min-w-0 flex-[1.35]">
+                    <label class="mb-1 block text-xs font-semibold uppercase text-slate-700 @min-[60rem]:hidden">Discount</label>
+                    <select class="w-full rounded-xl border border-slate-200 bg-white px-1.5 py-2.5 text-sm focus:border-pcmazing-500 focus:outline-none sm:px-2 sm:py-3" formControlName="discountType">
+                      @for (option of discountOptions; track option.value) {
+                        <option [value]="option.value">{{ option.label }}</option>
+                      }
+                    </select>
+                  </div>
 
-                <button type="button" class="rounded-xl border border-red-200 px-3 py-3 text-sm font-semibold text-red-600 hover:bg-red-50" (click)="removeItem(itemIndex)">
-                  Remove
-                </button>
+                  <div class="flex shrink-0 items-end @min-[60rem]:block">
+                    <span class="group relative inline-flex">
+                      <button
+                        type="button"
+                        class="inline-flex size-10 items-center justify-center rounded-xl border border-red-200 text-red-600 hover:bg-red-50 sm:size-11"
+                        title="Remove"
+                        aria-label="Remove item"
+                        (click)="removeItem(itemIndex)"
+                      >
+                        <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                        </svg>
+                      </button>
+                      <span class="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-semibold text-white opacity-0 shadow transition group-hover:opacity-100">Remove</span>
+                    </span>
+                  </div>
+                </div>
               </div>
             }
           </div>

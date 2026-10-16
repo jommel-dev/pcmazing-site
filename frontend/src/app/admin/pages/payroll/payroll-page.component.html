@@ -3,17 +3,22 @@
     <div>
       <h2 class="text-2xl font-bold text-slate-900 dark:text-white">HIRS</h2>
       <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
-        Human Information Resource System — attendance, payroll, overtime, and employee memos. Configure salary fields in
+        Human Information Resource System ÃÂ¢ÃÂÃÂ attendance, payroll, overtime, and employee memos. Configure salary fields in
         <a routerLink="/admin/users" class="font-semibold text-pcmazing-500 hover:underline">User Management</a>.
         Weekly and Semi-Monthly Amount is a daily rate: 9h+ = full day, owner-agreed undertime (default 30 min early) still pays a full day, 4h to under that = half day. Overtime over 9 hours needs employee request + admin approval.
       </p>
     </div>
     <button
       type="button"
-      class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+      class="inline-flex h-12 w-12 shrink-0 cursor-pointer items-center justify-center self-start rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 lg:self-end dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+      title="Copy employee time clock link"
+      aria-label="Copy employee time clock link"
       (click)="copyTimeClockLink()"
     >
-      Copy employee time clock link
+      <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <rect x="9" y="9" width="13" height="13" rx="2" />
+        <path stroke-linecap="round" stroke-linejoin="round" d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+      </svg>
     </button>
   </div>
 
@@ -25,25 +30,30 @@
     }
   </div>
 
-  <div class="mb-6 flex gap-2 overflow-x-auto pb-1">
-    @for (tab of tabs; track tab.key) {
-      <button
-        type="button"
-        class="shrink-0 rounded-xl px-4 py-2 text-sm font-bold transition"
-        [class.bg-pcmazing-500]="activeTab() === tab.key"
-        [class.text-white]="activeTab() === tab.key"
-        [class.border]="activeTab() !== tab.key"
-        [class.border-slate-200]="activeTab() !== tab.key"
-        [class.text-slate-700]="activeTab() !== tab.key"
-        [class.dark:border-slate-700]="activeTab() !== tab.key"
-        [class.dark:text-slate-200]="activeTab() !== tab.key"
-        (click)="setTab(tab.key)"
-      >
-        {{ tab.label }}
-      </button>
-    }
-  </div>
+  <div class="flex flex-col gap-4 lg:flex-row">
+    <aside class="w-full shrink-0 lg:w-40">
+      <nav class="flex flex-row gap-1 overflow-x-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm lg:flex-col lg:gap-0.5 lg:overflow-visible dark:border-slate-800 dark:bg-slate-900">
+        @for (tab of tabs; track tab.key) {
+          <button
+            type="button"
+            class="cursor-pointer rounded-lg px-3 py-1.5 text-left text-sm font-semibold transition"
+            [class.bg-pcmazing-500]="activeTab() === tab.key"
+            [class.text-white]="activeTab() === tab.key"
+            [class.text-slate-600]="activeTab() !== tab.key"
+            [class.hover:bg-pcmazing-50]="activeTab() !== tab.key"
+            [class.hover:text-slate-900]="activeTab() !== tab.key"
+            [class.dark:text-slate-300]="activeTab() !== tab.key"
+            [class.dark:hover:bg-pcmazing-500/20]="activeTab() !== tab.key"
+            [class.dark:hover:text-white]="activeTab() !== tab.key"
+            (click)="setTab(tab.key)"
+          >
+            {{ tab.label }}
+          </button>
+        }
+      </nav>
+    </aside>
 
+    <div class="min-w-0 flex-1">
   @if (error()) {
     <div class="mb-4 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{{ error() }}</div>
   }
@@ -96,7 +106,7 @@
         class="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-800 dark:border-slate-600 dark:text-slate-100"
         (click)="openBypassPicker()"
       >
-        Bypass time in…
+        Bypass time inÃÂ¢ÃÂÃÂ¦
       </button>
     </form>
 
@@ -108,7 +118,7 @@
             <input
               type="search"
               class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-              placeholder="Search payroll-enabled employee…"
+              placeholder="Search payroll-enabled employeeÃÂ¢ÃÂÃÂ¦"
               [ngModel]="toolEmployeeQuery()"
               (ngModelChange)="onToolEmployeeQuery($event)"
               (focus)="openToolEmployeeMenu()"
@@ -138,7 +148,7 @@
 
     @if (attendance().length === 0) {
       <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900">
-        No punches for {{ workDate() || 'today' }}. Use “Bypass time in…” for forgotten punches.
+        No punches for {{ workDate() || 'today' }}. Use ÃÂ¢ÃÂÃÂBypass time inÃÂ¢ÃÂÃÂ¦ÃÂ¢ÃÂÃÂ for forgotten punches.
       </div>
     } @else {
       <div class="table-scroll overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
@@ -163,7 +173,7 @@
               <tr>
                 <td class="px-4 py-3">
                   <p class="font-semibold text-slate-900 dark:text-white">{{ item.fullName }}</p>
-                  <p class="text-xs text-slate-500">@{{ item.username }} · {{ item.department || '—' }}</p>
+                  <p class="text-xs text-slate-500">@{{ item.username }} ÃÂÂ· {{ item.department || 'ÃÂ¢ÃÂÃÂ' }}</p>
                 </td>
                 <td class="px-4 py-3 font-medium text-slate-900 dark:text-white">{{ formatPunch(item.timeIn) }}</td>
                 <td class="px-4 py-3 font-medium text-slate-900 dark:text-white">{{ formatPunch(item.lunchOut) }}</td>
@@ -229,7 +239,7 @@
                       </button>
                     }
                     @if (!(item.nextBypassActions || []).length) {
-                      <span class="text-xs text-slate-400">—</span>
+                      <span class="text-xs text-slate-400">ÃÂ¢ÃÂÃÂ</span>
                     }
                   </div>
                 </td>
@@ -241,7 +251,7 @@
 
       @if (attendanceMeta(); as pagination) {
         <div class="mt-4 flex items-center justify-between text-sm text-slate-500">
-          <span>Page {{ pagination.page }} of {{ pagination.totalPages }} · {{ pagination.total }} total</span>
+          <span>Page {{ pagination.page }} of {{ pagination.totalPages }} Â· {{ pagination.total }} total</span>
           <div class="flex gap-2">
             <button type="button" class="rounded-lg border px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page <= 1" (click)="goToAttendancePage(pagination.page - 1)">Previous</button>
             <button type="button" class="rounded-lg border px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page >= pagination.totalPages" (click)="goToAttendancePage(pagination.page + 1)">Next</button>
@@ -294,12 +304,12 @@
               <tr>
                 <td class="px-4 py-3">
                   <p class="font-semibold text-slate-900 dark:text-white">{{ item.fullName }}</p>
-                  <p class="text-xs text-slate-500">@{{ item.username }} · {{ item.employeeCode || 'No code' }}</p>
+                  <p class="text-xs text-slate-500">@{{ item.username }} ÃÂÂ· {{ item.employeeCode || 'No code' }}</p>
                   @if (item.positionTitle) {
                     <p class="text-xs text-slate-500">{{ item.positionTitle }}</p>
                   }
                 </td>
-                <td class="px-4 py-3 text-slate-600 dark:text-slate-300">{{ item.department || '—' }}</td>
+                <td class="px-4 py-3 text-slate-600 dark:text-slate-300">{{ item.department || 'ÃÂ¢ÃÂÃÂ' }}</td>
                 <td class="px-4 py-3 text-slate-700 dark:text-slate-200">{{ salaryTypeLabel(item.salaryType) }}</td>
                 <td class="px-4 py-3 font-medium text-slate-900 dark:text-white">
                   @if (item.fixedMonthlySalary) {
@@ -340,7 +350,7 @@
                     {{ todayStatusLabel(item.todayStatus) }}
                   </span>
                   <p class="mt-1 text-xs text-slate-500">
-                    {{ formatPunch(item.todayTimeIn) }} → {{ formatPunch(item.todayTimeOut) }}
+                    {{ formatPunch(item.todayTimeIn) }} ÃÂ¢ÃÂÃÂ {{ formatPunch(item.todayTimeOut) }}
                   </p>
                 </td>
               </tr>
@@ -399,7 +409,7 @@
             />
             <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-bold text-slate-400">min</span>
           </div>
-          <p class="mt-1 text-[11px] text-slate-400">Owner-agreed early out (0–90). Default 30 keeps 8.5h as a full paid day.</p>
+          <p class="mt-1 text-[11px] text-slate-400">Owner-agreed early out (0ÃÂ¢ÃÂÃÂ90). Default 30 keeps 8.5h as a full paid day.</p>
         </div>
         <div>
           <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">From</label>
@@ -457,7 +467,7 @@
         <div>
           <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Fixed late deduction</label>
           <div class="relative">
-            <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-slate-400">₱</span>
+            <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-slate-400">ÃÂ¢ÃÂÃÂ±</span>
             <input
               type="number"
               min="0"
@@ -474,7 +484,7 @@
         <div>
           <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Per-minute deduction</label>
           <div class="relative">
-            <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-slate-400">₱</span>
+            <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-slate-400">ÃÂ¢ÃÂÃÂ±</span>
             <input
               type="number"
               min="0"
@@ -502,10 +512,10 @@
           }
           @if (periodType() === 'semi_monthly') {
             <button type="button" class="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200" (click)="setSemiMonthlyPeriod(1); applyPeriodFilter()">
-              1st–15th
+              1stÃÂ¢ÃÂÃÂ15th
             </button>
             <button type="button" class="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200" (click)="setSemiMonthlyPeriod(2); applyPeriodFilter()">
-              16th–month end
+              16thÃÂ¢ÃÂÃÂmonth end
             </button>
           }
           @if (periodType() === 'monthly') {
@@ -551,13 +561,13 @@
         <ul class="mt-2 space-y-1 text-xs">
           @for (item of blockingOverlaps(); track item.runId + '-' + item.userSource + '-' + item.userId) {
             <li>
-              {{ item.fullName }} already has {{ item.label }} ({{ item.dateFrom }} → {{ item.dateTo }}) · {{ formatMoney(item.estimatedPay) }}
+              {{ item.fullName }} already has {{ item.label }} ({{ item.dateFrom }} ÃÂ¢ÃÂÃÂ {{ item.dateTo }}) ÃÂÂ· {{ formatMoney(item.estimatedPay) }}
             </li>
           }
         </ul>
         <label class="mt-3 flex items-center gap-2 text-sm font-semibold">
           <input type="checkbox" class="rounded border-amber-400" [ngModel]="confirmOverlap()" (ngModelChange)="confirmOverlap.set($event)" [ngModelOptions]="{standalone: true}" name="confirmOverlap" />
-          I understand — generate anyway
+          I understand ÃÂ¢ÃÂÃÂ generate anyway
         </label>
       </div>
     }
@@ -578,9 +588,9 @@
         </div>
       </div>
       <p class="mb-4 text-sm text-slate-500">
-        Dates {{ meta.dateFrom }} → {{ meta.dateTo }} · {{ periodType() === 'cutoff' ? 'Custom' : salaryTypeLabel(periodType()) }} · {{ workWeekLabel(workWeek()) }}.
-        Period type sets From/To for every employee. Pay formula still uses each employee profile (daily rate × paid days, or fixed monthly).
-        Work week marks rest days: Mon–Fri (Sat+Sun rest), Mon–Sat (Sunday rest), or day-off basis (plotted day offs only).
+        Dates {{ meta.dateFrom }} ÃÂ¢ÃÂÃÂ {{ meta.dateTo }} ÃÂÂ· {{ periodType() === 'cutoff' ? 'Custom' : salaryTypeLabel(periodType()) }} ÃÂÂ· {{ workWeekLabel(workWeek()) }}.
+        Period type sets From/To for every employee. Pay formula still uses each employee profile (daily rate ÃÂÃÂ paid days, or fixed monthly).
+        Work week marks rest days: MonÃÂ¢ÃÂÃÂFri (Sat+Sun rest), MonÃÂ¢ÃÂÃÂSat (Sunday rest), or day-off basis (plotted day offs only).
         Undertime grace ({{ undertimeGraceMinutes() }} min) still pays a full day if they clock out a little early for an owner-approved reason.
         Preview each payslip, then confirm generate. If this range overlaps an existing payslip, you will be asked to confirm before publishing.
       </p>
@@ -612,7 +622,7 @@
               <tr>
                 <td class="px-4 py-3">
                   <p class="font-semibold text-slate-900 dark:text-white">{{ item.fullName }}</p>
-                  <p class="text-xs text-slate-500">@{{ item.username }} · {{ item.employeeCode || 'No code' }}</p>
+                  <p class="text-xs text-slate-500">@{{ item.username }} ÃÂÂ· {{ item.employeeCode || 'No code' }}</p>
                 </td>
                 <td class="px-4 py-3 text-slate-600 dark:text-slate-300">
                   {{ salaryTypeLabel(item.salaryType) }}
@@ -640,7 +650,7 @@
                 <td class="px-4 py-3 font-semibold text-slate-900 dark:text-white">
                   {{ formatMoney(item.netPay ?? item.estimatedPay) }}
                   @if (item.deductionsExceedGross) {
-                    <span class="mt-1 block text-[11px] font-bold text-red-700 dark:text-red-300">Deductions exceed gross — net floored at ₱0</span>
+                    <span class="mt-1 block text-[11px] font-bold text-red-700 dark:text-red-300">Deductions exceed gross ÃÂ¢ÃÂÃÂ net floored at ÃÂ¢ÃÂÃÂ±0</span>
                   }
                 </td>
                 <td class="px-4 py-3">
@@ -693,7 +703,7 @@
                     (mousedown)="pickToolEmployee(item)"
                   >
                     <span class="text-sm font-medium text-slate-800 dark:text-slate-100">{{ item.fullName }}</span>
-                    <span class="text-xs text-slate-500">{{ item.employeeCode || item.username }}@if (item.department) { · {{ item.department }} }</span>
+                    <span class="text-xs text-slate-500">{{ item.employeeCode || item.username }}@if (item.department) { ÃÂÂ· {{ item.department }} }</span>
                   </button>
                 }
               }
@@ -725,7 +735,7 @@
               class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-lg font-bold leading-none text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
               [attr.aria-label]="loanFormOpen() ? 'Close loan form' : 'Add loan'"
               (click)="toggleLoanForm()"
-            >{{ loanFormOpen() ? '×' : '+' }}</button>
+            >{{ loanFormOpen() ? 'ÃÂÃÂ' : '+' }}</button>
           </div>
           @if (loanFormOpen()) {
             <div class="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
@@ -766,7 +776,7 @@
                     <div class="min-w-0">
                       <p class="font-semibold text-slate-900 dark:text-white">{{ loan.label }}</p>
                       <p class="mt-1 text-xs capitalize text-slate-500">{{ loan.status }}</p>
-                      <p class="mt-1 text-xs text-slate-500">{{ formatMoney(loan.balance) }} balance · {{ formatMoney(loan.principal) }} principal · {{ loan.termStyle === 'equal_installments' ? loan.installmentCount + ' installments' : formatMoney(loan.fixedInstallmentAmount) + '/cutoff' }}</p>
+                      <p class="mt-1 text-xs text-slate-500">{{ formatMoney(loan.balance) }} balance ÃÂÂ· {{ formatMoney(loan.principal) }} principal ÃÂÂ· {{ loan.termStyle === 'equal_installments' ? loan.installmentCount + ' installments' : formatMoney(loan.fixedInstallmentAmount) + '/cutoff' }}</p>
                       @if (loan.notes) { <p class="mt-1 text-xs text-slate-400">{{ loan.notes }}</p> }
                     </div>
                     <div class="flex shrink-0 flex-wrap justify-end gap-0.5">
@@ -842,7 +852,7 @@
               class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-lg font-bold leading-none text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
               [attr.aria-label]="commissionFormOpen() ? 'Close commission form' : 'Add commission'"
               (click)="toggleCommissionForm()"
-            >{{ commissionFormOpen() ? '×' : '+' }}</button>
+            >{{ commissionFormOpen() ? 'ÃÂÃÂ' : '+' }}</button>
           </div>
           @if (commissionFormOpen()) {
             <div class="mt-3 grid gap-2">
@@ -910,7 +920,7 @@
               class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-lg font-bold leading-none text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
               [attr.aria-label]="deductionFormOpen() ? 'Close deduction form' : 'Add deduction'"
               (click)="toggleDeductionForm()"
-            >{{ deductionFormOpen() ? '×' : '+' }}</button>
+            >{{ deductionFormOpen() ? 'ÃÂÃÂ' : '+' }}</button>
           </div>
           @if (deductionFormOpen()) {
             <div class="mt-3 grid gap-2">
@@ -986,7 +996,7 @@
     </form>
 
     <p class="mb-4 text-sm text-slate-500">
-      Hours beyond 9 per completed day appear here after the employee requests approval. Only approved overtime is included in Period pay (1.25× hourly).
+      Hours beyond 9 per completed day appear here after the employee requests approval. Only approved overtime is included in Period pay (1.25ÃÂÃÂ hourly).
     </p>
 
     @if (overtimeItems().length === 0) {
@@ -1011,11 +1021,11 @@
               <tr>
                 <td class="px-4 py-3">
                   <p class="font-semibold text-slate-900 dark:text-white">{{ item.fullName }}</p>
-                  <p class="text-xs text-slate-500">@{{ item.username }} · {{ item.employeeCode || 'No code' }}</p>
+                  <p class="text-xs text-slate-500">@{{ item.username }} ÃÂÂ· {{ item.employeeCode || 'No code' }}</p>
                 </td>
                 <td class="px-4 py-3 text-slate-700 dark:text-slate-200">{{ item.workDate }}</td>
                 <td class="px-4 py-3 text-slate-700 dark:text-slate-200">
-                  {{ formatPunch(item.timeIn) }} → {{ formatPunch(item.timeOut) }}
+                  {{ formatPunch(item.timeIn) }} ÃÂ¢ÃÂÃÂ {{ formatPunch(item.timeOut) }}
                   <p class="text-xs text-slate-500">{{ formatHours(item.hoursWorked) }} total</p>
                 </td>
                 <td class="px-4 py-3 font-medium text-slate-900 dark:text-white">{{ formatHours(item.overtimeHours) }}</td>
@@ -1077,7 +1087,7 @@
 
       @if (overtimeMeta(); as pagination) {
         <div class="mt-4 flex items-center justify-between text-sm text-slate-500">
-          <span>Page {{ pagination.page }} of {{ pagination.totalPages }} · {{ pagination.total }} total</span>
+          <span>Page {{ pagination.page }} of {{ pagination.totalPages }} ÃÂÂ· {{ pagination.total }} total</span>
           <div class="flex gap-2">
             <button type="button" class="rounded-lg border px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page <= 1" (click)="goToOvertimePage(pagination.page - 1)">Previous</button>
             <button type="button" class="rounded-lg border px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page >= pagination.totalPages" (click)="goToOvertimePage(pagination.page + 1)">Next</button>
@@ -1133,7 +1143,7 @@
               <tr>
                 <td class="px-4 py-3">
                   <p class="font-semibold text-slate-900 dark:text-white">{{ item.fullName }}</p>
-                  <p class="text-xs text-slate-500">@{{ item.username }} · {{ item.employeeCode || 'No code' }}</p>
+                  <p class="text-xs text-slate-500">@{{ item.username }} ÃÂÂ· {{ item.employeeCode || 'No code' }}</p>
                   @if (item.adjustmentNote) {
                     <p class="mt-1 text-xs text-slate-500">{{ item.adjustmentNote }}</p>
                   }
@@ -1187,7 +1197,7 @@
                       </button>
                     </div>
                   } @else {
-                    <p class="text-xs text-slate-500">{{ item.adjustmentReviewNote || '—' }}</p>
+                    <p class="text-xs text-slate-500">{{ item.adjustmentReviewNote || 'ÃÂ¢ÃÂÃÂ' }}</p>
                   }
                 </td>
               </tr>
@@ -1198,7 +1208,7 @@
 
       @if (adjustmentMeta(); as pagination) {
         <div class="mt-4 flex items-center justify-between text-sm text-slate-500">
-          <span>Page {{ pagination.page }} of {{ pagination.totalPages }} · {{ pagination.total }} total</span>
+          <span>Page {{ pagination.page }} of {{ pagination.totalPages }} ÃÂÂ· {{ pagination.total }} total</span>
           <div class="flex gap-2">
             <button type="button" class="rounded-lg border px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page <= 1" (click)="goToAdjustmentPage(pagination.page - 1)">Previous</button>
             <button type="button" class="rounded-lg border px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page >= pagination.totalPages" (click)="goToAdjustmentPage(pagination.page + 1)">Next</button>
@@ -1212,21 +1222,40 @@
         <h3 class="text-base font-bold text-slate-900 dark:text-white">Issue memo</h3>
         <p class="mt-1 text-xs text-slate-500">Creates a formal notice for one employee. They must acknowledge it on their dashboard.</p>
         <div class="mt-4 space-y-3">
-          <div>
-            <label class="mb-1 block text-xs font-semibold text-slate-700">Employee *</label>
-            <select
-              class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
-              [ngModel]="memoForm().employeeUserId"
-              (ngModelChange)="memoForm.set({ ...memoForm(), employeeUserId: Number($event) || 0 })"
-            >
-              <option [ngValue]="0">Select employee…</option>
-              @for (emp of employees(); track emp.userId + ':' + emp.userSource) {
-                @if (emp.userSource === 'pcmazing_admin_users') {
-                  <option [ngValue]="emp.userId">{{ emp.fullName }}</option>
+          <label class="relative block">
+            <span class="mb-1 block text-xs font-semibold text-slate-700">Employee *</span>
+            <input
+              type="search"
+              autocomplete="off"
+              class="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:border-pcmazing-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              placeholder="Search name, code, username..."
+              [ngModel]="memoEmployeeQuery()"
+              (ngModelChange)="onMemoEmployeeQuery($event)"
+              (focus)="openMemoEmployeeMenu()"
+              (blur)="closeMemoEmployeeMenuSoon()"
+              name="memoEmployeeSearch"
+            />
+            @if (memoEmployeeMenuOpen()) {
+              <div class="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-950">
+                @if (memoEmployeeSearching()) {
+                  <p class="px-3 py-2 text-sm text-slate-500">Searching...</p>
+                } @else if (memoEmployeeResults().length === 0) {
+                  <p class="px-3 py-2 text-sm text-slate-500">No employees found</p>
+                } @else {
+                  @for (item of memoEmployeeResults(); track employeeKey(item)) {
+                    <button
+                      type="button"
+                      class="flex w-full cursor-pointer flex-col px-3 py-2 text-left hover:bg-pcmazing-50 dark:hover:bg-pcmazing-500/20"
+                      (mousedown)="pickMemoEmployee(item)"
+                    >
+                      <span class="text-sm font-medium text-slate-800 dark:text-slate-100">{{ item.fullName }}</span>
+                      <span class="text-xs text-slate-500">{{ item.employeeCode || item.username }}@if (item.department) { ÃÂÂ· {{ item.department }} }</span>
+                    </button>
+                  }
                 }
-              }
-            </select>
-          </div>
+              </div>
+            }
+          </label>
           <div>
             <label class="mb-1 block text-xs font-semibold text-slate-700">Type *</label>
             <select
@@ -1301,7 +1330,7 @@
             [disabled]="memoSaving()"
             (click)="issueMemo()"
           >
-            @if (memoSaving()) { Issuing… } @else { Issue memo }
+            @if (memoSaving()) { IssuingÃÂ¢ÃÂÃÂ¦ } @else { Issue memo }
           </button>
           @if (memoMessage()) {
             <p class="text-sm font-medium text-emerald-600">{{ memoMessage() }}</p>
@@ -1313,35 +1342,61 @@
         <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div class="flex flex-wrap items-center justify-between gap-3">
             <h3 class="text-base font-bold text-slate-900 dark:text-white">Issued memos</h3>
-            <select
-              class="rounded-lg border border-slate-200 px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-950"
-              [ngModel]="memoAckFilter()"
-              (ngModelChange)="memoAckFilter.set($event); refreshMemos()"
-            >
-              <option value="all">All</option>
-              <option value="pending">Pending ack</option>
-              <option value="acknowledged">Acknowledged</option>
-            </select>
+            <div class="flex flex-wrap items-center gap-2">
+              <input
+                type="search"
+                class="h-9 w-44 rounded-lg border border-slate-200 px-3 text-xs dark:border-slate-700 dark:bg-slate-950"
+                placeholder="Search memos..."
+                [ngModel]="memoSearch()"
+                (ngModelChange)="onMemoSearch($event)"
+                name="memoSearch"
+              />
+              <select
+                class="h-9 rounded-lg border border-slate-200 px-2 text-xs dark:border-slate-700 dark:bg-slate-950"
+                [ngModel]="memoAckFilter()"
+                (ngModelChange)="memoAckFilter.set($event); refreshMemos()"
+              >
+                <option value="all">All</option>
+                <option value="pending">Pending ack</option>
+                <option value="acknowledged">Acknowledged</option>
+              </select>
+            </div>
           </div>
           <div class="mt-4 overflow-x-auto">
             <table class="min-w-full text-left text-sm">
               <thead class="text-xs uppercase text-slate-400">
                 <tr>
-                  <th class="px-2 py-2">Memo</th>
-                  <th class="px-2 py-2">Employee</th>
-                  <th class="px-2 py-2">Type</th>
-                  <th class="px-2 py-2">Status</th>
+                  <th class="px-2 py-2">
+                    <button type="button" class="cursor-pointer font-inherit uppercase tracking-inherit hover:text-slate-700 dark:hover:text-slate-200" (click)="setMemoSort('memoNo')">
+                      Memo{{ memoSortIndicator('memoNo') }}
+                    </button>
+                  </th>
+                  <th class="px-2 py-2">
+                    <button type="button" class="cursor-pointer font-inherit uppercase tracking-inherit hover:text-slate-700 dark:hover:text-slate-200" (click)="setMemoSort('employeeName')">
+                      Employee{{ memoSortIndicator('employeeName') }}
+                    </button>
+                  </th>
+                  <th class="px-2 py-2">
+                    <button type="button" class="cursor-pointer font-inherit uppercase tracking-inherit hover:text-slate-700 dark:hover:text-slate-200" (click)="setMemoSort('memoTypeLabel')">
+                      Type{{ memoSortIndicator('memoTypeLabel') }}
+                    </button>
+                  </th>
+                  <th class="px-2 py-2">
+                    <button type="button" class="cursor-pointer font-inherit uppercase tracking-inherit hover:text-slate-700 dark:hover:text-slate-200" (click)="setMemoSort('status')">
+                      Status{{ memoSortIndicator('status') }}
+                    </button>
+                  </th>
                   <th class="px-2 py-2"></th>
                 </tr>
               </thead>
               <tbody>
-                @for (memo of memos(); track memo.id) {
+                @for (memo of pagedMemos(); track memo.id) {
                   <tr class="border-t border-slate-100 dark:border-slate-800">
                     <td class="px-2 py-2">
                       <p class="font-semibold text-slate-800 dark:text-slate-100">{{ memo.memoNo }}</p>
                       <p class="text-xs text-slate-500">{{ memo.subject }}</p>
                     </td>
-                    <td class="px-2 py-2 text-slate-600">{{ memo.employeeName || '—' }}</td>
+                    <td class="px-2 py-2 text-slate-600">{{ memo.employeeName || 'â' }}</td>
                     <td class="px-2 py-2 text-slate-600">{{ memo.memoTypeLabel }}</td>
                     <td class="px-2 py-2">
                       @if (memo.acknowledgedAt) {
@@ -1351,7 +1406,18 @@
                       }
                     </td>
                     <td class="px-2 py-2 text-right">
-                      <button type="button" class="text-xs font-bold text-pcmazing-500 hover:underline" (click)="openMemoDetail(memo.id)">View</button>
+                      <button
+                        type="button"
+                        class="inline-flex size-8 cursor-pointer items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-pcmazing-600 dark:hover:bg-slate-800"
+                        title="View memo"
+                        aria-label="View memo"
+                        (click)="openMemoDetail(memo.id)"
+                      >
+                        <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+                          <circle cx="12" cy="12" r="3" />
+                        </svg>
+                      </button>
                     </td>
                   </tr>
                 } @empty {
@@ -1362,61 +1428,163 @@
               </tbody>
             </table>
           </div>
+          @if (memoListMeta(); as pagination) {
+            <div class="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-500">
+              <span>Page {{ pagination.page }} of {{ pagination.totalPages }} Â· {{ pagination.total }} total</span>
+              <div class="flex gap-2">
+                <button type="button" class="cursor-pointer rounded-lg border px-3 py-1.5 disabled:opacity-40 dark:border-slate-700" [disabled]="pagination.page <= 1" (click)="goToMemoPage(pagination.page - 1)">Previous</button>
+                <button type="button" class="cursor-pointer rounded-lg border px-3 py-1.5 disabled:opacity-40 dark:border-slate-700" [disabled]="pagination.page >= pagination.totalPages" (click)="goToMemoPage(pagination.page + 1)">Next</button>
+              </div>
+            </div>
+          }
         </div>
 
-        @if (memoDetail(); as detail) {
-          <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <div class="flex items-start justify-between gap-3">
-              <div class="flex items-start gap-3">
-                <img [src]="detail.companyLogoUrl || '/images/logopcm.png'" alt="Company logo" class="h-12 w-auto object-contain" />
-                <div>
-                  <p class="text-sm font-bold text-slate-900 dark:text-white">{{ detail.companyName }}</p>
-                  @if (detail.companyAddress) {
-                    <p class="text-xs text-slate-500 whitespace-pre-line">{{ detail.companyAddress }}</p>
-                  }
-                </div>
-              </div>
-              <button type="button" class="text-xs font-semibold text-slate-500 hover:underline" (click)="closeMemoDetail()">Close</button>
+        
+      </div>
+    </div>
+  }
+
+
+    </div>
+  </div>
+  @if (memoDetail(); as detail) {
+    <div
+      class="memo-print-hide fixed inset-0 z-50 flex items-end justify-center bg-slate-900/60 p-0 sm:items-center sm:p-4 dark:bg-black/70"
+      (click)="closeMemoDetail()"
+    >
+      <div
+        class="flex max-h-[94vh] w-full max-w-3xl flex-col overflow-hidden rounded-t-3xl border border-slate-200 bg-white shadow-xl sm:rounded-3xl dark:border-slate-700 dark:bg-slate-900"
+        (click)="$event.stopPropagation()"
+      >
+        <div class="min-h-0 flex-1 overflow-y-auto">
+<div class="memo-print-sheet overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <div class="memo-print-hide flex items-center justify-end gap-2 border-b border-slate-100 px-5 py-3 dark:border-slate-800">
+              <button
+                type="button"
+                class="cursor-pointer rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                title="Print memo"
+                aria-label="Print memo"
+                (click)="printMemo()"
+              >
+                Print
+              </button>
+              <button type="button" class="cursor-pointer text-xs font-semibold text-slate-500 hover:underline" (click)="closeMemoDetail()">Close</button>
             </div>
-            <div class="mt-4 border-t border-slate-100 pt-4 dark:border-slate-800">
-              <p class="text-lg font-bold tracking-wide text-slate-900 dark:text-white">MEMORANDUM</p>
-              <p class="mt-1 text-xs text-slate-500">Memo No: {{ detail.memoNo }}</p>
-              <dl class="mt-3 grid gap-1 text-sm text-slate-700 dark:text-slate-200">
-                <div><span class="font-semibold">Date:</span> {{ detail.issuedAt ? (detail.issuedAt | date:'mediumDate') : '—' }}</div>
-                <div><span class="font-semibold">To:</span> {{ detail.employeeName }}@if (detail.employeePosition) {, {{ detail.employeePosition }}}</div>
-                <div><span class="font-semibold">From:</span> {{ detail.issuedByName || 'Management' }}</div>
-                <div><span class="font-semibold">Type:</span> {{ detail.memoTypeLabel }}</div>
-                <div><span class="font-semibold">Subject:</span> {{ detail.subject }}</div>
-              </dl>
-              <div class="mt-4 space-y-3 text-sm text-slate-700 dark:text-slate-200">
-                <div>
-                  <p class="font-bold">1. Statement of Facts</p>
-                  <p class="mt-1 whitespace-pre-wrap">{{ detail.statementOfFacts }}</p>
+
+            <div class="memo-doc px-6 py-6 sm:px-8 sm:py-8">
+              <header class="memo-doc-letterhead text-center">
+                <img
+                  [src]="detail.companyLogoUrl || '/images/logopcm.png'"
+                  alt="Company logo"
+                  class="memo-doc-logo mx-auto h-14 w-auto object-contain"
+                />
+                <p class="memo-doc-company mt-3 text-base font-bold tracking-wide text-slate-900 uppercase dark:text-white">
+                  {{ detail.companyName }}
+                </p>
+                @if (detail.companyAddress) {
+                  <p class="memo-doc-address mt-1 text-xs leading-relaxed text-slate-600 whitespace-pre-line dark:text-slate-300">
+                    {{ detail.companyAddress }}
+                  </p>
+                }
+                <p class="memo-doc-phone mt-0.5 text-xs font-medium text-slate-600 dark:text-slate-300">
+                  Tel: {{ detail.companyPhone || '09394133225' }}
+                </p>
+              </header>
+
+              <div class="memo-doc-rule mt-5 border-t-2 border-slate-900 dark:border-slate-100"></div>
+
+              <div class="memo-doc-title mt-5 text-center">
+                <p class="text-xl font-bold tracking-[0.2em] text-slate-900 uppercase dark:text-white">Memorandum</p>
+                <p class="mt-1 text-xs font-semibold text-slate-500">Memo No. {{ detail.memoNo }}</p>
+              </div>
+
+              <dl class="memo-doc-meta mt-6 space-y-2 text-sm text-slate-800 dark:text-slate-100">
+                <div class="grid grid-cols-[5.5rem_1fr] gap-x-3">
+                  <dt class="font-bold uppercase tracking-wide text-slate-500">To</dt>
+                  <dd>
+                    <span class="font-bold uppercase">{{ detail.employeeName || 'â' }}</span>
+                    @if (detail.employeePosition) {
+                      <span class="block text-xs text-slate-600 dark:text-slate-300">{{ detail.employeePosition }}</span>
+                    }
+                  </dd>
                 </div>
-                @if (detail.policyViolated) {
-                  <div>
-                    <p class="font-bold">2. Policy / Rule Violated</p>
-                    <p class="mt-1 whitespace-pre-wrap">{{ detail.policyViolated }}</p>
+                <div class="grid grid-cols-[5.5rem_1fr] gap-x-3">
+                  <dt class="font-bold uppercase tracking-wide text-slate-500">From</dt>
+                  <dd class="font-semibold">{{ detail.issuedByName || 'Management' }}</dd>
+                </div>
+                <div class="grid grid-cols-[5.5rem_1fr] gap-x-3">
+                  <dt class="font-bold uppercase tracking-wide text-slate-500">Date</dt>
+                  <dd>{{ detail.issuedAt ? (detail.issuedAt | date:'MMMM d, y') : 'â' }}</dd>
+                </div>
+                <div class="grid grid-cols-[5.5rem_1fr] gap-x-3">
+                  <dt class="font-bold uppercase tracking-wide text-slate-500">Type</dt>
+                  <dd>{{ detail.memoTypeLabel }}</dd>
+                </div>
+                @if (detail.incidentDate) {
+                  <div class="grid grid-cols-[5.5rem_1fr] gap-x-3">
+                    <dt class="font-bold uppercase tracking-wide text-slate-500">Incident</dt>
+                    <dd>{{ detail.incidentDate | date:'MMMM d, y' }}</dd>
                   </div>
+                }
+                <div class="grid grid-cols-[5.5rem_1fr] gap-x-3">
+                  <dt class="font-bold uppercase tracking-wide text-slate-500">Subject</dt>
+                  <dd class="font-bold uppercase">{{ detail.subject }}</dd>
+                </div>
+              </dl>
+
+              <div class="memo-doc-rule mt-5 border-t border-slate-300 dark:border-slate-600"></div>
+
+              <div class="memo-doc-body mt-5 space-y-5 text-sm leading-relaxed text-slate-800 dark:text-slate-100">
+                <section>
+                  <h4 class="text-xs font-bold tracking-wide text-slate-900 uppercase dark:text-white">1. Statement of Facts</h4>
+                  <p class="mt-2 whitespace-pre-wrap">{{ detail.statementOfFacts }}</p>
+                </section>
+                @if (detail.policyViolated) {
+                  <section>
+                    <h4 class="text-xs font-bold tracking-wide text-slate-900 uppercase dark:text-white">2. Policy / Rule Violated</h4>
+                    <p class="mt-2 whitespace-pre-wrap">{{ detail.policyViolated }}</p>
+                  </section>
                 }
                 @if (detail.directive) {
-                  <div>
-                    <p class="font-bold">3. Directive / Expected Action</p>
-                    <p class="mt-1 whitespace-pre-wrap">{{ detail.directive }}</p>
-                  </div>
+                  <section>
+                    <h4 class="text-xs font-bold tracking-wide text-slate-900 uppercase dark:text-white">3. Directive / Expected Action</h4>
+                    <p class="mt-2 whitespace-pre-wrap">{{ detail.directive }}</p>
+                  </section>
+                }
+                @if (detail.replyByDate) {
+                  <p class="text-xs text-slate-600 dark:text-slate-300">
+                    Please respond on or before <span class="font-semibold">{{ detail.replyByDate | date:'MMMM d, y' }}</span>.
+                  </p>
                 }
               </div>
-              <p class="mt-4 text-xs text-slate-500">
-                Acknowledgment:
-                @if (detail.acknowledgedAt) {
-                  {{ detail.acknowledgedAt | date:'medium' }}
-                } @else {
-                  Pending
-                }
+
+              <div class="memo-doc-sign mt-10 grid gap-8 sm:grid-cols-2">
+                <div>
+                  <p class="text-[11px] font-bold tracking-wide text-slate-500 uppercase">Prepared / Issued by</p>
+                  <div class="memo-doc-sign-line mt-10 border-b border-slate-400"></div>
+                  <p class="mt-2 text-sm font-semibold text-slate-800 dark:text-slate-100">{{ detail.issuedByName || 'Management' }}</p>
+                  <p class="text-xs text-slate-500">{{ detail.issuedAt ? (detail.issuedAt | date:'MMMM d, y') : 'â' }}</p>
+                </div>
+                <div>
+                  <p class="text-[11px] font-bold tracking-wide text-slate-500 uppercase">Employee acknowledgment</p>
+                  <div class="memo-doc-sign-line mt-10 border-b border-slate-400"></div>
+                  <p class="mt-2 text-sm font-semibold text-slate-800 dark:text-slate-100">{{ detail.employeeName || 'â' }}</p>
+                  <p class="text-xs text-slate-500">
+                    @if (detail.acknowledgedAt) {
+                      Acknowledged {{ detail.acknowledgedAt | date:'MMMM d, y h:mm a' }}
+                    } @else {
+                      Signature / Date
+                    }
+                  </p>
+                </div>
+              </div>
+
+              <p class="memo-doc-footer mt-8 text-[10px] leading-relaxed text-slate-500">
+                This memorandum forms part of the employeeâs 201 file. Receipt of this document constitutes notice of the matters stated herein.
               </p>
             </div>
           </div>
-        }
+        </div>
       </div>
     </div>
   }
@@ -1432,7 +1600,7 @@
       >
         <div class="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 dark:border-slate-800">
           <div class="min-w-0">
-            <p class="text-[10px] font-bold uppercase tracking-wide text-amber-600">Draft preview — not published</p>
+            <p class="text-[10px] font-bold uppercase tracking-wide text-amber-600">Draft preview ÃÂ¢ÃÂÃÂ not published</p>
             <h3 class="mt-1 text-base font-bold text-slate-900 dark:text-white">
               @if (previewEmployee(); as detail) {
                 {{ detail.employee.fullName }}
@@ -1467,19 +1635,19 @@
 
             <div class="mt-4 grid gap-1 text-sm text-slate-700 dark:text-slate-200 sm:grid-cols-2">
               <p><span class="font-semibold text-slate-900 dark:text-white">Employee:</span> {{ detail.employee.fullName }}</p>
-              <p><span class="font-semibold text-slate-900 dark:text-white">Position:</span> {{ detail.employee.positionTitle || '—' }}</p>
+              <p><span class="font-semibold text-slate-900 dark:text-white">Position:</span> {{ detail.employee.positionTitle || 'ÃÂ¢ÃÂÃÂ' }}</p>
               <p>
                 <span class="font-semibold text-slate-900 dark:text-white">Code:</span>
                 {{ detail.employee.employeeCode || 'No code' }}
                 @if (detail.employee.username) {
-                  · @{{ detail.employee.username }}
+                  ÃÂÂ· @{{ detail.employee.username }}
                 }
               </p>
-              <p><span class="font-semibold text-slate-900 dark:text-white">Department:</span> {{ detail.employee.department || '—' }}</p>
+              <p><span class="font-semibold text-slate-900 dark:text-white">Department:</span> {{ detail.employee.department || 'ÃÂ¢ÃÂÃÂ' }}</p>
               <p><span class="font-semibold text-slate-900 dark:text-white">Pay schedule:</span> {{ salaryTypeLabel(detail.salaryType || '') }}</p>
               <p>
                 <span class="font-semibold text-slate-900 dark:text-white">Payroll period:</span>
-                {{ detail.dateFrom }} → {{ detail.dateTo }}
+                {{ detail.dateFrom }} ÃÂ¢ÃÂÃÂ {{ detail.dateTo }}
               </p>
             </div>
 
@@ -1502,7 +1670,7 @@
                     @for (day of detail.days; track day.workDate) {
                       <tr>
                         <td class="px-3 py-2 font-medium text-slate-900 dark:text-white">{{ day.workDate }}</td>
-                        <td class="px-3 py-2 text-slate-600 dark:text-slate-300">{{ day.timeInLabel }}–{{ day.timeOutLabel }}</td>
+                        <td class="px-3 py-2 text-slate-600 dark:text-slate-300">{{ day.timeInLabel }}ÃÂ¢ÃÂÃÂ{{ day.timeOutLabel }}</td>
                         <td class="px-3 py-2 text-slate-700 dark:text-slate-200">{{ formatHours(day.hoursWorked) }}</td>
                         <td class="px-3 py-2 text-slate-700 dark:text-slate-200">{{ day.dayType }}</td>
                         <td class="px-3 py-2 text-slate-900 dark:text-white">{{ formatMoney(day.dayPay) }}</td>
@@ -1511,14 +1679,14 @@
                             {{ formatHours(day.overtimeHours) }}
                             <span class="block text-[11px] capitalize text-slate-500">{{ day.overtimeStatus }}</span>
                           } @else {
-                            —
+                            ÃÂ¢ÃÂÃÂ
                           }
                         </td>
                         <td class="px-3 py-2 text-slate-900 dark:text-white">
                           @if (day.overtimePay > 0) {
                             {{ formatMoney(day.overtimePay) }}
                           } @else {
-                            —
+                            ÃÂ¢ÃÂÃÂ
                           }
                         </td>
                       </tr>
@@ -1566,7 +1734,7 @@
                   <p>Total deductions: {{ formatMoney(breakdown.totalDeductions) }}</p>
                   @if (breakdown.totalDeductions > breakdown.grossPay) {
                     <p class="font-bold text-red-700 dark:text-red-300 sm:col-span-2">
-                      Warning: deductions exceed gross pay. Net pay is floored at ₱0.
+                      Warning: deductions exceed gross pay. Net pay is floored at ÃÂ¢ÃÂÃÂ±0.
                     </p>
                   }
                 }
@@ -1581,7 +1749,7 @@
                     <div class="mt-2 flex justify-between gap-3 text-sm">
                       <span>{{ line.label }}</span>
                       <span class="font-semibold" [class.text-emerald-700]="line.lineType === 'commission'" [class.text-red-700]="line.lineType !== 'commission'">
-                        {{ line.lineType === 'commission' ? '+' : '−' }}{{ formatMoney(line.amount) }}
+                        {{ line.lineType === 'commission' ? '+' : 'ÃÂ¢ÃÂÃÂ' }}{{ formatMoney(line.amount) }}
                       </span>
                     </div>
                   }
@@ -1633,7 +1801,7 @@
           </div>
           <div class="flex min-w-0 flex-col items-stretch gap-2 sm:items-end">
             @if (blockingOverlaps().length > 0 && !confirmOverlap()) {
-              <p class="text-xs font-medium text-amber-700">Tick “generate anyway” on the Period pay page first — these dates overlap existing payslips.</p>
+              <p class="text-xs font-medium text-amber-700">Tick ÃÂ¢ÃÂÃÂgenerate anywayÃÂ¢ÃÂÃÂ on the Period pay page first ÃÂ¢ÃÂÃÂ these dates overlap existing payslips.</p>
             }
             @if (error()) {
               <p class="text-xs font-medium text-red-600">{{ error() }}</p>
@@ -1727,7 +1895,7 @@
         <div class="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-700">
           <div class="min-w-0">
             <h3 class="text-base font-bold text-slate-900 dark:text-white">{{ detail.loan.label }}</h3>
-            <p class="mt-0.5 text-xs capitalize text-slate-500">{{ detail.loan.status }} · Loan #{{ detail.loan.id }}</p>
+            <p class="mt-0.5 text-xs capitalize text-slate-500">{{ detail.loan.status }} ÃÂÂ· Loan #{{ detail.loan.id }}</p>
           </div>
           <button type="button" class="rounded-lg px-2 py-1 text-sm font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800" (click)="closeLoanDetail()">Close</button>
         </div>
@@ -1764,10 +1932,10 @@
               <p class="mt-2 text-xs text-slate-500">Notes: {{ detail.loan.notes }}</p>
             }
             <p class="mt-2 text-xs text-slate-400">
-              Principal {{ formatMoney(detail.loan.principal) }} − payslip deductions
+              Principal {{ formatMoney(detail.loan.principal) }} ÃÂ¢ÃÂÃÂ payslip deductions
               {{ formatMoney(detail.deductedTotal) }}
               @if (loanBalanceDrift(detail)) {
-                · stored remaining {{ formatMoney(detail.remainingBalance) }}
+                ÃÂÂ· stored remaining {{ formatMoney(detail.remainingBalance) }}
                 (may differ if balance was edited manually)
               } @else {
                 = remaining {{ formatMoney(detail.remainingBalance) }}
@@ -1785,12 +1953,12 @@
                   <div class="flex items-start justify-between gap-3 px-3 py-2">
                     <div class="min-w-0">
                       <p class="font-medium text-slate-900 dark:text-white">{{ row.runLabel }}</p>
-                      <p class="text-xs text-slate-500">{{ row.dateFrom }} – {{ row.dateTo }} · {{ row.source }}</p>
+                      <p class="text-xs text-slate-500">{{ row.dateFrom }} ÃÂ¢ÃÂÃÂ {{ row.dateTo }} ÃÂÂ· {{ row.source }}</p>
                       @if (row.balanceBefore != null) {
                         <p class="text-xs text-slate-400">Balance before: {{ formatMoney(row.balanceBefore) }}</p>
                       }
                     </div>
-                    <p class="shrink-0 font-semibold text-red-600">−{{ formatMoney(row.amount) }}</p>
+                    <p class="shrink-0 font-semibold text-red-600">ÃÂ¢ÃÂÃÂ{{ formatMoney(row.amount) }}</p>
                   </div>
                 }
               </div>
@@ -1805,7 +1973,7 @@
                   <div class="flex items-start justify-between gap-3 px-3 py-2">
                     <div>
                       <p class="font-medium capitalize text-slate-900 dark:text-white">{{ row.action }}</p>
-                      <p class="text-xs text-slate-500">{{ row.dateFrom }} – {{ row.dateTo }}</p>
+                      <p class="text-xs text-slate-500">{{ row.dateFrom }} ÃÂ¢ÃÂÃÂ {{ row.dateTo }}</p>
                     </div>
                     <p class="text-xs font-semibold text-slate-700 dark:text-slate-200">
                       {{ row.action === 'custom' ? formatMoney(row.customAmount) : 'Skipped' }}
@@ -1856,7 +2024,7 @@
           Bypass {{ bypassActionLabel(bypass.action) }}
         </h3>
         <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">
-          {{ bypass.fullName }} · {{ bypass.workDate }}
+          {{ bypass.fullName }} ÃÂÂ· {{ bypass.workDate }}
         </p>
         <p class="mt-2 text-xs text-slate-500">
           No selfie required. Your admin profile photo will be stored on this punch.
@@ -1898,7 +2066,7 @@
             (click)="submitBypass()"
           >
             @if (bypassSaving()) {
-              Saving…
+              SavingÃÂ¢ÃÂÃÂ¦
             } @else {
               Confirm bypass
             }

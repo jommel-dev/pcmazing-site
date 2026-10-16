@@ -6,21 +6,21 @@
     </p>
   </div>
 
-  <div class="flex flex-col gap-6 lg:flex-row">
-    <aside class="w-full shrink-0 lg:w-56">
-      <nav class="flex flex-row gap-2 overflow-x-auto lg:flex-col lg:overflow-visible">
+  <div class="flex flex-col gap-4 lg:flex-row">
+    <aside class="w-full shrink-0 lg:w-40">
+      <nav class="flex flex-row gap-1 overflow-x-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm lg:flex-col lg:gap-0.5 lg:overflow-visible dark:border-slate-800 dark:bg-slate-900">
         <a
           routerLink="/admin/settings/roles"
-          routerLinkActive="bg-slate-900 text-white dark:bg-white dark:text-slate-900"
-          class="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+          routerLinkActive="bg-pcmazing-500 text-white"
+          class="cursor-pointer rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-pcmazing-50 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-pcmazing-500/20 dark:hover:text-white"
         >
           Roles &amp; access
         </a>
         @if (canSee('payroll')) {
           <a
             routerLink="/admin/settings/payroll"
-            routerLinkActive="bg-slate-900 text-white dark:bg-white dark:text-slate-900"
-            class="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+            routerLinkActive="bg-pcmazing-500 text-white"
+            class="cursor-pointer rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-pcmazing-50 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-pcmazing-500/20 dark:hover:text-white"
           >
             Payroll settings
           </a>
@@ -28,8 +28,8 @@
         @if (canSee('printing_generator')) {
           <a
             routerLink="/admin/settings/printing"
-            routerLinkActive="bg-slate-900 text-white dark:bg-white dark:text-slate-900"
-            class="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
+            routerLinkActive="bg-pcmazing-500 text-white"
+            class="cursor-pointer rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-pcmazing-50 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-pcmazing-500/20 dark:hover:text-white"
           >
             Printing Generator
           </a>

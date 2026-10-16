@@ -3611,6 +3611,7 @@ export class PayrollService {
 
     const pdfPayload: PayslipPdfPayload = {
       companyName: 'PCmazing',
+      companyPhone: '09394133225',
       label: slip.label,
       dateFrom: slip.date_from,
       dateTo: slip.date_to,

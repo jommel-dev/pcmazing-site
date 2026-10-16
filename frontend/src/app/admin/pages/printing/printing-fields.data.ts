@@ -59,7 +59,13 @@ export const PRINT_FIELD_DEFINITIONS: PrintFieldDefinition[] = [
   {
     key: 'storeAddress',
     label: 'Store address',
-    sample: '10 Nori St. Purok 3, Mabini Extension, Cabanatuan City',
+    sample: '10 Nori St. Purok 3, Mabini Extension, Cabanatuan City\nTel: 09394133225',
+    documentTypes: ['sales_receipt', 'quotation', 'invoice', 'custom'],
+  },
+  {
+    key: 'storePhone',
+    label: 'Store phone',
+    sample: '09394133225',
     documentTypes: ['sales_receipt', 'quotation', 'invoice', 'custom'],
   },
   {

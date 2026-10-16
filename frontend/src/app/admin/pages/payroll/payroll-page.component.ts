@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { Component, HostListener, inject, OnInit, signal } from '@angular/core';
+import { Component, HostListener, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
@@ -44,6 +44,7 @@ type PayrollTab =
 type PeriodType = 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
 type WorkWeek = 'mon_fri' | 'mon_sat' | 'day_off_basis';
 type ConfirmTone = 'default' | 'danger' | 'warning';
+type MemoSortKey = 'memoNo' | 'employeeName' | 'memoTypeLabel' | 'status' | 'issuedAt';
 
 interface ConfirmDialogState {
   title: string;
@@ -300,6 +301,11 @@ export class PayrollPageComponent implements OnInit {
   readonly memoSaving = signal(false);
   readonly memoMessage = signal('');
   readonly memoAckFilter = signal<'all' | 'pending' | 'acknowledged'>('all');
+  readonly memoSearch = signal('');
+  readonly memoSortKey = signal<MemoSortKey>('issuedAt');
+  readonly memoSortDir = signal<'asc' | 'desc'>('desc');
+  readonly memoPage = signal(1);
+  readonly memoPageSize = 10;
   readonly memoForm = signal({
     employeeUserId: 0,
     memoType: 'written_warning' as EmployeeMemoType,
@@ -310,12 +316,80 @@ export class PayrollPageComponent implements OnInit {
     directive: '',
     replyByDate: '',
   });
+  readonly memoEmployeeQuery = signal('');
+  readonly memoEmployeeResults = signal<PayrollEmployeeItem[]>([]);
+  readonly memoEmployeeMenuOpen = signal(false);
+  readonly memoEmployeeSearching = signal(false);
+  private memoEmployeeSearchTimer: ReturnType<typeof setTimeout> | null = null;
+  private memoEmployeeSearchSeq = 0;
   readonly memoTypeOptions: Array<{ value: EmployeeMemoType; label: string }> = [
     { value: 'verbal_reminder', label: 'Verbal reminder' },
     { value: 'written_warning', label: 'Written warning' },
     { value: 'final_warning', label: 'Final warning' },
     { value: 'other', label: 'Other' },
   ];
+
+  readonly filteredMemos = computed(() => {
+    const q = this.memoSearch().trim().toLowerCase();
+    let rows = [...this.memos()];
+    if (q) {
+      rows = rows.filter((memo) => {
+        const status = memo.acknowledgedAt ? 'acknowledged' : 'pending';
+        return (
+          memo.memoNo.toLowerCase().includes(q) ||
+          (memo.employeeName || '').toLowerCase().includes(q) ||
+          memo.subject.toLowerCase().includes(q) ||
+          memo.memoTypeLabel.toLowerCase().includes(q) ||
+          status.includes(q)
+        );
+      });
+    }
+
+    const key = this.memoSortKey();
+    const dir = this.memoSortDir() === 'asc' ? 1 : -1;
+    rows.sort((a, b) => {
+      let av = '';
+      let bv = '';
+      switch (key) {
+        case 'memoNo':
+          av = a.memoNo;
+          bv = b.memoNo;
+          break;
+        case 'employeeName':
+          av = a.employeeName || '';
+          bv = b.employeeName || '';
+          break;
+        case 'memoTypeLabel':
+          av = a.memoTypeLabel;
+          bv = b.memoTypeLabel;
+          break;
+        case 'status':
+          av = a.acknowledgedAt || '';
+          bv = b.acknowledgedAt || '';
+          break;
+        case 'issuedAt':
+        default:
+          av = a.issuedAt || '';
+          bv = b.issuedAt || '';
+          break;
+      }
+      return av.localeCompare(bv, undefined, { sensitivity: 'base', numeric: true }) * dir;
+    });
+    return rows;
+  });
+
+  readonly memoListMeta = computed(() => {
+    const total = this.filteredMemos().length;
+    const totalPages = Math.max(1, Math.ceil(total / this.memoPageSize) || 1);
+    const page = Math.min(Math.max(1, this.memoPage()), totalPages);
+    return { page, totalPages, total, pageSize: this.memoPageSize };
+  });
+
+  readonly pagedMemos = computed(() => {
+    const meta = this.memoListMeta();
+    const start = (meta.page - 1) * this.memoPageSize;
+    return this.filteredMemos().slice(start, start + this.memoPageSize);
+  });
 
   private async loadMemos(): Promise<void> {
     if (this.employees().length === 0) {
@@ -328,9 +402,14 @@ export class PayrollPageComponent implements OnInit {
       }),
     );
     this.memos.set(response.data ?? []);
+    const meta = this.memoListMeta();
+    if (this.memoPage() > meta.totalPages) {
+      this.memoPage.set(meta.totalPages);
+    }
   }
 
   async refreshMemos(): Promise<void> {
+    this.memoPage.set(1);
     this.loading.set(true);
     this.error.set('');
     try {
@@ -340,6 +419,36 @@ export class PayrollPageComponent implements OnInit {
     } finally {
       this.loading.set(false);
     }
+  }
+
+  onMemoSearch(value: string): void {
+    this.memoSearch.set(value);
+    this.memoPage.set(1);
+  }
+
+  setMemoSort(key: MemoSortKey): void {
+    if (this.memoSortKey() === key) {
+      this.memoSortDir.update((dir) => (dir === 'asc' ? 'desc' : 'asc'));
+    } else {
+      this.memoSortKey.set(key);
+      this.memoSortDir.set(key === 'issuedAt' || key === 'status' ? 'desc' : 'asc');
+    }
+    this.memoPage.set(1);
+  }
+
+  memoSortIndicator(key: MemoSortKey): string {
+    if (this.memoSortKey() !== key) {
+      return '';
+    }
+    return this.memoSortDir() === 'asc' ? ' ↑' : ' ↓';
+  }
+
+  goToMemoPage(page: number): void {
+    const meta = this.memoListMeta();
+    if (page < 1 || page > meta.totalPages) {
+      return;
+    }
+    this.memoPage.set(page);
   }
 
   async openMemoDetail(id: number): Promise<void> {
@@ -354,6 +463,94 @@ export class PayrollPageComponent implements OnInit {
 
   closeMemoDetail(): void {
     this.memoDetail.set(null);
+  }
+
+  printMemo(): void {
+    if (!this.memoDetail()) {
+      return;
+    }
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) {
+        return;
+      }
+      cleaned = true;
+      document.body.classList.remove('printing-employee-memo');
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
+    document.body.classList.add('printing-employee-memo');
+    setTimeout(() => {
+      window.print();
+      setTimeout(cleanup, 1000);
+    }, 0);
+  }
+
+  memoEmployeeLabel(item: PayrollEmployeeItem): string {
+    return `${item.fullName} · ${item.employeeCode || item.username}`;
+  }
+
+  onMemoEmployeeQuery(value: string): void {
+    this.memoEmployeeQuery.set(value);
+    this.memoEmployeeMenuOpen.set(true);
+    const selectedId = this.memoForm().employeeUserId;
+    if (selectedId) {
+      const selected = this.memoEmployeeResults().find((item) => item.userId === selectedId)
+        ?? this.employees().find((item) => item.userId === selectedId && item.userSource === 'pcmazing_admin_users');
+      if (!selected || value.trim() !== this.memoEmployeeLabel(selected)) {
+        this.memoForm.set({ ...this.memoForm(), employeeUserId: 0 });
+      }
+    }
+    this.scheduleMemoEmployeeSearch(value);
+  }
+
+  openMemoEmployeeMenu(): void {
+    this.memoEmployeeMenuOpen.set(true);
+    if (this.memoEmployeeResults().length === 0 && !this.memoEmployeeSearching()) {
+      void this.searchMemoEmployees(this.memoEmployeeQuery());
+    }
+  }
+
+  closeMemoEmployeeMenuSoon(): void {
+    setTimeout(() => this.memoEmployeeMenuOpen.set(false), 150);
+  }
+
+  private scheduleMemoEmployeeSearch(value: string): void {
+    if (this.memoEmployeeSearchTimer) {
+      clearTimeout(this.memoEmployeeSearchTimer);
+    }
+    this.memoEmployeeSearchTimer = setTimeout(() => {
+      void this.searchMemoEmployees(value);
+    }, 250);
+  }
+
+  private async searchMemoEmployees(query: string): Promise<void> {
+    const seq = ++this.memoEmployeeSearchSeq;
+    this.memoEmployeeSearching.set(true);
+    try {
+      const response = await firstValueFrom(this.adminApi.listPayrollEmployees(query));
+      if (seq !== this.memoEmployeeSearchSeq) return;
+      const portalOnly = response.data
+        .filter((item) => item.userSource === 'pcmazing_admin_users')
+        .slice(0, 25);
+      this.memoEmployeeResults.set(portalOnly);
+    } catch {
+      if (seq !== this.memoEmployeeSearchSeq) return;
+      this.memoEmployeeResults.set([]);
+    } finally {
+      if (seq === this.memoEmployeeSearchSeq) {
+        this.memoEmployeeSearching.set(false);
+      }
+    }
+  }
+
+  pickMemoEmployee(item: PayrollEmployeeItem): void {
+    if (item.userSource !== 'pcmazing_admin_users') {
+      return;
+    }
+    this.memoForm.set({ ...this.memoForm(), employeeUserId: item.userId });
+    this.memoEmployeeQuery.set(this.memoEmployeeLabel(item));
+    this.memoEmployeeMenuOpen.set(false);
   }
 
   async issueMemo(): Promise<void> {
@@ -390,6 +587,8 @@ export class PayrollPageComponent implements OnInit {
         directive: '',
         replyByDate: '',
       });
+      this.memoEmployeeQuery.set('');
+      this.memoEmployeeResults.set([]);
       await this.loadMemos();
       this.memoDetail.set(response.data);
     } catch (err) {

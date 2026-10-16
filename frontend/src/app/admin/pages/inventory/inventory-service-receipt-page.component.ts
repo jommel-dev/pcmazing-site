@@ -21,8 +21,10 @@ import {
   DEFAULT_FOOTER_NOTE,
   DEFAULT_STORE_ADDRESS,
   DEFAULT_STORE_NAME,
+  DEFAULT_STORE_PHONE,
   DEFAULT_THANKS_MESSAGE,
   DEFAULT_WARRANTY_POLICY,
+  storeAddressWithPhone,
 } from '../printing/printing-receipt-content.defaults';
 import {
   compactReceiptText,
@@ -323,7 +325,8 @@ readonly activeTemplates = computed(() =>
       pageNumber: settings?.showPageNumbers === false ? '' : 'Page 1',
       storeLogo: '/images/logopcm.png',
       storeName: this.storeDisplayName(),
-      storeAddress: this.storeDisplayAddress(),
+      storeAddress: this.storeAddressBlock(),
+      storePhone: this.storeDisplayPhone(),
       receiptNo: `Sales Receipt #${receiptNo}`,
       cashierName: `Cashier: ${cashier}`,
       customerName: job?.customerName || '',
@@ -726,6 +729,14 @@ flowFooterElementStyle(element: PrintLayoutElement): Record<string, string> {
       return DEFAULT_STORE_NAME;
     }
     return value;
+  }
+
+  storeDisplayPhone(): string {
+    return this.printingSettings()?.storePhone?.trim() || DEFAULT_STORE_PHONE;
+  }
+
+  storeAddressBlock(): string {
+    return storeAddressWithPhone(this.storeDisplayAddress(), this.storeDisplayPhone());
   }
 
   storeDisplayAddress(): string {

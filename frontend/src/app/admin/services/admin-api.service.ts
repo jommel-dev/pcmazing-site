@@ -1158,6 +1158,7 @@ export interface EmployeeMemoDetail extends EmployeeMemoListItem {
   issuedByUserId: number;
   companyName: string;
   companyAddress: string;
+  companyPhone: string;
   companyLogoUrl: string;
   employeePosition: string | null;
 }

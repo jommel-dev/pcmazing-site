@@ -36,6 +36,7 @@ export type EmployeeMemoDetail = EmployeeMemoListItem & {
   issuedByUserId: number;
   companyName: string;
   companyAddress: string;
+  companyPhone: string;
   companyLogoUrl: string;
   employeePosition: string | null;
 };
@@ -354,6 +355,7 @@ export class EmployeeMemosService {
       issuedByUserId: Number(row.issued_by_user_id),
       companyName: company.companyName,
       companyAddress: company.companyAddress,
+      companyPhone: company.companyPhone,
       companyLogoUrl: company.companyLogoUrl,
       employeePosition: row.employee_position,
     };
@@ -362,11 +364,13 @@ export class EmployeeMemosService {
   private async loadCompanyHeader(): Promise<{
     companyName: string;
     companyAddress: string;
+    companyPhone: string;
     companyLogoUrl: string;
   }> {
     const defaults = {
       companyName: 'PCmazing Information Technology Services',
       companyAddress: '',
+      companyPhone: '09394133225',
       companyLogoUrl: '/images/logopcm.png',
     };
 
@@ -377,8 +381,9 @@ export class EmployeeMemosService {
     const result = await this.databaseService.query<{
       store_name: string | null;
       store_address: string | null;
+      store_phone: string | null;
     }>(
-      `SELECT store_name, store_address
+      `SELECT store_name, store_address, store_phone
        FROM pcmazing_printing_settings
        ORDER BY id ASC
        LIMIT 1`,
@@ -387,6 +392,7 @@ export class EmployeeMemosService {
     return {
       companyName: row?.store_name?.trim() || defaults.companyName,
       companyAddress: row?.store_address?.trim() || defaults.companyAddress,
+      companyPhone: row?.store_phone?.trim() || defaults.companyPhone,
       companyLogoUrl: defaults.companyLogoUrl,
     };
   }

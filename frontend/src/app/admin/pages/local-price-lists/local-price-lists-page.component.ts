@@ -22,6 +22,7 @@ export class LocalPriceListsPageComponent implements OnInit {
   readonly savingItem = signal(false);
   readonly importLoading = signal(false);
   readonly syncingPcConcept = signal(false);
+  readonly togglingPcConcept = signal(false);
   readonly error = signal('');
   readonly success = signal('');
   readonly importMessage = signal('');
@@ -56,6 +57,17 @@ export class LocalPriceListsPageComponent implements OnInit {
   readonly pcConceptStore = computed(
     () => this.stores().find((store) => store.name === 'PC Concept') ?? null,
   );
+
+  readonly pcConceptConnected = computed(() => this.pcConceptStore()?.active === true);
+
+  readonly pcConceptConnectionTooltip = computed(() => {
+    if (!this.pcConceptStore()) {
+      return 'Refresh from PC Concept first to create the store, then you can connect or disconnect it.';
+    }
+    return this.pcConceptConnected()
+      ? 'PC Concept connected — items appear in quotation search. Click to disconnect.'
+      : 'PC Concept disconnected — items hidden from quotation search. Click to connect.';
+  });
 
   readonly isEditingStore = computed(() => this.editingStoreId() !== null);
   readonly isEditingItem = computed(() => this.editingItemId() !== null);
@@ -298,6 +310,34 @@ export class LocalPriceListsPageComponent implements OnInit {
       this.error.set(this.readError(err, 'PC Concept sync failed.'));
     } finally {
       this.syncingPcConcept.set(false);
+    }
+  }
+
+  async togglePcConceptConnection(): Promise<void> {
+    const store = this.pcConceptStore();
+    if (!store || this.togglingPcConcept()) {
+      return;
+    }
+
+    this.error.set('');
+    this.success.set('');
+    this.togglingPcConcept.set(true);
+    const nextActive = !store.active;
+
+    try {
+      await firstValueFrom(
+        this.adminApi.updateLocalPriceStore(store.id, { active: nextActive }),
+      );
+      this.success.set(
+        nextActive
+          ? 'PC Concept connected. Items will show in quotation parts search.'
+          : 'PC Concept disconnected. Items are hidden from quotation parts search.',
+      );
+      await this.loadStores(store.id);
+    } catch (err: unknown) {
+      this.error.set(this.readError(err, 'Unable to update PC Concept connection.'));
+    } finally {
+      this.togglingPcConcept.set(false);
     }
   }
 

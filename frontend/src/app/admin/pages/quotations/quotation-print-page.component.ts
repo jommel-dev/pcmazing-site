@@ -21,6 +21,8 @@ import { applyPhSpecialDiscount, normalizePhDiscountType, PhDiscountType } from 
 import {
   DEFAULT_STORE_ADDRESS,
   DEFAULT_STORE_NAME,
+  DEFAULT_STORE_PHONE,
+  storeAddressWithPhone,
 } from '../printing/printing-receipt-content.defaults';
 
 type QuoteLine = {
@@ -185,7 +187,8 @@ export class QuotationPrintPageComponent implements OnInit, OnDestroy {
       pageNumber: '',
       storeLogo: '/images/logopcm.png',
       storeName: this.storeDisplayName(),
-      storeAddress: this.storeDisplayAddress(),
+      storeAddress: this.storeAddressBlock(),
+      storePhone: this.storeDisplayPhone(),
       customerName: current?.customerName || '',
       customerEmail: current?.customerEmail || '',
       customerAddress: current?.customerAddress || '',
@@ -395,6 +398,14 @@ export class QuotationPrintPageComponent implements OnInit, OnDestroy {
       return DEFAULT_STORE_NAME;
     }
     return value;
+  }
+
+  storeDisplayPhone(): string {
+    return this.printingSettings()?.storePhone?.trim() || DEFAULT_STORE_PHONE;
+  }
+
+  storeAddressBlock(): string {
+    return storeAddressWithPhone(this.storeDisplayAddress(), this.storeDisplayPhone());
   }
 
   storeDisplayAddress(): string {
