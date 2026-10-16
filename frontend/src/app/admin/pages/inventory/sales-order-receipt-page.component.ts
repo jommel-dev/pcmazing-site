@@ -19,8 +19,10 @@ import {
 } from '../printing/printing-print-page.util';
 import {
   DEFAULT_FOOTER_NOTE,
+  DEFAULT_STORE_PHONE,
   DEFAULT_THANKS_MESSAGE,
   DEFAULT_WARRANTY_POLICY,
+  storeAddressWithPhone,
 } from '../printing/printing-receipt-content.defaults';
 import {
   compactReceiptText,
@@ -179,7 +181,11 @@ export class SalesOrderReceiptPageComponent implements OnInit, OnDestroy {
       pageNumber: settings?.showPageNumbers === false ? '' : 'Page 1',
       storeLogo: '/images/logopcm.png',
       storeName: settings?.storeName || 'PCmazing',
-      storeAddress: settings?.storeAddress || 'Mabini Extension, Cabanatuan City, 3100',
+      storeAddress: storeAddressWithPhone(
+        settings?.storeAddress || 'Mabini Extension, Cabanatuan City, 3100',
+        settings?.storePhone || DEFAULT_STORE_PHONE,
+      ),
+      storePhone: settings?.storePhone?.trim() || DEFAULT_STORE_PHONE,
       receiptNo: `Sales Receipt #${receiptNo}`,
       cashierName: `Cashier: ${cashier}`,
       customerName: current?.customerName || '',
@@ -294,6 +300,14 @@ export class SalesOrderReceiptPageComponent implements OnInit, OnDestroy {
       return;
     }
     void this.router.navigate(['/admin/sales-order']);
+  }
+
+  storeAddressBlock(): string {
+    const settings = this.printingSettings();
+    return storeAddressWithPhone(
+      settings?.storeAddress || 'Mabini Extension, Cabanatuan City, 3100',
+      settings?.storePhone || DEFAULT_STORE_PHONE,
+    );
   }
 
   formatMoney(value: number): string {

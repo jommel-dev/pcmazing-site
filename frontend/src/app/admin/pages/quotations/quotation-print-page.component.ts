@@ -21,6 +21,8 @@ import { applyPhSpecialDiscount, normalizePhDiscountType, PhDiscountType } from 
 import {
   DEFAULT_STORE_ADDRESS,
   DEFAULT_STORE_NAME,
+  DEFAULT_STORE_PHONE,
+  storeAddressWithPhone,
 } from '../printing/printing-receipt-content.defaults';
 
 type QuoteLine = {
@@ -73,17 +75,20 @@ export class QuotationPrintPageComponent implements OnInit, OnDestroy {
     return current.quoteNo?.trim() || `QT-${String(current.id).padStart(6, '0')}`;
   });
 
+  readonly hideItemPrices = computed(() => Boolean(this.quotation()?.hideItemPrices));
+
   readonly lines = computed<QuoteLine[]>(() => {
     const current = this.quotation();
     if (!current) {
       return [];
     }
 
+    const hidePrices = Boolean(current.hideItemPrices);
     const rows: QuoteLine[] = [];
     for (const item of current.items ?? []) {
       const qty = Number(item.quantity || item.totalSetQty) || 0;
-      const unitPrice = Number(item.unitPrice || item.sellPrice) || 0;
-      const discountType = normalizePhDiscountType(item.discountType);
+      const unitPrice = hidePrices ? 0 : Number(item.unitPrice || item.sellPrice) || 0;
+      const discountType = hidePrices ? 'none' : normalizePhDiscountType(item.discountType);
       const amountGross = qty * unitPrice;
       const amountDiscount = applyPhSpecialDiscount(amountGross, discountType);
       rows.push({
@@ -97,18 +102,20 @@ export class QuotationPrintPageComponent implements OnInit, OnDestroy {
       });
     }
 
-    const customDiscount = Number(current.customDiscount) || 0;
-    if (customDiscount > 0) {
-      rows.push({
-        itemName: 'Discount',
-        description: '',
-        qty: 1,
-        unitPrice: 0,
-        discountType: 'none',
-        extPrice: 0,
-        discountAmount: customDiscount,
-        isCustomDiscount: true,
-      });
+    if (!hidePrices) {
+      const customDiscount = Number(current.customDiscount) || 0;
+      if (customDiscount > 0) {
+        rows.push({
+          itemName: 'Discount',
+          description: '',
+          qty: 1,
+          unitPrice: 0,
+          discountType: 'none',
+          extPrice: 0,
+          discountAmount: customDiscount,
+          isCustomDiscount: true,
+        });
+      }
     }
 
     return rows;
@@ -116,7 +123,13 @@ export class QuotationPrintPageComponent implements OnInit, OnDestroy {
 
   readonly subtotal = computed(() => this.lines().reduce((sum, line) => sum + line.extPrice, 0));
   readonly discountTotal = computed(() => this.lines().reduce((sum, line) => sum + line.discountAmount, 0));
-  readonly quoteTotal = computed(() => this.subtotal() - this.discountTotal());
+  readonly quoteTotal = computed(() => {
+    const stored = Number(this.quotation()?.totalAmount);
+    if (Number.isFinite(stored)) {
+      return stored;
+    }
+    return this.subtotal() - this.discountTotal();
+  });
 
   readonly validityNote = computed(() => {
     const current = this.quotation();
@@ -174,7 +187,8 @@ export class QuotationPrintPageComponent implements OnInit, OnDestroy {
       pageNumber: '',
       storeLogo: '/images/logopcm.png',
       storeName: this.storeDisplayName(),
-      storeAddress: this.storeDisplayAddress(),
+      storeAddress: this.storeAddressBlock(),
+      storePhone: this.storeDisplayPhone(),
       customerName: current?.customerName || '',
       customerEmail: current?.customerEmail || '',
       customerAddress: current?.customerAddress || '',
@@ -184,8 +198,10 @@ export class QuotationPrintPageComponent implements OnInit, OnDestroy {
         : '',
       quotationNo: this.quotationNo(),
       validUntil: validUntil ? `Valid until: ${validUntil}` : '',
-      discountTotal: `Total Discounts: ${this.formatMoney(this.discountTotal())}`,
-      subtotal: `Subtotal  ${this.formatMoney(this.subtotal())}`,
+      discountTotal: this.hideItemPrices()
+        ? ''
+        : `Total Discounts: ${this.formatMoney(this.discountTotal())}`,
+      subtotal: this.hideItemPrices() ? '' : `Subtotal  ${this.formatMoney(this.subtotal())}`,
       signatureLine: '',
       lineItems: 'Line items',
     };
@@ -382,6 +398,14 @@ export class QuotationPrintPageComponent implements OnInit, OnDestroy {
       return DEFAULT_STORE_NAME;
     }
     return value;
+  }
+
+  storeDisplayPhone(): string {
+    return this.printingSettings()?.storePhone?.trim() || DEFAULT_STORE_PHONE;
+  }
+
+  storeAddressBlock(): string {
+    return storeAddressWithPhone(this.storeDisplayAddress(), this.storeDisplayPhone());
   }
 
   storeDisplayAddress(): string {

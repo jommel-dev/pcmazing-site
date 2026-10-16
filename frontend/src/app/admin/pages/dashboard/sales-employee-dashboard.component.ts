@@ -17,6 +17,8 @@ import {
   AdminApiService,
   EmployeeActivityItem,
   EmployeeDayOffItem,
+  EmployeeMemoDetail,
+  EmployeeMemoListItem,
   EmployeePayslipDetail,
   EmployeeTodoItem,
   EmployeeWorkspaceDashboard,
@@ -73,6 +75,11 @@ export class SalesEmployeeDashboardComponent implements OnInit, OnDestroy {
   readonly downloadingPayslip = signal(false);
   readonly includePayslipRemarks = signal(false);
   readonly payslipImageModal = signal<{ url: string; label: string } | null>(null);
+  readonly myMemos = signal<EmployeeMemoListItem[]>([]);
+  readonly pendingMemos = signal<EmployeeMemoDetail[]>([]);
+  readonly activeMemo = signal<EmployeeMemoDetail | null>(null);
+  readonly acknowledgingMemo = signal(false);
+  readonly viewingMemo = signal<EmployeeMemoDetail | null>(null);
 
   readonly calendarDays = computed(() => this.buildCalendar(this.month(), this.dashboard()));
 
@@ -153,6 +160,9 @@ export class SalesEmployeeDashboardComponent implements OnInit, OnDestroy {
       if (!this.selectedDate()) {
         this.selectedDate.set(response.data.workDate);
       }
+      if (this.variant() === 'full') {
+        await this.loadMemos();
+      }
     } catch {
       this.error.set('Unable to load your employee dashboard.');
     } finally {
@@ -160,6 +170,73 @@ export class SalesEmployeeDashboardComponent implements OnInit, OnDestroy {
         this.loading.set(false);
       }
     }
+  }
+
+  private async loadMemos(): Promise<void> {
+    try {
+      const [pending, all] = await Promise.all([
+        firstValueFrom(this.adminApi.listPendingEmployeeMemos()),
+        firstValueFrom(this.adminApi.listMyEmployeeMemos()),
+      ]);
+      const pendingList = pending.data ?? [];
+      this.pendingMemos.set(pendingList);
+      this.myMemos.set(all.data ?? []);
+      if (!this.activeMemo() && pendingList.length > 0) {
+        this.activeMemo.set(pendingList[0]);
+      }
+    } catch {
+      // Non-blocking if memos table not migrated yet.
+    }
+  }
+
+  async acknowledgeActiveMemo(): Promise<void> {
+    const memo = this.activeMemo();
+    if (!memo || this.acknowledgingMemo()) {
+      return;
+    }
+    this.acknowledgingMemo.set(true);
+    try {
+      await firstValueFrom(this.adminApi.acknowledgeEmployeeMemo(memo.id));
+      const remaining = this.pendingMemos().filter((item) => item.id !== memo.id);
+      this.pendingMemos.set(remaining);
+      this.activeMemo.set(remaining[0] ?? null);
+      await this.loadMemos();
+    } catch {
+      this.error.set('Unable to acknowledge memo. Please try again.');
+    } finally {
+      this.acknowledgingMemo.set(false);
+    }
+  }
+
+  async openMyMemo(id: number): Promise<void> {
+    try {
+      const response = await firstValueFrom(this.adminApi.getMyEmployeeMemo(id));
+      this.viewingMemo.set(response.data);
+    } catch {
+      this.error.set('Unable to open memo.');
+    }
+  }
+
+  closeViewingMemo(): void {
+    this.viewingMemo.set(null);
+  }
+
+  formatMemoDate(value: string | null | undefined): string {
+    if (!value) {
+      return '—';
+    }
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+    return date.toLocaleString('en-PH', {
+      timeZone: 'Asia/Manila',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   }
 
   async requestOvertime(attendanceId: number | null | undefined): Promise<void> {

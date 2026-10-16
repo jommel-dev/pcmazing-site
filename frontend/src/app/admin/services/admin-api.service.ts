@@ -563,7 +563,7 @@ export interface QuotationItem {
   productId: number | null;
   description: string;
   quantity: number;
-  unitPrice: number;
+  unitPrice: number | null;
   baseUnitPrice?: number;
   topupMode?: 'none' | 'fixed' | 'percent';
   topupValue?: number;
@@ -572,7 +572,7 @@ export interface QuotationItem {
   discountType: 'none' | 'senior' | 'pwd';
   discountPrice: number | null;
   totalSetQty: number | null;
-  lineTotal: number;
+  lineTotal: number | null;
   remarks: string | null;
   metadata: Record<string, unknown> | null;
 }
@@ -588,6 +588,9 @@ export interface QuotationDetail extends QuotationListItem {
   subtotal?: number;
   discountTotal?: number;
   totalTopup?: number;
+  useManualTotal?: boolean;
+  manualTotalAmount?: number | null;
+  hideItemPrices?: boolean;
   items: QuotationItem[];
   hasShareToken?: boolean;
 }
@@ -608,6 +611,9 @@ export interface CreateQuotationPayload {
   quoteDate?: string;
   validityDays?: number;
   status?: 'draft' | 'finalized';
+  useManualTotal?: boolean;
+  manualTotalAmount?: number | null;
+  hideItemPrices?: boolean;
   items: Array<{
     materialId?: number | null;
     description?: string;
@@ -1122,6 +1128,50 @@ export interface PayrollLoanDetail {
 export interface PayrollLoanScope {
   userId: number;
   userSource: 'pcmazing_admin_users' | 'tblusers';
+}
+
+export type EmployeeMemoType =
+  | 'verbal_reminder'
+  | 'written_warning'
+  | 'final_warning'
+  | 'other';
+
+export interface EmployeeMemoListItem {
+  id: number;
+  memoNo: string;
+  employeeUserId: number;
+  employeeName: string | null;
+  memoType: EmployeeMemoType;
+  memoTypeLabel: string;
+  subject: string;
+  issuedAt: string | null;
+  acknowledgedAt: string | null;
+  issuedByName: string | null;
+}
+
+export interface EmployeeMemoDetail extends EmployeeMemoListItem {
+  incidentDate: string | null;
+  statementOfFacts: string;
+  policyViolated: string | null;
+  directive: string | null;
+  replyByDate: string | null;
+  issuedByUserId: number;
+  companyName: string;
+  companyAddress: string;
+  companyPhone: string;
+  companyLogoUrl: string;
+  employeePosition: string | null;
+}
+
+export interface CreateEmployeeMemoPayload {
+  employeeUserId: number;
+  memoType: EmployeeMemoType;
+  subject: string;
+  incidentDate?: string;
+  statementOfFacts: string;
+  policyViolated?: string;
+  directive?: string;
+  replyByDate?: string;
 }
 
 export interface PayrollPeriodMeta {
@@ -2613,6 +2663,71 @@ export class AdminApiService {
     return this.http.get<ItemResponse<PayrollEmployeeItem[]>>(
       `${APP_CONFIG.apiUrl}/admin/payroll/employees`,
       { headers: this.headers(), params },
+    );
+  }
+
+  listEmployeeMemos(filters: {
+    employeeUserId?: number;
+    memoType?: string;
+    ackStatus?: string;
+  } = {}) {
+    let params = new HttpParams();
+    if (filters.employeeUserId) {
+      params = params.set('employeeUserId', String(filters.employeeUserId));
+    }
+    if (filters.memoType?.trim()) {
+      params = params.set('memoType', filters.memoType.trim());
+    }
+    if (filters.ackStatus?.trim()) {
+      params = params.set('ackStatus', filters.ackStatus.trim());
+    }
+    return this.http.get<ItemResponse<EmployeeMemoListItem[]>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/memos`,
+      { headers: this.headers(), params },
+    );
+  }
+
+  getEmployeeMemo(id: number) {
+    return this.http.get<ItemResponse<EmployeeMemoDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/memos/${id}`,
+      { headers: this.headers() },
+    );
+  }
+
+  createEmployeeMemo(payload: CreateEmployeeMemoPayload) {
+    return this.http.post<MessageResponse<EmployeeMemoDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/memos`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  listMyEmployeeMemos() {
+    return this.http.get<ItemResponse<EmployeeMemoListItem[]>>(
+      `${APP_CONFIG.apiUrl}/admin/employee-workspace/memos`,
+      { headers: this.headers() },
+    );
+  }
+
+  listPendingEmployeeMemos() {
+    return this.http.get<ItemResponse<EmployeeMemoDetail[]>>(
+      `${APP_CONFIG.apiUrl}/admin/employee-workspace/memos/pending`,
+      { headers: this.headers() },
+    );
+  }
+
+  getMyEmployeeMemo(id: number) {
+    return this.http.get<ItemResponse<EmployeeMemoDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/employee-workspace/memos/${id}`,
+      { headers: this.headers() },
+    );
+  }
+
+  acknowledgeEmployeeMemo(id: number) {
+    return this.http.post<MessageResponse<EmployeeMemoDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/employee-workspace/memos/${id}/acknowledge`,
+      {},
+      { headers: this.headers() },
     );
   }
 

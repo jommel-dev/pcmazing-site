@@ -25,12 +25,8 @@ export class DatabaseService implements OnModuleDestroy {
     this.pool = new Pool(config.poolConfig);
     this.migrationPool = new Pool(config.migrationPoolConfig);
 
-    this.pool.on('error', (err) => {
-      console.error('Database pool: idle client error', err.message);
-    });
-    this.migrationPool.on('error', (err) => {
-      console.error('Migration pool: idle client error', err.message);
-    });
+    this.attachPoolGuards(this.pool, 'Database pool');
+    this.attachPoolGuards(this.migrationPool, 'Migration pool');
 
     console.log('Database connection mode:', this.mode);
     console.log('Database schema:', this.schema);
@@ -97,6 +93,10 @@ export class DatabaseService implements OnModuleDestroy {
     callback: (client: PoolClient) => Promise<T>,
   ): Promise<T> {
     const client = await pool.connect();
+    const onClientError = (err: Error) => {
+      console.error('Database client error during transaction:', err.message);
+    };
+    client.on('error', onClientError);
 
     try {
       await client.query('BEGIN');
@@ -112,7 +112,25 @@ export class DatabaseService implements OnModuleDestroy {
 
       throw error;
     } finally {
+      client.removeListener('error', onClientError);
       client.release();
     }
+  }
+
+  /**
+   * Supabase/PgBouncer (and some local Postgres setups) can drop idle TCP
+   * connections. Without a Client 'error' listener, Node treats that as an
+   * unhandled 'error' event and crashes the process.
+   */
+  private attachPoolGuards(pool: Pool, label: string): void {
+    pool.on('error', (err) => {
+      console.error(`${label}: idle client error`, err.message);
+    });
+
+    pool.on('connect', (client) => {
+      client.on('error', (err) => {
+        console.error(`${label}: client connection error`, err.message);
+      });
+    });
   }
 }

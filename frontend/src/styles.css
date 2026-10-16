@@ -78,4 +78,60 @@ layer(base);
     margin: 0 !important;
     padding: 0 !important;
   }
+
+  /* HIRS admin memo: print only the memo sheet */
+  body.printing-employee-memo * {
+    visibility: hidden !important;
+  }
+
+  body.printing-employee-memo .memo-print-sheet,
+  body.printing-employee-memo .memo-print-sheet * {
+    visibility: visible !important;
+  }
+
+  body.printing-employee-memo .memo-print-hide {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  body.printing-employee-memo .memo-print-sheet {
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    color: #0f172a !important;
+    padding: 0 !important;
+  }
+
+  body.printing-employee-memo .memo-print-sheet,
+  body.printing-employee-memo .memo-print-sheet p,
+  body.printing-employee-memo .memo-print-sheet span,
+  body.printing-employee-memo .memo-print-sheet div,
+  body.printing-employee-memo .memo-print-sheet dl,
+  body.printing-employee-memo .memo-print-sheet dt,
+  body.printing-employee-memo .memo-print-sheet dd,
+  body.printing-employee-memo .memo-print-sheet h4 {
+    color: #0f172a !important;
+  }
+
+  body.printing-employee-memo .memo-doc {
+    padding: 0 !important;
+  }
+
+  body.printing-employee-memo .memo-doc-logo {
+    height: 56px !important;
+  }
+
+  body.printing-employee-memo .memo-doc-rule {
+    border-color: #0f172a !important;
+  }
+
+  body.printing-employee-memo .memo-doc-sign-line {
+    border-color: #334155 !important;
+  }
 }

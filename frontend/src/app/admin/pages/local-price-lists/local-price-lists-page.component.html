@@ -28,17 +28,66 @@
   }
 
   <div
-    class="mb-6 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between"
+    class="mb-6 flex flex-col gap-3 rounded-2xl border p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between"
+    [class.border-emerald-200]="pcConceptConnected()"
+    [class.bg-emerald-50]="pcConceptConnected()"
+    [class.border-red-200]="!pcConceptConnected()"
+    [class.bg-red-50]="!pcConceptConnected()"
   >
-    <div class="min-w-0">
-      <h3 class="text-base font-bold text-slate-900">PC Concept catalog</h3>
-      <p class="mt-1 text-sm text-slate-500">
-        Sync the public PC Concept price list into the local “PC Concept” store (regular prices).
-        Last synced:
-        <span class="font-semibold text-slate-700">{{
-          formatManilaDateTime(pcConceptStore()?.lastSyncedAt)
-        }}</span>
-      </p>
+    <div class="flex min-w-0 items-start gap-3">
+      <button
+        type="button"
+        [class]="
+          pcConceptConnected()
+            ? 'inline-flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-emerald-300 bg-white text-emerald-600 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60'
+            : 'inline-flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-xl border border-red-300 bg-white text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60'
+        "
+        [disabled]="!pcConceptStore() || togglingPcConcept()"
+        [attr.title]="pcConceptConnectionTooltip()"
+        [attr.aria-label]="pcConceptConnectionTooltip()"
+        (click)="togglePcConceptConnection()"
+      >
+        @if (pcConceptConnected()) {
+          <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M8 12h8" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M7 8a5 5 0 0 1 0 8" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M17 8a5 5 0 0 0 0 8" />
+          </svg>
+        } @else {
+          <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M8 12h4" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M7 8a5 5 0 0 1 0 8" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M17 8a5 5 0 0 0 1.5 3.5" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 4l16 16" />
+          </svg>
+        }
+      </button>
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-center gap-2">
+          <h3 class="text-base font-bold text-slate-900">PC Concept catalog</h3>
+          <span
+            class="rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide"
+            [class.bg-emerald-100]="pcConceptConnected()"
+            [class.text-emerald-800]="pcConceptConnected()"
+            [class.bg-red-100]="!pcConceptConnected()"
+            [class.text-red-800]="!pcConceptConnected()"
+          >
+            @if (pcConceptConnected()) {
+              Connected
+            } @else {
+              Disconnected
+            }
+          </span>
+        </div>
+        <p class="mt-1 text-sm text-slate-600">
+          Sync the public PC Concept price list into the local “PC Concept” store (regular prices).
+          When disconnected, these items are hidden from quotation parts search.
+          Last synced:
+          <span class="font-semibold text-slate-800">{{
+            formatManilaDateTime(pcConceptStore()?.lastSyncedAt)
+          }}</span>
+        </p>
+      </div>
     </div>
     <button
       type="button"

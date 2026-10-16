@@ -144,7 +144,7 @@
           }
           <img src="/images/logopcm.png" alt="PCmazing IT SERVICES" class="receipt-logo" />
           <p class="receipt-company">{{ printingSettings()?.storeName || 'PCmazing' }}</p>
-          <p class="receipt-address">{{ printingSettings()?.storeAddress || 'Mabini Extension, Cabanatuan City, 3100' }}</p>
+          <p class="receipt-address whitespace-pre-line">{{ storeAddressBlock() }}</p>
         </div>
 
         <div class="receipt-bill-to">

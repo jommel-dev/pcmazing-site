@@ -272,6 +272,33 @@
         </div>
 
         <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <h3 class="text-sm font-bold text-slate-900 dark:text-white">My memos</h3>
+          <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Notices from management. Unacknowledged memos open automatically.</p>
+          <ul class="mt-4 space-y-2">
+            @for (memo of myMemos(); track memo.id) {
+              <li class="flex items-start justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/50">
+                <div class="min-w-0">
+                  <p class="text-sm font-semibold text-slate-800 dark:text-slate-100">{{ memo.subject }}</p>
+                  <p class="text-[11px] text-slate-500">{{ memo.memoNo }} · {{ memo.memoTypeLabel }}</p>
+                  @if (!memo.acknowledgedAt) {
+                    <p class="mt-0.5 text-[11px] font-semibold text-amber-700">Needs acknowledgment</p>
+                  }
+                </div>
+                <button
+                  type="button"
+                  class="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-white dark:border-slate-700 dark:text-slate-200"
+                  (click)="openMyMemo(memo.id)"
+                >
+                  View
+                </button>
+              </li>
+            } @empty {
+              <li class="text-sm text-slate-500 dark:text-slate-400">No memos yet.</li>
+            }
+          </ul>
+        </div>
+
+        <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
           <h3 class="text-sm font-bold text-slate-900 dark:text-white">Recent activities</h3>
           <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Auto-logged from your punches, day offs, and to-dos.</p>
 
@@ -696,6 +723,92 @@
             [alt]="modal.label"
             class="mx-auto max-h-[75vh] w-auto max-w-full rounded-xl object-contain"
           />
+        </div>
+      </div>
+    </div>
+  }
+
+  @if (activeMemo(); as memo) {
+    <div class="fixed inset-0 z-[70] flex items-end justify-center bg-slate-950/70 p-4 sm:items-center">
+      <div
+        class="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-700 dark:bg-slate-900"
+        role="alertdialog"
+        aria-modal="true"
+      >
+        <div class="flex items-start gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
+          <img [src]="memo.companyLogoUrl || '/images/logopcm.png'" alt="Company logo" class="h-12 w-auto object-contain" />
+          <div>
+            <p class="text-sm font-bold text-slate-900 dark:text-white">{{ memo.companyName }}</p>
+            @if (memo.companyAddress) {
+              <p class="text-xs text-slate-500 whitespace-pre-line">{{ memo.companyAddress }}</p>
+            }
+            <p class="text-xs text-slate-500">Tel: {{ memo.companyPhone || '09394133225' }}</p>
+            <p class="mt-2 text-xs font-semibold uppercase tracking-wide text-amber-700">New memo — acknowledgment required</p>
+          </div>
+        </div>
+        <div class="mt-4 space-y-3 text-sm text-slate-700 dark:text-slate-200">
+          <p class="text-lg font-bold text-slate-900 dark:text-white">MEMORANDUM</p>
+          <p class="text-xs text-slate-500">{{ memo.memoNo }} · {{ memo.memoTypeLabel }}</p>
+          <p><span class="font-semibold">Subject:</span> {{ memo.subject }}</p>
+          <p><span class="font-semibold">From:</span> {{ memo.issuedByName || 'Management' }}</p>
+          <p><span class="font-semibold">Date:</span> {{ formatMemoDate(memo.issuedAt) }}</p>
+          <div>
+            <p class="font-bold">Statement of Facts</p>
+            <p class="mt-1 whitespace-pre-wrap">{{ memo.statementOfFacts }}</p>
+          </div>
+          @if (memo.policyViolated) {
+            <div>
+              <p class="font-bold">Policy / Rule Violated</p>
+              <p class="mt-1 whitespace-pre-wrap">{{ memo.policyViolated }}</p>
+            </div>
+          }
+          @if (memo.directive) {
+            <div>
+              <p class="font-bold">Directive / Expected Action</p>
+              <p class="mt-1 whitespace-pre-wrap">{{ memo.directive }}</p>
+            </div>
+          }
+        </div>
+        <button
+          type="button"
+          class="mt-6 w-full rounded-xl bg-pcmazing-500 px-4 py-3 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:opacity-60"
+          [disabled]="acknowledgingMemo()"
+          (click)="acknowledgeActiveMemo()"
+        >
+          @if (acknowledgingMemo()) { Acknowledging… } @else { Acknowledge }
+        </button>
+      </div>
+    </div>
+  }
+
+  @if (viewingMemo(); as memo) {
+    <div class="fixed inset-0 z-[65] flex items-end justify-center bg-slate-900/60 p-4 sm:items-center dark:bg-black/70" (click)="closeViewingMemo()">
+      <div
+        class="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-700 dark:bg-slate-900"
+        (click)="$event.stopPropagation()"
+      >
+        <div class="flex items-start justify-between gap-3">
+          <div class="flex items-start gap-3">
+            <img [src]="memo.companyLogoUrl || '/images/logopcm.png'" alt="Company logo" class="h-12 w-auto object-contain" />
+            <div>
+              <p class="text-sm font-bold text-slate-900 dark:text-white">{{ memo.companyName }}</p>
+              @if (memo.companyAddress) {
+                <p class="text-xs text-slate-500 whitespace-pre-line">{{ memo.companyAddress }}</p>
+              }
+              <p class="text-xs text-slate-500">Tel: {{ memo.companyPhone || '09394133225' }}</p>
+              <p class="mt-2 text-lg font-bold text-slate-900 dark:text-white">MEMORANDUM</p>
+              <p class="text-xs text-slate-500">{{ memo.memoNo }}</p>
+            </div>
+          </div>
+          <button type="button" class="text-xs font-semibold text-slate-500 hover:underline" (click)="closeViewingMemo()">Close</button>
+        </div>
+        <div class="mt-4 space-y-3 text-sm text-slate-700 dark:text-slate-200">
+          <p><span class="font-semibold">Subject:</span> {{ memo.subject }}</p>
+          <p><span class="font-semibold">Type:</span> {{ memo.memoTypeLabel }}</p>
+          <p class="whitespace-pre-wrap">{{ memo.statementOfFacts }}</p>
+          @if (memo.acknowledgedAt) {
+            <p class="text-xs text-emerald-700">Acknowledged {{ formatMemoDate(memo.acknowledgedAt) }}</p>
+          }
         </div>
       </div>
     </div>
