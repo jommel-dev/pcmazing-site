@@ -1,9 +1,9 @@
 <section>
   <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
     <div>
-      <h2 class="text-2xl font-bold text-slate-900 dark:text-white">Payroll</h2>
+      <h2 class="text-2xl font-bold text-slate-900 dark:text-white">HIRS</h2>
       <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
-        Attendance, enrolled employees, overtime approvals, and period pay estimates. Configure salary fields in
+        Human Information Resource System — attendance, payroll, overtime, and employee memos. Configure salary fields in
         <a routerLink="/admin/users" class="font-semibold text-pcmazing-500 hover:underline">User Management</a>.
         Weekly and Semi-Monthly Amount is a daily rate: 9h+ = full day, owner-agreed undertime (default 30 min early) still pays a full day, 4h to under that = half day. Overtime over 9 hours needs employee request + admin approval.
       </p>
@@ -50,7 +50,7 @@
 
   @if (loading()) {
     <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900">
-      Loading payroll...
+      Loading HIRS...
     </div>
   } @else if (activeTab() === 'overview' && overview(); as stats) {
     <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
@@ -1206,6 +1206,219 @@
         </div>
       }
     }
+  } @else if (activeTab() === 'memos') {
+    <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+      <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <h3 class="text-base font-bold text-slate-900 dark:text-white">Issue memo</h3>
+        <p class="mt-1 text-xs text-slate-500">Creates a formal notice for one employee. They must acknowledge it on their dashboard.</p>
+        <div class="mt-4 space-y-3">
+          <div>
+            <label class="mb-1 block text-xs font-semibold text-slate-700">Employee *</label>
+            <select
+              class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
+              [ngModel]="memoForm().employeeUserId"
+              (ngModelChange)="memoForm.set({ ...memoForm(), employeeUserId: Number($event) || 0 })"
+            >
+              <option [ngValue]="0">Select employee…</option>
+              @for (emp of employees(); track emp.userId + ':' + emp.userSource) {
+                @if (emp.userSource === 'pcmazing_admin_users') {
+                  <option [ngValue]="emp.userId">{{ emp.fullName }}</option>
+                }
+              }
+            </select>
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold text-slate-700">Type *</label>
+            <select
+              class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
+              [ngModel]="memoForm().memoType"
+              (ngModelChange)="memoForm.set({ ...memoForm(), memoType: $event })"
+            >
+              @for (opt of memoTypeOptions; track opt.value) {
+                <option [ngValue]="opt.value">{{ opt.label }}</option>
+              }
+            </select>
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold text-slate-700">Subject *</label>
+            <input
+              type="text"
+              class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
+              [ngModel]="memoForm().subject"
+              (ngModelChange)="memoForm.set({ ...memoForm(), subject: $event })"
+            />
+          </div>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label class="mb-1 block text-xs font-semibold text-slate-700">Incident date</label>
+              <input
+                type="date"
+                class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
+                [ngModel]="memoForm().incidentDate"
+                (ngModelChange)="memoForm.set({ ...memoForm(), incidentDate: $event })"
+              />
+            </div>
+            <div>
+              <label class="mb-1 block text-xs font-semibold text-slate-700">Reply by</label>
+              <input
+                type="date"
+                class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
+                [ngModel]="memoForm().replyByDate"
+                (ngModelChange)="memoForm.set({ ...memoForm(), replyByDate: $event })"
+              />
+            </div>
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold text-slate-700">Statement of facts *</label>
+            <textarea
+              rows="5"
+              class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
+              [ngModel]="memoForm().statementOfFacts"
+              (ngModelChange)="memoForm.set({ ...memoForm(), statementOfFacts: $event })"
+            ></textarea>
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold text-slate-700">Policy / rule violated</label>
+            <textarea
+              rows="2"
+              class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
+              [ngModel]="memoForm().policyViolated"
+              (ngModelChange)="memoForm.set({ ...memoForm(), policyViolated: $event })"
+            ></textarea>
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold text-slate-700">Directive / expected action</label>
+            <textarea
+              rows="2"
+              class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
+              [ngModel]="memoForm().directive"
+              (ngModelChange)="memoForm.set({ ...memoForm(), directive: $event })"
+            ></textarea>
+          </div>
+          <button
+            type="button"
+            class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:opacity-60"
+            [disabled]="memoSaving()"
+            (click)="issueMemo()"
+          >
+            @if (memoSaving()) { Issuing… } @else { Issue memo }
+          </button>
+          @if (memoMessage()) {
+            <p class="text-sm font-medium text-emerald-600">{{ memoMessage() }}</p>
+          }
+        </div>
+      </div>
+
+      <div class="space-y-4">
+        <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <h3 class="text-base font-bold text-slate-900 dark:text-white">Issued memos</h3>
+            <select
+              class="rounded-lg border border-slate-200 px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-950"
+              [ngModel]="memoAckFilter()"
+              (ngModelChange)="memoAckFilter.set($event); refreshMemos()"
+            >
+              <option value="all">All</option>
+              <option value="pending">Pending ack</option>
+              <option value="acknowledged">Acknowledged</option>
+            </select>
+          </div>
+          <div class="mt-4 overflow-x-auto">
+            <table class="min-w-full text-left text-sm">
+              <thead class="text-xs uppercase text-slate-400">
+                <tr>
+                  <th class="px-2 py-2">Memo</th>
+                  <th class="px-2 py-2">Employee</th>
+                  <th class="px-2 py-2">Type</th>
+                  <th class="px-2 py-2">Status</th>
+                  <th class="px-2 py-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (memo of memos(); track memo.id) {
+                  <tr class="border-t border-slate-100 dark:border-slate-800">
+                    <td class="px-2 py-2">
+                      <p class="font-semibold text-slate-800 dark:text-slate-100">{{ memo.memoNo }}</p>
+                      <p class="text-xs text-slate-500">{{ memo.subject }}</p>
+                    </td>
+                    <td class="px-2 py-2 text-slate-600">{{ memo.employeeName || '—' }}</td>
+                    <td class="px-2 py-2 text-slate-600">{{ memo.memoTypeLabel }}</td>
+                    <td class="px-2 py-2">
+                      @if (memo.acknowledgedAt) {
+                        <span class="text-xs font-semibold text-emerald-700">Acknowledged</span>
+                      } @else {
+                        <span class="text-xs font-semibold text-amber-700">Pending</span>
+                      }
+                    </td>
+                    <td class="px-2 py-2 text-right">
+                      <button type="button" class="text-xs font-bold text-pcmazing-500 hover:underline" (click)="openMemoDetail(memo.id)">View</button>
+                    </td>
+                  </tr>
+                } @empty {
+                  <tr>
+                    <td colspan="5" class="px-2 py-8 text-center text-slate-500">No memos yet.</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        @if (memoDetail(); as detail) {
+          <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <div class="flex items-start justify-between gap-3">
+              <div class="flex items-start gap-3">
+                <img [src]="detail.companyLogoUrl || '/images/logopcm.png'" alt="Company logo" class="h-12 w-auto object-contain" />
+                <div>
+                  <p class="text-sm font-bold text-slate-900 dark:text-white">{{ detail.companyName }}</p>
+                  @if (detail.companyAddress) {
+                    <p class="text-xs text-slate-500 whitespace-pre-line">{{ detail.companyAddress }}</p>
+                  }
+                </div>
+              </div>
+              <button type="button" class="text-xs font-semibold text-slate-500 hover:underline" (click)="closeMemoDetail()">Close</button>
+            </div>
+            <div class="mt-4 border-t border-slate-100 pt-4 dark:border-slate-800">
+              <p class="text-lg font-bold tracking-wide text-slate-900 dark:text-white">MEMORANDUM</p>
+              <p class="mt-1 text-xs text-slate-500">Memo No: {{ detail.memoNo }}</p>
+              <dl class="mt-3 grid gap-1 text-sm text-slate-700 dark:text-slate-200">
+                <div><span class="font-semibold">Date:</span> {{ detail.issuedAt ? (detail.issuedAt | date:'mediumDate') : '—' }}</div>
+                <div><span class="font-semibold">To:</span> {{ detail.employeeName }}@if (detail.employeePosition) {, {{ detail.employeePosition }}}</div>
+                <div><span class="font-semibold">From:</span> {{ detail.issuedByName || 'Management' }}</div>
+                <div><span class="font-semibold">Type:</span> {{ detail.memoTypeLabel }}</div>
+                <div><span class="font-semibold">Subject:</span> {{ detail.subject }}</div>
+              </dl>
+              <div class="mt-4 space-y-3 text-sm text-slate-700 dark:text-slate-200">
+                <div>
+                  <p class="font-bold">1. Statement of Facts</p>
+                  <p class="mt-1 whitespace-pre-wrap">{{ detail.statementOfFacts }}</p>
+                </div>
+                @if (detail.policyViolated) {
+                  <div>
+                    <p class="font-bold">2. Policy / Rule Violated</p>
+                    <p class="mt-1 whitespace-pre-wrap">{{ detail.policyViolated }}</p>
+                  </div>
+                }
+                @if (detail.directive) {
+                  <div>
+                    <p class="font-bold">3. Directive / Expected Action</p>
+                    <p class="mt-1 whitespace-pre-wrap">{{ detail.directive }}</p>
+                  </div>
+                }
+              </div>
+              <p class="mt-4 text-xs text-slate-500">
+                Acknowledgment:
+                @if (detail.acknowledgedAt) {
+                  {{ detail.acknowledgedAt | date:'medium' }}
+                } @else {
+                  Pending
+                }
+              </p>
+            </div>
+          </div>
+        }
+      </div>
+    </div>
   }
 
   @if (previewOpen()) {

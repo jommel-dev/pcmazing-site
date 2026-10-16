@@ -1,3 +1,4 @@
+import { DatePipe } from '@angular/common';
 import { Component, HostListener, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -6,6 +7,10 @@ import { APP_CONFIG } from '../../../core/config/app-config';
 import {
   AdminApiService,
   AttendanceBypassAction,
+  CreateEmployeeMemoPayload,
+  EmployeeMemoDetail,
+  EmployeeMemoListItem,
+  EmployeeMemoType,
   EmployeePayslipDetail,
   PaginationMeta,
   PayrollAdjustmentItem,
@@ -27,7 +32,15 @@ import {
   WorkLocationType,
 } from '../../services/admin-api.service';
 
-type PayrollTab = 'overview' | 'attendance' | 'employees' | 'period' | 'tools' | 'overtime' | 'adjustments';
+type PayrollTab =
+  | 'overview'
+  | 'attendance'
+  | 'employees'
+  | 'period'
+  | 'tools'
+  | 'overtime'
+  | 'adjustments'
+  | 'memos';
 type PeriodType = 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
 type WorkWeek = 'mon_fri' | 'mon_sat' | 'day_off_basis';
 type ConfirmTone = 'default' | 'danger' | 'warning';
@@ -56,7 +69,7 @@ function defaultWeeklyLocationSchedule(): WeeklyLocationSchedule {
 
 @Component({
   selector: 'app-payroll-page',
-  imports: [FormsModule, RouterLink],
+  imports: [FormsModule, RouterLink, DatePipe],
   templateUrl: './payroll-page.component.html',
 })
 export class PayrollPageComponent implements OnInit {
@@ -84,6 +97,7 @@ export class PayrollPageComponent implements OnInit {
     { key: 'tools', label: 'Employee tools' },
     { key: 'overtime', label: 'Overtime' },
     { key: 'adjustments', label: 'Adjustments' },
+    { key: 'memos', label: 'Memos' },
   ];
 
   readonly activeTab = signal<PayrollTab>('overview');
@@ -270,11 +284,118 @@ export class PayrollPageComponent implements OnInit {
         case 'adjustments':
           await this.loadAdjustments();
           break;
+        case 'memos':
+          await this.loadMemos();
+          break;
       }
     } catch (err) {
-      this.error.set(this.readHttpError(err, 'Unable to load payroll data.'));
+      this.error.set(this.readHttpError(err, 'Unable to load HIRS data.'));
     } finally {
       this.loading.set(false);
+    }
+  }
+
+  readonly memos = signal<EmployeeMemoListItem[]>([]);
+  readonly memoDetail = signal<EmployeeMemoDetail | null>(null);
+  readonly memoSaving = signal(false);
+  readonly memoMessage = signal('');
+  readonly memoAckFilter = signal<'all' | 'pending' | 'acknowledged'>('all');
+  readonly memoForm = signal({
+    employeeUserId: 0,
+    memoType: 'written_warning' as EmployeeMemoType,
+    subject: '',
+    incidentDate: '',
+    statementOfFacts: '',
+    policyViolated: '',
+    directive: '',
+    replyByDate: '',
+  });
+  readonly memoTypeOptions: Array<{ value: EmployeeMemoType; label: string }> = [
+    { value: 'verbal_reminder', label: 'Verbal reminder' },
+    { value: 'written_warning', label: 'Written warning' },
+    { value: 'final_warning', label: 'Final warning' },
+    { value: 'other', label: 'Other' },
+  ];
+
+  private async loadMemos(): Promise<void> {
+    if (this.employees().length === 0) {
+      await this.loadEmployees();
+    }
+    const ack = this.memoAckFilter();
+    const response = await firstValueFrom(
+      this.adminApi.listEmployeeMemos({
+        ackStatus: ack === 'all' ? undefined : ack,
+      }),
+    );
+    this.memos.set(response.data ?? []);
+  }
+
+  async refreshMemos(): Promise<void> {
+    this.loading.set(true);
+    this.error.set('');
+    try {
+      await this.loadMemos();
+    } catch (err) {
+      this.error.set(this.readHttpError(err, 'Unable to load memos.'));
+    } finally {
+      this.loading.set(false);
+    }
+  }
+
+  async openMemoDetail(id: number): Promise<void> {
+    this.error.set('');
+    try {
+      const response = await firstValueFrom(this.adminApi.getEmployeeMemo(id));
+      this.memoDetail.set(response.data);
+    } catch (err) {
+      this.error.set(this.readHttpError(err, 'Unable to open memo.'));
+    }
+  }
+
+  closeMemoDetail(): void {
+    this.memoDetail.set(null);
+  }
+
+  async issueMemo(): Promise<void> {
+    const form = this.memoForm();
+    if (!form.employeeUserId || !form.subject.trim() || form.statementOfFacts.trim().length < 10) {
+      this.error.set('Select an employee, subject, and statement of facts (min 10 characters).');
+      return;
+    }
+
+    const payload: CreateEmployeeMemoPayload = {
+      employeeUserId: form.employeeUserId,
+      memoType: form.memoType,
+      subject: form.subject.trim(),
+      statementOfFacts: form.statementOfFacts.trim(),
+      incidentDate: form.incidentDate || undefined,
+      policyViolated: form.policyViolated.trim() || undefined,
+      directive: form.directive.trim() || undefined,
+      replyByDate: form.replyByDate || undefined,
+    };
+
+    this.memoSaving.set(true);
+    this.error.set('');
+    this.memoMessage.set('');
+    try {
+      const response = await firstValueFrom(this.adminApi.createEmployeeMemo(payload));
+      this.memoMessage.set(response.message || 'Memo issued.');
+      this.memoForm.set({
+        employeeUserId: 0,
+        memoType: 'written_warning',
+        subject: '',
+        incidentDate: '',
+        statementOfFacts: '',
+        policyViolated: '',
+        directive: '',
+        replyByDate: '',
+      });
+      await this.loadMemos();
+      this.memoDetail.set(response.data);
+    } catch (err) {
+      this.error.set(this.readHttpError(err, 'Unable to issue memo.'));
+    } finally {
+      this.memoSaving.set(false);
     }
   }
 

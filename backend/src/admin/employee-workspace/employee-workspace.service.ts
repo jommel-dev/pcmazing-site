@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { canUsePortalLogin, isSuperAdmin } from '../rbac/admin-roles.util';
+import { EmployeeMemosService } from '../payroll/employee-memos.service';
 import { PayrollService, TimeClockLocationInput } from '../payroll/payroll.service';
 import { manilaWorkDate } from '../payroll/payroll.schema';
 import { ensureEmployeeWorkspaceTables } from './employee-workspace.schema';
@@ -25,6 +26,7 @@ export class EmployeeWorkspaceService {
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly payrollService: PayrollService,
+    private readonly employeeMemosService: EmployeeMemosService,
   ) {}
 
   async ensureReady(): Promise<void> {
@@ -46,6 +48,38 @@ export class EmployeeWorkspaceService {
   async getTimeClockStatus(userId: number, source: UserSource) {
     await this.ensureReady();
     return this.payrollService.getTimeClockStatusForUser(userId, source);
+  }
+
+  async listMyMemos(userId: number, source: UserSource) {
+    await this.ensureReady();
+    if (source !== 'pcmazing_admin_users') {
+      return [];
+    }
+    return this.employeeMemosService.listForEmployee(userId);
+  }
+
+  async listPendingMemos(userId: number, source: UserSource) {
+    await this.ensureReady();
+    if (source !== 'pcmazing_admin_users') {
+      return [];
+    }
+    return this.employeeMemosService.listPendingForEmployee(userId);
+  }
+
+  async getMyMemo(userId: number, source: UserSource, memoId: number) {
+    await this.ensureReady();
+    if (source !== 'pcmazing_admin_users') {
+      throw new ForbiddenException('Memos are only available for portal employees.');
+    }
+    return this.employeeMemosService.getForEmployee(memoId, userId);
+  }
+
+  async acknowledgeMemo(userId: number, source: UserSource, memoId: number) {
+    await this.ensureReady();
+    if (source !== 'pcmazing_admin_users') {
+      throw new ForbiddenException('Memos are only available for portal employees.');
+    }
+    return this.employeeMemosService.acknowledge(memoId, userId);
   }
 
   async timeIn(

@@ -352,11 +352,16 @@ export const adminRoutes: Routes = [
         data: { module: 'user_management' },
       },
       {
-        path: 'payroll',
+        path: 'hirs',
         component: PayrollPageComponent,
-        title: 'Payroll | PCMazing Admin',
+        title: 'HIRS | PCMazing Admin',
         canActivate: [adminRoleGuard],
         data: { module: 'payroll' },
+      },
+      {
+        path: 'payroll',
+        redirectTo: 'hirs',
+        pathMatch: 'full',
       },
       {
         path: 'projects',

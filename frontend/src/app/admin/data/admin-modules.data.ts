@@ -165,9 +165,9 @@ export const ADMIN_MODULES: AdminModuleItem[] = [
   },
   {
     key: 'payroll',
-    label: 'Payroll',
-    route: '/admin/payroll',
-    description: 'Employee payroll processing and payslip management.',
+    label: 'HIRS',
+    route: '/admin/hirs',
+    description: 'Human Information Resource System — payroll, attendance, and employee memos.',
     status: 'active',
   },
   {

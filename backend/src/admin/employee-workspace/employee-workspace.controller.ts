@@ -280,4 +280,38 @@ export class EmployeeWorkspaceController {
     const data = await this.workspaceService.createActivity(userId, source, dto);
     return { success: true, message: 'Activity logged.', data };
   }
+
+  @Get('memos')
+  async listMemos(@Req() req: Request & { user?: AdminJwtPayload }) {
+    const { userId, source } = this.actor(req);
+    const data = await this.workspaceService.listMyMemos(userId, source);
+    return { success: true, data };
+  }
+
+  @Get('memos/pending')
+  async pendingMemos(@Req() req: Request & { user?: AdminJwtPayload }) {
+    const { userId, source } = this.actor(req);
+    const data = await this.workspaceService.listPendingMemos(userId, source);
+    return { success: true, data };
+  }
+
+  @Get('memos/:id')
+  async getMemo(
+    @Req() req: Request & { user?: AdminJwtPayload },
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    const { userId, source } = this.actor(req);
+    const data = await this.workspaceService.getMyMemo(userId, source, id);
+    return { success: true, data };
+  }
+
+  @Post('memos/:id/acknowledge')
+  async acknowledgeMemo(
+    @Req() req: Request & { user?: AdminJwtPayload },
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    const { userId, source } = this.actor(req);
+    const data = await this.workspaceService.acknowledgeMemo(userId, source, id);
+    return { success: true, message: 'Memo acknowledged.', data };
+  }
 }
