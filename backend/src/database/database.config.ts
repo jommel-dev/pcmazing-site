@@ -75,6 +75,11 @@ function buildPoolConfig(
   if (options.usePoolerSettings) {
     // Required for Supabase transaction pooler (PgBouncer).
     baseConfig.prepare = false;
+    // Keep idle sockets alive so the pooler is less likely to drop them mid-wait.
+    baseConfig.keepAlive = true;
+    baseConfig.max = Number(configService.get<string>('DB_POOL_MAX', '10')) || 10;
+    baseConfig.idleTimeoutMillis =
+      Number(configService.get<string>('DB_IDLE_TIMEOUT_MS', '30000')) || 30000;
   }
 
   baseConfig.options = buildSearchPathOption(schema);
