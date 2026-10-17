@@ -6,6 +6,7 @@ import { firstValueFrom } from 'rxjs';
 import { APP_CONFIG } from '../../../core/config/app-config';
 import {
   AdminApiService,
+  AttendanceAuditChange,
   AttendanceBypassAction,
   CreateEmployeeMemoPayload,
   EmployeeMemoDetail,
@@ -14,9 +15,11 @@ import {
   EmployeePayslipDetail,
   PaginationMeta,
   PayrollAdjustmentItem,
+  PayrollAttendanceAuditLogItem,
   PayrollAttendanceItem,
   PayrollCommissionEntry,
   PayrollCommissionType,
+  PayrollEmployeeDetail,
   PayrollEmployeeItem,
   PayrollLoan,
   PayrollLoanDetail,
@@ -35,6 +38,7 @@ import {
 type PayrollTab =
   | 'overview'
   | 'attendance'
+  | 'attendance_logs'
   | 'employees'
   | 'period'
   | 'tools'
@@ -45,6 +49,18 @@ type PeriodType = 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
 type WorkWeek = 'mon_fri' | 'mon_sat' | 'day_off_basis';
 type ConfirmTone = 'default' | 'danger' | 'warning';
 type MemoSortKey = 'memoNo' | 'employeeName' | 'memoTypeLabel' | 'status' | 'issuedAt';
+type PeriodSortKey =
+  | 'fullName'
+  | 'daysCompleted'
+  | 'totalHours'
+  | 'commissionsTotal'
+  | 'totalDeductions'
+  | 'netPay';
+type EmployeeListSortKey =
+  | 'fullName'
+  | 'department'
+  | 'salaryType'
+  | 'todayStatus';
 
 interface ConfirmDialogState {
   title: string;
@@ -90,9 +106,33 @@ export class PayrollPageComponent implements OnInit {
   readonly bypassError = signal('');
   readonly bypassPickerOpen = signal(false);
 
+  readonly editDialog = signal<{
+    id: number;
+    fullName: string;
+    workDate: string;
+    timeIn: string;
+    lunchOut: string;
+    lunchIn: string;
+    timeOut: string;
+    hasTimeIn: boolean;
+    hasLunchOut: boolean;
+    hasLunchIn: boolean;
+    hasTimeOut: boolean;
+    reason: string;
+  } | null>(null);
+  readonly editSaving = signal(false);
+  readonly editError = signal('');
+
+  readonly attendanceLogs = signal<PayrollAttendanceAuditLogItem[]>([]);
+  readonly attendanceLogsMeta = signal<PaginationMeta | null>(null);
+  readonly attendanceLogsPage = signal(1);
+  readonly attendanceLogsWorkDate = signal('');
+  readonly attendanceLogsQuery = signal('');
+
   readonly tabs: Array<{ key: PayrollTab; label: string }> = [
     { key: 'overview', label: 'Overview' },
     { key: 'attendance', label: 'Attendance' },
+    { key: 'attendance_logs', label: 'Attendance logs' },
     { key: 'employees', label: 'Employees' },
     { key: 'period', label: 'Period pay' },
     { key: 'tools', label: 'Employee tools' },
@@ -114,6 +154,15 @@ export class PayrollPageComponent implements OnInit {
 
   readonly employees = signal<PayrollEmployeeItem[]>([]);
   readonly employeeSearch = signal('');
+  readonly employeeListSortKey = signal<EmployeeListSortKey>('fullName');
+  readonly employeeListSortDir = signal<'asc' | 'desc'>('asc');
+  readonly employeeListPage = signal(1);
+  readonly employeeListPageSize = 20;
+  readonly employeeDetail = signal<PayrollEmployeeDetail | null>(null);
+  readonly employeeDetailLoading = signal(false);
+  readonly employeeDetailError = signal('');
+  readonly employeeDetailDateFrom = signal('');
+  readonly employeeDetailDateTo = signal('');
   readonly scheduleEditor = signal<{
     userId: number;
     userSource: 'pcmazing_admin_users' | 'tblusers';
@@ -139,6 +188,11 @@ export class PayrollPageComponent implements OnInit {
 
   readonly periodItems = signal<PayrollPeriodItem[]>([]);
   readonly periodMeta = signal<PayrollPeriodMeta | null>(null);
+  readonly periodSearch = signal('');
+  readonly periodSortKey = signal<PeriodSortKey>('fullName');
+  readonly periodSortDir = signal<'asc' | 'desc'>('asc');
+  readonly periodPage = signal(1);
+  readonly periodPageSize = 20;
   readonly dateFrom = signal('');
   readonly dateTo = signal('');
   readonly generating = signal(false);
@@ -270,6 +324,9 @@ export class PayrollPageComponent implements OnInit {
         case 'attendance':
           await this.loadAttendance();
           break;
+        case 'attendance_logs':
+          await this.loadAttendanceLogs();
+          break;
         case 'employees':
           await this.loadEmployees();
           break;
@@ -389,6 +446,105 @@ export class PayrollPageComponent implements OnInit {
     const meta = this.memoListMeta();
     const start = (meta.page - 1) * this.memoPageSize;
     return this.filteredMemos().slice(start, start + this.memoPageSize);
+  });
+
+  readonly filteredPeriodItems = computed(() => {
+    const q = this.periodSearch().trim().toLowerCase();
+    let rows = [...this.periodItems()];
+    if (q) {
+      rows = rows.filter((item) => {
+        const haystack = [
+          item.fullName,
+          item.username,
+          item.employeeCode ?? '',
+          item.department ?? '',
+        ]
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(q);
+      });
+    }
+    const key = this.periodSortKey();
+    const dir = this.periodSortDir() === 'asc' ? 1 : -1;
+    rows.sort((a, b) => {
+      const num = (v: number | null | undefined) => Number(v ?? 0);
+      switch (key) {
+        case 'daysCompleted':
+          return (num(a.daysCompleted) - num(b.daysCompleted)) * dir;
+        case 'totalHours':
+          return (num(a.totalHours) - num(b.totalHours)) * dir;
+        case 'commissionsTotal':
+          return (num(a.commissionsTotal) - num(b.commissionsTotal)) * dir;
+        case 'totalDeductions':
+          return (num(a.totalDeductions) - num(b.totalDeductions)) * dir;
+        case 'netPay':
+          return (num(a.netPay ?? a.estimatedPay) - num(b.netPay ?? b.estimatedPay)) * dir;
+        case 'fullName':
+        default:
+          return a.fullName.localeCompare(b.fullName, undefined, {
+            sensitivity: 'base',
+            numeric: true,
+          }) * dir;
+      }
+    });
+    return rows;
+  });
+
+  readonly periodListMeta = computed(() => {
+    const total = this.filteredPeriodItems().length;
+    const totalPages = Math.max(1, Math.ceil(total / this.periodPageSize) || 1);
+    const page = Math.min(Math.max(1, this.periodPage()), totalPages);
+    return { page, totalPages, total, pageSize: this.periodPageSize };
+  });
+
+  readonly pagedPeriodItems = computed(() => {
+    const meta = this.periodListMeta();
+    const start = (meta.page - 1) * this.periodPageSize;
+    return this.filteredPeriodItems().slice(start, start + this.periodPageSize);
+  });
+
+  readonly sortedEmployees = computed(() => {
+    const rows = [...this.employees()];
+    const key = this.employeeListSortKey();
+    const dir = this.employeeListSortDir() === 'asc' ? 1 : -1;
+    rows.sort((a, b) => {
+      let av = '';
+      let bv = '';
+      switch (key) {
+        case 'department':
+          av = a.department || '';
+          bv = b.department || '';
+          break;
+        case 'salaryType':
+          av = a.salaryType;
+          bv = b.salaryType;
+          break;
+        case 'todayStatus':
+          av = a.todayStatus || '';
+          bv = b.todayStatus || '';
+          break;
+        case 'fullName':
+        default:
+          av = a.fullName;
+          bv = b.fullName;
+          break;
+      }
+      return av.localeCompare(bv, undefined, { sensitivity: 'base', numeric: true }) * dir;
+    });
+    return rows;
+  });
+
+  readonly employeeListMeta = computed(() => {
+    const total = this.sortedEmployees().length;
+    const totalPages = Math.max(1, Math.ceil(total / this.employeeListPageSize) || 1);
+    const page = Math.min(Math.max(1, this.employeeListPage()), totalPages);
+    return { page, totalPages, total, pageSize: this.employeeListPageSize };
+  });
+
+  readonly pagedEmployees = computed(() => {
+    const meta = this.employeeListMeta();
+    const start = (meta.page - 1) * this.employeeListPageSize;
+    return this.sortedEmployees().slice(start, start + this.employeeListPageSize);
   });
 
   private async loadMemos(): Promise<void> {
@@ -618,6 +774,10 @@ export class PayrollPageComponent implements OnInit {
       this.adminApi.listPayrollEmployees(this.employeeSearch()),
     );
     this.employees.set(response.data);
+    const meta = this.employeeListMeta();
+    if (this.employeeListPage() > meta.totalPages) {
+      this.employeeListPage.set(meta.totalPages);
+    }
   }
 
   private async loadPeriod(): Promise<void> {
@@ -629,6 +789,10 @@ export class PayrollPageComponent implements OnInit {
     ]);
     this.periodItems.set(periodResponse.data);
     this.periodMeta.set(periodResponse.meta);
+    const periodMeta = this.periodListMeta();
+    if (this.periodPage() > periodMeta.totalPages) {
+      this.periodPage.set(periodMeta.totalPages);
+    }
     this.dateFrom.set(periodResponse.meta.dateFrom);
     this.dateTo.set(periodResponse.meta.dateTo);
     this.overlaps.set(periodResponse.meta.overlaps ?? []);
@@ -1195,6 +1359,7 @@ export class PayrollPageComponent implements OnInit {
   }
 
   async searchEmployees(): Promise<void> {
+    this.employeeListPage.set(1);
     this.loading.set(true);
     this.error.set('');
     try {
@@ -1206,7 +1371,79 @@ export class PayrollPageComponent implements OnInit {
     }
   }
 
+  setEmployeeListSort(key: EmployeeListSortKey): void {
+    if (this.employeeListSortKey() === key) {
+      this.employeeListSortDir.update((dir) => (dir === 'asc' ? 'desc' : 'asc'));
+    } else {
+      this.employeeListSortKey.set(key);
+      this.employeeListSortDir.set('asc');
+    }
+    this.employeeListPage.set(1);
+  }
+
+  employeeListSortMark(key: EmployeeListSortKey): string {
+    if (this.employeeListSortKey() !== key) return '';
+    return this.employeeListSortDir() === 'asc' ? ' ▲' : ' ▼';
+  }
+
+  goEmployeeListPage(page: number): void {
+    this.employeeListPage.set(page);
+  }
+
+  async openEmployeeDetail(item: PayrollEmployeeItem): Promise<void> {
+    this.employeeDetailError.set('');
+    this.employeeDetailLoading.set(true);
+    this.employeeDetail.set(null);
+    const today = this.manilaToday();
+    const from = this.employeeDetailDateFrom() || `${today.slice(0, 8)}01`;
+    const to = this.employeeDetailDateTo() || today;
+    this.employeeDetailDateFrom.set(from);
+    this.employeeDetailDateTo.set(to);
+    try {
+      const res = await firstValueFrom(
+        this.adminApi.getPayrollEmployeeDetail(item.userId, item.userSource, from, to),
+      );
+      this.employeeDetail.set(res.data);
+    } catch (err) {
+      this.employeeDetailError.set(this.readHttpError(err, 'Unable to load employee details.'));
+    } finally {
+      this.employeeDetailLoading.set(false);
+    }
+  }
+
+  closeEmployeeDetail(): void {
+    this.employeeDetail.set(null);
+    this.employeeDetailError.set('');
+    this.employeeDetailLoading.set(false);
+  }
+
+  async reloadEmployeeDetail(): Promise<void> {
+    const detail = this.employeeDetail();
+    if (!detail) return;
+    await this.openEmployeeDetail(detail.employee);
+  }
+
+  setPeriodSort(key: PeriodSortKey): void {
+    if (this.periodSortKey() === key) {
+      this.periodSortDir.update((dir) => (dir === 'asc' ? 'desc' : 'asc'));
+    } else {
+      this.periodSortKey.set(key);
+      this.periodSortDir.set('asc');
+    }
+    this.periodPage.set(1);
+  }
+
+  periodSortMark(key: PeriodSortKey): string {
+    if (this.periodSortKey() !== key) return '';
+    return this.periodSortDir() === 'asc' ? ' ▲' : ' ▼';
+  }
+
+  goPeriodPage(page: number): void {
+    this.periodPage.set(page);
+  }
+
   async applyPeriodFilter(): Promise<void> {
+    this.periodPage.set(1);
     this.loading.set(true);
     this.error.set('');
     this.generateMessage.set('');
@@ -1304,21 +1541,76 @@ export class PayrollPageComponent implements OnInit {
     }
   }
 
-  async generatePayslips(): Promise<void> {
+  async generatePreviewedPayslip(): Promise<void> {
+    const slip = this.previewEmployee();
+    if (!slip?.userId || !slip.userSource) {
+      this.error.set('Unable to identify the employee on this preview.');
+      return;
+    }
+    const match = this.periodItems().find(
+      (row) =>
+        row.userId === Number(slip.userId) &&
+        row.userSource === slip.userSource,
+    );
+    if (match) {
+      await this.generatePayslips(match);
+      return;
+    }
+    await this.generatePayslips({
+      userId: Number(slip.userId),
+      userSource: slip.userSource as 'pcmazing_admin_users' | 'tblusers',
+      username: slip.employee.username,
+      fullName: slip.employee.fullName,
+      employeeCode: slip.employee.employeeCode,
+      department: slip.employee.department,
+      salaryType: this.periodType(),
+      salaryAmount: null,
+      daysPresent: slip.totals.daysPresent,
+      daysCompleted: slip.totals.daysCompleted,
+      totalHours: slip.totals.totalHours,
+      approvedOvertimeHours: slip.totals.approvedOvertimeHours,
+      pendingOvertimeHours: slip.totals.pendingOvertimeHours,
+      estimatedPay: slip.totals.estimatedPay,
+      payslipPeriod: this.periodType(),
+    });
+  }
+
+  async generatePayslips(item?: PayrollPeriodItem): Promise<void> {
     if (this.generating() || this.periodItems().length === 0) {
       return;
+    }
+
+    if (item) {
+      const ok = await this.confirmAction(
+        `Generate payslip for ${item.fullName} only (${this.dateFrom()} to ${this.dateTo()})?`,
+        {
+          title: 'Generate employee payslip?',
+          confirmLabel: 'Generate',
+        },
+      );
+      if (!ok) return;
     }
 
     this.generating.set(true);
     this.error.set('');
     this.generateMessage.set('');
     try {
+      const employees = item
+        ? [
+            {
+              userId: item.userId,
+              userSource: item.userSource,
+              payslipPeriod: item.payslipPeriod || item.salaryType || this.periodType(),
+            },
+          ]
+        : undefined;
       const response = await firstValueFrom(
         this.adminApi.generatePayrollPeriod(
           this.dateFrom(),
           this.dateTo(),
           this.periodType(),
           this.confirmOverlap() || this.blockingOverlaps().length === 0,
+          employees,
         ),
       );
       const data = response.data;
@@ -1549,6 +1841,183 @@ export class PayrollPageComponent implements OnInit {
     } finally {
       this.bypassSaving.set(false);
     }
+  }
+
+  canEditAttendance(item: PayrollAttendanceItem): boolean {
+    return Boolean(item.timeIn || item.lunchOut || item.lunchIn || item.timeOut);
+  }
+
+  openEditAttendance(item: PayrollAttendanceItem): void {
+    this.editError.set('');
+    this.editDialog.set({
+      id: item.id,
+      fullName: item.fullName,
+      workDate: item.workDate,
+      timeIn: this.toDatetimeLocalValue(item.timeIn),
+      lunchOut: this.toDatetimeLocalValue(item.lunchOut ?? null),
+      lunchIn: this.toDatetimeLocalValue(item.lunchIn ?? null),
+      timeOut: this.toDatetimeLocalValue(item.timeOut),
+      hasTimeIn: Boolean(item.timeIn),
+      hasLunchOut: Boolean(item.lunchOut),
+      hasLunchIn: Boolean(item.lunchIn),
+      hasTimeOut: Boolean(item.timeOut),
+      reason: '',
+    });
+  }
+
+  closeEditAttendance(): void {
+    if (this.editSaving()) return;
+    this.editDialog.set(null);
+    this.editError.set('');
+  }
+
+  updateEditDialog(
+    patch: Partial<{
+      timeIn: string;
+      lunchOut: string;
+      lunchIn: string;
+      timeOut: string;
+      reason: string;
+    }>,
+  ): void {
+    const current = this.editDialog();
+    if (!current) return;
+    this.editDialog.set({ ...current, ...patch });
+  }
+
+  async submitEditAttendance(): Promise<void> {
+    const dialog = this.editDialog();
+    if (!dialog) return;
+
+    const reason = dialog.reason.trim();
+    if (reason.length < 8) {
+      this.editError.set('Reason is required (at least 8 characters).');
+      return;
+    }
+
+    const body: {
+      timeIn?: string;
+      lunchOut?: string;
+      lunchIn?: string;
+      timeOut?: string;
+      reason: string;
+    } = { reason };
+
+    const parseField = (raw: string, label: string): string | null => {
+      const value = raw.trim();
+      if (!value) {
+        this.editError.set(`${label} cannot be cleared.`);
+        return null;
+      }
+      const parsed = new Date(value);
+      if (!Number.isFinite(parsed.getTime())) {
+        this.editError.set(`Invalid ${label.toLowerCase()}.`);
+        return null;
+      }
+      return parsed.toISOString();
+    };
+
+    if (dialog.hasTimeIn) {
+      const iso = parseField(dialog.timeIn, 'Time in');
+      if (!iso) return;
+      body.timeIn = iso;
+    }
+    if (dialog.hasLunchOut) {
+      const iso = parseField(dialog.lunchOut, 'Lunch out');
+      if (!iso) return;
+      body.lunchOut = iso;
+    }
+    if (dialog.hasLunchIn) {
+      const iso = parseField(dialog.lunchIn, 'Lunch in');
+      if (!iso) return;
+      body.lunchIn = iso;
+    }
+    if (dialog.hasTimeOut) {
+      const iso = parseField(dialog.timeOut, 'Time out');
+      if (!iso) return;
+      body.timeOut = iso;
+    }
+
+    this.editSaving.set(true);
+    this.editError.set('');
+    try {
+      await firstValueFrom(this.adminApi.editPayrollAttendance(dialog.id, body));
+      this.editDialog.set(null);
+      await this.loadAttendance();
+    } catch (err: unknown) {
+      this.editError.set(this.readHttpError(err, 'Unable to save punch edit.'));
+    } finally {
+      this.editSaving.set(false);
+    }
+  }
+
+  private async loadAttendanceLogs(): Promise<void> {
+    const res = await firstValueFrom(
+      this.adminApi.listPayrollAttendanceLogs(this.attendanceLogsPage(), 50, {
+        workDate: this.attendanceLogsWorkDate(),
+        q: this.attendanceLogsQuery(),
+      }),
+    );
+    this.attendanceLogs.set(res.data ?? []);
+    this.attendanceLogsMeta.set(res.meta ?? null);
+  }
+
+  async applyAttendanceLogsFilter(): Promise<void> {
+    this.attendanceLogsPage.set(1);
+    this.loading.set(true);
+    this.error.set('');
+    try {
+      await this.loadAttendanceLogs();
+    } catch (err) {
+      this.error.set(this.readHttpError(err, 'Unable to load attendance logs.'));
+    } finally {
+      this.loading.set(false);
+    }
+  }
+
+  async goAttendanceLogsPage(page: number): Promise<void> {
+    this.attendanceLogsPage.set(page);
+    this.loading.set(true);
+    this.error.set('');
+    try {
+      await this.loadAttendanceLogs();
+    } catch (err) {
+      this.error.set(this.readHttpError(err, 'Unable to load attendance logs.'));
+    } finally {
+      this.loading.set(false);
+    }
+  }
+
+  toDatetimeLocalValue(iso: string | null | undefined): string {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (!Number.isFinite(d.getTime())) return '';
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  auditFieldLabel(field: AttendanceAuditChange['field']): string {
+    switch (field) {
+      case 'time_in':
+        return 'Time in';
+      case 'lunch_out':
+        return 'Lunch out';
+      case 'lunch_in':
+        return 'Lunch in';
+      case 'time_out':
+        return 'Time out';
+    }
+  }
+
+  formatAuditChange(change: AttendanceAuditChange): string {
+    return `${this.auditFieldLabel(change.field)}: ${this.formatPunch(change.oldValue)} -> ${this.formatPunch(change.newValue)}`;
+  }
+
+  lastEditLabel(item: PayrollAttendanceItem): string {
+    if (!item.lastEditedAt || !item.lastEditedByAdminName) {
+      return '';
+    }
+    return `Edited by ${item.lastEditedByAdminName} · ${this.formatPunch(item.lastEditedAt)}`;
   }
 
   formatMoney(value: number | null | undefined): string {

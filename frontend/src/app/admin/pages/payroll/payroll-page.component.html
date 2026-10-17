@@ -3,7 +3,7 @@
     <div>
       <h2 class="text-2xl font-bold text-slate-900 dark:text-white">HIRS</h2>
       <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
-        Human Information Resource System ÃÂ¢ÃÂÃÂ attendance, payroll, overtime, and employee memos. Configure salary fields in
+        Human Information Resource System - attendance, payroll, overtime, and employee memos. Configure salary fields in
         <a routerLink="/admin/users" class="font-semibold text-pcmazing-500 hover:underline">User Management</a>.
         Weekly and Semi-Monthly Amount is a daily rate: 9h+ = full day, owner-agreed undertime (default 30 min early) still pays a full day, 4h to under that = half day. Overtime over 9 hours needs employee request + admin approval.
       </p>
@@ -106,7 +106,7 @@
         class="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-800 dark:border-slate-600 dark:text-slate-100"
         (click)="openBypassPicker()"
       >
-        Bypass time inÃÂ¢ÃÂÃÂ¦
+        Bypass time in...
       </button>
     </form>
 
@@ -118,7 +118,7 @@
             <input
               type="search"
               class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-              placeholder="Search payroll-enabled employeeÃÂ¢ÃÂÃÂ¦"
+              placeholder="Search payroll-enabled employee..."
               [ngModel]="toolEmployeeQuery()"
               (ngModelChange)="onToolEmployeeQuery($event)"
               (focus)="openToolEmployeeMenu()"
@@ -148,7 +148,7 @@
 
     @if (attendance().length === 0) {
       <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900">
-        No punches for {{ workDate() || 'today' }}. Use ÃÂ¢ÃÂÃÂBypass time inÃÂ¢ÃÂÃÂ¦ÃÂ¢ÃÂÃÂ for forgotten punches.
+        No punches for {{ workDate() || 'today' }}. Use "Bypass time in..." for forgotten punches.
       </div>
     } @else {
       <div class="table-scroll overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
@@ -166,6 +166,7 @@
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Location</th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Status</th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Bypass</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Edit</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
@@ -173,7 +174,10 @@
               <tr>
                 <td class="px-4 py-3">
                   <p class="font-semibold text-slate-900 dark:text-white">{{ item.fullName }}</p>
-                  <p class="text-xs text-slate-500">@{{ item.username }} ÃÂÂ· {{ item.department || 'ÃÂ¢ÃÂÃÂ' }}</p>
+                  <p class="text-xs text-slate-500">@{{ item.username }} · {{ item.department || ' - ' }}</p>
+                  @if (lastEditLabel(item); as edited) {
+                    <p class="mt-1 text-[11px] font-semibold text-amber-700 dark:text-amber-400" [title]="edited">{{ edited }}</p>
+                  }
                 </td>
                 <td class="px-4 py-3 font-medium text-slate-900 dark:text-white">{{ formatPunch(item.timeIn) }}</td>
                 <td class="px-4 py-3 font-medium text-slate-900 dark:text-white">{{ formatPunch(item.lunchOut) }}</td>
@@ -239,9 +243,29 @@
                       </button>
                     }
                     @if (!(item.nextBypassActions || []).length) {
-                      <span class="text-xs text-slate-400">ÃÂ¢ÃÂÃÂ</span>
+                      <span class="text-xs text-slate-400"> - </span>
                     }
                   </div>
+                </td>
+                <td class="px-4 py-3">
+                  @if (canEditAttendance(item)) {
+                    <span class="group relative inline-flex">
+                      <button
+                        type="button"
+                        class="inline-flex size-9 items-center justify-center rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-800"
+                        title="Edit punches"
+                        aria-label="Edit punches"
+                        (click)="openEditAttendance(item)"
+                      >
+                        <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                        </svg>
+                      </button>
+                      <span class="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-semibold text-white opacity-0 shadow transition group-hover:opacity-100">Edit punches</span>
+                    </span>
+                  } @else {
+                    <span class="text-xs text-slate-400"> - </span>
+                  }
                 </td>
               </tr>
             }
@@ -251,10 +275,94 @@
 
       @if (attendanceMeta(); as pagination) {
         <div class="mt-4 flex items-center justify-between text-sm text-slate-500">
-          <span>Page {{ pagination.page }} of {{ pagination.totalPages }} Â· {{ pagination.total }} total</span>
+          <span>Page {{ pagination.page }} of {{ pagination.totalPages }} · {{ pagination.total }} total</span>
           <div class="flex gap-2">
             <button type="button" class="rounded-lg border px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page <= 1" (click)="goToAttendancePage(pagination.page - 1)">Previous</button>
             <button type="button" class="rounded-lg border px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page >= pagination.totalPages" (click)="goToAttendancePage(pagination.page + 1)">Next</button>
+          </div>
+        </div>
+      }
+    }
+  } @else if (activeTab() === 'attendance_logs') {
+    <form class="mb-6 flex flex-col gap-3 lg:flex-row lg:items-end" (ngSubmit)="applyAttendanceLogsFilter()">
+      <div class="w-full lg:w-48">
+        <label class="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">Work date</label>
+        <input
+          type="date"
+          class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+          [ngModel]="attendanceLogsWorkDate()"
+          (ngModelChange)="attendanceLogsWorkDate.set($event)"
+          name="attendanceLogsWorkDate"
+        />
+      </div>
+      <div class="w-full flex-1">
+        <label class="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">Search</label>
+        <input
+          type="search"
+          class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+          placeholder="Employee or admin..."
+          [ngModel]="attendanceLogsQuery()"
+          (ngModelChange)="attendanceLogsQuery.set($event)"
+          name="attendanceLogsQuery"
+        />
+      </div>
+      <button type="submit" class="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white dark:bg-slate-100 dark:text-slate-900">
+        Filter
+      </button>
+    </form>
+
+    @if (attendanceLogs().length === 0) {
+      <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900">
+        No attendance punch edits logged yet.
+      </div>
+    } @else {
+      <div class="table-scroll overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <table class="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
+          <thead class="bg-slate-50 dark:bg-slate-950">
+            <tr>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">When</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Admin</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Employee</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Work date</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Changes</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Reason</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+            @for (item of attendanceLogs(); track item.id) {
+              <tr>
+                <td class="px-4 py-3 text-slate-700 dark:text-slate-200">{{ formatPunch(item.createdAt) }}</td>
+                <td class="px-4 py-3">
+                  <p class="font-semibold text-slate-900 dark:text-white">{{ item.actorAdminName || item.actorAdminUsername || ('Admin #' + item.actorAdminId) }}</p>
+                  @if (item.actorAdminUsername) {
+                    <p class="text-xs text-slate-500">@{{ item.actorAdminUsername }}</p>
+                  }
+                </td>
+                <td class="px-4 py-3">
+                  <p class="font-semibold text-slate-900 dark:text-white">{{ item.employeeFullName || item.username }}</p>
+                  <p class="text-xs text-slate-500">@{{ item.username }}</p>
+                </td>
+                <td class="px-4 py-3 text-slate-700 dark:text-slate-200">{{ item.workDate }}</td>
+                <td class="px-4 py-3 text-slate-700 dark:text-slate-200">
+                  <ul class="space-y-1">
+                    @for (change of item.changes; track change.field + change.oldValue + change.newValue) {
+                      <li class="text-xs font-medium">{{ formatAuditChange(change) }}</li>
+                    }
+                  </ul>
+                </td>
+                <td class="px-4 py-3 text-slate-700 dark:text-slate-200">{{ item.reason }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      @if (attendanceLogsMeta(); as pagination) {
+        <div class="mt-4 flex items-center justify-between text-sm text-slate-500">
+          <span>Page {{ pagination.page }} of {{ pagination.totalPages }} · {{ pagination.total }} total</span>
+          <div class="flex gap-2">
+            <button type="button" class="rounded-lg border px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page <= 1" (click)="goAttendanceLogsPage(pagination.page - 1)">Previous</button>
+            <button type="button" class="rounded-lg border px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page >= pagination.totalPages" (click)="goAttendanceLogsPage(pagination.page + 1)">Next</button>
           </div>
         </div>
       }
@@ -283,9 +391,15 @@
         <table class="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
           <thead class="bg-slate-50 dark:bg-slate-950">
             <tr>
-              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Employee</th>
-              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Department</th>
-              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Pay schedule</th>
+              <th class="min-w-56 px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">
+                <button type="button" class="font-bold uppercase tracking-wide" (click)="setEmployeeListSort('fullName')">Employee{{ employeeListSortMark('fullName') }}</button>
+              </th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">
+                <button type="button" class="font-bold uppercase tracking-wide" (click)="setEmployeeListSort('department')">Department{{ employeeListSortMark('department') }}</button>
+              </th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">
+                <button type="button" class="font-bold uppercase tracking-wide" (click)="setEmployeeListSort('salaryType')">Pay schedule{{ employeeListSortMark('salaryType') }}</button>
+              </th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">
                 Amount
                 <span class="block text-[10px] font-semibold uppercase tracking-wide text-slate-400">Fixed monthly skips daily rate</span>
@@ -296,20 +410,23 @@
               </th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Payout</th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Week location</th>
-              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Today</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">
+                <button type="button" class="font-bold uppercase tracking-wide" (click)="setEmployeeListSort('todayStatus')">Today{{ employeeListSortMark('todayStatus') }}</button>
+              </th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">View</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-            @for (item of employees(); track item.userSource + '-' + item.userId) {
+            @for (item of pagedEmployees(); track item.userSource + '-' + item.userId) {
               <tr>
-                <td class="px-4 py-3">
+                <td class="min-w-56 px-4 py-3">
                   <p class="font-semibold text-slate-900 dark:text-white">{{ item.fullName }}</p>
-                  <p class="text-xs text-slate-500">@{{ item.username }} ÃÂÂ· {{ item.employeeCode || 'No code' }}</p>
+                  <p class="text-xs text-slate-500">@{{ item.username }} · {{ item.employeeCode || 'No code' }}</p>
                   @if (item.positionTitle) {
                     <p class="text-xs text-slate-500">{{ item.positionTitle }}</p>
                   }
                 </td>
-                <td class="px-4 py-3 text-slate-600 dark:text-slate-300">{{ item.department || 'ÃÂ¢ÃÂÃÂ' }}</td>
+                <td class="px-4 py-3 text-slate-600 dark:text-slate-300">{{ item.department || ' - ' }}</td>
                 <td class="px-4 py-3 text-slate-700 dark:text-slate-200">{{ salaryTypeLabel(item.salaryType) }}</td>
                 <td class="px-4 py-3 font-medium text-slate-900 dark:text-white">
                   @if (item.fixedMonthlySalary) {
@@ -350,14 +467,41 @@
                     {{ todayStatusLabel(item.todayStatus) }}
                   </span>
                   <p class="mt-1 text-xs text-slate-500">
-                    {{ formatPunch(item.todayTimeIn) }} ÃÂ¢ÃÂÃÂ {{ formatPunch(item.todayTimeOut) }}
+                    {{ formatPunch(item.todayTimeIn) }} -> {{ formatPunch(item.todayTimeOut) }}
                   </p>
+                </td>
+                <td class="px-4 py-3">
+                  <span class="group relative inline-flex">
+                    <button
+                      type="button"
+                      class="inline-flex size-9 items-center justify-center rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-800"
+                      title="View employee"
+                      aria-label="View employee"
+                      (click)="openEmployeeDetail(item)"
+                    >
+                      <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                    </button>
+                    <span class="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-semibold text-white opacity-0 shadow transition group-hover:opacity-100">View</span>
+                  </span>
                 </td>
               </tr>
             }
           </tbody>
         </table>
       </div>
+
+      @if (employeeListMeta(); as pagination) {
+        <div class="mt-4 flex items-center justify-between text-sm text-slate-500">
+          <span>Page {{ pagination.page }} of {{ pagination.totalPages }} · {{ pagination.total }} total</span>
+          <div class="flex gap-2">
+            <button type="button" class="rounded-lg border px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page <= 1" (click)="goEmployeeListPage(pagination.page - 1)">Previous</button>
+            <button type="button" class="rounded-lg border px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page >= pagination.totalPages" (click)="goEmployeeListPage(pagination.page + 1)">Next</button>
+          </div>
+        </div>
+      }
     }
   } @else if (activeTab() === 'period') {
     <form
@@ -409,7 +553,7 @@
             />
             <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs font-bold text-slate-400">min</span>
           </div>
-          <p class="mt-1 text-[11px] text-slate-400">Owner-agreed early out (0ÃÂ¢ÃÂÃÂ90). Default 30 keeps 8.5h as a full paid day.</p>
+          <p class="mt-1 text-[11px] text-slate-400">Owner-agreed early out (0-90). Default 30 keeps 8.5h as a full paid day.</p>
         </div>
         <div>
           <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">From</label>
@@ -467,7 +611,7 @@
         <div>
           <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Fixed late deduction</label>
           <div class="relative">
-            <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-slate-400">ÃÂ¢ÃÂÃÂ±</span>
+            <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-slate-400">PHP </span>
             <input
               type="number"
               min="0"
@@ -484,7 +628,7 @@
         <div>
           <label class="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Per-minute deduction</label>
           <div class="relative">
-            <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-slate-400">ÃÂ¢ÃÂÃÂ±</span>
+            <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-slate-400">PHP </span>
             <input
               type="number"
               min="0"
@@ -512,10 +656,10 @@
           }
           @if (periodType() === 'semi_monthly') {
             <button type="button" class="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200" (click)="setSemiMonthlyPeriod(1); applyPeriodFilter()">
-              1stÃÂ¢ÃÂÃÂ15th
+              1st-15th
             </button>
             <button type="button" class="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200" (click)="setSemiMonthlyPeriod(2); applyPeriodFilter()">
-              16thÃÂ¢ÃÂÃÂmonth end
+              16th-month end
             </button>
           }
           @if (periodType() === 'monthly') {
@@ -533,11 +677,23 @@
           </button>
           <button
             type="button"
-            class="h-11 rounded-xl bg-pcmazing-500 px-5 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:opacity-60"
+            class="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-bold text-slate-800 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100"
             [disabled]="previewLoading() || generating() || periodItems().length === 0"
             (click)="openPayslipPreview()"
           >
             @if (previewLoading()) { Loading preview... } @else { Preview payslips }
+          </button>
+          <button
+            type="button"
+            class="h-11 rounded-xl bg-pcmazing-500 px-5 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:opacity-60"
+            [disabled]="generating() || previewLoading() || periodItems().length === 0 || (blockingOverlaps().length > 0 && !confirmOverlap())"
+            (click)="generatePayslips()"
+          >
+            @if (generating()) {
+              Generating...
+            } @else {
+              Confirm & generate {{ periodItems().length }} payslip{{ periodItems().length === 1 ? '' : 's' }}
+            }
           </button>
         </div>
       </div>
@@ -561,13 +717,13 @@
         <ul class="mt-2 space-y-1 text-xs">
           @for (item of blockingOverlaps(); track item.runId + '-' + item.userSource + '-' + item.userId) {
             <li>
-              {{ item.fullName }} already has {{ item.label }} ({{ item.dateFrom }} ÃÂ¢ÃÂÃÂ {{ item.dateTo }}) ÃÂÂ· {{ formatMoney(item.estimatedPay) }}
+              {{ item.fullName }} already has {{ item.label }} ({{ item.dateFrom }} -> {{ item.dateTo }}) · {{ formatMoney(item.estimatedPay) }}
             </li>
           }
         </ul>
         <label class="mt-3 flex items-center gap-2 text-sm font-semibold">
           <input type="checkbox" class="rounded border-amber-400" [ngModel]="confirmOverlap()" (ngModelChange)="confirmOverlap.set($event)" [ngModelOptions]="{standalone: true}" name="confirmOverlap" />
-          I understand ÃÂ¢ÃÂÃÂ generate anyway
+          I understand - generate anyway
         </label>
       </div>
     }
@@ -588,9 +744,9 @@
         </div>
       </div>
       <p class="mb-4 text-sm text-slate-500">
-        Dates {{ meta.dateFrom }} ÃÂ¢ÃÂÃÂ {{ meta.dateTo }} ÃÂÂ· {{ periodType() === 'cutoff' ? 'Custom' : salaryTypeLabel(periodType()) }} ÃÂÂ· {{ workWeekLabel(workWeek()) }}.
-        Period type sets From/To for every employee. Pay formula still uses each employee profile (daily rate ÃÂÃÂ paid days, or fixed monthly).
-        Work week marks rest days: MonÃÂ¢ÃÂÃÂFri (Sat+Sun rest), MonÃÂ¢ÃÂÃÂSat (Sunday rest), or day-off basis (plotted day offs only).
+        Dates {{ meta.dateFrom }} -> {{ meta.dateTo }} · {{ periodType() === 'cutoff' ? 'Custom' : salaryTypeLabel(periodType()) }} · {{ workWeekLabel(workWeek()) }}.
+        Period type sets From/To for every employee. Pay formula still uses each employee profile (daily rate x paid days, or fixed monthly).
+        Work week marks rest days: Mon-Fri (Sat+Sun rest), Mon-Sat (Sunday rest), or day-off basis (plotted day offs only).
         Undertime grace ({{ undertimeGraceMinutes() }} min) still pays a full day if they clock out a little early for an owner-approved reason.
         Preview each payslip, then confirm generate. If this range overlaps an existing payslip, you will be asked to confirm before publishing.
       </p>
@@ -601,28 +757,52 @@
         No payroll employees in this period.
       </div>
     } @else {
+      <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <input
+          type="search"
+          class="w-full max-w-md rounded-xl border border-slate-200 px-4 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+          placeholder="Search employee in this period..."
+          [ngModel]="periodSearch()"
+          (ngModelChange)="periodSearch.set($event); periodPage.set(1)"
+          name="periodSearch"
+        />
+        <p class="text-xs text-slate-500">Showing {{ pagedPeriodItems().length }} of {{ filteredPeriodItems().length }} filtered ({{ periodItems().length }} total)</p>
+      </div>
+
       <div class="table-scroll overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <table class="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
           <thead class="bg-slate-50 dark:bg-slate-950">
             <tr>
-              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Employee</th>
+              <th class="min-w-64 px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">
+                <button type="button" class="font-bold uppercase tracking-wide" (click)="setPeriodSort('fullName')">Employee{{ periodSortMark('fullName') }}</button>
+              </th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Type</th>
-              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Days</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">
+                <button type="button" class="font-bold uppercase tracking-wide" (click)="setPeriodSort('daysCompleted')">Days{{ periodSortMark('daysCompleted') }}</button>
+              </th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Paid units</th>
-              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Hours</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">
+                <button type="button" class="font-bold uppercase tracking-wide" (click)="setPeriodSort('totalHours')">Hours{{ periodSortMark('totalHours') }}</button>
+              </th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">OT</th>
-              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Commission</th>
-              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Deductions</th>
-              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Net pay</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">
+                <button type="button" class="font-bold uppercase tracking-wide" (click)="setPeriodSort('commissionsTotal')">Commission{{ periodSortMark('commissionsTotal') }}</button>
+              </th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">
+                <button type="button" class="font-bold uppercase tracking-wide" (click)="setPeriodSort('totalDeductions')">Deductions{{ periodSortMark('totalDeductions') }}</button>
+              </th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">
+                <button type="button" class="font-bold uppercase tracking-wide" (click)="setPeriodSort('netPay')">Net pay{{ periodSortMark('netPay') }}</button>
+              </th>
               <th class="px-4 py-3 text-left font-bold text-slate-600 dark:text-slate-400">Payslip</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-            @for (item of periodItems(); track item.userSource + '-' + item.userId) {
+            @for (item of pagedPeriodItems(); track item.userSource + '-' + item.userId) {
               <tr>
-                <td class="px-4 py-3">
-                  <p class="font-semibold text-slate-900 dark:text-white">{{ item.fullName }}</p>
-                  <p class="text-xs text-slate-500">@{{ item.username }} ÃÂÂ· {{ item.employeeCode || 'No code' }}</p>
+                <td class="min-w-64 px-4 py-3">
+                  <p class="whitespace-normal font-semibold text-slate-900 dark:text-white">{{ item.fullName }}</p>
+                  <p class="text-xs text-slate-500">@{{ item.username }} · {{ item.employeeCode || 'No code' }}</p>
                 </td>
                 <td class="px-4 py-3 text-slate-600 dark:text-slate-300">
                   {{ salaryTypeLabel(item.salaryType) }}
@@ -650,12 +830,27 @@
                 <td class="px-4 py-3 font-semibold text-slate-900 dark:text-white">
                   {{ formatMoney(item.netPay ?? item.estimatedPay) }}
                   @if (item.deductionsExceedGross) {
-                    <span class="mt-1 block text-[11px] font-bold text-red-700 dark:text-red-300">Deductions exceed gross ÃÂ¢ÃÂÃÂ net floored at ÃÂ¢ÃÂÃÂ±0</span>
+                    <span class="mt-1 block text-[11px] font-bold text-red-700 dark:text-red-300">Deductions exceed gross - net floored at PHP 0</span>
                   }
                 </td>
                 <td class="px-4 py-3">
                   <div class="flex min-w-48 flex-col gap-2">
-                    <button type="button" class="self-start rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200" [disabled]="previewLoading() || generating()" (click)="openPayslipPreview(item)">Preview</button>
+                    <span class="group relative inline-flex self-start">
+                      <button
+                        type="button"
+                        class="inline-flex size-9 items-center justify-center rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-800"
+                        title="Preview payslip"
+                        aria-label="Preview payslip"
+                        [disabled]="previewLoading() || generating()"
+                        (click)="openPayslipPreview(item)"
+                      >
+                        <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" />
+                          <circle cx="12" cy="12" r="3" />
+                        </svg>
+                      </button>
+                      <span class="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[10px] font-semibold text-white opacity-0 shadow transition group-hover:opacity-100">Preview</span>
+                    </span>
                     @if (item.payslipId != null) {
                       @if (item.regenerationNeeded) {
                         <span class="self-start rounded-full bg-amber-100 px-2 py-1 text-[11px] font-bold text-amber-800 dark:bg-amber-950/60 dark:text-amber-200">Regenerate needed</span>
@@ -672,6 +867,16 @@
           </tbody>
         </table>
       </div>
+
+      @if (periodListMeta(); as pagination) {
+        <div class="mt-4 flex items-center justify-between text-sm text-slate-500">
+          <span>Page {{ pagination.page }} of {{ pagination.totalPages }} · {{ pagination.total }} total</span>
+          <div class="flex gap-2">
+            <button type="button" class="rounded-lg border px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page <= 1" (click)="goPeriodPage(pagination.page - 1)">Previous</button>
+            <button type="button" class="rounded-lg border px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page >= pagination.totalPages" (click)="goPeriodPage(pagination.page + 1)">Next</button>
+          </div>
+        </div>
+      }
     }
   } @else if (activeTab() === 'tools') {
     <div class="mb-5 rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
@@ -703,7 +908,7 @@
                     (mousedown)="pickToolEmployee(item)"
                   >
                     <span class="text-sm font-medium text-slate-800 dark:text-slate-100">{{ item.fullName }}</span>
-                    <span class="text-xs text-slate-500">{{ item.employeeCode || item.username }}@if (item.department) { ÃÂÂ· {{ item.department }} }</span>
+                    <span class="text-xs text-slate-500">{{ item.employeeCode || item.username }}@if (item.department) { · {{ item.department }} }</span>
                   </button>
                 }
               }
@@ -735,7 +940,7 @@
               class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-lg font-bold leading-none text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
               [attr.aria-label]="loanFormOpen() ? 'Close loan form' : 'Add loan'"
               (click)="toggleLoanForm()"
-            >{{ loanFormOpen() ? 'ÃÂÃÂ' : '+' }}</button>
+            >{{ loanFormOpen() ? 'x' : '+' }}</button>
           </div>
           @if (loanFormOpen()) {
             <div class="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
@@ -776,7 +981,7 @@
                     <div class="min-w-0">
                       <p class="font-semibold text-slate-900 dark:text-white">{{ loan.label }}</p>
                       <p class="mt-1 text-xs capitalize text-slate-500">{{ loan.status }}</p>
-                      <p class="mt-1 text-xs text-slate-500">{{ formatMoney(loan.balance) }} balance ÃÂÂ· {{ formatMoney(loan.principal) }} principal ÃÂÂ· {{ loan.termStyle === 'equal_installments' ? loan.installmentCount + ' installments' : formatMoney(loan.fixedInstallmentAmount) + '/cutoff' }}</p>
+                      <p class="mt-1 text-xs text-slate-500">{{ formatMoney(loan.balance) }} balance · {{ formatMoney(loan.principal) }} principal · {{ loan.termStyle === 'equal_installments' ? loan.installmentCount + ' installments' : formatMoney(loan.fixedInstallmentAmount) + '/cutoff' }}</p>
                       @if (loan.notes) { <p class="mt-1 text-xs text-slate-400">{{ loan.notes }}</p> }
                     </div>
                     <div class="flex shrink-0 flex-wrap justify-end gap-0.5">
@@ -852,7 +1057,7 @@
               class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-lg font-bold leading-none text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
               [attr.aria-label]="commissionFormOpen() ? 'Close commission form' : 'Add commission'"
               (click)="toggleCommissionForm()"
-            >{{ commissionFormOpen() ? 'ÃÂÃÂ' : '+' }}</button>
+            >{{ commissionFormOpen() ? 'x' : '+' }}</button>
           </div>
           @if (commissionFormOpen()) {
             <div class="mt-3 grid gap-2">
@@ -920,7 +1125,7 @@
               class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-lg font-bold leading-none text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
               [attr.aria-label]="deductionFormOpen() ? 'Close deduction form' : 'Add deduction'"
               (click)="toggleDeductionForm()"
-            >{{ deductionFormOpen() ? 'ÃÂÃÂ' : '+' }}</button>
+            >{{ deductionFormOpen() ? 'x' : '+' }}</button>
           </div>
           @if (deductionFormOpen()) {
             <div class="mt-3 grid gap-2">
@@ -996,7 +1201,7 @@
     </form>
 
     <p class="mb-4 text-sm text-slate-500">
-      Hours beyond 9 per completed day appear here after the employee requests approval. Only approved overtime is included in Period pay (1.25ÃÂÃÂ hourly).
+      Hours beyond 9 per completed day appear here after the employee requests approval. Only approved overtime is included in Period pay (1.25x hourly).
     </p>
 
     @if (overtimeItems().length === 0) {
@@ -1021,11 +1226,11 @@
               <tr>
                 <td class="px-4 py-3">
                   <p class="font-semibold text-slate-900 dark:text-white">{{ item.fullName }}</p>
-                  <p class="text-xs text-slate-500">@{{ item.username }} ÃÂÂ· {{ item.employeeCode || 'No code' }}</p>
+                  <p class="text-xs text-slate-500">@{{ item.username }} · {{ item.employeeCode || 'No code' }}</p>
                 </td>
                 <td class="px-4 py-3 text-slate-700 dark:text-slate-200">{{ item.workDate }}</td>
                 <td class="px-4 py-3 text-slate-700 dark:text-slate-200">
-                  {{ formatPunch(item.timeIn) }} ÃÂ¢ÃÂÃÂ {{ formatPunch(item.timeOut) }}
+                  {{ formatPunch(item.timeIn) }} -> {{ formatPunch(item.timeOut) }}
                   <p class="text-xs text-slate-500">{{ formatHours(item.hoursWorked) }} total</p>
                 </td>
                 <td class="px-4 py-3 font-medium text-slate-900 dark:text-white">{{ formatHours(item.overtimeHours) }}</td>
@@ -1087,7 +1292,7 @@
 
       @if (overtimeMeta(); as pagination) {
         <div class="mt-4 flex items-center justify-between text-sm text-slate-500">
-          <span>Page {{ pagination.page }} of {{ pagination.totalPages }} ÃÂÂ· {{ pagination.total }} total</span>
+          <span>Page {{ pagination.page }} of {{ pagination.totalPages }} · {{ pagination.total }} total</span>
           <div class="flex gap-2">
             <button type="button" class="rounded-lg border px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page <= 1" (click)="goToOvertimePage(pagination.page - 1)">Previous</button>
             <button type="button" class="rounded-lg border px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page >= pagination.totalPages" (click)="goToOvertimePage(pagination.page + 1)">Next</button>
@@ -1143,7 +1348,7 @@
               <tr>
                 <td class="px-4 py-3">
                   <p class="font-semibold text-slate-900 dark:text-white">{{ item.fullName }}</p>
-                  <p class="text-xs text-slate-500">@{{ item.username }} ÃÂÂ· {{ item.employeeCode || 'No code' }}</p>
+                  <p class="text-xs text-slate-500">@{{ item.username }} · {{ item.employeeCode || 'No code' }}</p>
                   @if (item.adjustmentNote) {
                     <p class="mt-1 text-xs text-slate-500">{{ item.adjustmentNote }}</p>
                   }
@@ -1197,7 +1402,7 @@
                       </button>
                     </div>
                   } @else {
-                    <p class="text-xs text-slate-500">{{ item.adjustmentReviewNote || 'ÃÂ¢ÃÂÃÂ' }}</p>
+                    <p class="text-xs text-slate-500">{{ item.adjustmentReviewNote || ' - ' }}</p>
                   }
                 </td>
               </tr>
@@ -1208,7 +1413,7 @@
 
       @if (adjustmentMeta(); as pagination) {
         <div class="mt-4 flex items-center justify-between text-sm text-slate-500">
-          <span>Page {{ pagination.page }} of {{ pagination.totalPages }} ÃÂÂ· {{ pagination.total }} total</span>
+          <span>Page {{ pagination.page }} of {{ pagination.totalPages }} · {{ pagination.total }} total</span>
           <div class="flex gap-2">
             <button type="button" class="rounded-lg border px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page <= 1" (click)="goToAdjustmentPage(pagination.page - 1)">Previous</button>
             <button type="button" class="rounded-lg border px-3 py-1.5 disabled:opacity-40" [disabled]="pagination.page >= pagination.totalPages" (click)="goToAdjustmentPage(pagination.page + 1)">Next</button>
@@ -1220,7 +1425,7 @@
     <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
       <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <h3 class="text-base font-bold text-slate-900 dark:text-white">Issue memo</h3>
-        <p class="mt-1 text-xs text-slate-500">Creates a formal notice for one employee. They must acknowledge it on their dashboard.</p>
+        <p class="mt-1 text-xs text-slate-500">Creates a formal notice for one employee. They must acknowledge it on Sales Dashboard or Time Clock.</p>
         <div class="mt-4 space-y-3">
           <label class="relative block">
             <span class="mb-1 block text-xs font-semibold text-slate-700">Employee *</span>
@@ -1249,7 +1454,7 @@
                       (mousedown)="pickMemoEmployee(item)"
                     >
                       <span class="text-sm font-medium text-slate-800 dark:text-slate-100">{{ item.fullName }}</span>
-                      <span class="text-xs text-slate-500">{{ item.employeeCode || item.username }}@if (item.department) { ÃÂÂ· {{ item.department }} }</span>
+                      <span class="text-xs text-slate-500">{{ item.employeeCode || item.username }}@if (item.department) { · {{ item.department }} }</span>
                     </button>
                   }
                 }
@@ -1330,7 +1535,7 @@
             [disabled]="memoSaving()"
             (click)="issueMemo()"
           >
-            @if (memoSaving()) { IssuingÃÂ¢ÃÂÃÂ¦ } @else { Issue memo }
+            @if (memoSaving()) { Issuing... } @else { Issue memo }
           </button>
           @if (memoMessage()) {
             <p class="text-sm font-medium text-emerald-600">{{ memoMessage() }}</p>
@@ -1396,7 +1601,7 @@
                       <p class="font-semibold text-slate-800 dark:text-slate-100">{{ memo.memoNo }}</p>
                       <p class="text-xs text-slate-500">{{ memo.subject }}</p>
                     </td>
-                    <td class="px-2 py-2 text-slate-600">{{ memo.employeeName || 'â' }}</td>
+                    <td class="px-2 py-2 text-slate-600">{{ memo.employeeName || ' - ' }}</td>
                     <td class="px-2 py-2 text-slate-600">{{ memo.memoTypeLabel }}</td>
                     <td class="px-2 py-2">
                       @if (memo.acknowledgedAt) {
@@ -1430,7 +1635,7 @@
           </div>
           @if (memoListMeta(); as pagination) {
             <div class="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm text-slate-500">
-              <span>Page {{ pagination.page }} of {{ pagination.totalPages }} Â· {{ pagination.total }} total</span>
+              <span>Page {{ pagination.page }} of {{ pagination.totalPages }} · {{ pagination.total }} total</span>
               <div class="flex gap-2">
                 <button type="button" class="cursor-pointer rounded-lg border px-3 py-1.5 disabled:opacity-40 dark:border-slate-700" [disabled]="pagination.page <= 1" (click)="goToMemoPage(pagination.page - 1)">Previous</button>
                 <button type="button" class="cursor-pointer rounded-lg border px-3 py-1.5 disabled:opacity-40 dark:border-slate-700" [disabled]="pagination.page >= pagination.totalPages" (click)="goToMemoPage(pagination.page + 1)">Next</button>
@@ -1502,7 +1707,7 @@
                 <div class="grid grid-cols-[5.5rem_1fr] gap-x-3">
                   <dt class="font-bold uppercase tracking-wide text-slate-500">To</dt>
                   <dd>
-                    <span class="font-bold uppercase">{{ detail.employeeName || 'â' }}</span>
+                    <span class="font-bold uppercase">{{ detail.employeeName || ' - ' }}</span>
                     @if (detail.employeePosition) {
                       <span class="block text-xs text-slate-600 dark:text-slate-300">{{ detail.employeePosition }}</span>
                     }
@@ -1514,7 +1719,7 @@
                 </div>
                 <div class="grid grid-cols-[5.5rem_1fr] gap-x-3">
                   <dt class="font-bold uppercase tracking-wide text-slate-500">Date</dt>
-                  <dd>{{ detail.issuedAt ? (detail.issuedAt | date:'MMMM d, y') : 'â' }}</dd>
+                  <dd>{{ detail.issuedAt ? (detail.issuedAt | date:'MMMM d, y') : ' - ' }}</dd>
                 </div>
                 <div class="grid grid-cols-[5.5rem_1fr] gap-x-3">
                   <dt class="font-bold uppercase tracking-wide text-slate-500">Type</dt>
@@ -1563,12 +1768,12 @@
                   <p class="text-[11px] font-bold tracking-wide text-slate-500 uppercase">Prepared / Issued by</p>
                   <div class="memo-doc-sign-line mt-10 border-b border-slate-400"></div>
                   <p class="mt-2 text-sm font-semibold text-slate-800 dark:text-slate-100">{{ detail.issuedByName || 'Management' }}</p>
-                  <p class="text-xs text-slate-500">{{ detail.issuedAt ? (detail.issuedAt | date:'MMMM d, y') : 'â' }}</p>
+                  <p class="text-xs text-slate-500">{{ detail.issuedAt ? (detail.issuedAt | date:'MMMM d, y') : ' - ' }}</p>
                 </div>
                 <div>
                   <p class="text-[11px] font-bold tracking-wide text-slate-500 uppercase">Employee acknowledgment</p>
                   <div class="memo-doc-sign-line mt-10 border-b border-slate-400"></div>
-                  <p class="mt-2 text-sm font-semibold text-slate-800 dark:text-slate-100">{{ detail.employeeName || 'â' }}</p>
+                  <p class="mt-2 text-sm font-semibold text-slate-800 dark:text-slate-100">{{ detail.employeeName || ' - ' }}</p>
                   <p class="text-xs text-slate-500">
                     @if (detail.acknowledgedAt) {
                       Acknowledged {{ detail.acknowledgedAt | date:'MMMM d, y h:mm a' }}
@@ -1580,7 +1785,7 @@
               </div>
 
               <p class="memo-doc-footer mt-8 text-[10px] leading-relaxed text-slate-500">
-                This memorandum forms part of the employeeâs 201 file. Receipt of this document constitutes notice of the matters stated herein.
+                This memorandum forms part of the employee's 201 file. Receipt of this document constitutes notice of the matters stated herein.
               </p>
             </div>
           </div>
@@ -1600,7 +1805,7 @@
       >
         <div class="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 dark:border-slate-800">
           <div class="min-w-0">
-            <p class="text-[10px] font-bold uppercase tracking-wide text-amber-600">Draft preview ÃÂ¢ÃÂÃÂ not published</p>
+            <p class="text-[10px] font-bold uppercase tracking-wide text-amber-600">Draft preview - not published</p>
             <h3 class="mt-1 text-base font-bold text-slate-900 dark:text-white">
               @if (previewEmployee(); as detail) {
                 {{ detail.employee.fullName }}
@@ -1635,19 +1840,19 @@
 
             <div class="mt-4 grid gap-1 text-sm text-slate-700 dark:text-slate-200 sm:grid-cols-2">
               <p><span class="font-semibold text-slate-900 dark:text-white">Employee:</span> {{ detail.employee.fullName }}</p>
-              <p><span class="font-semibold text-slate-900 dark:text-white">Position:</span> {{ detail.employee.positionTitle || 'ÃÂ¢ÃÂÃÂ' }}</p>
+              <p><span class="font-semibold text-slate-900 dark:text-white">Position:</span> {{ detail.employee.positionTitle || ' - ' }}</p>
               <p>
                 <span class="font-semibold text-slate-900 dark:text-white">Code:</span>
                 {{ detail.employee.employeeCode || 'No code' }}
                 @if (detail.employee.username) {
-                  ÃÂÂ· @{{ detail.employee.username }}
+ · @{{ detail.employee.username }}
                 }
               </p>
-              <p><span class="font-semibold text-slate-900 dark:text-white">Department:</span> {{ detail.employee.department || 'ÃÂ¢ÃÂÃÂ' }}</p>
+              <p><span class="font-semibold text-slate-900 dark:text-white">Department:</span> {{ detail.employee.department || ' - ' }}</p>
               <p><span class="font-semibold text-slate-900 dark:text-white">Pay schedule:</span> {{ salaryTypeLabel(detail.salaryType || '') }}</p>
               <p>
                 <span class="font-semibold text-slate-900 dark:text-white">Payroll period:</span>
-                {{ detail.dateFrom }} ÃÂ¢ÃÂÃÂ {{ detail.dateTo }}
+                {{ detail.dateFrom }} -> {{ detail.dateTo }}
               </p>
             </div>
 
@@ -1670,7 +1875,7 @@
                     @for (day of detail.days; track day.workDate) {
                       <tr>
                         <td class="px-3 py-2 font-medium text-slate-900 dark:text-white">{{ day.workDate }}</td>
-                        <td class="px-3 py-2 text-slate-600 dark:text-slate-300">{{ day.timeInLabel }}ÃÂ¢ÃÂÃÂ{{ day.timeOutLabel }}</td>
+                        <td class="px-3 py-2 text-slate-600 dark:text-slate-300">{{ day.timeInLabel }}-{{ day.timeOutLabel }}</td>
                         <td class="px-3 py-2 text-slate-700 dark:text-slate-200">{{ formatHours(day.hoursWorked) }}</td>
                         <td class="px-3 py-2 text-slate-700 dark:text-slate-200">{{ day.dayType }}</td>
                         <td class="px-3 py-2 text-slate-900 dark:text-white">{{ formatMoney(day.dayPay) }}</td>
@@ -1679,14 +1884,14 @@
                             {{ formatHours(day.overtimeHours) }}
                             <span class="block text-[11px] capitalize text-slate-500">{{ day.overtimeStatus }}</span>
                           } @else {
-                            ÃÂ¢ÃÂÃÂ
+ - 
                           }
                         </td>
                         <td class="px-3 py-2 text-slate-900 dark:text-white">
                           @if (day.overtimePay > 0) {
                             {{ formatMoney(day.overtimePay) }}
                           } @else {
-                            ÃÂ¢ÃÂÃÂ
+ - 
                           }
                         </td>
                       </tr>
@@ -1734,7 +1939,7 @@
                   <p>Total deductions: {{ formatMoney(breakdown.totalDeductions) }}</p>
                   @if (breakdown.totalDeductions > breakdown.grossPay) {
                     <p class="font-bold text-red-700 dark:text-red-300 sm:col-span-2">
-                      Warning: deductions exceed gross pay. Net pay is floored at ÃÂ¢ÃÂÃÂ±0.
+                      Warning: deductions exceed gross pay. Net pay is floored at PHP 0.
                     </p>
                   }
                 }
@@ -1749,7 +1954,7 @@
                     <div class="mt-2 flex justify-between gap-3 text-sm">
                       <span>{{ line.label }}</span>
                       <span class="font-semibold" [class.text-emerald-700]="line.lineType === 'commission'" [class.text-red-700]="line.lineType !== 'commission'">
-                        {{ line.lineType === 'commission' ? '+' : 'ÃÂ¢ÃÂÃÂ' }}{{ formatMoney(line.amount) }}
+                        {{ line.lineType === 'commission' ? '+' : '-' }}{{ formatMoney(line.amount) }}
                       </span>
                     </div>
                   }
@@ -1801,7 +2006,7 @@
           </div>
           <div class="flex min-w-0 flex-col items-stretch gap-2 sm:items-end">
             @if (blockingOverlaps().length > 0 && !confirmOverlap()) {
-              <p class="text-xs font-medium text-amber-700">Tick ÃÂ¢ÃÂÃÂgenerate anywayÃÂ¢ÃÂÃÂ on the Period pay page first ÃÂ¢ÃÂÃÂ these dates overlap existing payslips.</p>
+              <p class="text-xs font-medium text-amber-700">Tick "generate anyway" on the Period pay page first - these dates overlap existing payslips.</p>
             }
             @if (error()) {
               <p class="text-xs font-medium text-red-600">{{ error() }}</p>
@@ -1809,13 +2014,15 @@
             <button
               type="button"
               class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:opacity-50"
-              [disabled]="generating() || previewLoading() || previewItems().length === 0 || (blockingOverlaps().length > 0 && !confirmOverlap())"
-              (click)="generatePayslips()"
+              [disabled]="generating() || previewLoading() || !previewEmployee() || (blockingOverlaps().length > 0 && !confirmOverlap())"
+              (click)="generatePreviewedPayslip()"
             >
               @if (generating()) {
                 Generating...
+              } @else if (previewEmployee(); as slip) {
+                Generate payslip for {{ slip.employee.fullName }}
               } @else {
-                Confirm & generate {{ previewItems().length }} payslip{{ previewItems().length === 1 ? '' : 's' }}
+                Generate this payslip
               }
             </button>
           </div>
@@ -1895,7 +2102,7 @@
         <div class="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-700">
           <div class="min-w-0">
             <h3 class="text-base font-bold text-slate-900 dark:text-white">{{ detail.loan.label }}</h3>
-            <p class="mt-0.5 text-xs capitalize text-slate-500">{{ detail.loan.status }} ÃÂÂ· Loan #{{ detail.loan.id }}</p>
+            <p class="mt-0.5 text-xs capitalize text-slate-500">{{ detail.loan.status }} · Loan #{{ detail.loan.id }}</p>
           </div>
           <button type="button" class="rounded-lg px-2 py-1 text-sm font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800" (click)="closeLoanDetail()">Close</button>
         </div>
@@ -1932,10 +2139,10 @@
               <p class="mt-2 text-xs text-slate-500">Notes: {{ detail.loan.notes }}</p>
             }
             <p class="mt-2 text-xs text-slate-400">
-              Principal {{ formatMoney(detail.loan.principal) }} ÃÂ¢ÃÂÃÂ payslip deductions
+              Principal {{ formatMoney(detail.loan.principal) }} - payslip deductions
               {{ formatMoney(detail.deductedTotal) }}
               @if (loanBalanceDrift(detail)) {
-                ÃÂÂ· stored remaining {{ formatMoney(detail.remainingBalance) }}
+ · stored remaining {{ formatMoney(detail.remainingBalance) }}
                 (may differ if balance was edited manually)
               } @else {
                 = remaining {{ formatMoney(detail.remainingBalance) }}
@@ -1953,12 +2160,12 @@
                   <div class="flex items-start justify-between gap-3 px-3 py-2">
                     <div class="min-w-0">
                       <p class="font-medium text-slate-900 dark:text-white">{{ row.runLabel }}</p>
-                      <p class="text-xs text-slate-500">{{ row.dateFrom }} ÃÂ¢ÃÂÃÂ {{ row.dateTo }} ÃÂÂ· {{ row.source }}</p>
+                      <p class="text-xs text-slate-500">{{ row.dateFrom }} - {{ row.dateTo }} · {{ row.source }}</p>
                       @if (row.balanceBefore != null) {
                         <p class="text-xs text-slate-400">Balance before: {{ formatMoney(row.balanceBefore) }}</p>
                       }
                     </div>
-                    <p class="shrink-0 font-semibold text-red-600">ÃÂ¢ÃÂÃÂ{{ formatMoney(row.amount) }}</p>
+                    <p class="shrink-0 font-semibold text-red-600">-{{ formatMoney(row.amount) }}</p>
                   </div>
                 }
               </div>
@@ -1973,7 +2180,7 @@
                   <div class="flex items-start justify-between gap-3 px-3 py-2">
                     <div>
                       <p class="font-medium capitalize text-slate-900 dark:text-white">{{ row.action }}</p>
-                      <p class="text-xs text-slate-500">{{ row.dateFrom }} ÃÂ¢ÃÂÃÂ {{ row.dateTo }}</p>
+                      <p class="text-xs text-slate-500">{{ row.dateFrom }} - {{ row.dateTo }}</p>
                     </div>
                     <p class="text-xs font-semibold text-slate-700 dark:text-slate-200">
                       {{ row.action === 'custom' ? formatMoney(row.customAmount) : 'Skipped' }}
@@ -1984,6 +2191,175 @@
             </div>
           }
         </div>
+      </div>
+    </div>
+  }
+
+  @if (employeeDetailLoading() || employeeDetail() || employeeDetailError()) {
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4" (click)="closeEmployeeDetail()">
+      <div
+        class="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-700 dark:bg-slate-900"
+        (click)="$event.stopPropagation()"
+      >
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <h3 class="text-base font-bold text-slate-900 dark:text-white">Employee details</h3>
+            @if (employeeDetail(); as detail) {
+              <p class="mt-1 text-sm text-slate-600 dark:text-slate-300">{{ detail.employee.fullName }} · @{{ detail.employee.username }}</p>
+            }
+          </div>
+          <button type="button" class="rounded-lg px-2 py-1 text-sm font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800" (click)="closeEmployeeDetail()">Close</button>
+        </div>
+
+        @if (employeeDetailLoading()) {
+          <p class="mt-6 text-sm text-slate-500">Loading employee dossier...</p>
+        } @else if (employeeDetailError()) {
+          <p class="mt-6 text-sm font-semibold text-rose-600">{{ employeeDetailError() }}</p>
+        } @else if (employeeDetail(); as detail) {
+          <form class="mt-4 flex flex-wrap items-end gap-3" (ngSubmit)="reloadEmployeeDetail()">
+            <div>
+              <label class="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">From</label>
+              <input type="date" class="rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950" [ngModel]="employeeDetailDateFrom()" (ngModelChange)="employeeDetailDateFrom.set($event)" name="employeeDetailDateFrom" />
+            </div>
+            <div>
+              <label class="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">To</label>
+              <input type="date" class="rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950" [ngModel]="employeeDetailDateTo()" (ngModelChange)="employeeDetailDateTo.set($event)" name="employeeDetailDateTo" />
+            </div>
+            <button type="submit" class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white dark:bg-slate-100 dark:text-slate-900">Refresh range</button>
+          </form>
+
+          <div class="mt-5 grid gap-4 md:grid-cols-2">
+            <section class="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+              <h4 class="text-xs font-bold uppercase tracking-wide text-slate-500">Profile</h4>
+              <dl class="mt-3 space-y-1.5 text-sm text-slate-700 dark:text-slate-200">
+                <div><span class="font-semibold text-slate-900 dark:text-white">Code:</span> {{ detail.employee.employeeCode || ' - ' }}</div>
+                <div><span class="font-semibold text-slate-900 dark:text-white">Department:</span> {{ detail.employee.department || ' - ' }}</div>
+                <div><span class="font-semibold text-slate-900 dark:text-white">Position:</span> {{ detail.employee.positionTitle || ' - ' }}</div>
+                <div><span class="font-semibold text-slate-900 dark:text-white">Pay schedule:</span> {{ salaryTypeLabel(detail.employee.salaryType) }}</div>
+                <div><span class="font-semibold text-slate-900 dark:text-white">Payout:</span> {{ payoutMethodLabel(detail.employee.payoutMethod) }}</div>
+                <div><span class="font-semibold text-slate-900 dark:text-white">Week:</span> {{ scheduleSummary(detail.employee) }}</div>
+                <div><span class="font-semibold text-slate-900 dark:text-white">Today:</span> {{ todayStatusLabel(detail.employee.todayStatus) }} · {{ formatPunch(detail.employee.todayTimeIn) }} -> {{ formatPunch(detail.employee.todayTimeOut) }}</div>
+              </dl>
+            </section>
+
+            <section class="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+              <h4 class="text-xs font-bold uppercase tracking-wide text-slate-500">Pay amounts</h4>
+              <dl class="mt-3 space-y-1.5 text-sm text-slate-700 dark:text-slate-200">
+                @if (detail.employee.fixedMonthlySalary) {
+                  <div><span class="font-semibold text-slate-900 dark:text-white">Fixed monthly:</span> {{ formatMoney(detail.employee.fixedMonthlySalary) }}</div>
+                } @else {
+                  <div><span class="font-semibold text-slate-900 dark:text-white">Office daily:</span> {{ formatMoney(detail.employee.monthlySalary) }}</div>
+                  <div><span class="font-semibold text-slate-900 dark:text-white">WFH daily:</span> {{ detail.employee.wfhSalary != null ? formatMoney(detail.employee.wfhSalary) : 'Same as office' }}</div>
+                }
+                <div><span class="font-semibold text-slate-900 dark:text-white">Scheduled total:</span> {{ formatMoney(scheduledPayAmount(detail.employee)) }} ({{ scheduledPayLabel(detail.employee) }})</div>
+                @if (detail.employee.bankDetails) {
+                  <div><span class="font-semibold text-slate-900 dark:text-white">Bank:</span> {{ detail.employee.bankDetails }}</div>
+                }
+              </dl>
+            </section>
+          </div>
+
+          <section class="mt-4 rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+            <h4 class="text-xs font-bold uppercase tracking-wide text-slate-500">Attendance ({{ detail.dateFrom }} to {{ detail.dateTo }})</h4>
+            @if (detail.attendance.length === 0) {
+              <p class="mt-3 text-sm text-slate-500">No attendance rows in this range.</p>
+            } @else {
+              <div class="mt-3 max-h-56 overflow-auto">
+                <table class="min-w-full text-xs">
+                  <thead>
+                    <tr class="text-left text-slate-500">
+                      <th class="py-1 pr-3">Date</th>
+                      <th class="py-1 pr-3">In</th>
+                      <th class="py-1 pr-3">Lunch</th>
+                      <th class="py-1 pr-3">Out</th>
+                      <th class="py-1 pr-3">Hours</th>
+                      <th class="py-1">OT</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (day of detail.attendance; track day.id) {
+                      <tr class="border-t border-slate-100 dark:border-slate-800">
+                        <td class="py-1.5 pr-3 font-medium text-slate-800 dark:text-slate-100">{{ day.workDate }}</td>
+                        <td class="py-1.5 pr-3">{{ formatPunch(day.timeIn) }}</td>
+                        <td class="py-1.5 pr-3">{{ formatPunch(day.lunchOut) }} / {{ formatPunch(day.lunchIn) }}</td>
+                        <td class="py-1.5 pr-3">{{ formatPunch(day.timeOut) }}</td>
+                        <td class="py-1.5 pr-3">{{ formatHours(day.hoursWorked) }}</td>
+                        <td class="py-1.5">{{ formatHours(day.overtimeHours) }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+          </section>
+
+          <div class="mt-4 grid gap-4 md:grid-cols-2">
+            <section class="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+              <h4 class="text-xs font-bold uppercase tracking-wide text-slate-500">Payslips</h4>
+              @if (detail.payslips.length === 0) {
+                <p class="mt-3 text-sm text-slate-500">No generated payslips yet.</p>
+              } @else {
+                <ul class="mt-3 max-h-48 space-y-2 overflow-auto text-sm">
+                  @for (slip of detail.payslips; track slip.id) {
+                    <li class="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-950">
+                      <p class="font-semibold text-slate-900 dark:text-white">{{ slip.label }}</p>
+                      <p class="text-xs text-slate-500">{{ slip.dateFrom }} to {{ slip.dateTo }} · {{ formatMoney(slip.estimatedPay) }}</p>
+                    </li>
+                  }
+                </ul>
+              }
+            </section>
+
+            <section class="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+              <h4 class="text-xs font-bold uppercase tracking-wide text-slate-500">Loans</h4>
+              @if (detail.loans.length === 0) {
+                <p class="mt-3 text-sm text-slate-500">No loans.</p>
+              } @else {
+                <ul class="mt-3 max-h-48 space-y-2 overflow-auto text-sm">
+                  @for (loan of detail.loans; track loan.id) {
+                    <li class="rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-950">
+                      <p class="font-semibold text-slate-900 dark:text-white">{{ loan.label }} · {{ loan.status }}</p>
+                      <p class="text-xs text-slate-500">Balance {{ formatMoney(loan.balance) }} / {{ formatMoney(loan.principal) }}</p>
+                    </li>
+                  }
+                </ul>
+              }
+            </section>
+          </div>
+
+          <div class="mt-4 grid gap-4 md:grid-cols-2">
+            <section class="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+              <h4 class="text-xs font-bold uppercase tracking-wide text-slate-500">Commissions (range)</h4>
+              @if (detail.commissions.length === 0) {
+                <p class="mt-3 text-sm text-slate-500">None in this range.</p>
+              } @else {
+                <ul class="mt-3 max-h-40 space-y-2 overflow-auto text-sm">
+                  @for (row of detail.commissions; track row.id) {
+                    <li class="flex items-center justify-between gap-2">
+                      <span>{{ row.label || row.typeName || 'Commission' }}</span>
+                      <span class="font-semibold text-emerald-700">{{ formatMoney(row.amount) }}</span>
+                    </li>
+                  }
+                </ul>
+              }
+            </section>
+            <section class="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+              <h4 class="text-xs font-bold uppercase tracking-wide text-slate-500">Deductions (range)</h4>
+              @if (detail.deductions.length === 0) {
+                <p class="mt-3 text-sm text-slate-500">None in this range.</p>
+              } @else {
+                <ul class="mt-3 max-h-40 space-y-2 overflow-auto text-sm">
+                  @for (row of detail.deductions; track row.id) {
+                    <li class="flex items-center justify-between gap-2">
+                      <span>{{ row.label }}</span>
+                      <span class="font-semibold text-red-700">{{ formatMoney(row.amount) }}</span>
+                    </li>
+                  }
+                </ul>
+              }
+            </section>
+          </div>
+        }
       </div>
     </div>
   }
@@ -2014,6 +2390,111 @@
     </div>
   }
 
+  @if (editDialog(); as edit) {
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4" (click)="closeEditAttendance()">
+      <div
+        class="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-700 dark:bg-slate-900"
+        (click)="$event.stopPropagation()"
+      >
+        <h3 class="text-base font-bold text-slate-900 dark:text-white">Edit punches</h3>
+        <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">
+          {{ edit.fullName }} · {{ edit.workDate }}
+        </p>
+        <p class="mt-2 text-xs text-slate-500">
+          Change existing punches only. Use Bypass to fill missing punches. A reason is required.
+        </p>
+
+        <div class="mt-4 space-y-3">
+          @if (edit.hasTimeIn) {
+            <div>
+              <label class="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">Time in</label>
+              <input
+                type="datetime-local"
+                class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                [ngModel]="edit.timeIn"
+                (ngModelChange)="updateEditDialog({ timeIn: $event })"
+                name="editTimeIn"
+              />
+            </div>
+          }
+          @if (edit.hasLunchOut) {
+            <div>
+              <label class="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">Lunch out</label>
+              <input
+                type="datetime-local"
+                class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                [ngModel]="edit.lunchOut"
+                (ngModelChange)="updateEditDialog({ lunchOut: $event })"
+                name="editLunchOut"
+              />
+            </div>
+          }
+          @if (edit.hasLunchIn) {
+            <div>
+              <label class="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">Lunch in</label>
+              <input
+                type="datetime-local"
+                class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                [ngModel]="edit.lunchIn"
+                (ngModelChange)="updateEditDialog({ lunchIn: $event })"
+                name="editLunchIn"
+              />
+            </div>
+          }
+          @if (edit.hasTimeOut) {
+            <div>
+              <label class="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">Time out</label>
+              <input
+                type="datetime-local"
+                class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                [ngModel]="edit.timeOut"
+                (ngModelChange)="updateEditDialog({ timeOut: $event })"
+                name="editTimeOut"
+              />
+            </div>
+          }
+          <div>
+            <label class="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">Reason</label>
+            <textarea
+              rows="3"
+              class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              placeholder="Why are you correcting these punches?"
+              [ngModel]="edit.reason"
+              (ngModelChange)="updateEditDialog({ reason: $event })"
+              name="editReason"
+            ></textarea>
+          </div>
+        </div>
+
+        @if (editError()) {
+          <p class="mt-3 text-sm font-semibold text-rose-600">{{ editError() }}</p>
+        }
+        <div class="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            class="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold dark:border-slate-600"
+            [disabled]="editSaving()"
+            (click)="closeEditAttendance()"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="rounded-xl bg-pcmazing-500 px-4 py-2 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:opacity-50"
+            [disabled]="editSaving()"
+            (click)="submitEditAttendance()"
+          >
+            @if (editSaving()) {
+              Saving...
+            } @else {
+              Save changes
+            }
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+
   @if (bypassDialog(); as bypass) {
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4" (click)="closeBypassDialog()">
       <div
@@ -2024,7 +2505,7 @@
           Bypass {{ bypassActionLabel(bypass.action) }}
         </h3>
         <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">
-          {{ bypass.fullName }} ÃÂÂ· {{ bypass.workDate }}
+          {{ bypass.fullName }} · {{ bypass.workDate }}
         </p>
         <p class="mt-2 text-xs text-slate-500">
           No selfie required. Your admin profile photo will be stored on this punch.
@@ -2066,7 +2547,7 @@
             (click)="submitBypass()"
           >
             @if (bypassSaving()) {
-              SavingÃÂ¢ÃÂÃÂ¦
+              Saving...
             } @else {
               Confirm bypass
             }
