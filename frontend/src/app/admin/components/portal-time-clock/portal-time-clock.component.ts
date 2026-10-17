@@ -12,7 +12,11 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
-import { AdminApiService, TimeClockStatus } from '../../services/admin-api.service';
+import {
+  AdminApiService,
+  EmployeeMemoDetail,
+  TimeClockStatus,
+} from '../../services/admin-api.service';
 import { AdminAuthService } from '../../services/admin-auth.service';
 
 @Component({
@@ -45,6 +49,9 @@ export class PortalTimeClockComponent implements OnInit, OnDestroy {
   readonly requestingLocation = signal(false);
   readonly pickedLocation = signal<'office' | 'wfh' | null>(null);
   readonly lunchConfirmOpen = signal(false);
+  readonly pendingMemos = signal<EmployeeMemoDetail[]>([]);
+  readonly activeMemo = signal<EmployeeMemoDetail | null>(null);
+  readonly acknowledgingMemo = signal(false);
 
   private mediaStream: MediaStream | null = null;
   private clockTimer: ReturnType<typeof setInterval> | null = null;
@@ -80,6 +87,7 @@ export class PortalTimeClockComponent implements OnInit, OnDestroy {
     this.tickClock();
     this.clockTimer = setInterval(() => this.tickClock(), 1000);
     void this.loadStatus();
+    void this.loadPendingMemos();
     this.serverSyncTimer = setInterval(() => void this.syncServerClock(), 60_000);
   }
 
@@ -490,6 +498,55 @@ export class PortalTimeClockComponent implements OnInit, OnDestroy {
       minute: '2-digit',
       second: '2-digit',
     });
+  }
+
+  formatMemoDate(value: string | null | undefined): string {
+    if (!value) {
+      return '-';
+    }
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+    return date.toLocaleString('en-PH', {
+      timeZone: 'Asia/Manila',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+
+  private async loadPendingMemos(): Promise<void> {
+    try {
+      const pending = await firstValueFrom(this.adminApi.listPendingEmployeeMemos());
+      const pendingList = pending.data ?? [];
+      this.pendingMemos.set(pendingList);
+      if (!this.activeMemo() && pendingList.length > 0) {
+        this.activeMemo.set(pendingList[0]);
+      }
+    } catch {
+      // Non-blocking if memos are unavailable.
+    }
+  }
+
+  async acknowledgeActiveMemo(): Promise<void> {
+    const memo = this.activeMemo();
+    if (!memo || this.acknowledgingMemo()) {
+      return;
+    }
+    this.acknowledgingMemo.set(true);
+    try {
+      await firstValueFrom(this.adminApi.acknowledgeEmployeeMemo(memo.id));
+      const remaining = this.pendingMemos().filter((item) => item.id !== memo.id);
+      this.pendingMemos.set(remaining);
+      this.activeMemo.set(remaining[0] ?? null);
+    } catch {
+      this.error.set('Unable to acknowledge memo. Please try again.');
+    } finally {
+      this.acknowledgingMemo.set(false);
+    }
   }
 
   needsSelfie(): boolean {

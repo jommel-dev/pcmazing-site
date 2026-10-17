@@ -742,6 +742,37 @@ export interface PayrollAttendanceItem {
   locationLng?: number | null;
   locationLabel?: string | null;
   locationMismatch?: boolean;
+  lastEditedAt?: string | null;
+  lastEditedByAdminName?: string | null;
+}
+
+export type AttendanceAuditChangeField =
+  | 'time_in'
+  | 'lunch_out'
+  | 'lunch_in'
+  | 'time_out';
+
+export interface AttendanceAuditChange {
+  field: AttendanceAuditChangeField;
+  oldValue: string;
+  newValue: string;
+}
+
+export interface PayrollAttendanceAuditLogItem {
+  id: number;
+  attendanceId: number;
+  userId: number;
+  userSource: 'pcmazing_admin_users' | 'tblusers';
+  username: string;
+  employeeFullName: string | null;
+  workDate: string;
+  actionType: string;
+  actorAdminId: number;
+  actorAdminUsername: string | null;
+  actorAdminName: string | null;
+  reason: string;
+  changes: AttendanceAuditChange[];
+  createdAt: string;
 }
 
 export interface PayrollOvertimeItem {
@@ -963,6 +994,8 @@ export interface PayrollEmployeeItem {
   wfhSalary?: number | null;
   fixedMonthlySalary?: number | null;
   payoutMethod?: 'cash' | 'online';
+  bankDetails?: string | null;
+  qrImageUrl?: string | null;
   payrollEnabled: boolean;
   todayStatus: 'not_started' | 'timed_in' | 'completed' | 'absent';
   todayTimeIn: string | null;
@@ -1128,6 +1161,59 @@ export interface PayrollLoanDetail {
 export interface PayrollLoanScope {
   userId: number;
   userSource: 'pcmazing_admin_users' | 'tblusers';
+}
+
+export interface PayrollEmployeeDetailAttendance {
+  id: number;
+  workDate: string;
+  timeIn: string | null;
+  lunchOut: string | null;
+  lunchIn: string | null;
+  timeOut: string | null;
+  hoursWorked: number | null;
+  overtimeHours: number;
+  overtimeStatus: PayrollOvertimeStatus;
+  adjustmentStatus: PayrollOvertimeStatus;
+  workLocationType: WorkLocationType | null;
+}
+
+export interface PayrollEmployeeDetailPayslip {
+  id: string;
+  label: string;
+  dateFrom: string;
+  dateTo: string;
+  periodDays: number;
+  daysPresent: number;
+  daysCompleted: number;
+  totalHours: number;
+  salaryType: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
+  salaryAmount: number | null;
+  estimatedPay: number;
+  payrollEnabled: boolean;
+}
+
+export interface PayrollEmployeeDetail {
+  employee: PayrollEmployeeItem;
+  dateFrom: string;
+  dateTo: string;
+  attendance: PayrollEmployeeDetailAttendance[];
+  payslips: PayrollEmployeeDetailPayslip[];
+  loans: PayrollLoan[];
+  commissions: Array<{
+    id: number;
+    dateFrom: string;
+    dateTo: string;
+    typeName: string | null;
+    label: string | null;
+    amount: number;
+  }>;
+  deductions: Array<{
+    id: number;
+    dateFrom: string;
+    dateTo: string;
+    label: string;
+    amount: number;
+  }>;
 }
 
 export type EmployeeMemoType =
@@ -2642,6 +2728,45 @@ export class AdminApiService {
     );
   }
 
+  editPayrollAttendance(
+    id: number,
+    body: {
+      timeIn?: string;
+      lunchOut?: string;
+      lunchIn?: string;
+      timeOut?: string;
+      reason: string;
+    },
+  ) {
+    return this.http.patch<ItemResponse<PayrollAttendanceItem>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/attendance/${id}`,
+      body,
+      { headers: this.headers() },
+    );
+  }
+
+  listPayrollAttendanceLogs(
+    page = 1,
+    limit = 50,
+    filters: { workDate?: string; q?: string; actorAdminId?: number | string } = {},
+  ) {
+    let params = new HttpParams().set('page', String(page)).set('limit', String(limit));
+    if (filters.workDate?.trim()) {
+      params = params.set('workDate', filters.workDate.trim());
+    }
+    if (filters.q?.trim()) {
+      params = params.set('q', filters.q.trim());
+    }
+    if (filters.actorAdminId != null && String(filters.actorAdminId).trim() !== '') {
+      params = params.set('actorAdminId', String(filters.actorAdminId));
+    }
+
+    return this.http.get<ListResponse<PayrollAttendanceAuditLogItem>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/attendance/logs`,
+      { headers: this.headers(), params },
+    );
+  }
+
   getPayrollOverview(workDate = '') {
     let params = new HttpParams();
     if (workDate.trim()) {
@@ -2772,6 +2897,11 @@ export class AdminApiService {
     dateTo = '',
     periodType?: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff',
     confirmOverlap = false,
+    employees?: Array<{
+      userId: number;
+      userSource: 'pcmazing_admin_users' | 'tblusers';
+      payslipPeriod: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
+    }>,
   ) {
     return this.http.post<ItemResponse<PayrollGenerateResult>>(
       `${APP_CONFIG.apiUrl}/admin/payroll/period/generate`,
@@ -2780,8 +2910,28 @@ export class AdminApiService {
         dateTo: dateTo.trim() || undefined,
         periodType,
         confirmOverlap: confirmOverlap || undefined,
+        employees: employees?.length ? employees : undefined,
       },
       { headers: this.headers() },
+    );
+  }
+
+  getPayrollEmployeeDetail(
+    userId: number,
+    userSource: 'pcmazing_admin_users' | 'tblusers',
+    dateFrom = '',
+    dateTo = '',
+  ) {
+    let params = new HttpParams().set('userSource', userSource);
+    if (dateFrom.trim()) {
+      params = params.set('dateFrom', dateFrom.trim());
+    }
+    if (dateTo.trim()) {
+      params = params.set('dateTo', dateTo.trim());
+    }
+    return this.http.get<ItemResponse<PayrollEmployeeDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/payroll/employees/${userId}`,
+      { headers: this.headers(), params },
     );
   }
 

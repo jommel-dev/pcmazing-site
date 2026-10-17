@@ -1,4 +1,5 @@
 import {
+  assertAdminEditAllowed,
   assertBypassAllowed,
   lunchMinutes,
   overbreakMinutes,
@@ -77,5 +78,68 @@ describe('attendance-lunch.util', () => {
         new Date('2026-10-12T04:00:00.000Z'),
       ),
     ).toThrow(/lunch out/i);
+  });
+
+  const completed = {
+    timeIn: '2026-10-12T00:00:00.000Z',
+    lunchOut: '2026-10-12T03:00:00.000Z',
+    lunchIn: '2026-10-12T04:00:00.000Z',
+    timeOut: '2026-10-12T09:00:00.000Z',
+    workDate: '2026-10-12',
+  };
+
+  it('allows admin edit of existing time_out', () => {
+    const changes = assertAdminEditAllowed(
+      completed,
+      { ...completed, timeOut: '2026-10-12T09:30:00.000Z' },
+      '2026-10-12',
+    );
+    expect(changes).toEqual([
+      {
+        field: 'time_out',
+        oldValue: '2026-10-12T09:00:00.000Z',
+        newValue: '2026-10-12T09:30:00.000Z',
+      },
+    ]);
+  });
+
+  it('rejects admin edit of null punch (must bypass)', () => {
+    expect(() =>
+      assertAdminEditAllowed(
+        timedIn,
+        { ...timedIn, timeOut: '2026-10-12T09:00:00.000Z' },
+        '2026-10-12',
+      ),
+    ).toThrow(/bypass/i);
+  });
+
+  it('rejects clearing a punch', () => {
+    expect(() =>
+      assertAdminEditAllowed(
+        completed,
+        { ...completed, timeOut: null },
+        '2026-10-12',
+      ),
+    ).toThrow(/cleared/i);
+  });
+
+  it('rejects out-of-order admin edit', () => {
+    expect(() =>
+      assertAdminEditAllowed(
+        completed,
+        { ...completed, timeOut: '2026-10-12T02:00:00.000Z' },
+        '2026-10-12',
+      ),
+    ).toThrow(/after/i);
+  });
+
+  it('rejects punch on wrong Manila work date', () => {
+    expect(() =>
+      assertAdminEditAllowed(
+        completed,
+        { ...completed, timeOut: '2026-10-13T09:00:00.000Z' },
+        '2026-10-12',
+      ),
+    ).toThrow(/work date/i);
   });
 });

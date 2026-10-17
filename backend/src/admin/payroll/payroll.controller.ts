@@ -43,6 +43,7 @@ import {
 } from './dto/manual-deduction.dto';
 import { UpdatePayslipRemarksDto } from './dto/update-payslip-remarks.dto';
 import { BypassAttendanceDto } from './dto/bypass-attendance.dto';
+import { EditAttendancePunchDto } from './dto/edit-attendance-punch.dto';
 import { CreateEmployeeMemoDto } from './dto/employee-memo.dto';
 import { EmployeeMemosService } from './employee-memos.service';
 import { PayrollService } from './payroll.service';
@@ -120,6 +121,22 @@ export class PayrollController {
       success: true,
       data,
     }));
+  }
+
+  @Get('employees/:userId')
+  @RequirePermissions('payroll.view')
+  employeeDetail(
+    @Param('userId', ParseIntPipe) userId: number,
+    @Query('userSource') userSource?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+  ) {
+    return this.payrollService
+      .getEmployeeDetail(userId, userSource ?? '', dateFrom, dateTo)
+      .then((data) => ({
+        success: true,
+        data,
+      }));
   }
 
   @Patch('employees/:userId/weekly-location')
@@ -495,6 +512,47 @@ export class PayrollController {
 
     return this.payrollService
       .bypassAttendancePunch(body, adminId)
+      .then((data) => ({
+        success: true,
+        data,
+      }));
+  }
+
+  @Get('attendance/logs')
+  @RequirePermissions('payroll.view')
+  listAttendanceLogs(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('workDate') workDate?: string,
+    @Query('q') q?: string,
+    @Query('actorAdminId') actorAdminId?: string,
+  ) {
+    return this.payrollService
+      .listAttendanceAuditLogs(page, limit, workDate, q, actorAdminId)
+      .then((result) => ({
+        success: true,
+        data: result.items,
+        meta: result.meta,
+      }));
+  }
+
+  @Patch('attendance/:id')
+  @RequirePermissions('payroll.edit')
+  editAttendance(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: EditAttendancePunchDto,
+    @Req() req: Request & { user?: AdminJwtPayload },
+  ) {
+    const adminId =
+      req.user?.sub != null && Number.isFinite(Number(req.user.sub))
+        ? Number(req.user.sub)
+        : NaN;
+    if (!Number.isFinite(adminId)) {
+      throw new BadRequestException('Admin identity required.');
+    }
+
+    return this.payrollService
+      .editAttendancePunch(id, body, adminId)
       .then((data) => ({
         success: true,
         data,
