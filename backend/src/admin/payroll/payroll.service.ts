@@ -42,7 +42,9 @@ import {
 } from './dto/payroll-settings.dto';
 import { saveAttendanceSelfieFile } from './attendance-selfie.util';
 import {
+  assertAdminEditAllowed,
   assertBypassAllowed,
+  type AdminEditChange,
   lunchMinutes,
   nextBypassActions,
   overbreakMinutes,
@@ -51,6 +53,7 @@ import {
   type PunchOutIntent,
 } from './attendance-lunch.util';
 import { BypassAttendanceDto } from './dto/bypass-attendance.dto';
+import { EditAttendancePunchDto } from './dto/edit-attendance-punch.dto';
 import {
   deletePayrollQrImageFile,
   savePayrollQrImageFile,
@@ -132,6 +135,25 @@ export interface AttendanceRecord {
   locationLng: number | null;
   locationLabel: string | null;
   locationMismatch: boolean;
+  lastEditedAt: string | null;
+  lastEditedByAdminName: string | null;
+}
+
+export interface AttendanceAuditLogRecord {
+  id: number;
+  attendanceId: number;
+  userId: number;
+  userSource: 'pcmazing_admin_users' | 'tblusers';
+  username: string;
+  employeeFullName: string | null;
+  workDate: string;
+  actionType: string;
+  actorAdminId: number;
+  actorAdminUsername: string | null;
+  actorAdminName: string | null;
+  reason: string;
+  changes: AdminEditChange[];
+  createdAt: string;
 }
 
 export interface AdjustmentRecord {
@@ -1597,6 +1619,8 @@ export class PayrollService {
       location_lng: string | number | null;
       location_label: string | null;
       location_mismatch: boolean | null;
+      last_edited_at: string | null;
+      last_edited_by_admin_name: string | null;
     }>(
       `SELECT a.id, a.user_id, a.user_source, a.username, a.work_date::text AS work_date,
               a.time_in::text AS time_in, a.time_out::text AS time_out,
@@ -1608,10 +1632,25 @@ export class PayrollService {
               a.overtime_hours, a.overtime_status, a.adjustment_status,
               a.work_location_type, a.location_lat, a.location_lng, a.location_label,
               a.location_mismatch,
-              p.employee_code, p.department
+              p.employee_code, p.department,
+              last_edit.last_edited_at,
+              last_edit.last_edited_by_admin_name
        FROM pcmazing_attendance a
        LEFT JOIN pcmazing_user_payroll p
          ON p.user_id = a.user_id AND p.user_source = a.user_source
+       LEFT JOIN LATERAL (
+         SELECT l.created_at::text AS last_edited_at,
+                COALESCE(
+                  NULLIF(TRIM(l.actor_admin_name), ''),
+                  NULLIF(TRIM(l.actor_admin_username), ''),
+                  'Admin #' || l.actor_admin_id::text
+                ) AS last_edited_by_admin_name
+         FROM pcmazing_attendance_audit_log l
+         WHERE l.attendance_id = a.id
+           AND l.action_type = 'admin_edit_punch'
+         ORDER BY l.created_at DESC, l.id DESC
+         LIMIT 1
+       ) last_edit ON TRUE
        WHERE a.work_date = $1::date
        ORDER BY a.time_in DESC NULLS LAST, a.id DESC
        LIMIT $2 OFFSET $3`,
@@ -1806,6 +1845,301 @@ export class PayrollService {
     return this.mapAttendanceRecord(refreshed, fullName);
   }
 
+  async editAttendancePunch(
+    attendanceIdRaw: number,
+    body: EditAttendancePunchDto,
+    adminId: number,
+  ): Promise<AttendanceRecord> {
+    await this.ensureReady();
+
+    const attendanceId = Number(attendanceIdRaw);
+    if (!Number.isFinite(attendanceId) || attendanceId < 1) {
+      throw new BadRequestException('Invalid attendance id.');
+    }
+
+    const reason = (body.reason ?? '').trim();
+    if (reason.length < 8) {
+      throw new BadRequestException(
+        'Reason is required (at least 8 characters).',
+      );
+    }
+
+    const row = await this.loadAttendanceById(attendanceId);
+    if (!row) {
+      throw new NotFoundException('Attendance record not found.');
+    }
+
+    const profile = await this.getProfile(row.user_id, row.user_source);
+    if (!profile.payrollEnabled) {
+      throw new BadRequestException('Employee is not enabled for payroll.');
+    }
+
+    const parseProvidedIso = (
+      value: string | null | undefined,
+      label: string,
+    ): string => {
+      if (value == null || !String(value).trim()) {
+        throw new BadRequestException(`${label} cannot be cleared.`);
+      }
+      const d = new Date(String(value).trim());
+      if (!Number.isFinite(d.getTime())) {
+        throw new BadRequestException(`Invalid ${label.toLowerCase()} time.`);
+      }
+      return d.toISOString();
+    };
+
+    const merged = {
+      time_in:
+        body.timeIn !== undefined
+          ? parseProvidedIso(body.timeIn, 'Time in')
+          : row.time_in,
+      lunch_out:
+        body.lunchOut !== undefined
+          ? parseProvidedIso(body.lunchOut, 'Lunch out')
+          : row.lunch_out,
+      lunch_in:
+        body.lunchIn !== undefined
+          ? parseProvidedIso(body.lunchIn, 'Lunch in')
+          : row.lunch_in,
+      time_out:
+        body.timeOut !== undefined
+          ? parseProvidedIso(body.timeOut, 'Time out')
+          : row.time_out,
+    };
+
+    let changes: AdminEditChange[];
+    try {
+      changes = assertAdminEditAllowed(
+        {
+          timeIn: row.time_in,
+          lunchOut: row.lunch_out,
+          lunchIn: row.lunch_in,
+          timeOut: row.time_out,
+          workDate: row.work_date,
+        },
+        {
+          timeIn: merged.time_in,
+          lunchOut: merged.lunch_out,
+          lunchIn: merged.lunch_in,
+          timeOut: merged.time_out,
+          workDate: row.work_date,
+        },
+        row.work_date,
+      );
+    } catch (err) {
+      throw new BadRequestException(
+        err instanceof Error ? err.message : 'Edit not allowed.',
+      );
+    }
+
+    const admin = await this.databaseService.query<{
+      username: string;
+      full_name: string | null;
+    }>(
+      `SELECT username, full_name
+       FROM pcmazing_admin_users
+       WHERE id = $1
+       LIMIT 1`,
+      [adminId],
+    );
+    const adminRow = admin.rows[0];
+    if (!adminRow) {
+      throw new BadRequestException('Admin identity required.');
+    }
+
+    const fullName = await this.resolveFullName(
+      row.user_id,
+      row.user_source,
+      row.username,
+    );
+
+    const updated = await this.databaseService.query<{
+      id: number;
+      time_in: string | null;
+      time_out: string | null;
+    }>(
+      `UPDATE pcmazing_attendance
+       SET time_in = $2::timestamptz,
+           lunch_out = $3::timestamptz,
+           lunch_in = $4::timestamptz,
+           time_out = $5::timestamptz,
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING id, time_in::text AS time_in, time_out::text AS time_out`,
+      [
+        attendanceId,
+        merged.time_in,
+        merged.lunch_out,
+        merged.lunch_in,
+        merged.time_out,
+      ],
+    );
+
+    const punched = updated.rows[0];
+    if (!punched) {
+      throw new BadRequestException('Unable to save punch edit.');
+    }
+
+    await this.databaseService.query(
+      `INSERT INTO pcmazing_attendance_audit_log (
+         attendance_id, user_id, user_source, username, employee_full_name,
+         work_date, action_type, actor_admin_id, actor_admin_username,
+         actor_admin_name, reason, meta_json
+       ) VALUES (
+         $1, $2, $3, $4, $5,
+         $6::date, 'admin_edit_punch', $7, $8,
+         $9, $10, $11::jsonb
+       )`,
+      [
+        attendanceId,
+        row.user_id,
+        row.user_source,
+        row.username,
+        fullName,
+        row.work_date,
+        adminId,
+        adminRow.username,
+        adminRow.full_name,
+        reason,
+        JSON.stringify({ changes }),
+      ],
+    );
+
+    const timeOutChanged = changes.some((c) => c.field === 'time_out');
+    if (timeOutChanged) {
+      await this.syncOvertimeAfterTimeOut(
+        punched.id,
+        punched.time_in,
+        punched.time_out,
+      );
+      await this.clearPendingAdjustment(punched.id);
+    }
+
+    const refreshed = await this.loadAttendanceById(attendanceId);
+    if (!refreshed) {
+      throw new BadRequestException('Edit saved but row could not be reloaded.');
+    }
+    return this.mapAttendanceRecord(refreshed, fullName);
+  }
+
+  async listAttendanceAuditLogs(
+    pageRaw?: string,
+    limitRaw?: string,
+    workDate?: string,
+    q?: string,
+    actorAdminIdRaw?: string,
+  ) {
+    await this.ensureReady();
+
+    const page = Math.max(1, Number(pageRaw) || 1);
+    const limit = Math.min(100, Math.max(1, Number(limitRaw) || 20));
+    const offset = (page - 1) * limit;
+    const date = workDate?.trim() || '';
+    const search = (q ?? '').trim();
+    const actorAdminId = Number(actorAdminIdRaw);
+    const hasActor =
+      actorAdminIdRaw != null &&
+      String(actorAdminIdRaw).trim() !== '' &&
+      Number.isFinite(actorAdminId);
+
+    const where: string[] = [`l.action_type = 'admin_edit_punch'`];
+    const params: unknown[] = [];
+
+    if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      params.push(date);
+      where.push(`l.work_date = $${params.length}::date`);
+    }
+    if (search) {
+      params.push(`%${search.toLowerCase()}%`);
+      const idx = params.length;
+      where.push(
+        `(LOWER(l.username) LIKE $${idx}
+          OR LOWER(COALESCE(l.employee_full_name, '')) LIKE $${idx}
+          OR LOWER(COALESCE(l.actor_admin_name, '')) LIKE $${idx}
+          OR LOWER(COALESCE(l.actor_admin_username, '')) LIKE $${idx})`,
+      );
+    }
+    if (hasActor) {
+      params.push(actorAdminId);
+      where.push(`l.actor_admin_id = $${params.length}`);
+    }
+
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    const countResult = await this.databaseService.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+       FROM pcmazing_attendance_audit_log l
+       ${whereSql}`,
+      params,
+    );
+    const total = Number(countResult.rows[0]?.count ?? 0);
+
+    params.push(limit, offset);
+    const result = await this.databaseService.query<{
+      id: number;
+      attendance_id: number;
+      user_id: number;
+      user_source: 'pcmazing_admin_users' | 'tblusers';
+      username: string;
+      employee_full_name: string | null;
+      work_date: string;
+      action_type: string;
+      actor_admin_id: number;
+      actor_admin_username: string | null;
+      actor_admin_name: string | null;
+      reason: string;
+      meta_json: { changes?: AdminEditChange[] } | string | null;
+      created_at: string;
+    }>(
+      `SELECT l.id, l.attendance_id, l.user_id, l.user_source, l.username,
+              l.employee_full_name, l.work_date::text AS work_date, l.action_type,
+              l.actor_admin_id, l.actor_admin_username, l.actor_admin_name,
+              l.reason, l.meta_json, l.created_at::text AS created_at
+       FROM pcmazing_attendance_audit_log l
+       ${whereSql}
+       ORDER BY l.created_at DESC, l.id DESC
+       LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params,
+    );
+
+    const items: AttendanceAuditLogRecord[] = result.rows.map((row) => {
+      let changes: AdminEditChange[] = [];
+      const meta =
+        typeof row.meta_json === 'string'
+          ? (JSON.parse(row.meta_json) as { changes?: AdminEditChange[] })
+          : row.meta_json;
+      if (meta && Array.isArray(meta.changes)) {
+        changes = meta.changes;
+      }
+      return {
+        id: row.id,
+        attendanceId: row.attendance_id,
+        userId: row.user_id,
+        userSource: row.user_source,
+        username: row.username,
+        employeeFullName: row.employee_full_name,
+        workDate: row.work_date,
+        actionType: row.action_type,
+        actorAdminId: Number(row.actor_admin_id),
+        actorAdminUsername: row.actor_admin_username,
+        actorAdminName: row.actor_admin_name,
+        reason: row.reason,
+        changes,
+        createdAt: row.created_at,
+      };
+    });
+
+    return {
+      items,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
+    };
+  }
+
   private mapAttendanceRecord(
     row: {
       id: number;
@@ -1835,6 +2169,8 @@ export class PayrollService {
       location_lng: string | number | null;
       location_label: string | null;
       location_mismatch: boolean | null;
+      last_edited_at?: string | null;
+      last_edited_by_admin_name?: string | null;
     },
     fullName: string,
   ): AttendanceRecord {
@@ -1898,7 +2234,77 @@ export class PayrollService {
       locationLng: row.location_lng == null ? null : Number(row.location_lng),
       locationLabel: row.location_label,
       locationMismatch: Boolean(row.location_mismatch),
+      lastEditedAt: row.last_edited_at ?? null,
+      lastEditedByAdminName: row.last_edited_by_admin_name ?? null,
     };
+  }
+
+  private async loadAttendanceById(attendanceId: number) {
+    const result = await this.databaseService.query<{
+      id: number;
+      user_id: number;
+      user_source: 'pcmazing_admin_users' | 'tblusers';
+      username: string;
+      work_date: string;
+      time_in: string | null;
+      time_out: string | null;
+      lunch_out: string | null;
+      lunch_in: string | null;
+      time_in_selfie_url: string | null;
+      time_out_selfie_url: string | null;
+      lunch_out_selfie_url: string | null;
+      lunch_in_selfie_url: string | null;
+      time_in_bypassed_by_admin_id: string | number | null;
+      lunch_out_bypassed_by_admin_id: string | number | null;
+      lunch_in_bypassed_by_admin_id: string | number | null;
+      time_out_bypassed_by_admin_id: string | number | null;
+      overtime_hours: string | number | null;
+      overtime_status: string | null;
+      adjustment_status: string | null;
+      employee_code: string | null;
+      department: string | null;
+      work_location_type: string | null;
+      location_lat: string | number | null;
+      location_lng: string | number | null;
+      location_label: string | null;
+      location_mismatch: boolean | null;
+      last_edited_at: string | null;
+      last_edited_by_admin_name: string | null;
+    }>(
+      `SELECT a.id, a.user_id, a.user_source, a.username, a.work_date::text AS work_date,
+              a.time_in::text AS time_in, a.time_out::text AS time_out,
+              a.lunch_out::text AS lunch_out, a.lunch_in::text AS lunch_in,
+              a.time_in_selfie_url, a.time_out_selfie_url,
+              a.lunch_out_selfie_url, a.lunch_in_selfie_url,
+              a.time_in_bypassed_by_admin_id, a.lunch_out_bypassed_by_admin_id,
+              a.lunch_in_bypassed_by_admin_id, a.time_out_bypassed_by_admin_id,
+              a.overtime_hours, a.overtime_status, a.adjustment_status,
+              a.work_location_type, a.location_lat, a.location_lng, a.location_label,
+              a.location_mismatch,
+              p.employee_code, p.department,
+              last_edit.last_edited_at,
+              last_edit.last_edited_by_admin_name
+       FROM pcmazing_attendance a
+       LEFT JOIN pcmazing_user_payroll p
+         ON p.user_id = a.user_id AND p.user_source = a.user_source
+       LEFT JOIN LATERAL (
+         SELECT l.created_at::text AS last_edited_at,
+                COALESCE(
+                  NULLIF(TRIM(l.actor_admin_name), ''),
+                  NULLIF(TRIM(l.actor_admin_username), ''),
+                  'Admin #' || l.actor_admin_id::text
+                ) AS last_edited_by_admin_name
+         FROM pcmazing_attendance_audit_log l
+         WHERE l.attendance_id = a.id
+           AND l.action_type = 'admin_edit_punch'
+         ORDER BY l.created_at DESC, l.id DESC
+         LIMIT 1
+       ) last_edit ON TRUE
+       WHERE a.id = $1
+       LIMIT 1`,
+      [attendanceId],
+    );
+    return result.rows[0] ?? null;
   }
 
   private async loadAttendanceDayRow(
@@ -3023,7 +3429,7 @@ export class PayrollService {
     dateFromRaw?: string,
     dateToRaw?: string,
     generatedBy?: { userId: number; username: string },
-    _employeePeriods?: GeneratePayslipEmployeeDto[],
+    employeePeriods?: GeneratePayslipEmployeeDto[],
     periodTypeRaw?: string,
     confirmOverlap?: boolean,
   ) {
@@ -3035,8 +3441,20 @@ export class PayrollService {
     }
 
     const periodType = this.normalizeSalaryType(periodTypeRaw || 'cutoff');
+    const onlySpecified =
+      Array.isArray(employeePeriods) && employeePeriods.length > 0
+        ? new Set(
+            employeePeriods.map((item) => `${item.userSource}:${item.userId}`),
+          )
+        : null;
+
     const overlaps = await this.findOverlappingPayslips(dateFrom, dateTo);
-    const blocking = overlaps.filter((item) => !item.exactMatch);
+    const relevantOverlaps = onlySpecified
+      ? overlaps.filter((item) =>
+          onlySpecified.has(`${item.userSource}:${item.userId}`),
+        )
+      : overlaps;
+    const blocking = relevantOverlaps.filter((item) => !item.exactMatch);
     if (blocking.length > 0 && !confirmOverlap) {
       throw new ConflictException({
         message:
@@ -3053,7 +3471,19 @@ export class PayrollService {
       settings.workWeek,
       settings.undertimeGraceMinutes,
     );
-    const rows = computed.rows;
+    const rows = onlySpecified
+      ? computed.rows.filter((row) =>
+          onlySpecified.has(`${row.userSource}:${row.userId}`),
+        )
+      : computed.rows;
+
+    if (rows.length === 0) {
+      throw new BadRequestException(
+        onlySpecified
+          ? 'No matching employees selected for payslip generation.'
+          : 'No payroll employees in this period.',
+      );
+    }
 
     const grouped = new Map<string, PayrollPeriodRow[]>();
     for (const row of rows) {
@@ -3208,7 +3638,150 @@ export class PayrollService {
         estimatedPay: Math.round(generatedNetTotal * 100) / 100,
       },
       replaced,
-      overlaps,
+      overlaps: relevantOverlaps,
+    };
+  }
+
+  /** Admin dossier for one payroll-enabled employee. */
+  async getEmployeeDetail(
+    userIdRaw: number,
+    userSourceRaw: string,
+    dateFromRaw?: string,
+    dateToRaw?: string,
+  ) {
+    await this.ensureReady();
+
+    const userId = Number(userIdRaw);
+    const userSource =
+      userSourceRaw === 'tblusers' || userSourceRaw === 'pcmazing_admin_users'
+        ? userSourceRaw
+        : null;
+    if (!Number.isFinite(userId) || userId < 1 || !userSource) {
+      throw new BadRequestException('Invalid employee identity.');
+    }
+
+    const today = manilaWorkDate();
+    const monthStart = `${today.slice(0, 8)}01`;
+    const dateFrom =
+      dateFromRaw?.trim() && /^\d{4}-\d{2}-\d{2}$/.test(dateFromRaw.trim())
+        ? dateFromRaw.trim()
+        : monthStart;
+    const dateTo =
+      dateToRaw?.trim() && /^\d{4}-\d{2}-\d{2}$/.test(dateToRaw.trim())
+        ? dateToRaw.trim()
+        : today;
+    if (dateFrom > dateTo) {
+      throw new BadRequestException('dateFrom must be on or before dateTo.');
+    }
+
+    const employees = await this.listEmployees('');
+    const employee = employees.find(
+      (item) => item.userId === userId && item.userSource === userSource,
+    );
+    if (!employee) {
+      throw new NotFoundException('Payroll employee not found.');
+    }
+
+    const attendanceResult = await this.databaseService.query<{
+      id: number;
+      work_date: string;
+      time_in: string | null;
+      lunch_out: string | null;
+      lunch_in: string | null;
+      time_out: string | null;
+      overtime_hours: string | number | null;
+      overtime_status: string | null;
+      adjustment_status: string | null;
+      work_location_type: string | null;
+    }>(
+      `SELECT id, work_date::text AS work_date,
+              time_in::text AS time_in, lunch_out::text AS lunch_out,
+              lunch_in::text AS lunch_in, time_out::text AS time_out,
+              overtime_hours, overtime_status, adjustment_status, work_location_type
+       FROM pcmazing_attendance
+       WHERE user_id = $1
+         AND user_source = $2
+         AND work_date >= $3::date
+         AND work_date <= $4::date
+       ORDER BY work_date DESC, id DESC`,
+      [userId, userSource, dateFrom, dateTo],
+    );
+
+    const attendance = attendanceResult.rows.map((row) => ({
+      id: Number(row.id),
+      workDate: row.work_date,
+      timeIn: row.time_in,
+      lunchOut: row.lunch_out,
+      lunchIn: row.lunch_in,
+      timeOut: row.time_out,
+      hoursWorked: this.computeHours(row.time_in, row.time_out),
+      overtimeHours: Number(row.overtime_hours ?? 0) || 0,
+      overtimeStatus: this.normalizeOvertimeStatus(row.overtime_status),
+      adjustmentStatus: this.normalizeOvertimeStatus(row.adjustment_status),
+      workLocationType: this.normalizeStoredLocationType(row.work_location_type),
+    }));
+
+    const [payslips, loans, commissionResult, deductionResult] =
+      await Promise.all([
+        this.getEmployeePayslips(userId, userSource, 24),
+        this.listLoans(userId, userSource),
+        this.databaseService.query<{
+          id: string | number;
+          date_from: string;
+          date_to: string;
+          type_name: string | null;
+          label: string | null;
+          amount: string | number;
+        }>(
+          `SELECT e.id, e.date_from::text AS date_from, e.date_to::text AS date_to,
+                  t.name AS type_name, e.label, e.amount
+           FROM pcmazing_payroll_commission_entries e
+           LEFT JOIN pcmazing_payroll_commission_types t ON t.id = e.type_id
+           WHERE e.user_id = $1 AND e.user_source = $2
+             AND e.date_from <= $4::date AND e.date_to >= $3::date
+           ORDER BY e.date_from DESC, e.id DESC
+           LIMIT 50`,
+          [userId, userSource, dateFrom, dateTo],
+        ),
+        this.databaseService.query<{
+          id: string | number;
+          date_from: string;
+          date_to: string;
+          label: string;
+          amount: string | number;
+        }>(
+          `SELECT id, date_from::text AS date_from, date_to::text AS date_to, label, amount
+           FROM pcmazing_payroll_manual_deductions
+           WHERE user_id = $1 AND user_source = $2
+             AND date_from <= $4::date AND date_to >= $3::date
+           ORDER BY date_from DESC, id DESC
+           LIMIT 50`,
+          [userId, userSource, dateFrom, dateTo],
+        ),
+      ]);
+
+    return {
+      employee,
+      dateFrom,
+      dateTo,
+      attendance,
+      payslips,
+      loans,
+      commissions: commissionResult.rows.map((row) => ({
+        id: Number(row.id),
+        dateFrom: row.date_from,
+        dateTo: row.date_to,
+        typeName: row.type_name,
+        label: row.label,
+        amount: Math.round(Number(row.amount || 0) * 100) / 100,
+      })),
+      deductions: deductionResult.rows.map((row) => ({
+        id: Number(row.id),
+        dateFrom: row.date_from,
+        dateTo: row.date_to,
+        label: row.label,
+        amount: Math.round(Number(row.amount || 0) * 100) / 100,
+      })),
     };
   }
 

@@ -345,4 +345,57 @@
       </div>
     </div>
   }
+
+  @if (activeMemo(); as memo) {
+    <div class="fixed inset-0 z-[70] flex items-end justify-center bg-slate-950/70 p-4 sm:items-center">
+      <div
+        class="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-700 dark:bg-slate-900"
+        role="alertdialog"
+        aria-modal="true"
+      >
+        <div class="flex items-start gap-3 border-b border-slate-100 pb-4 dark:border-slate-800">
+          <img [src]="memo.companyLogoUrl || '/images/logopcm.png'" alt="Company logo" class="h-12 w-auto object-contain" />
+          <div>
+            <p class="text-sm font-bold text-slate-900 dark:text-white">{{ memo.companyName }}</p>
+            @if (memo.companyAddress) {
+              <p class="whitespace-pre-line text-xs text-slate-500">{{ memo.companyAddress }}</p>
+            }
+            <p class="text-xs text-slate-500">Tel: {{ memo.companyPhone || '09394133225' }}</p>
+            <p class="mt-2 text-xs font-semibold uppercase tracking-wide text-amber-700">New memo - acknowledgment required</p>
+          </div>
+        </div>
+        <div class="mt-4 space-y-3 text-sm text-slate-700 dark:text-slate-200">
+          <p class="text-lg font-bold text-slate-900 dark:text-white">MEMORANDUM</p>
+          <p class="text-xs text-slate-500">{{ memo.memoNo }} · {{ memo.memoTypeLabel }}</p>
+          <p><span class="font-semibold">Subject:</span> {{ memo.subject }}</p>
+          <p><span class="font-semibold">From:</span> {{ memo.issuedByName || 'Management' }}</p>
+          <p><span class="font-semibold">Date:</span> {{ formatMemoDate(memo.issuedAt) }}</p>
+          <div>
+            <p class="font-bold">Statement of Facts</p>
+            <p class="mt-1 whitespace-pre-wrap">{{ memo.statementOfFacts }}</p>
+          </div>
+          @if (memo.policyViolated) {
+            <div>
+              <p class="font-bold">Policy / Rule Violated</p>
+              <p class="mt-1 whitespace-pre-wrap">{{ memo.policyViolated }}</p>
+            </div>
+          }
+          @if (memo.directive) {
+            <div>
+              <p class="font-bold">Directive / Expected Action</p>
+              <p class="mt-1 whitespace-pre-wrap">{{ memo.directive }}</p>
+            </div>
+          }
+        </div>
+        <button
+          type="button"
+          class="mt-6 w-full rounded-xl bg-pcmazing-500 px-4 py-3 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:opacity-60"
+          [disabled]="acknowledgingMemo()"
+          (click)="acknowledgeActiveMemo()"
+        >
+          @if (acknowledgingMemo()) { Acknowledging... } @else { Acknowledge }
+        </button>
+      </div>
+    </div>
+  }
 </section>
