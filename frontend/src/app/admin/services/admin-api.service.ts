@@ -230,6 +230,8 @@ export interface InventoryServiceItem {
   imageUrl: string | null;
   totalCosting: number;
   totalSales: number;
+  calculatedTotal?: number;
+  manualTotalAmount?: number | null;
   totalDiscount?: number;
   startedAt: string | null;
   endedAt: string | null;
@@ -239,6 +241,7 @@ export interface InventoryServiceItem {
   refundReason?: string | null;
   refundAmount?: number;
   statusHistory?: JobOrderStatusHistoryItem[];
+  activity?: JobOrderAuditLogItem[];
   laborDiscountType?: 'none' | 'senior' | 'pwd';
   customDiscount?: number;
   downpayment?: number;
@@ -259,6 +262,19 @@ export interface InventoryServiceItem {
   }>;
   createdAt?: string | null;
   updatedAt: string | null;
+}
+
+export interface JobOrderAuditLogItem {
+  id: number;
+  serviceId: number;
+  referenceNo: string | null;
+  actionType: string;
+  actorAdminId: number | null;
+  actorAdminUsername: string | null;
+  actorAdminName: string | null;
+  reason: string | null;
+  meta: Record<string, unknown>;
+  createdAt: string;
 }
 
 export interface CreateInventoryServicePayload {
@@ -296,6 +312,8 @@ export interface CreateInventoryServicePayload {
   notes?: string;
   startedAt?: string;
   endedAt?: string;
+  manualTotalAmount?: number | null;
+  manualTotalReason?: string;
 }
 
 export interface SalesOrderSummary {
@@ -1950,6 +1968,59 @@ export class AdminApiService {
       `${APP_CONFIG.apiUrl}/admin/inventory/services/${id}`,
       payload,
       { headers: this.headers() },
+    );
+  }
+
+  updateInventoryServiceManualTotal(
+    id: number,
+    payload: { amount: number | null; reason: string },
+  ) {
+    return this.http.patch<ItemResponse<InventoryServiceItem>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/services/${id}/manual-total`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  listInventoryServiceActivity(params?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    serviceId?: number;
+  }) {
+    let httpParams = new HttpParams();
+    if (params?.page != null) {
+      httpParams = httpParams.set('page', String(params.page));
+    }
+    if (params?.limit != null) {
+      httpParams = httpParams.set('limit', String(params.limit));
+    }
+    if (params?.search?.trim()) {
+      httpParams = httpParams.set('search', params.search.trim());
+    }
+    if (params?.serviceId != null) {
+      httpParams = httpParams.set('serviceId', String(params.serviceId));
+    }
+    return this.http.get<ListResponse<JobOrderAuditLogItem>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/services/activity`,
+      { headers: this.headers(), params: httpParams },
+    );
+  }
+
+  listInventoryServiceActivityForId(
+    id: number,
+    params?: { page?: number; limit?: number },
+  ) {
+    let httpParams = new HttpParams();
+    if (params?.page != null) {
+      httpParams = httpParams.set('page', String(params.page));
+    }
+    if (params?.limit != null) {
+      httpParams = httpParams.set('limit', String(params.limit));
+    }
+    return this.http.get<ListResponse<JobOrderAuditLogItem>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/services/${id}/activity`,
+      { headers: this.headers(), params: httpParams },
     );
   }
 
