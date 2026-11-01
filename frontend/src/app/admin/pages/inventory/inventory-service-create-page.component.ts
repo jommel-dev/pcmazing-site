@@ -1,7 +1,7 @@
 import { DecimalPipe } from '@angular/common';
 import { Component, computed, DestroyRef, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormArray, FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormArray, FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { AdminAuthService } from '../../services/admin-auth.service';
@@ -26,7 +26,7 @@ const SETTLEMENT_PAYMENT_METHODS = ['Cash', 'Gcash', 'Bank Transfer'] as const;
 
 @Component({
   selector: 'app-inventory-service-create-page',
-  imports: [ReactiveFormsModule, RouterLink, DecimalPipe],
+  imports: [FormsModule, ReactiveFormsModule, RouterLink, DecimalPipe],
   templateUrl: './inventory-service-create-page.component.html',
 })
 export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
@@ -97,6 +97,9 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
     cost: [0, [Validators.min(0)]],
     customDiscount: [0, [Validators.min(0)]],
     downpayment: [0, [Validators.min(0)]],
+    useManualTotal: [false],
+    manualTotalAmount: [0 as number, [Validators.min(0)]],
+    manualTotalReason: [''],
     paymentMethod: [''],
     status: ['Pending', [Validators.maxLength(60)]],
     startedAt: [''],
@@ -105,6 +108,7 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
     services: this.formBuilder.array([]),
     parts: this.formBuilder.array([]),
   });
+  private loadedManualTotalAmount: number | null = null;
 
   readonly totalSelectedServices = computed(() => this.servicesArray.controls.length);
   readonly totalSelectedParts = computed(() => this.partsArray.controls.length);
@@ -215,12 +219,20 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
           cost: item.cost ?? 0,
           customDiscount: item.customDiscount ?? 0,
           downpayment: item.downpayment ?? 0,
+          useManualTotal: item.manualTotalAmount != null,
+          manualTotalAmount:
+            item.manualTotalAmount != null
+              ? Number(item.manualTotalAmount)
+              : Number(item.calculatedTotal ?? item.totalSales ?? 0),
+          manualTotalReason: '',
           paymentMethod: item.paymentMethod ?? '',
           status: normalizedStatus,
           startedAt: item.startedAt ?? '',
           endedAt: item.endedAt ?? '',
           notes: item.notes ?? '',
         });
+        this.loadedManualTotalAmount =
+          item.manualTotalAmount != null ? Number(item.manualTotalAmount) : null;
         this.customerQuery.set(item.customerName ?? '');
         this.partsArray.clear();
         this.servicesArray.clear();
@@ -978,9 +990,25 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
     return this.serviceLaborNet();
   }
 
-  totalCustomerPayment(): number {
+  calculatedCustomerPayment(): number {
     const customDiscount = Number(this.form.controls.customDiscount.value) || 0;
     return Math.max(0, this.partsNetSubtotal() + this.serviceLaborNet() - customDiscount);
+  }
+
+  totalCustomerPayment(): number {
+    if (this.form.controls.useManualTotal.value) {
+      return Math.max(0, Number(this.form.getRawValue().manualTotalAmount) || 0);
+    }
+    return this.calculatedCustomerPayment();
+  }
+
+  onUseManualTotalModelChange(checked: boolean): void {
+    this.form.controls.useManualTotal.setValue(Boolean(checked), { emitEvent: false });
+    if (checked && !Number(this.form.controls.manualTotalAmount.value)) {
+      this.form.controls.manualTotalAmount.setValue(this.calculatedCustomerPayment(), {
+        emitEvent: false,
+      });
+    }
   }
 
   customDiscountAmount(): number {
@@ -1170,6 +1198,10 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
         startedAt: startedAt ? startedAt.toISOString() : undefined,
         endedAt: endedAt ? endedAt.toISOString() : undefined,
         notes: value.notes.trim() || undefined,
+        manualTotalAmount: value.useManualTotal
+          ? Math.max(0, Number(this.form.getRawValue().manualTotalAmount) || 0)
+          : null,
+        manualTotalReason: String(value.manualTotalReason ?? '').trim() || undefined,
       },
     };
   }
@@ -1182,6 +1214,33 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
     if ('error' in built) {
       this.formError.set(built.error);
       return;
+    }
+
+    if (this.form.controls.useManualTotal.value) {
+      const manual = Number(this.form.getRawValue().manualTotalAmount);
+      if (!Number.isFinite(manual) || manual < 0) {
+        this.formError.set('Manual total amount is required and must be zero or greater.');
+        return;
+      }
+    }
+
+    if (this.isEditMode()) {
+      const nextManual = this.form.controls.useManualTotal.value
+        ? Math.max(0, Number(this.form.getRawValue().manualTotalAmount) || 0)
+        : null;
+      const previous = this.loadedManualTotalAmount;
+      const changed =
+        (previous == null && nextManual != null) ||
+        (previous != null && nextManual == null) ||
+        (previous != null &&
+          nextManual != null &&
+          Math.round(previous * 100) !== Math.round(nextManual * 100));
+      if (changed && String(this.form.controls.manualTotalReason.value ?? '').trim().length < 8) {
+        this.formError.set(
+          'A reason of at least 8 characters is required when changing the job order total.',
+        );
+        return;
+      }
     }
 
     this.pendingPaymentReview.set(true);
@@ -1206,6 +1265,33 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
     if ('error' in built) {
       this.formError.set(built.error);
       return;
+    }
+
+    if (this.form.controls.useManualTotal.value) {
+      const manual = Number(this.form.controls.manualTotalAmount.value);
+      if (!Number.isFinite(manual) || manual < 0) {
+        this.formError.set('Manual total amount is required and must be zero or greater.');
+        return;
+      }
+    }
+
+    if (this.isEditMode()) {
+      const nextManual = this.form.controls.useManualTotal.value
+        ? Math.max(0, Number(this.form.controls.manualTotalAmount.value) || 0)
+        : null;
+      const previous = this.loadedManualTotalAmount;
+      const changed =
+        (previous == null && nextManual != null) ||
+        (previous != null && nextManual == null) ||
+        (previous != null &&
+          nextManual != null &&
+          Math.round(previous * 100) !== Math.round(nextManual * 100));
+      if (changed && String(this.form.controls.manualTotalReason.value ?? '').trim().length < 8) {
+        this.formError.set(
+          'A reason of at least 8 characters is required when changing the job order total.',
+        );
+        return;
+      }
     }
 
     this.saving.set(true);
@@ -1264,12 +1350,20 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
     this.loadedStatus.set(normalizedStatus);
     this.selectedStatus.set(normalizedStatus);
     this.form.controls.status.setValue(normalizedStatus, { emitEvent: false });
+    this.loadedManualTotalAmount =
+      item.manualTotalAmount != null ? Number(item.manualTotalAmount) : null;
     this.form.patchValue({
       deviceBrand: item.deviceBrand ?? '',
       deviceModel: item.deviceModel ?? '',
       deviceSerial: item.deviceSerial ?? '',
       downpayment: item.downpayment ?? 0,
       paymentMethod: item.paymentMethod ?? '',
+      useManualTotal: item.manualTotalAmount != null,
+      manualTotalAmount:
+        item.manualTotalAmount != null
+          ? Number(item.manualTotalAmount)
+          : Number(item.calculatedTotal ?? item.totalSales ?? 0),
+      manualTotalReason: '',
     });
     this.syncSavedCatalogServices(item);
     this.syncSavedInventoryParts(item);

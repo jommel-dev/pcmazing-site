@@ -225,7 +225,22 @@ export class InventoryServiceReceiptPageComponent implements OnInit, OnDestroy {
     this.lines().reduce((sum, line) => sum + line.discountAmount, 0),
   );
 
-  readonly receiptTotal = computed(() => this.subtotal() - this.discountTotal());
+  readonly receiptTotal = computed(() => {
+    const job = this.item();
+    if (job?.manualTotalAmount != null && Number.isFinite(Number(job.manualTotalAmount))) {
+      return Math.max(0, Number(job.manualTotalAmount));
+    }
+    if (job?.totalSales != null && Number.isFinite(Number(job.totalSales)) && job.manualTotalAmount != null) {
+      return Math.max(0, Number(job.totalSales));
+    }
+    return Math.max(0, this.subtotal() - this.discountTotal());
+  });
+
+  readonly usesManualTotal = computed(
+    () =>
+      this.item()?.manualTotalAmount != null &&
+      Number.isFinite(Number(this.item()?.manualTotalAmount)),
+  );
 
   readonly downpaymentAmount = computed(() => Math.max(0, Number(this.item()?.downpayment) || 0));
 

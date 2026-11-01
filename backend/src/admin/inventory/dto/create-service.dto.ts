@@ -13,6 +13,7 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
@@ -159,6 +160,27 @@ export class CreateServiceDto {
   @Min(0)
   @Max(999999999.99)
   downpayment?: number;
+
+  /** When set, customer total uses this instead of the calculated amount. Pass null to clear. */
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (value === null || value === undefined || value === '') {
+      return value === '' ? null : value;
+    }
+    return Number(value);
+  })
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(999999999.99)
+  manualTotalAmount?: number | null;
+
+  /** Required (≥8 chars) when changing manual total on an existing job order. */
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() || undefined : value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  manualTotalReason?: string;
 
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() || undefined : value))
   @IsOptional()

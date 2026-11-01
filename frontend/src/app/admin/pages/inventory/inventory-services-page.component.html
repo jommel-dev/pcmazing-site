@@ -4,66 +4,183 @@
     <div class="min-w-0">
       <h2 class="text-2xl font-bold text-slate-900">Job Orders</h2>
       <p class="mt-1 text-sm text-slate-500">Track service job orders, linked parts, assigned staff, and profitability.</p>
+      <div class="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          class="rounded-xl px-4 py-2 text-sm font-semibold transition"
+          [class.bg-pcmazing-500]="activeTab() === 'orders'"
+          [class.text-white]="activeTab() === 'orders'"
+          [class.text-slate-600]="activeTab() !== 'orders'"
+          [class.hover:bg-slate-100]="activeTab() !== 'orders'"
+          (click)="selectTab('orders')"
+        >
+          Orders
+        </button>
+        <button
+          type="button"
+          class="rounded-xl px-4 py-2 text-sm font-semibold transition"
+          [class.bg-pcmazing-500]="activeTab() === 'activity'"
+          [class.text-white]="activeTab() === 'activity'"
+          [class.text-slate-600]="activeTab() !== 'activity'"
+          [class.hover:bg-slate-100]="activeTab() !== 'activity'"
+          (click)="selectTab('activity')"
+        >
+          Activity
+        </button>
+      </div>
     </div>
     <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-end">
-      <div class="rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
-        <div class="flex flex-wrap gap-2">
-          @for (option of periodOptions; track option.value) {
-            <button
-              type="button"
-              class="rounded-xl px-4 py-2 text-sm font-semibold transition"
-              [class.bg-pcmazing-500]="selectedPeriod() === option.value"
-              [class.text-white]="selectedPeriod() === option.value"
-              [class.text-slate-600]="selectedPeriod() !== option.value"
-              [class.hover:bg-slate-100]="selectedPeriod() !== option.value"
-              (click)="selectPeriod(option.value)"
-            >
-              {{ option.label }}
-            </button>
+      @if (activeTab() === 'orders') {
+        <div class="rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
+          <div class="flex flex-wrap gap-2">
+            @for (option of periodOptions; track option.value) {
+              <button
+                type="button"
+                class="rounded-xl px-4 py-2 text-sm font-semibold transition"
+                [class.bg-pcmazing-500]="selectedPeriod() === option.value"
+                [class.text-white]="selectedPeriod() === option.value"
+                [class.text-slate-600]="selectedPeriod() !== option.value"
+                [class.hover:bg-slate-100]="selectedPeriod() !== option.value"
+                (click)="selectPeriod(option.value)"
+              >
+                {{ option.label }}
+              </button>
+            }
+          </div>
+          @if (selectedPeriod() === 'custom') {
+            <div class="mt-3 flex flex-col gap-3 border-t border-slate-100 pt-3 sm:flex-row sm:items-end">
+              <div class="flex-1">
+                <label class="mb-1 block text-xs font-semibold text-slate-500" for="job-start-date">Start date</label>
+                <input
+                  id="job-start-date"
+                  type="date"
+                  class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-pcmazing-500 focus:outline-none"
+                  [ngModel]="startDate()"
+                  (ngModelChange)="startDate.set($event)"
+                  name="startDate"
+                />
+              </div>
+              <div class="flex-1">
+                <label class="mb-1 block text-xs font-semibold text-slate-500" for="job-end-date">End date</label>
+                <input
+                  id="job-end-date"
+                  type="date"
+                  class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-pcmazing-500 focus:outline-none"
+                  [ngModel]="endDate()"
+                  (ngModelChange)="endDate.set($event)"
+                  name="endDate"
+                />
+              </div>
+              <button
+                type="button"
+                class="rounded-xl bg-pcmazing-500 px-4 py-2 text-sm font-bold text-white hover:bg-pcmazing-600"
+                (click)="applyCustomRange()"
+              >
+                Apply
+              </button>
+            </div>
           }
         </div>
-        @if (selectedPeriod() === 'custom') {
-          <div class="mt-3 flex flex-col gap-3 border-t border-slate-100 pt-3 sm:flex-row sm:items-end">
-            <div class="flex-1">
-              <label class="mb-1 block text-xs font-semibold text-slate-500" for="job-start-date">Start date</label>
-              <input
-                id="job-start-date"
-                type="date"
-                class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-pcmazing-500 focus:outline-none"
-                [ngModel]="startDate()"
-                (ngModelChange)="startDate.set($event)"
-                name="startDate"
-              />
-            </div>
-            <div class="flex-1">
-              <label class="mb-1 block text-xs font-semibold text-slate-500" for="job-end-date">End date</label>
-              <input
-                id="job-end-date"
-                type="date"
-                class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-pcmazing-500 focus:outline-none"
-                [ngModel]="endDate()"
-                (ngModelChange)="endDate.set($event)"
-                name="endDate"
-              />
-            </div>
-            <button
-              type="button"
-              class="rounded-xl bg-pcmazing-500 px-4 py-2 text-sm font-bold text-white hover:bg-pcmazing-600"
-              (click)="applyCustomRange()"
-            >
-              Apply
-            </button>
-          </div>
-        }
-      </div>
-      <a
-        routerLink="/admin/job-order/new"
-        class="shrink-0 rounded-xl bg-pcmazing-500 px-4 py-2.5 text-center text-sm font-bold text-white hover:bg-pcmazing-600 sm:w-auto"
-      >
-        Add Job
-      </a>
+        <a
+          routerLink="/admin/job-order/new"
+          class="shrink-0 rounded-xl bg-pcmazing-500 px-4 py-2.5 text-center text-sm font-bold text-white hover:bg-pcmazing-600 sm:w-auto"
+        >
+          Add Job
+        </a>
+      }
     </div>
   </div>
+
+  @if (activeTab() === 'activity') {
+    <form class="mb-6 flex flex-col gap-3 lg:flex-row lg:items-end" (ngSubmit)="applyActivityFilter()">
+      <div class="w-full flex-1">
+        <label class="mb-1 block text-xs font-bold tracking-wide text-slate-500 uppercase" for="job-activity-search">Search</label>
+        <input
+          id="job-activity-search"
+          type="search"
+          class="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm"
+          placeholder="Reference, admin, reason..."
+          [ngModel]="activitySearch()"
+          (ngModelChange)="activitySearch.set($event)"
+          name="jobActivitySearch"
+        />
+      </div>
+      <button type="submit" class="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white">
+        Filter
+      </button>
+    </form>
+
+    @if (activityError()) {
+      <div class="mb-4 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{{ activityError() }}</div>
+    }
+
+    @if (activityLoading()) {
+      <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500">
+        Loading activity...
+      </div>
+    } @else if (activityItems().length === 0) {
+      <div class="rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500">
+        No job order activity logged yet.
+      </div>
+    } @else {
+      <div class="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <table class="min-w-full divide-y divide-slate-200 text-sm">
+          <thead class="bg-slate-50">
+            <tr>
+              <th class="px-4 py-3 text-left font-bold text-slate-600">When</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600">Job</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600">Action</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600">Admin</th>
+              <th class="px-4 py-3 text-left font-bold text-slate-600">Reason</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            @for (entry of activityItems(); track entry.id) {
+              <tr>
+                <td class="px-4 py-3 text-slate-700">{{ entry.createdAt | date: 'medium' }}</td>
+                <td class="px-4 py-3">
+                  <a
+                    class="font-semibold text-pcmazing-600 hover:underline"
+                    [routerLink]="['/admin/job-order', entry.serviceId]"
+                  >
+                    {{ entry.referenceNo || ('Job #' + entry.serviceId) }}
+                  </a>
+                </td>
+                <td class="px-4 py-3 font-medium text-slate-800">{{ activityLabel(entry.actionType) }}</td>
+                <td class="px-4 py-3 text-slate-700">
+                  {{ entry.actorAdminName || entry.actorAdminUsername || (entry.actorAdminId ? ('Admin #' + entry.actorAdminId) : '—') }}
+                </td>
+                <td class="px-4 py-3 text-slate-700">{{ entry.reason || '—' }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      @if (activityMeta(); as pagination) {
+        <div class="mt-4 flex items-center justify-between text-sm text-slate-500">
+          <span>Page {{ pagination.page }} of {{ pagination.totalPages }} · {{ pagination.total }} total</span>
+          <div class="flex gap-2">
+            <button
+              type="button"
+              class="rounded-lg border px-3 py-1.5 disabled:opacity-40"
+              [disabled]="pagination.page <= 1"
+              (click)="goToActivityPage(pagination.page - 1)"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              class="rounded-lg border px-3 py-1.5 disabled:opacity-40"
+              [disabled]="pagination.page >= pagination.totalPages"
+              (click)="goToActivityPage(pagination.page + 1)"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      }
+    }
+  } @else {
 
   @if (summary(); as totals) {
     <div class="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-5">
@@ -412,6 +529,9 @@
       </div>
     </div>
   </div>
+
+  }
+
 </section>
 
 @for (notice of toast() ? [toast()!] : []; track notice.id) {

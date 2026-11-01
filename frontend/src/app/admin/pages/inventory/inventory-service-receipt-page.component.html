@@ -259,6 +259,12 @@
               <span>RECEIPT TOTAL</span>
               <span>{{ formatMoney(receiptTotal()) }}</span>
             </div>
+            @if (usesManualTotal()) {
+              <div class="totals-row" style="font-size: 11px; color: #92400e;">
+                <span>Manual total</span>
+                <span></span>
+              </div>
+            }
             <div class="totals-row">
               <span>Downpayment</span>
               <span>{{ formatMoney(downpaymentAmount()) }}</span>

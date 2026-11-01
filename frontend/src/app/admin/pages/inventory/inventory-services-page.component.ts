@@ -1,5 +1,5 @@
 import { Component, computed, inject, OnDestroy, OnInit, signal } from '@angular/core';
-import { DecimalPipe, NgClass } from '@angular/common';
+import { DatePipe, DecimalPipe, NgClass } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
@@ -8,6 +8,7 @@ import {
   InventoryServiceFilterOption,
   InventoryServiceItem,
   InventoryServiceSummary,
+  JobOrderAuditLogItem,
   PaginationMeta,
 } from '../../services/admin-api.service';
 import { formatInventoryMoney } from './inventory-stock.util';
@@ -77,7 +78,7 @@ const SETTLEMENT_PAYMENT_METHODS = ['Cash', 'Gcash', 'Bank Transfer'] as const;
 
 @Component({
   selector: 'app-inventory-services-page',
-  imports: [FormsModule, RouterLink, NgClass, DecimalPipe],
+  imports: [FormsModule, RouterLink, NgClass, DecimalPipe, DatePipe],
   templateUrl: './inventory-services-page.component.html',
   styles: [
     `
@@ -131,6 +132,13 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
 
   readonly loading = signal(true);
   readonly error = signal('');
+  readonly activeTab = signal<'orders' | 'activity'>('orders');
+  readonly activityLoading = signal(false);
+  readonly activityError = signal('');
+  readonly activitySearch = signal('');
+  readonly activityPage = signal(1);
+  readonly activityItems = signal<JobOrderAuditLogItem[]>([]);
+  readonly activityMeta = signal<PaginationMeta | null>(null);
   readonly search = signal('');
   readonly page = signal(1);
   readonly pageSize = signal(25);
@@ -223,6 +231,60 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.restorePeriodFilter();
     void this.loadServices();
+  }
+
+  selectTab(tab: 'orders' | 'activity'): void {
+    this.activeTab.set(tab);
+    if (tab === 'activity' && this.activityItems().length === 0) {
+      void this.loadActivity();
+    }
+  }
+
+  async loadActivity(): Promise<void> {
+    this.activityLoading.set(true);
+    this.activityError.set('');
+    try {
+      const response = await firstValueFrom(
+        this.adminApi.listInventoryServiceActivity({
+          page: this.activityPage(),
+          limit: 25,
+          search: this.activitySearch(),
+        }),
+      );
+      this.activityItems.set(response.data ?? []);
+      this.activityMeta.set(response.meta ?? null);
+    } catch {
+      this.activityError.set('Unable to load job order activity.');
+      this.activityItems.set([]);
+      this.activityMeta.set(null);
+    } finally {
+      this.activityLoading.set(false);
+    }
+  }
+
+  applyActivityFilter(): void {
+    this.activityPage.set(1);
+    void this.loadActivity();
+  }
+
+  goToActivityPage(page: number): void {
+    this.activityPage.set(page);
+    void this.loadActivity();
+  }
+
+  activityLabel(actionType: string): string {
+    switch (actionType) {
+      case 'created':
+        return 'Created';
+      case 'updated':
+        return 'Updated';
+      case 'manual_total_set':
+        return 'Manual total set';
+      case 'manual_total_cleared':
+        return 'Manual total cleared';
+      default:
+        return actionType;
+    }
   }
 
   ngOnDestroy(): void {
