@@ -19,6 +19,7 @@ import { Request } from 'express';
 import { AdminJwtPayload, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { canSeeInventoryCosts } from '../rbac/admin-roles.util';
 import { CreateServiceDto } from './dto/create-service.dto';
+import { UpdateServiceManualTotalDto } from './dto/update-service-manual-total.dto';
 import { UpdateServiceStatusDto } from './dto/update-service-status.dto';
 import { InventoryServicesService } from './inventory-services.service';
 
@@ -62,6 +63,20 @@ export class InventoryServicesController {
     }));
   }
 
+  @Get('activity')
+  listActivity(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('serviceId') serviceId?: string,
+  ) {
+    return this.inventoryServicesService.listActivity(page, limit, search, serviceId).then((result) => ({
+      success: true,
+      data: result.items,
+      meta: result.meta,
+    }));
+  }
+
   @Post()
   create(
     @Body() dto: CreateServiceDto,
@@ -74,6 +89,19 @@ export class InventoryServicesController {
       data: hideProfitability
         ? this.inventoryServicesService.redactProfitabilityFields(item)
         : item,
+    }));
+  }
+
+  @Get(':id/activity')
+  listActivityForService(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.inventoryServicesService.listActivityForService(id, page, limit).then((result) => ({
+      success: true,
+      data: result.items,
+      meta: result.meta,
     }));
   }
 
@@ -105,6 +133,24 @@ export class InventoryServicesController {
         ? this.inventoryServicesService.redactProfitabilityFields(item)
         : item,
     }));
+  }
+
+  @Patch(':id/manual-total')
+  updateManualTotal(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateServiceManualTotalDto,
+    @Req() request: Request & { user?: AdminJwtPayload },
+  ) {
+    const hideProfitability = !canSeeInventoryCosts(request.user?.role);
+    return this.inventoryServicesService
+      .updateManualTotal(id, dto, request.user?.sub)
+      .then((item) => ({
+        success: true,
+        message: 'Job order total updated.',
+        data: hideProfitability
+          ? this.inventoryServicesService.redactProfitabilityFields(item)
+          : item,
+      }));
   }
 
   @Patch(':id/status')

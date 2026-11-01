@@ -7,9 +7,11 @@ import {
   tableExists,
 } from '../common/admin-table.util';
 import { CreateServiceDto } from './dto/create-service.dto';
+import { UpdateServiceManualTotalDto } from './dto/update-service-manual-total.dto';
 import { JOB_ORDER_STATUSES, UpdateServiceStatusDto } from './dto/update-service-status.dto';
 import { deleteServiceImageFile, saveServiceImageFile } from './service-image.util';
 import { ensureJobOrderRefundColumns } from './job-order-refund.schema';
+import { ensureJobOrderManualTotalSchema } from './job-order-manual-total.schema';
 
 const JOB_PAYMENT_METHODS = ['Cash', 'Gcash', 'Bank Transfer'] as const;
 type JobPaymentMethod = (typeof JOB_PAYMENT_METHODS)[number];
@@ -59,6 +61,8 @@ export interface InventoryServiceListItem {
   deviceSerial?: string | null;
   totalCosting: number;
   totalSales: number;
+  calculatedTotal?: number;
+  manualTotalAmount?: number | null;
   totalDiscount?: number;
   startedAt: string | null;
   endedAt: string | null;
@@ -88,6 +92,20 @@ export interface InventoryServiceListItem {
   createdAt: string | null;
   updatedAt: string | null;
   statusHistory?: JobOrderStatusHistoryItem[];
+  activity?: JobOrderAuditLogItem[];
+}
+
+export interface JobOrderAuditLogItem {
+  id: number;
+  serviceId: number;
+  referenceNo: string | null;
+  actionType: string;
+  actorAdminId: number | null;
+  actorAdminUsername: string | null;
+  actorAdminName: string | null;
+  reason: string | null;
+  meta: Record<string, unknown>;
+  createdAt: string;
 }
 
 export interface JobOrderStatusHistoryItem {
@@ -141,6 +159,7 @@ export class InventoryServicesService {
     }
 
     await ensureJobOrderRefundColumns(this.databaseService);
+    await ensureJobOrderManualTotalSchema(this.databaseService);
 
     const { page, limit, offset } = buildPagination(pageRaw, limitRaw);
     const listParams: unknown[] = [];
@@ -224,6 +243,7 @@ export class InventoryServicesService {
       total_parts_sales: string;
       total_discount: string;
       total_refunds: string;
+      total_effective_sales: string;
     }>(
       `SELECT
         COUNT(*)::text AS item_count,
@@ -246,7 +266,37 @@ export class InventoryServicesService {
               THEN COALESCE(s.refund_amount, 0)
             ELSE 0
           END
-        ), 0)::text AS total_refunds
+        ), 0)::text AS total_refunds,
+        COALESCE(SUM(
+          CASE
+            WHEN s.manual_total_amount IS NOT NULL THEN
+              GREATEST(
+                0,
+                COALESCE(s.manual_total_amount, 0)
+                - CASE
+                    WHEN LOWER(TRIM(COALESCE(s.status, ''))) = 'refunded'
+                      THEN COALESCE(s.refund_amount, 0)
+                    ELSE 0
+                  END
+              )
+            ELSE
+              GREATEST(
+                0,
+                COALESCE(s.labor, 0) + COALESCE(parts.parts_labor, 0) + COALESCE(parts.parts_sales, 0)
+                - COALESCE(parts.parts_discount, 0) - COALESCE(s.custom_discount, 0)
+                - CASE
+                    WHEN LOWER(TRIM(COALESCE(s.labor_discount_type, ''))) IN ('senior', 'pwd')
+                      THEN ROUND(COALESCE(s.labor, 0) * 0.20, 2)
+                    ELSE 0
+                  END
+                - CASE
+                    WHEN LOWER(TRIM(COALESCE(s.status, ''))) = 'refunded'
+                      THEN COALESCE(s.refund_amount, 0)
+                    ELSE 0
+                  END
+              )
+          END
+        ), 0)::text AS total_effective_sales
        FROM pcmazing_services s
        LEFT JOIN LATERAL (
          SELECT COALESCE(
@@ -273,6 +323,7 @@ export class InventoryServicesService {
     const totalPartsSales = Number(summaryResult.rows[0]?.total_parts_sales ?? 0);
     const totalDiscount = Number(summaryResult.rows[0]?.total_discount ?? 0);
     const totalRefunds = Number(summaryResult.rows[0]?.total_refunds ?? 0);
+    const totalEffectiveSales = Number(summaryResult.rows[0]?.total_effective_sales ?? 0);
 
     const filterWhereClause = `WHERE s.deleted_at IS NULL`;
 
@@ -316,6 +367,7 @@ export class InventoryServicesService {
       labor_discount_type: string | null;
       custom_discount: string | null;
       refund_amount: string | null;
+      manual_total_amount: string | null;
       status: string | null;
       image_url: string | null;
       started_at: string | null;
@@ -343,6 +395,7 @@ export class InventoryServicesService {
         s.labor_discount_type,
         s.custom_discount::text,
         s.refund_amount::text,
+        s.manual_total_amount::text,
         s.status,
         s.image_url,
         s.started_at::text,
@@ -397,10 +450,15 @@ export class InventoryServicesService {
             ? Math.round(Number(row.labor ?? 0) * 0.2 * 100) / 100
             : 0;
         const totalDiscount = customDiscount + partsDiscount + laborDiscount;
-        const grossSales = Math.max(
+        const calculatedTotal = Math.max(
           0,
           labor + partsSales - partsDiscount - customDiscount - laborDiscount,
         );
+        const manualTotalAmount =
+          row.manual_total_amount !== null && row.manual_total_amount !== undefined
+            ? Number(row.manual_total_amount)
+            : null;
+        const grossSales = this.applyManualTotal(calculatedTotal, manualTotalAmount);
         const refundAmount =
           this.normalizeStatusLabel(row.status) === 'refunded'
             ? Math.max(0, Number(row.refund_amount ?? 0))
@@ -428,6 +486,8 @@ export class InventoryServicesService {
           imageUrl: row.image_url,
           totalCosting: partsCost,
           totalSales: Math.max(0, grossSales - refundAmount),
+          calculatedTotal,
+          manualTotalAmount,
           totalDiscount,
           refundAmount: refundAmount > 0 ? refundAmount : undefined,
           customDiscount,
@@ -441,7 +501,10 @@ export class InventoryServicesService {
       meta: buildPaginationMeta(page, limit, total),
       summary: {
         totalCosting: totalPartsCost,
-        totalSales: Math.max(0, totalLaborSales + totalPartsSales - totalDiscount - totalRefunds),
+        totalSales:
+          totalEffectiveSales > 0
+            ? totalEffectiveSales
+            : Math.max(0, totalLaborSales + totalPartsSales - totalDiscount - totalRefunds),
         totalLaborSales,
         totalPartsCost,
         totalDiscount,
@@ -463,6 +526,8 @@ export class InventoryServicesService {
       throw new ServiceUnavailableException('Service catalog table is not available in this database.');
     }
 
+    await ensureJobOrderManualTotalSchema(this.databaseService);
+
     const customerName = dto.customerName?.trim() || '';
     const customerEmail = dto.customerEmail?.trim() || null;
     const customerContact = dto.customerContact?.trim() || null;
@@ -475,6 +540,8 @@ export class InventoryServicesService {
     const source = dto.personInChargeSource ?? 'tblusers';
     const startedAt = dto.startedAt ? new Date(dto.startedAt) : null;
     const endedAt = dto.endedAt ? new Date(dto.endedAt) : null;
+    const manualTotalAmount = this.normalizeManualTotalInput(dto.manualTotalAmount);
+    const manualTotalReason = String(dto.manualTotalReason ?? '').trim() || null;
 
     if (startedAt && Number.isNaN(startedAt.getTime())) {
       throw new BadRequestException('Start date/time is invalid.');
@@ -518,8 +585,9 @@ export class InventoryServicesService {
           device_brand,
           device_model,
           device_serial,
+          manual_total_amount,
           created_by
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
         RETURNING id`,
         [
           customerName,
@@ -543,6 +611,7 @@ export class InventoryServicesService {
           deviceBrand,
           deviceModel,
           deviceSerial,
+          manualTotalAmount,
           createdBy ?? null,
         ],
       );
@@ -552,11 +621,12 @@ export class InventoryServicesService {
         throw new ServiceUnavailableException('Unable to create service.');
       }
 
+      const referenceNo = this.buildReferenceNo(serviceId);
       await client.query(
         `UPDATE pcmazing_services
          SET reference_no = $1
          WHERE id = $2`,
-        [this.buildReferenceNo(serviceId), serviceId],
+        [referenceNo, serviceId],
       );
 
       for (const part of dto.parts ?? []) {
@@ -599,6 +669,31 @@ export class InventoryServicesService {
         changedBy: createdBy ?? null,
       });
 
+      await this.recordJobOrderAudit(client, {
+        serviceId,
+        referenceNo,
+        actionType: 'created',
+        actorAdminId: createdBy ?? null,
+        reason: manualTotalReason,
+        meta: {
+          manualTotalAmount,
+        },
+      });
+
+      if (manualTotalAmount != null) {
+        await this.recordJobOrderAudit(client, {
+          serviceId,
+          referenceNo,
+          actionType: 'manual_total_set',
+          actorAdminId: createdBy ?? null,
+          reason: manualTotalReason,
+          meta: {
+            oldTotal: null,
+            newTotal: manualTotalAmount,
+          },
+        });
+      }
+
       return serviceId;
     });
 
@@ -609,6 +704,8 @@ export class InventoryServicesService {
     if (!(await tableExists(this.databaseService, 'pcmazing_services'))) {
       throw new ServiceUnavailableException('Service catalog table is not available in this database.');
     }
+
+    await ensureJobOrderManualTotalSchema(this.databaseService);
 
     const existing = await this.getById(id);
 
@@ -625,6 +722,22 @@ export class InventoryServicesService {
     const source = dto.personInChargeSource ?? 'tblusers';
     const startedAt = dto.startedAt ? new Date(dto.startedAt) : null;
     const endedAt = dto.endedAt ? new Date(dto.endedAt) : null;
+    const nextManualTotal =
+      dto.manualTotalAmount === undefined
+        ? (existing.manualTotalAmount ?? null)
+        : this.normalizeManualTotalInput(dto.manualTotalAmount);
+    const previousManualTotal =
+      existing.manualTotalAmount != null && Number.isFinite(Number(existing.manualTotalAmount))
+        ? Number(existing.manualTotalAmount)
+        : null;
+    const manualTotalChanged = !this.sameManualTotal(previousManualTotal, nextManualTotal);
+    const manualTotalReason = String(dto.manualTotalReason ?? '').trim();
+
+    if (manualTotalChanged && manualTotalReason.length < 8) {
+      throw new BadRequestException(
+        'A reason of at least 8 characters is required when changing the job order total.',
+      );
+    }
 
     if (startedAt && Number.isNaN(startedAt.getTime())) {
       throw new BadRequestException('Start date/time is invalid.');
@@ -668,8 +781,9 @@ export class InventoryServicesService {
              device_brand = $19,
              device_model = $20,
              device_serial = $21,
+             manual_total_amount = $22,
              updated_at = NOW()
-         WHERE id = $22 AND deleted_at IS NULL`,
+         WHERE id = $23 AND deleted_at IS NULL`,
         [
           customerName,
           customerEmail,
@@ -692,6 +806,7 @@ export class InventoryServicesService {
           deviceBrand,
           deviceModel,
           deviceSerial,
+          nextManualTotal,
           id,
         ],
       );
@@ -744,9 +859,180 @@ export class InventoryServicesService {
           changedBy: changedBy ?? null,
         });
       }
+
+      await this.recordJobOrderAudit(client, {
+        serviceId: id,
+        referenceNo: existing.referenceNo,
+        actionType: 'updated',
+        actorAdminId: changedBy ?? null,
+        reason: null,
+        meta: {},
+      });
+
+      if (manualTotalChanged) {
+        await this.recordJobOrderAudit(client, {
+          serviceId: id,
+          referenceNo: existing.referenceNo,
+          actionType: nextManualTotal == null ? 'manual_total_cleared' : 'manual_total_set',
+          actorAdminId: changedBy ?? null,
+          reason: manualTotalReason,
+          meta: {
+            oldTotal: previousManualTotal,
+            newTotal: nextManualTotal,
+            calculatedTotal: existing.calculatedTotal ?? null,
+          },
+        });
+      }
     });
 
     return this.getById(id);
+  }
+
+  async updateManualTotal(
+    id: number,
+    dto: UpdateServiceManualTotalDto,
+    changedBy?: number,
+  ) {
+    if (!(await tableExists(this.databaseService, 'pcmazing_services'))) {
+      throw new ServiceUnavailableException('Service catalog table is not available in this database.');
+    }
+
+    await ensureJobOrderManualTotalSchema(this.databaseService);
+
+    const existing = await this.getById(id);
+    const nextManualTotal = this.normalizeManualTotalInput(dto.amount);
+    const previousManualTotal =
+      existing.manualTotalAmount != null && Number.isFinite(Number(existing.manualTotalAmount))
+        ? Number(existing.manualTotalAmount)
+        : null;
+    const reason = String(dto.reason ?? '').trim();
+
+    if (reason.length < 8) {
+      throw new BadRequestException(
+        'A reason of at least 8 characters is required when changing the job order total.',
+      );
+    }
+
+    if (this.sameManualTotal(previousManualTotal, nextManualTotal)) {
+      return existing;
+    }
+
+    await this.databaseService.withTransaction(async (client) => {
+      await client.query(
+        `UPDATE pcmazing_services
+         SET manual_total_amount = $1,
+             updated_at = NOW()
+         WHERE id = $2 AND deleted_at IS NULL`,
+        [nextManualTotal, id],
+      );
+
+      await this.recordJobOrderAudit(client, {
+        serviceId: id,
+        referenceNo: existing.referenceNo,
+        actionType: nextManualTotal == null ? 'manual_total_cleared' : 'manual_total_set',
+        actorAdminId: changedBy ?? null,
+        reason,
+        meta: {
+          oldTotal: previousManualTotal,
+          newTotal: nextManualTotal,
+          calculatedTotal: existing.calculatedTotal ?? null,
+        },
+      });
+    });
+
+    return this.getById(id);
+  }
+
+  async listActivity(
+    pageRaw?: string,
+    limitRaw?: string,
+    search?: string,
+    serviceIdRaw?: string,
+  ) {
+    await ensureJobOrderManualTotalSchema(this.databaseService);
+
+    const { page, limit, offset } = buildPagination(pageRaw, limitRaw);
+    const params: unknown[] = [];
+    const where: string[] = [];
+
+    const serviceId = Number(serviceIdRaw);
+    if (serviceIdRaw != null && String(serviceIdRaw).trim() !== '' && Number.isFinite(serviceId)) {
+      params.push(serviceId);
+      where.push(`l.service_id = $${params.length}`);
+    }
+
+    const q = String(search ?? '').trim();
+    if (q) {
+      params.push(`%${q.toLowerCase()}%`);
+      const idx = params.length;
+      where.push(
+        `(LOWER(COALESCE(l.reference_no, '')) LIKE $${idx}
+          OR LOWER(COALESCE(l.actor_admin_name, '')) LIKE $${idx}
+          OR LOWER(COALESCE(l.actor_admin_username, '')) LIKE $${idx}
+          OR LOWER(COALESCE(l.reason, '')) LIKE $${idx}
+          OR LOWER(COALESCE(l.action_type, '')) LIKE $${idx}
+          OR CAST(l.service_id AS text) LIKE $${idx})`,
+      );
+    }
+
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    if (!(await tableExists(this.databaseService, 'pcmazing_job_order_audit_log'))) {
+      return {
+        items: [] as JobOrderAuditLogItem[],
+        meta: buildPaginationMeta(page, limit, 0),
+      };
+    }
+
+    const countResult = await this.databaseService.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+       FROM pcmazing_job_order_audit_log l
+       ${whereSql}`,
+      params,
+    );
+    const total = Number(countResult.rows[0]?.count ?? 0);
+
+    params.push(limit, offset);
+    const result = await this.databaseService.query<{
+      id: number;
+      service_id: number;
+      reference_no: string | null;
+      action_type: string;
+      actor_admin_id: string | null;
+      actor_admin_username: string | null;
+      actor_admin_name: string | null;
+      reason: string | null;
+      meta_json: Record<string, unknown> | string | null;
+      created_at: string;
+    }>(
+      `SELECT l.id, l.service_id, l.reference_no, l.action_type,
+              l.actor_admin_id::text, l.actor_admin_username, l.actor_admin_name,
+              l.reason, l.meta_json, l.created_at::text AS created_at
+       FROM pcmazing_job_order_audit_log l
+       ${whereSql}
+       ORDER BY l.created_at DESC, l.id DESC
+       LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params,
+    );
+
+    return {
+      items: result.rows.map((row) => this.mapAuditLogRow(row)),
+      meta: buildPaginationMeta(page, limit, total),
+    };
+  }
+
+  async listActivityForService(serviceId: number, pageRaw?: string, limitRaw?: string) {
+    if (!(await tableExists(this.databaseService, 'pcmazing_services'))) {
+      throw new ServiceUnavailableException('Service catalog table is not available in this database.');
+    }
+    const exists = await this.databaseService.query<{ id: number }>(
+      `SELECT id FROM pcmazing_services WHERE id = $1 AND deleted_at IS NULL LIMIT 1`,
+      [serviceId],
+    );
+    if (!exists.rows[0]) {
+      throw new NotFoundException(`Service ${serviceId} was not found.`);
+    }
+    return this.listActivity(pageRaw, limitRaw, undefined, String(serviceId));
   }
 
   async updateStatus(id: number, dto: UpdateServiceStatusDto, changedBy?: number) {
@@ -755,6 +1041,7 @@ export class InventoryServicesService {
     }
 
     await ensureJobOrderRefundColumns(this.databaseService);
+    await ensureJobOrderManualTotalSchema(this.databaseService);
 
     const existing = await this.getById(id);
 
@@ -970,6 +1257,7 @@ export class InventoryServicesService {
 
   async getById(id: number): Promise<InventoryServiceListItem> {
     await ensureJobOrderRefundColumns(this.databaseService);
+    await ensureJobOrderManualTotalSchema(this.databaseService);
 
     const result = await this.databaseService.query<{
       id: number;
@@ -996,6 +1284,7 @@ export class InventoryServicesService {
       custom_discount: string | null;
       downpayment: string | null;
       payment_method: string | null;
+      manual_total_amount: string | null;
       image_url: string | null;
       device_brand: string | null;
       device_model: string | null;
@@ -1030,6 +1319,7 @@ export class InventoryServicesService {
         s.custom_discount::text,
         s.downpayment::text,
         s.payment_method,
+        s.manual_total_amount::text,
         s.image_url,
         s.device_brand,
         s.device_model,
@@ -1132,7 +1422,7 @@ export class InventoryServicesService {
       (sum, part) => sum + Number(part.quantity ?? 0) * Number(part.unit_price ?? 0),
       0,
     );
-    const grossSales = this.computeGrossJobSale(
+    const calculatedTotal = this.computeGrossJobSale(
       labor,
       partsLabor,
       partsSales,
@@ -1140,10 +1430,17 @@ export class InventoryServicesService {
       Number(row.custom_discount ?? 0),
       row.labor_discount_type,
     );
+    const manualTotalAmount =
+      row.manual_total_amount !== null && row.manual_total_amount !== undefined
+        ? Number(row.manual_total_amount)
+        : null;
+    const grossSales = this.applyManualTotal(calculatedTotal, manualTotalAmount);
     const refundAmount =
       this.normalizeStatusLabel(row.status) === 'refunded'
         ? Math.max(0, Number(row.refund_amount ?? 0))
         : 0;
+
+    const activity = await this.listActivityForService(Number(row.id), '1', '20');
 
     return {
       id: Number(row.id),
@@ -1177,6 +1474,8 @@ export class InventoryServicesService {
       deviceSerial: row.device_serial?.trim() || null,
       totalCosting: partsCost,
       totalSales: Math.max(0, grossSales - refundAmount),
+      calculatedTotal,
+      manualTotalAmount,
       startedAt: row.started_at,
       endedAt: row.ended_at,
       durationMinutes: this.computeDurationMinutes(row.started_at, row.ended_at),
@@ -1197,6 +1496,7 @@ export class InventoryServicesService {
       })),
       updatedAt: row.updated_at,
       statusHistory: await this.loadStatusHistory(id),
+      activity: activity.items,
     };
   }
 
@@ -1712,6 +2012,13 @@ export class InventoryServicesService {
   }
 
   private computeGrossFromServiceItem(item: InventoryServiceListItem): number {
+    if (item.manualTotalAmount != null && Number.isFinite(Number(item.manualTotalAmount))) {
+      return Math.max(0, Number(item.manualTotalAmount));
+    }
+    if (item.calculatedTotal != null && Number.isFinite(Number(item.calculatedTotal))) {
+      return Math.max(0, Number(item.calculatedTotal));
+    }
+
     const parts = item.parts ?? [];
     const partsSales = parts.reduce(
       (sum, part) => sum + (Number(part.quantity) || 0) * (Number(part.unitPrice) || 0),
@@ -1731,6 +2038,118 @@ export class InventoryServicesService {
       partsDiscount,
       Number(item.customDiscount) || 0,
       item.laborDiscountType,
+    );
+  }
+
+  private applyManualTotal(calculated: number, manual: number | null | undefined): number {
+    if (manual != null && Number.isFinite(Number(manual))) {
+      return Math.max(0, Number(manual));
+    }
+    return Math.max(0, calculated);
+  }
+
+  private normalizeManualTotalInput(value: number | null | undefined): number | null {
+    if (value === null || value === undefined) {
+      return null;
+    }
+    const amount = Number(value);
+    if (!Number.isFinite(amount) || amount < 0) {
+      throw new BadRequestException('Manual total must be zero or greater.');
+    }
+    return Math.round(amount * 100) / 100;
+  }
+
+  private sameManualTotal(a: number | null, b: number | null): boolean {
+    if (a == null && b == null) {
+      return true;
+    }
+    if (a == null || b == null) {
+      return false;
+    }
+    return Math.round(a * 100) === Math.round(b * 100);
+  }
+
+  private mapAuditLogRow(row: {
+    id: number;
+    service_id: number;
+    reference_no: string | null;
+    action_type: string;
+    actor_admin_id: string | null;
+    actor_admin_username: string | null;
+    actor_admin_name: string | null;
+    reason: string | null;
+    meta_json: Record<string, unknown> | string | null;
+    created_at: string;
+  }): JobOrderAuditLogItem {
+    let meta: Record<string, unknown> = {};
+    if (typeof row.meta_json === 'string') {
+      try {
+        meta = JSON.parse(row.meta_json) as Record<string, unknown>;
+      } catch {
+        meta = {};
+      }
+    } else if (row.meta_json && typeof row.meta_json === 'object') {
+      meta = row.meta_json;
+    }
+    return {
+      id: Number(row.id),
+      serviceId: Number(row.service_id),
+      referenceNo: row.reference_no,
+      actionType: row.action_type,
+      actorAdminId: row.actor_admin_id != null ? Number(row.actor_admin_id) : null,
+      actorAdminUsername: row.actor_admin_username,
+      actorAdminName: row.actor_admin_name,
+      reason: row.reason,
+      meta,
+      createdAt: row.created_at,
+    };
+  }
+
+  private async recordJobOrderAudit(
+    client: PoolClient,
+    entry: {
+      serviceId: number;
+      referenceNo: string | null;
+      actionType: string;
+      actorAdminId: number | null;
+      reason: string | null;
+      meta: Record<string, unknown>;
+    },
+  ): Promise<void> {
+    if (!(await tableExists(this.databaseService, 'pcmazing_job_order_audit_log'))) {
+      return;
+    }
+
+    let actorUsername: string | null = null;
+    let actorName: string | null = null;
+    if (entry.actorAdminId != null) {
+      const admin = await client.query<{ username: string | null; full_name: string | null }>(
+        `SELECT username, full_name
+         FROM pcmazing_admin_users
+         WHERE id = $1
+         LIMIT 1`,
+        [entry.actorAdminId],
+      );
+      actorUsername = admin.rows[0]?.username?.trim() || null;
+      actorName = admin.rows[0]?.full_name?.trim() || null;
+    }
+
+    await client.query(
+      `INSERT INTO pcmazing_job_order_audit_log (
+         service_id, reference_no, action_type,
+         actor_admin_id, actor_admin_username, actor_admin_name,
+         reason, meta_json
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)`,
+      [
+        entry.serviceId,
+        entry.referenceNo,
+        entry.actionType,
+        entry.actorAdminId,
+        actorUsername,
+        actorName,
+        entry.reason,
+        JSON.stringify(entry.meta ?? {}),
+      ],
     );
   }
 
