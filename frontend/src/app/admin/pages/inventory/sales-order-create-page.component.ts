@@ -14,6 +14,12 @@ import {
   normalizePhDiscountType,
   type PhDiscountType,
 } from './ph-discount.util';
+import {
+  WARRANTY_PRESETS,
+  formatWarrantyLabel,
+  normalizeWarrantyInput,
+  type WarrantyUnit,
+} from './item-warranty.util';
 import { normalizeSalesOrderDetail } from './sales-order.util';
 import { isMaterialInStock, stockQty } from './inventory-stock.util';
 
@@ -37,6 +43,13 @@ export class SalesOrderCreatePageComponent implements OnInit {
   private partSearchCloseTimer: ReturnType<typeof setTimeout> | null = null;
 
   readonly discountOptions = DISCOUNT_OPTIONS;
+  readonly warrantyPresets = WARRANTY_PRESETS;
+  readonly warrantyUnits: Array<{ value: WarrantyUnit; label: string }> = [
+    { value: 'day', label: 'Day' },
+    { value: 'week', label: 'Week' },
+    { value: 'month', label: 'Month' },
+    { value: 'year', label: 'Year' },
+  ];
   readonly loading = signal(true);
   readonly saving = signal(false);
   readonly voiding = signal(false);
@@ -52,6 +65,10 @@ export class SalesOrderCreatePageComponent implements OnInit {
   readonly order = signal<SalesOrderDetail | null>(null);
   readonly pendingVoid = signal(false);
   readonly referenceNo = signal<string | null>(null);
+  readonly warrantyPopupIndex = signal<number | null>(null);
+  readonly warrantyDraftValue = signal(1);
+  readonly warrantyDraftUnit = signal<WarrantyUnit>('year');
+  readonly warrantyPopupHadPrior = signal(false);
 
   readonly isViewMode = computed(() => this.orderId() !== null);
   readonly isVoided = computed(() => !!this.order()?.isVoid);
@@ -68,6 +85,7 @@ export class SalesOrderCreatePageComponent implements OnInit {
     customerName: ['', [Validators.required, Validators.maxLength(180)]],
     customerPhone: ['', [Validators.maxLength(60)]],
     notes: ['', [Validators.maxLength(2000)]],
+    promotion: ['', [Validators.maxLength(180)]],
     customDiscount: [0, [Validators.min(0)]],
     saleDate: [this.toLocalDateTimeInputValue(new Date())],
     items: this.formBuilder.array([]),
@@ -116,21 +134,29 @@ export class SalesOrderCreatePageComponent implements OnInit {
       customerName: order.customerName,
       customerPhone: order.customerPhone ?? '',
       notes: order.notes ?? '',
+      promotion: order.promotion ?? '',
       customDiscount: order.customDiscount ?? 0,
       saleDate: order.saleDate ? this.toLocalDateTimeInputValue(new Date(order.saleDate)) : '',
     });
     this.itemsArray.clear();
     this.partQueries.set([]);
     for (const item of order.items) {
+      const isCustom = item.materialId == null || Number(item.materialId) <= 0;
       this.itemsArray.push(
         this.formBuilder.nonNullable.group({
-          materialId: [String(item.materialId), [Validators.required]],
+          materialId: [isCustom ? '' : String(item.materialId)],
+          customItemName: [item.customItemName || (isCustom ? item.materialName || '' : '')],
           quantity: [item.quantity, [Validators.required, Validators.min(0.01)]],
           unitPrice: [item.unitPrice, [Validators.required, Validators.min(0)]],
           discountType: [normalizePhDiscountType(item.discountType)],
+          warrantyValue: [item.warrantyValue ?? null],
+          warrantyUnit: [item.warrantyUnit ?? ''],
         }),
       );
-      this.partQueries.update((queries) => [...queries, item.materialName || '']);
+      this.partQueries.update((queries) => [
+        ...queries,
+        item.customItemName || item.materialName || '',
+      ]);
     }
     this.form.disable();
   }
@@ -141,13 +167,99 @@ export class SalesOrderCreatePageComponent implements OnInit {
     }
     this.itemsArray.push(
       this.formBuilder.nonNullable.group({
-        materialId: ['', [Validators.required]],
+        materialId: [''],
+        customItemName: [''],
         quantity: [1, [Validators.required, Validators.min(0.01)]],
         unitPrice: [0, [Validators.required, Validators.min(0)]],
         discountType: ['none' as PhDiscountType],
+        warrantyValue: [null as number | null],
+        warrantyUnit: ['' as WarrantyUnit | ''],
       }),
     );
     this.partQueries.update((queries) => [...queries, '']);
+  }
+
+  itemWarrantyLabel(index: number): string {
+    const raw = this.itemsArray.at(index)?.getRawValue() as {
+      warrantyValue?: number | null;
+      warrantyUnit?: string | null;
+    } | undefined;
+    return formatWarrantyLabel(raw?.warrantyValue, raw?.warrantyUnit);
+  }
+
+  itemHasWarranty(index: number): boolean {
+    return !!this.itemWarrantyLabel(index);
+  }
+
+  onWarrantyCheckboxChange(index: number, checked: boolean): void {
+    if (this.isViewMode()) {
+      return;
+    }
+    if (!checked) {
+      this.clearItemWarranty(index);
+      if (this.warrantyPopupIndex() === index) {
+        this.warrantyPopupIndex.set(null);
+      }
+      return;
+    }
+    this.openWarrantyPopup(index);
+  }
+
+  openWarrantyPopup(index: number): void {
+    if (this.isViewMode()) {
+      return;
+    }
+    const raw = this.itemsArray.at(index)?.getRawValue() as {
+      warrantyValue?: number | null;
+      warrantyUnit?: string | null;
+    };
+    const existing = normalizeWarrantyInput(raw?.warrantyValue, raw?.warrantyUnit);
+    this.warrantyPopupHadPrior.set(!!existing);
+    this.warrantyDraftValue.set(existing?.warrantyValue ?? 1);
+    this.warrantyDraftUnit.set(existing?.warrantyUnit ?? 'year');
+    this.warrantyPopupIndex.set(index);
+  }
+
+  applyWarrantyPreset(value: number, unit: WarrantyUnit): void {
+    this.warrantyDraftValue.set(value);
+    this.warrantyDraftUnit.set(unit);
+  }
+
+  saveWarrantyPopup(): void {
+    const index = this.warrantyPopupIndex();
+    if (index == null) {
+      return;
+    }
+    const normalized = normalizeWarrantyInput(this.warrantyDraftValue(), this.warrantyDraftUnit());
+    if (!normalized) {
+      this.formError.set('Enter a warranty of at least 1 day, week, month, or year.');
+      return;
+    }
+    const group = this.itemsArray.at(index);
+    group?.patchValue({
+      warrantyValue: normalized.warrantyValue,
+      warrantyUnit: normalized.warrantyUnit,
+    });
+    this.warrantyPopupIndex.set(null);
+    this.formError.set('');
+  }
+
+  cancelWarrantyPopup(): void {
+    const index = this.warrantyPopupIndex();
+    if (index == null) {
+      return;
+    }
+    if (!this.warrantyPopupHadPrior()) {
+      this.clearItemWarranty(index);
+    }
+    this.warrantyPopupIndex.set(null);
+  }
+
+  private clearItemWarranty(index: number): void {
+    this.itemsArray.at(index)?.patchValue({
+      warrantyValue: null,
+      warrantyUnit: '',
+    });
   }
 
   removeItem(index: number): void {
@@ -208,17 +320,79 @@ export class SalesOrderCreatePageComponent implements OnInit {
 
     const group = this.itemsArray.at(index);
     if (group) {
-      const { materialId } = group.getRawValue() as { materialId: string };
+      const { materialId, customItemName } = group.getRawValue() as {
+        materialId: string;
+        customItemName?: string;
+      };
       if (materialId) {
         const selectedName = this.materialName(materialId);
         if (value.trim() !== selectedName) {
-          group.patchValue({ materialId: '', unitPrice: 0 }, { emitEvent: false });
+          group.patchValue(
+            { materialId: '', customItemName: '', unitPrice: 0 },
+            { emitEvent: false },
+          );
         }
+      } else if (customItemName && value.trim() !== String(customItemName).trim()) {
+        group.patchValue({ customItemName: '' }, { emitEvent: false });
       }
     }
 
     this.openPartSearchIndex.set(index);
     this.scheduleMaterialSearch(index, value);
+  }
+
+  onPartSearchKeydown(event: Event, index: number): void {
+    const keyboard = event as KeyboardEvent;
+    if (keyboard.key !== 'Enter') {
+      return;
+    }
+    keyboard.preventDefault();
+    this.useCustomItem(index);
+  }
+
+  canUseCustomItem(index: number): boolean {
+    const name = this.partQuery(index).trim();
+    if (!name) {
+      return false;
+    }
+    const group = this.itemsArray.at(index);
+    if (!group) {
+      return false;
+    }
+    const { materialId, customItemName } = group.getRawValue() as {
+      materialId: string;
+      customItemName?: string;
+    };
+    if (materialId && this.materialName(materialId) === name) {
+      return false;
+    }
+    if (customItemName && String(customItemName).trim() === name) {
+      return false;
+    }
+    return true;
+  }
+
+  useCustomItem(index: number): void {
+    if (this.isViewMode() || !this.canUseCustomItem(index)) {
+      return;
+    }
+    const name = this.partQuery(index).trim();
+    const group = this.itemsArray.at(index);
+    if (!group || !name) {
+      return;
+    }
+    if (this.partSearchCloseTimer) {
+      clearTimeout(this.partSearchCloseTimer);
+      this.partSearchCloseTimer = null;
+    }
+    group.patchValue(
+      {
+        materialId: '',
+        customItemName: name,
+      },
+      { emitEvent: false },
+    );
+    this.openPartSearchIndex.set(null);
   }
 
   private scheduleMaterialSearch(index: number, value: string): void {
@@ -262,6 +436,7 @@ export class SalesOrderCreatePageComponent implements OnInit {
     group.patchValue(
       {
         materialId: String(item.id),
+        customItemName: '',
         unitPrice: this.resolveMaterialUnitPrice(item),
       },
       { emitEvent: false },
@@ -407,6 +582,24 @@ export class SalesOrderCreatePageComponent implements OnInit {
     return `Stock: ${stock}`;
   }
 
+  itemRowHint(index: number): string {
+    const group = this.itemsArray.at(index);
+    if (!group) {
+      return '';
+    }
+    const { materialId, customItemName } = group.getRawValue() as {
+      materialId: string;
+      customItemName?: string;
+    };
+    if (materialId) {
+      return this.materialStockLabel(materialId);
+    }
+    if (customItemName?.trim()) {
+      return 'Custom item (not deducted from inventory)';
+    }
+    return '';
+  }
+
   async submit(): Promise<void> {
     if (this.isViewMode()) {
       return;
@@ -414,6 +607,13 @@ export class SalesOrderCreatePageComponent implements OnInit {
 
     this.formError.set('');
     this.formSuccess.set('');
+
+    // Commit any typed custom names that were not explicitly selected.
+    this.itemsArray.controls.forEach((_, index) => {
+      if (this.canUseCustomItem(index)) {
+        this.useCustomItem(index);
+      }
+    });
 
     if (this.form.invalid) {
       this.form.markAllAsTouched();
@@ -426,12 +626,21 @@ export class SalesOrderCreatePageComponent implements OnInit {
       return;
     }
 
-    const invalidItemIndex = this.itemsArray.controls.findIndex((control) => {
-      const materialId = Number((control.getRawValue() as { materialId: string }).materialId);
-      return !Number.isFinite(materialId) || materialId <= 0;
+    const invalidItemIndex = this.itemsArray.controls.findIndex((control, index) => {
+      const item = control.getRawValue() as {
+        materialId: string;
+        customItemName?: string;
+      };
+      const materialId = Number(item.materialId);
+      const hasMaterial = Number.isFinite(materialId) && materialId > 0;
+      const customName =
+        String(item.customItemName ?? '').trim() || this.partQuery(index).trim();
+      return !hasMaterial && !customName;
     });
     if (invalidItemIndex >= 0) {
-      this.formError.set(`Select an inventory item for row ${invalidItemIndex + 1}.`);
+      this.formError.set(
+        `Select an inventory item or enter a custom item name for row ${invalidItemIndex + 1}.`,
+      );
       return;
     }
 
@@ -440,20 +649,32 @@ export class SalesOrderCreatePageComponent implements OnInit {
       customerName: value.customerName.trim(),
       customerPhone: value.customerPhone.trim() || undefined,
       notes: value.notes.trim() || undefined,
+      promotion: value.promotion.trim() || undefined,
       customDiscount: Number(value.customDiscount) || 0,
       saleDate: value.saleDate ? new Date(value.saleDate).toISOString() : undefined,
-      items: this.itemsArray.controls.map((control) => {
+      items: this.itemsArray.controls.map((control, index) => {
         const item = control.getRawValue() as {
           materialId: string;
+          customItemName?: string;
           quantity: number | string;
           unitPrice: number | string;
           discountType?: PhDiscountType;
+          warrantyValue?: number | null;
+          warrantyUnit?: string | null;
         };
+        const materialId = Number(item.materialId);
+        const hasMaterial = Number.isFinite(materialId) && materialId > 0;
+        const customItemName =
+          String(item.customItemName ?? '').trim() || this.partQuery(index).trim();
+        const warranty = normalizeWarrantyInput(item.warrantyValue, item.warrantyUnit);
         return {
-          materialId: Number(item.materialId),
+          materialId: hasMaterial ? materialId : null,
+          customItemName: hasMaterial ? undefined : customItemName,
           quantity: Number(item.quantity),
           unitPrice: Number(item.unitPrice),
           discountType: normalizePhDiscountType(item.discountType),
+          warrantyValue: warranty?.warrantyValue ?? null,
+          warrantyUnit: warranty?.warrantyUnit ?? null,
         };
       }),
     };
