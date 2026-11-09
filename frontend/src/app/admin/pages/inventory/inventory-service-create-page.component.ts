@@ -19,6 +19,12 @@ import {
   applyPhSpecialDiscount,
   normalizePhDiscountType,
 } from './ph-discount.util';
+import {
+  WARRANTY_PRESETS,
+  formatWarrantyLabel,
+  normalizeWarrantyInput,
+  type WarrantyUnit,
+} from './item-warranty.util';
 import { isMaterialInStock, stockQty } from './inventory-stock.util';
 
 const DEFAULT_STATUSES = ['Active', 'Pending', 'Cancelled', 'Done', 'Refunded'];
@@ -38,11 +44,22 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
   private readonly destroyRef = inject(DestroyRef);
 
   readonly statuses = DEFAULT_STATUSES;
+  readonly warrantyPresets = WARRANTY_PRESETS;
+  readonly warrantyUnits: Array<{ value: WarrantyUnit; label: string }> = [
+    { value: 'day', label: 'Day' },
+    { value: 'week', label: 'Week' },
+    { value: 'month', label: 'Month' },
+    { value: 'year', label: 'Year' },
+  ];
   readonly loading = signal(true);
   readonly saving = signal(false);
   readonly error = signal('');
   readonly formError = signal('');
   readonly formSuccess = signal('');
+  readonly warrantyPopupIndex = signal<number | null>(null);
+  readonly warrantyDraftValue = signal(1);
+  readonly warrantyDraftUnit = signal<WarrantyUnit>('year');
+  readonly warrantyPopupHadPrior = signal(false);
   readonly users = signal<AdminUser[]>([]);
   readonly materials = signal<MaterialItem[]>([]);
   readonly serviceTypes = signal<ServiceTypeItem[]>([]);
@@ -105,6 +122,7 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
     startedAt: [''],
     endedAt: [''],
     notes: ['', [Validators.maxLength(2000)]],
+    promotion: ['', [Validators.maxLength(180)]],
     services: this.formBuilder.array([]),
     parts: this.formBuilder.array([]),
   });
@@ -230,6 +248,7 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
           startedAt: item.startedAt ?? '',
           endedAt: item.endedAt ?? '',
           notes: item.notes ?? '',
+          promotion: item.promotion ?? '',
         });
         this.loadedManualTotalAmount =
           item.manualTotalAmount != null ? Number(item.manualTotalAmount) : null;
@@ -279,6 +298,8 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
               part.brandName ??
                 this.materials().find((entry) => Number(entry.id) === materialId)?.brandName ??
                 '',
+              part.warrantyValue ?? null,
+              part.warrantyUnit ?? '',
             );
           } else if (part.customItemName) {
             const amount = this.resolveServiceLineAmount(part);
@@ -714,6 +735,8 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
     customName = '',
     isNew = false,
     brandName = '',
+    warrantyValue: number | null = null,
+    warrantyUnit: WarrantyUnit | '' = '',
   ): void {
     this.partsArray.push(
       this.formBuilder.nonNullable.group({
@@ -724,9 +747,93 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
         unitPrice: [unitPrice, [Validators.min(0)]],
         discountAmount: [discountAmount, [Validators.min(0)]],
         isNew: [isNew],
+        warrantyValue: [warrantyValue],
+        warrantyUnit: [warrantyUnit],
       }),
     );
     this.syncCostWithParts();
+  }
+
+  partWarrantyLabel(index: number): string {
+    const raw = this.partsArray.at(index)?.getRawValue() as {
+      warrantyValue?: number | null;
+      warrantyUnit?: string | null;
+    } | undefined;
+    return formatWarrantyLabel(raw?.warrantyValue, raw?.warrantyUnit);
+  }
+
+  partHasWarranty(index: number): boolean {
+    return !!this.partWarrantyLabel(index);
+  }
+
+  onPartWarrantyCheckboxChange(index: number, checked: boolean): void {
+    if (this.isDoneStatus()) {
+      return;
+    }
+    if (!checked) {
+      this.clearPartWarranty(index);
+      if (this.warrantyPopupIndex() === index) {
+        this.warrantyPopupIndex.set(null);
+      }
+      return;
+    }
+    this.openPartWarrantyPopup(index);
+  }
+
+  openPartWarrantyPopup(index: number): void {
+    if (this.isDoneStatus()) {
+      return;
+    }
+    const raw = this.partsArray.at(index)?.getRawValue() as {
+      warrantyValue?: number | null;
+      warrantyUnit?: string | null;
+    };
+    const existing = normalizeWarrantyInput(raw?.warrantyValue, raw?.warrantyUnit);
+    this.warrantyPopupHadPrior.set(!!existing);
+    this.warrantyDraftValue.set(existing?.warrantyValue ?? 1);
+    this.warrantyDraftUnit.set(existing?.warrantyUnit ?? 'year');
+    this.warrantyPopupIndex.set(index);
+  }
+
+  applyPartWarrantyPreset(value: number, unit: WarrantyUnit): void {
+    this.warrantyDraftValue.set(value);
+    this.warrantyDraftUnit.set(unit);
+  }
+
+  savePartWarrantyPopup(): void {
+    const index = this.warrantyPopupIndex();
+    if (index == null) {
+      return;
+    }
+    const normalized = normalizeWarrantyInput(this.warrantyDraftValue(), this.warrantyDraftUnit());
+    if (!normalized) {
+      this.formError.set('Enter a warranty of at least 1 day, week, month, or year.');
+      return;
+    }
+    this.partsArray.at(index)?.patchValue({
+      warrantyValue: normalized.warrantyValue,
+      warrantyUnit: normalized.warrantyUnit,
+    });
+    this.warrantyPopupIndex.set(null);
+    this.formError.set('');
+  }
+
+  cancelPartWarrantyPopup(): void {
+    const index = this.warrantyPopupIndex();
+    if (index == null) {
+      return;
+    }
+    if (!this.warrantyPopupHadPrior()) {
+      this.clearPartWarranty(index);
+    }
+    this.warrantyPopupIndex.set(null);
+  }
+
+  private clearPartWarranty(index: number): void {
+    this.partsArray.at(index)?.patchValue({
+      warrantyValue: null,
+      warrantyUnit: '',
+    });
   }
 
   removePart(index: number): void {
@@ -1113,6 +1220,8 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
       unitPrice: number | string;
       discountAmount?: number | string;
       isNew?: boolean;
+      warrantyValue?: number | null;
+      warrantyUnit?: string | null;
     }>;
     const inventoryParts = rawParts
       .map((part) => {
@@ -1120,6 +1229,7 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
         const hasCatalogId = Number.isFinite(materialId) && materialId > 0;
         const customName = String(part.customName ?? '').trim();
         const brandName = String(part.brandName ?? '').trim();
+        const warranty = normalizeWarrantyInput(part.warrantyValue, part.warrantyUnit);
         return {
           materialId: hasCatalogId ? materialId : undefined,
           customItemName: customName || undefined,
@@ -1128,6 +1238,8 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
           unitPrice: Number(part.unitPrice) || 0,
           discountType: 'none' as const,
           discountAmount: Math.max(0, Number(part.discountAmount) || 0),
+          warrantyValue: warranty?.warrantyValue ?? null,
+          warrantyUnit: warranty?.warrantyUnit ?? null,
           createInventoryMaterial: Boolean(part.isNew) || (!hasCatalogId && Boolean(customName)),
         };
       })
@@ -1198,6 +1310,7 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
         startedAt: startedAt ? startedAt.toISOString() : undefined,
         endedAt: endedAt ? endedAt.toISOString() : undefined,
         notes: value.notes.trim() || undefined,
+        promotion: value.promotion.trim() || undefined,
         manualTotalAmount: value.useManualTotal
           ? Math.max(0, Number(this.form.getRawValue().manualTotalAmount) || 0)
           : null,

@@ -254,6 +254,19 @@
           <input type="text" class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none" formControlName="serviceName" placeholder="e.g. Laptop motherboard repair" />
         </div>
 
+        <div>
+          <label class="mb-2 block text-sm font-semibold text-slate-800">
+            Promotion <span class="font-normal text-slate-400">(optional)</span>
+          </label>
+          <input
+            type="text"
+            class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none"
+            formControlName="promotion"
+            placeholder="e.g. Summer Sale"
+            [readOnly]="isDoneStatus()"
+          />
+        </div>
+
         <div class="sm:col-span-2">
           <label class="mb-2 block text-sm font-semibold text-slate-800">Remarks / Diagnosis</label>
           <textarea rows="4" class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none" formControlName="notes" placeholder="Remarks, diagnosis, issues, or other notes for this job order"></textarea>
@@ -545,6 +558,33 @@
                   <button type="button" class="rounded-xl px-3 py-2 text-sm font-semibold text-red-500 hover:bg-red-50" (click)="removePart(partIndex)">
                     Remove
                   </button>
+                }
+              </div>
+
+              <div class="sm:col-span-full flex flex-wrap items-center gap-3">
+                @if (!isDoneStatus()) {
+                  <label class="inline-flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      class="rounded border-slate-300 text-pcmazing-500 focus:ring-pcmazing-500"
+                      [checked]="partHasWarranty(partIndex)"
+                      (change)="onPartWarrantyCheckboxChange(partIndex, $any($event.target).checked)"
+                    />
+                    <span class="font-semibold">Warranty</span>
+                  </label>
+                  @if (partHasWarranty(partIndex)) {
+                    <button
+                      type="button"
+                      class="text-sm font-semibold text-pcmazing-600 hover:text-pcmazing-700"
+                      (click)="openPartWarrantyPopup(partIndex)"
+                    >
+                      {{ partWarrantyLabel(partIndex) }}
+                    </button>
+                  }
+                } @else if (partHasWarranty(partIndex)) {
+                  <p class="text-sm text-slate-700">
+                    <span class="font-semibold">Warranty:</span> {{ partWarrantyLabel(partIndex) }}
+                  </p>
                 }
               </div>
             </div>
@@ -991,6 +1031,62 @@
           } @else {
             Confirm Settlement & Print
           }
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+@if (warrantyPopupIndex() !== null) {
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" (click)="cancelPartWarrantyPopup()">
+    <div class="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl" (click)="$event.stopPropagation()">
+      <h3 class="text-lg font-bold text-slate-900">Set warranty</h3>
+      <p class="mt-2 text-sm text-slate-500">Choose a preset or enter a custom duration.</p>
+
+      <div class="mt-4 flex flex-wrap gap-2">
+        @for (preset of warrantyPresets; track preset.label) {
+          <button
+            type="button"
+            class="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            (click)="applyPartWarrantyPreset(preset.value, preset.unit)"
+          >
+            {{ preset.label }}
+          </button>
+        }
+      </div>
+
+      <div class="mt-4 grid grid-cols-2 gap-3">
+        <div>
+          <label class="mb-1 block text-xs font-semibold uppercase text-slate-700">Value</label>
+          <input
+            type="number"
+            min="1"
+            step="1"
+            class="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm focus:border-pcmazing-500 focus:outline-none"
+            [value]="warrantyDraftValue()"
+            (input)="warrantyDraftValue.set(Number($any($event.target).value) || 1)"
+          />
+        </div>
+        <div>
+          <label class="mb-1 block text-xs font-semibold uppercase text-slate-700">Unit</label>
+          <select
+            class="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm focus:border-pcmazing-500 focus:outline-none"
+            [value]="warrantyDraftUnit()"
+            (change)="warrantyDraftUnit.set($any($event.target).value)"
+          >
+            @for (unit of warrantyUnits; track unit.value) {
+              <option [value]="unit.value">{{ unit.label }}</option>
+            }
+          </select>
+        </div>
+      </div>
+
+      <div class="mt-6 flex justify-end gap-2">
+        <button type="button" class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50" (click)="cancelPartWarrantyPopup()">
+          Cancel
+        </button>
+        <button type="button" class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600" (click)="savePartWarrantyPopup()">
+          Save
         </button>
       </div>
     </div>
