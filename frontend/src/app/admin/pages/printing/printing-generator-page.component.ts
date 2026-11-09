@@ -92,7 +92,7 @@ export class PrintingGeneratorPageComponent implements OnInit {
   });
 
   readonly contentForm = this.formBuilder.nonNullable.group({
-    showWarrantyPolicy: [true],
+    showWarrantyPolicy: [false],
     warrantyPolicy: [DEFAULT_WARRANTY_POLICY, [Validators.maxLength(8000)]],
     showFooterNote: [true],
     footerNote: [DEFAULT_FOOTER_NOTE, [Validators.maxLength(500)]],
@@ -180,7 +180,7 @@ export class PrintingGeneratorPageComponent implements OnInit {
         printerAutoPrint: settings.printerAutoPrint ?? false,
       });
       this.contentForm.patchValue({
-        showWarrantyPolicy: settings.showWarrantyPolicy !== false,
+        showWarrantyPolicy: settings.showWarrantyPolicy === true,
         warrantyPolicy: settings.warrantyPolicy || DEFAULT_WARRANTY_POLICY,
         showFooterNote: settings.showFooterNote !== false,
         footerNote: settings.footerNote || DEFAULT_FOOTER_NOTE,
