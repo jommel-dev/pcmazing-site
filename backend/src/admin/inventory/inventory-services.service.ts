@@ -12,6 +12,9 @@ import { JOB_ORDER_STATUSES, UpdateServiceStatusDto } from './dto/update-service
 import { deleteServiceImageFile, saveServiceImageFile } from './service-image.util';
 import { ensureJobOrderRefundColumns } from './job-order-refund.schema';
 import { ensureJobOrderManualTotalSchema } from './job-order-manual-total.schema';
+import { ensureJobOrderPartWarrantyColumns } from './item-warranty.schema';
+import { normalizeWarranty, type WarrantyUnit } from './item-warranty.util';
+import { ensureJobOrderPromotionColumn } from './order-promotion.schema';
 
 const JOB_PAYMENT_METHODS = ['Cash', 'Gcash', 'Bank Transfer'] as const;
 type JobPaymentMethod = (typeof JOB_PAYMENT_METHODS)[number];
@@ -68,6 +71,7 @@ export interface InventoryServiceListItem {
   endedAt: string | null;
   durationMinutes: number | null;
   notes?: string | null;
+  promotion?: string | null;
   cancelReason?: string | null;
   refundReason?: string | null;
   refundAmount?: number;
@@ -88,6 +92,8 @@ export interface InventoryServiceListItem {
     labor?: number;
     discountType?: 'none' | 'senior' | 'pwd';
     discountAmount?: number;
+    warrantyValue?: number | null;
+    warrantyUnit?: WarrantyUnit | null;
   }>;
   createdAt: string | null;
   updatedAt: string | null;
@@ -160,6 +166,8 @@ export class InventoryServicesService {
 
     await ensureJobOrderRefundColumns(this.databaseService);
     await ensureJobOrderManualTotalSchema(this.databaseService);
+    await ensureJobOrderPromotionColumn(this.databaseService);
+    await ensureJobOrderPartWarrantyColumns(this.databaseService);
 
     const { page, limit, offset } = buildPagination(pageRaw, limitRaw);
     const listParams: unknown[] = [];
@@ -527,6 +535,8 @@ export class InventoryServicesService {
     }
 
     await ensureJobOrderManualTotalSchema(this.databaseService);
+    await ensureJobOrderPromotionColumn(this.databaseService);
+    await ensureJobOrderPartWarrantyColumns(this.databaseService);
 
     const customerName = dto.customerName?.trim() || '';
     const customerEmail = dto.customerEmail?.trim() || null;
@@ -542,6 +552,7 @@ export class InventoryServicesService {
     const endedAt = dto.endedAt ? new Date(dto.endedAt) : null;
     const manualTotalAmount = this.normalizeManualTotalInput(dto.manualTotalAmount);
     const manualTotalReason = String(dto.manualTotalReason ?? '').trim() || null;
+    const promotion = dto.promotion?.trim() || null;
 
     if (startedAt && Number.isNaN(startedAt.getTime())) {
       throw new BadRequestException('Start date/time is invalid.');
@@ -580,6 +591,7 @@ export class InventoryServicesService {
           payment_method,
           status,
           notes,
+          promotion,
           started_at,
           ended_at,
           device_brand,
@@ -587,7 +599,7 @@ export class InventoryServicesService {
           device_serial,
           manual_total_amount,
           created_by
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
         RETURNING id`,
         [
           customerName,
@@ -606,6 +618,7 @@ export class InventoryServicesService {
           this.normalizePaymentMethod(dto.paymentMethod),
           dto.status?.trim() || 'Pending',
           dto.notes?.trim() || null,
+          promotion,
           startedAt ? startedAt.toISOString() : null,
           endedAt ? endedAt.toISOString() : null,
           deviceBrand,
@@ -632,6 +645,7 @@ export class InventoryServicesService {
       for (const part of dto.parts ?? []) {
         const serviceTypeId = await this.resolveServiceTypeId(client, part);
         const materialId = await this.resolveMaterialId(client, part);
+        const warranty = normalizeWarranty(part.warrantyValue, part.warrantyUnit);
         await client.query(
           `INSERT INTO pcmazing_service_parts (
              service_id,
@@ -643,9 +657,11 @@ export class InventoryServicesService {
              unit_price,
              labor,
              discount_type,
-             discount_amount
+             discount_amount,
+             warranty_value,
+             warranty_unit
            )
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
           [
             serviceId,
             materialId,
@@ -657,6 +673,8 @@ export class InventoryServicesService {
             part.labor ?? 0,
             this.normalizeDiscountType(part.discountType),
             Math.max(0, Number(part.discountAmount) || 0),
+            warranty?.warrantyValue ?? null,
+            warranty?.warrantyUnit ?? null,
           ],
         );
       }
@@ -706,6 +724,8 @@ export class InventoryServicesService {
     }
 
     await ensureJobOrderManualTotalSchema(this.databaseService);
+    await ensureJobOrderPromotionColumn(this.databaseService);
+    await ensureJobOrderPartWarrantyColumns(this.databaseService);
 
     const existing = await this.getById(id);
 
@@ -722,6 +742,7 @@ export class InventoryServicesService {
     const source = dto.personInChargeSource ?? 'tblusers';
     const startedAt = dto.startedAt ? new Date(dto.startedAt) : null;
     const endedAt = dto.endedAt ? new Date(dto.endedAt) : null;
+    const promotion = dto.promotion?.trim() || null;
     const nextManualTotal =
       dto.manualTotalAmount === undefined
         ? (existing.manualTotalAmount ?? null)
@@ -776,14 +797,15 @@ export class InventoryServicesService {
              payment_method = $14,
              status = $15,
              notes = $16,
-             started_at = $17,
-             ended_at = $18,
-             device_brand = $19,
-             device_model = $20,
-             device_serial = $21,
-             manual_total_amount = $22,
+             promotion = $17,
+             started_at = $18,
+             ended_at = $19,
+             device_brand = $20,
+             device_model = $21,
+             device_serial = $22,
+             manual_total_amount = $23,
              updated_at = NOW()
-         WHERE id = $23 AND deleted_at IS NULL`,
+         WHERE id = $24 AND deleted_at IS NULL`,
         [
           customerName,
           customerEmail,
@@ -801,6 +823,7 @@ export class InventoryServicesService {
           this.normalizePaymentMethod(dto.paymentMethod),
           nextStatus,
           dto.notes?.trim() || null,
+          promotion,
           startedAt ? startedAt.toISOString() : null,
           endedAt ? endedAt.toISOString() : null,
           deviceBrand,
@@ -821,6 +844,7 @@ export class InventoryServicesService {
       for (const part of dto.parts ?? []) {
         const serviceTypeId = await this.resolveServiceTypeId(client, part);
         const materialId = await this.resolveMaterialId(client, part);
+        const warranty = normalizeWarranty(part.warrantyValue, part.warrantyUnit);
         await client.query(
           `INSERT INTO pcmazing_service_parts (
              service_id,
@@ -832,9 +856,11 @@ export class InventoryServicesService {
              unit_price,
              labor,
              discount_type,
-             discount_amount
+             discount_amount,
+             warranty_value,
+             warranty_unit
            )
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
           [
             id,
             materialId,
@@ -846,6 +872,8 @@ export class InventoryServicesService {
             part.labor ?? 0,
             this.normalizeDiscountType(part.discountType),
             Math.max(0, Number(part.discountAmount) || 0),
+            warranty?.warrantyValue ?? null,
+            warranty?.warrantyUnit ?? null,
           ],
         );
       }
@@ -1258,6 +1286,8 @@ export class InventoryServicesService {
   async getById(id: number): Promise<InventoryServiceListItem> {
     await ensureJobOrderRefundColumns(this.databaseService);
     await ensureJobOrderManualTotalSchema(this.databaseService);
+    await ensureJobOrderPromotionColumn(this.databaseService);
+    await ensureJobOrderPartWarrantyColumns(this.databaseService);
 
     const result = await this.databaseService.query<{
       id: number;
@@ -1277,6 +1307,7 @@ export class InventoryServicesService {
       labor: string | null;
       status: string | null;
       notes: string | null;
+      promotion: string | null;
       cancel_reason: string | null;
       refund_reason: string | null;
       refund_amount: string | null;
@@ -1312,6 +1343,7 @@ export class InventoryServicesService {
         s.labor::text,
         s.status,
         s.notes,
+        s.promotion,
         s.cancel_reason,
         s.refund_reason,
         s.refund_amount::text,
@@ -1377,6 +1409,8 @@ export class InventoryServicesService {
       labor: string | null;
       discount_type: string | null;
       discount_amount: string | null;
+      warranty_value: string | null;
+      warranty_unit: string | null;
     }>(
       `SELECT
          sp.material_id,
@@ -1405,7 +1439,9 @@ export class InventoryServicesService {
          )::text AS unit_price,
          COALESCE(sp.labor, 0)::text AS labor,
          sp.discount_type,
-         COALESCE(sp.discount_amount, 0)::text AS discount_amount
+         COALESCE(sp.discount_amount, 0)::text AS discount_amount,
+         sp.warranty_value::text,
+         sp.warranty_unit
        FROM pcmazing_service_parts sp
        LEFT JOIN tblmaterials m ON m.id = sp.material_id
        LEFT JOIN tblbrands b ON b.id = m.brand_id
@@ -1461,6 +1497,7 @@ export class InventoryServicesService {
       labor,
       status: row.status ?? 'Active',
       notes: row.notes,
+      promotion: row.promotion?.trim() || null,
       cancelReason: row.cancel_reason?.trim() || null,
       refundReason: row.refund_reason?.trim() || null,
       refundAmount: refundAmount > 0 ? refundAmount : undefined,
@@ -1480,20 +1517,39 @@ export class InventoryServicesService {
       endedAt: row.ended_at,
       durationMinutes: this.computeDurationMinutes(row.started_at, row.ended_at),
       createdAt: row.created_at,
-      parts: partsResult.rows.map((part) => ({
-        materialId: part.material_id ?? undefined,
-        serviceTypeId: part.service_type_id ?? undefined,
-        materialName: part.material_name,
-        materialCode: part.material_code,
-        description: part.material_description,
-        customItemName: part.custom_item_name ?? undefined,
-        brandName: part.brand_name?.trim() || null,
-        quantity: Number(part.quantity ?? 0),
-        unitPrice: Number(part.unit_price ?? 0),
-        labor: Number(part.labor ?? 0),
-        discountType: this.normalizeDiscountType(part.discount_type),
-        discountAmount: Number(part.discount_amount ?? 0),
-      })),
+      parts: partsResult.rows.map((part) => {
+        let warrantyValue: number | null = null;
+        let warrantyUnit: WarrantyUnit | null = null;
+        try {
+          const warranty = normalizeWarranty(
+            part.warranty_value != null && part.warranty_value !== ''
+              ? Number(part.warranty_value)
+              : null,
+            part.warranty_unit,
+          );
+          warrantyValue = warranty?.warrantyValue ?? null;
+          warrantyUnit = warranty?.warrantyUnit ?? null;
+        } catch {
+          warrantyValue = null;
+          warrantyUnit = null;
+        }
+        return {
+          materialId: part.material_id ?? undefined,
+          serviceTypeId: part.service_type_id ?? undefined,
+          materialName: part.material_name,
+          materialCode: part.material_code,
+          description: part.material_description,
+          customItemName: part.custom_item_name ?? undefined,
+          brandName: part.brand_name?.trim() || null,
+          quantity: Number(part.quantity ?? 0),
+          unitPrice: Number(part.unit_price ?? 0),
+          labor: Number(part.labor ?? 0),
+          discountType: this.normalizeDiscountType(part.discount_type),
+          discountAmount: Number(part.discount_amount ?? 0),
+          warrantyValue,
+          warrantyUnit,
+        };
+      }),
       updatedAt: row.updated_at,
       statusHistory: await this.loadStatusHistory(id),
       activity: activity.items,
