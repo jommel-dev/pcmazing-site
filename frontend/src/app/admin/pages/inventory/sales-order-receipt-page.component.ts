@@ -34,6 +34,7 @@ import {
   normalizePhDiscountType,
   PhDiscountType,
 } from './ph-discount.util';
+import { formatWarrantyLabel } from './item-warranty.util';
 
 type ReceiptLine = {
   itemName: string;
@@ -43,6 +44,7 @@ type ReceiptLine = {
   discountType: PhDiscountType;
   extPrice: number;
   discountAmount: number;
+  warrantyLabel: string;
   isCustomDiscount?: boolean;
 };
 
@@ -95,6 +97,11 @@ export class SalesOrderReceiptPageComponent implements OnInit, OnDestroy {
     return String(current.id);
   });
 
+  readonly promotionLabel = computed(() => {
+    const value = String(this.order()?.promotion ?? '').trim();
+    return value ? `Promotion: ${value.toUpperCase()}` : '';
+  });
+
   readonly lines = computed<ReceiptLine[]>(() => {
     const current = this.order();
     if (!current) {
@@ -109,13 +116,14 @@ export class SalesOrderReceiptPageComponent implements OnInit, OnDestroy {
       const amountGross = qty * unitPrice;
       const amountDiscount = applyPhSpecialDiscount(amountGross, discountType);
       rows.push({
-        itemName: item.materialName || item.materialCode || 'Item',
+        itemName: item.customItemName || item.materialName || item.materialCode || 'Item',
         description: String(item.description ?? '').trim(),
         qty,
         unitPrice,
         discountType,
         extPrice: amountGross,
         discountAmount: amountDiscount.discountAmount,
+        warrantyLabel: formatWarrantyLabel(item.warrantyValue, item.warrantyUnit),
       });
     }
 
@@ -129,6 +137,7 @@ export class SalesOrderReceiptPageComponent implements OnInit, OnDestroy {
         discountType: 'none',
         extPrice: 0,
         discountAmount: customDiscount,
+        warrantyLabel: '',
         isCustomDiscount: true,
       });
     }
@@ -191,6 +200,7 @@ export class SalesOrderReceiptPageComponent implements OnInit, OnDestroy {
       customerName: current?.customerName || '',
       customerPhone: current?.customerPhone || '',
       jobNotes: String(current?.notes ?? '').trim(),
+      promotion: this.promotionLabel(),
       discountTotal: `Total Sales Discounts: ${this.formatMoney(this.discountTotal())}`,
       subtotal: `Subtotal  ${this.formatMoney(this.subtotal())}`,
       receiptTotal: `RECEIPT TOTAL  ${this.formatMoney(this.receiptTotal())}`,
@@ -361,14 +371,24 @@ export class SalesOrderReceiptPageComponent implements OnInit, OnDestroy {
   elementStyle(element: PrintLayoutElement): Record<string, string> {
     const width = element.width ?? (element.type === 'line' ? 40 : 30);
     const height = element.height ?? (element.type === 'line' ? 2 : 8);
-    return {
+    const base: Record<string, string> = {
       left: `${element.x}mm`,
       top: `${element.y}mm`,
       width: `${width}mm`,
-      height: `${height}mm`,
       fontSize: `${element.fontSize || 11}pt`,
       fontWeight: element.fontWeight || 'normal',
       textAlign: element.textAlign || 'left',
+    };
+    if (element.type === 'table') {
+      return {
+        ...base,
+        minHeight: `${height}mm`,
+        height: 'auto',
+      };
+    }
+    return {
+      ...base,
+      height: `${height}mm`,
     };
   }
 
@@ -417,6 +437,9 @@ export class SalesOrderReceiptPageComponent implements OnInit, OnDestroy {
       return true;
     }
     if (element.fieldKey === 'jobNotes' && !this.fieldValues()['jobNotes']) {
+      return true;
+    }
+    if (element.fieldKey === 'promotion' && !this.fieldValues()['promotion']) {
       return true;
     }
     if (element.fieldKey === 'customerPhone' && !this.fieldValues()['customerPhone']) {
@@ -495,7 +518,7 @@ export class SalesOrderReceiptPageComponent implements OnInit, OnDestroy {
   }
 
   showWarrantyPolicy(): boolean {
-    return this.printingSettings()?.showWarrantyPolicy !== false;
+    return this.printingSettings()?.showWarrantyPolicy === true;
   }
 
   showFooterNote(): boolean {

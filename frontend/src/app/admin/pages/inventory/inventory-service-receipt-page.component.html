@@ -72,11 +72,15 @@
 
         @if (templateTableElement(); as tableElement) {
           <div class="template-flow-body" [ngStyle]="flowBodyStyle()">
+            @if (promotionLabel()) {
+              <p class="receipt-promotion" [ngStyle]="flowPromotionStyle()">{{ promotionLabel() }}</p>
+            }
             <table class="template-line-items" [ngStyle]="flowTableStyle()">
               <thead>
                 <tr>
                   <th>Item Name</th>
                   <th>Item Description</th>
+                  <th>Warranty</th>
                   <th class="num">Qty</th>
                   <th class="num">Price</th>
                   <th class="num">Discount</th>
@@ -88,6 +92,7 @@
                   <tr>
                     <td>{{ line.itemName }}</td>
                     <td>{{ line.description }}</td>
+                    <td>{{ line.warrantyLabel || '—' }}</td>
                     <td class="num">{{ line.isCustomDiscount ? '—' : (line.qty | number:'1.0-2') }}</td>
                     <td class="num">{{ line.isCustomDiscount ? '—' : formatMoney(line.unitPrice) }}</td>
                     <td class="num">{{ formatDiscount(line) }}</td>
@@ -96,7 +101,7 @@
                 }
                 @if (job.notes) {
                   <tr class="remarks-row">
-                    <td colspan="6">{{ job.notes }}</td>
+                    <td colspan="7">{{ job.notes }}</td>
                   </tr>
                 }
               </tbody>
@@ -216,11 +221,16 @@
           }
         </div>
 
+        @if (promotionLabel()) {
+          <p class="receipt-promotion">{{ promotionLabel() }}</p>
+        }
+
         <table class="receipt-table">
           <thead>
             <tr>
               <th>Item Name</th>
               <th>Item Description</th>
+              <th>Warranty</th>
               <th class="num">Qty</th>
               <th class="num">Price</th>
               <th class="num">Discount</th>
@@ -232,6 +242,7 @@
               <tr>
                 <td>{{ line.itemName }}</td>
                 <td>{{ line.description }}</td>
+                <td>{{ line.warrantyLabel || '—' }}</td>
                 <td class="num">{{ line.isCustomDiscount ? '—' : (line.qty | number:'1.0-2') }}</td>
                 <td class="num">{{ line.isCustomDiscount ? '—' : formatMoney(line.unitPrice) }}</td>
                 <td class="num">{{ formatDiscount(line) }}</td>
@@ -240,7 +251,7 @@
             }
             @if (job.notes) {
               <tr class="remarks-row">
-                <td colspan="6">{{ job.notes }}</td>
+                <td colspan="7">{{ job.notes }}</td>
               </tr>
             }
           </tbody>

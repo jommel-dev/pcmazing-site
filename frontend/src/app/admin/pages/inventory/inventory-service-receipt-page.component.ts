@@ -37,6 +37,7 @@ import {
   normalizePhDiscountType,
   PhDiscountType,
 } from './ph-discount.util';
+import { formatWarrantyLabel } from './item-warranty.util';
 
 type ReceiptLine = {
   itemName: string;
@@ -46,6 +47,7 @@ type ReceiptLine = {
   discountType: PhDiscountType;
   extPrice: number;
   discountAmount: number;
+  warrantyLabel: string;
   isCustomDiscount?: boolean;
 };
 
@@ -143,6 +145,7 @@ export class InventoryServiceReceiptPageComponent implements OnInit, OnDestroy {
           discountType: storedDiscount > 0 ? 'none' : discountType,
           extPrice: amountGross,
           discountAmount: resolveDiscount(amountGross),
+          warrantyLabel: '',
         });
         continue;
       }
@@ -156,6 +159,7 @@ export class InventoryServiceReceiptPageComponent implements OnInit, OnDestroy {
         discountType: storedDiscount > 0 ? 'none' : discountType,
         extPrice: amountGross,
         discountAmount: resolveDiscount(amountGross),
+        warrantyLabel: formatWarrantyLabel(part.warrantyValue, part.warrantyUnit),
       });
 
       if (labor > 0) {
@@ -167,6 +171,7 @@ export class InventoryServiceReceiptPageComponent implements OnInit, OnDestroy {
           discountType: storedDiscount > 0 ? 'none' : discountType,
           extPrice: labor,
           discountAmount: resolveDiscount(labor, storedDiscount > 0),
+          warrantyLabel: '',
         });
       }
     }
@@ -185,6 +190,7 @@ export class InventoryServiceReceiptPageComponent implements OnInit, OnDestroy {
         discountType: normalizePhDiscountType(current.laborDiscountType),
         extPrice: serviceLabor,
         discountAmount: laborDiscount.discountAmount,
+        warrantyLabel: '',
       });
     }
 
@@ -197,6 +203,7 @@ export class InventoryServiceReceiptPageComponent implements OnInit, OnDestroy {
         discountType: 'none',
         extPrice: Number(current.totalSales) || 0,
         discountAmount: 0,
+        warrantyLabel: '',
       });
     }
 
@@ -210,6 +217,7 @@ export class InventoryServiceReceiptPageComponent implements OnInit, OnDestroy {
         discountType: 'none',
         extPrice: 0,
         discountAmount: customDiscount,
+        warrantyLabel: '',
         isCustomDiscount: true,
       });
     }
@@ -241,6 +249,11 @@ export class InventoryServiceReceiptPageComponent implements OnInit, OnDestroy {
       this.item()?.manualTotalAmount != null &&
       Number.isFinite(Number(this.item()?.manualTotalAmount)),
   );
+
+  readonly promotionLabel = computed(() => {
+    const value = String(this.item()?.promotion ?? '').trim();
+    return value ? `Promotion: ${value.toUpperCase()}` : '';
+  });
 
   readonly downpaymentAmount = computed(() => Math.max(0, Number(this.item()?.downpayment) || 0));
 
@@ -353,6 +366,7 @@ readonly activeTemplates = computed(() =>
         ? `Address: ${job.customerAddress.trim()}`
         : '',
       jobNotes: String(job?.notes ?? '').trim(),
+      promotion: this.promotionLabel(),
       discountTotal: `Total Sales Discounts: ${this.formatMoney(this.discountTotal())}`,
       subtotal: `Subtotal  ${this.formatMoney(this.subtotal())}`,
       receiptTotal: `RECEIPT TOTAL  ${this.formatMoney(this.receiptTotal())}`,
@@ -573,6 +587,16 @@ readonly activeTemplates = computed(() =>
     };
   }
 
+  flowPromotionStyle(): Record<string, string> {
+    const table = this.templateTableElement();
+    return {
+      marginLeft: `${table?.x ?? 10}mm`,
+      width: `${table?.width ?? 190}mm`,
+      marginBottom: '2mm',
+      fontSize: '13px',
+    };
+  }
+
   flowFooterStyle(): Record<string, string> {
     const elements = this.templateFooterElements().filter((element) => !this.isHiddenElement(element));
     if (!elements.length) {
@@ -663,6 +687,9 @@ flowFooterElementStyle(element: PrintLayoutElement): Record<string, string> {
       return true;
     }
     if (element.fieldKey === 'customerPhone' && !this.fieldValues()['customerPhone']) {
+      return true;
+    }
+    if (element.fieldKey === 'promotion' && !this.fieldValues()['promotion']) {
       return true;
     }
     if (element.fieldKey === 'customerEmail' && !this.fieldValues()['customerEmail']) {
@@ -787,7 +814,7 @@ flowFooterElementStyle(element: PrintLayoutElement): Record<string, string> {
   }
 
   showWarrantyPolicy(): boolean {
-    return this.printingSettings()?.showWarrantyPolicy !== false;
+    return this.printingSettings()?.showWarrantyPolicy === true;
   }
 
   showFooterNote(): boolean {
