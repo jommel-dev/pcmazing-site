@@ -3,6 +3,7 @@ import { DatePipe, DecimalPipe, NgClass } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
+import { AdminAlertService } from '../../services/admin-alert.service';
 import {
   AdminApiService,
   InventoryServiceFilterOption,
@@ -68,66 +69,18 @@ type ServiceSortKey =
 
 type DatePeriod = 'daily' | 'weekly' | 'monthly' | 'custom';
 
-type ActionToast = {
-  id: number;
-  type: 'success' | 'error';
-  message: string;
-};
-
 const SETTLEMENT_PAYMENT_METHODS = ['Cash', 'Gcash', 'Bank Transfer'] as const;
 
 @Component({
   selector: 'app-inventory-services-page',
   imports: [FormsModule, RouterLink, NgClass, DecimalPipe, DatePipe],
   templateUrl: './inventory-services-page.component.html',
-  styles: [
-    `
-      .job-toast {
-        opacity: 0;
-        transform: translate3d(18px, -10px, 0) scale(0.96);
-        transition:
-          opacity 220ms ease,
-          transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
-      }
-
-      .job-toast.is-visible {
-        opacity: 1;
-        transform: translate3d(0, 0, 0) scale(1);
-      }
-
-      .job-toast.is-leaving {
-        opacity: 0;
-        transform: translate3d(14px, -8px, 0) scale(0.97);
-        transition:
-          opacity 200ms ease,
-          transform 200ms ease;
-      }
-
-      .job-toast-progress {
-        transform-origin: left center;
-        animation: job-toast-progress 3.2s linear forwards;
-      }
-
-      @keyframes job-toast-progress {
-        from {
-          transform: scaleX(1);
-        }
-        to {
-          transform: scaleX(0);
-        }
-      }
-    `,
-  ],
 })
 export class InventoryServicesPageComponent implements OnInit, OnDestroy {
   private readonly adminApi = inject(AdminApiService);
+  private readonly adminAlert = inject(AdminAlertService);
   private readonly router = inject(Router);
-  private toastHideTimer: ReturnType<typeof setTimeout> | null = null;
-  private toastClearTimer: ReturnType<typeof setTimeout> | null = null;
   private searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-  private toastSeq = 0;
-  private readonly toastDurationMs = 3200;
-  private readonly toastExitMs = 220;
   private readonly searchDebounceMs = 300;
 
   readonly loading = signal(true);
@@ -207,9 +160,6 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
   readonly pendingDelete = signal<InventoryServiceItem | null>(null);
   readonly deleting = signal(false);
   readonly statusUpdatingId = signal<number | null>(null);
-  readonly toast = signal<ActionToast | null>(null);
-  readonly toastVisible = signal(false);
-  readonly toastLeaving = signal(false);
   readonly pendingStatusChange = signal<{
     item: InventoryServiceItem;
     nextStatus: string;
@@ -288,46 +238,15 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    this.clearToastTimers();
     this.clearSearchDebounce();
   }
 
   showToast(type: 'success' | 'error', message: string): void {
-    this.clearToastTimers();
-    this.toastLeaving.set(false);
-    this.toastVisible.set(false);
-    this.toast.set({ id: ++this.toastSeq, type, message });
-
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => this.toastVisible.set(true));
-    });
-
-    this.toastHideTimer = setTimeout(() => this.dismissToast(), this.toastDurationMs);
-  }
-
-  dismissToast(): void {
-    if (!this.toast() || this.toastLeaving()) {
+    if (type === 'success') {
+      this.adminAlert.success(message);
       return;
     }
-
-    this.clearToastTimers();
-    this.toastLeaving.set(true);
-    this.toastVisible.set(false);
-    this.toastClearTimer = setTimeout(() => {
-      this.toast.set(null);
-      this.toastLeaving.set(false);
-    }, this.toastExitMs);
-  }
-
-  private clearToastTimers(): void {
-    if (this.toastHideTimer) {
-      clearTimeout(this.toastHideTimer);
-      this.toastHideTimer = null;
-    }
-    if (this.toastClearTimer) {
-      clearTimeout(this.toastClearTimer);
-      this.toastClearTimer = null;
-    }
+    this.adminAlert.error(message);
   }
 
   async loadServices(): Promise<void> {

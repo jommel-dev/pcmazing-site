@@ -488,6 +488,7 @@ export class PayrollService {
       );
     }
     await this.ensureReadyPromise;
+    await this.backfillBypassMissingLocations();
   }
 
   async getSettings(): Promise<PayrollSettings> {
@@ -1730,6 +1731,14 @@ export class PayrollService {
       throw new BadRequestException('Employee is not enabled for payroll.');
     }
 
+    const settings = await this.getSettings();
+    const resolvedLocation = this.resolveBypassWorkLocationType(
+      body.workLocationType,
+      profile.weeklyLocationSchedule,
+      settings.workWeek,
+      workDate,
+    );
+
     const at = body.at?.trim()
       ? new Date(body.at.trim())
       : new Date();
@@ -1746,10 +1755,10 @@ export class PayrollService {
       }
       await this.databaseService.query(
         `INSERT INTO pcmazing_attendance (
-           user_id, user_source, username, work_date
-         ) VALUES ($1, $2, $3, $4::date)
+           user_id, user_source, username, work_date, work_location_type
+         ) VALUES ($1, $2, $3, $4::date, $5)
          ON CONFLICT (user_id, user_source, work_date) DO NOTHING`,
-        [userId, userSource, identity.username, workDate],
+        [userId, userSource, identity.username, workDate, resolvedLocation],
       );
       row = await this.loadAttendanceDayRow(userId, userSource, workDate);
       if (!row) {
@@ -1802,6 +1811,8 @@ export class PayrollService {
       },
     };
     const cols = columnByAction[action];
+    // Always attach a payable location on bypass when missing — otherwise period pay
+    // treats the day as unpaid even though work_date is in the correct week.
     const updated = await this.databaseService.query<{
       id: number;
       time_in: string | null;
@@ -1812,11 +1823,19 @@ export class PayrollService {
            ${cols.selfieCol} = $3,
            ${cols.adminCol} = $4,
            username = $5,
+           work_location_type = COALESCE(work_location_type, $6),
            updated_at = NOW()
        WHERE id = $1
          AND ${cols.timeCol} IS NULL
        RETURNING id, time_in::text AS time_in, time_out::text AS time_out`,
-      [row.id, stamp, profileImageUrl, adminId, identity.username],
+      [
+        row.id,
+        stamp,
+        profileImageUrl,
+        adminId,
+        identity.username,
+        resolvedLocation,
+      ],
     );
 
     const punched = updated.rows[0];
@@ -5815,6 +5834,56 @@ export class PayrollService {
     value?: string | null,
   ): WorkLocationType | null {
     return isWorkLocationType(value) ? value : null;
+  }
+
+  /**
+   * Admin bypass must tag a payable location so the work_date week earns salary.
+   * Prefer explicit office/wfh, else the employee's schedule for that date, else office.
+   */
+  private resolveBypassWorkLocationType(
+    requested: string | null | undefined,
+    schedule: WeeklyLocationSchedule | null | undefined,
+    workWeek: PayrollWorkWeek,
+    workDate: string,
+  ): 'office' | 'wfh' {
+    const picked = String(requested ?? '')
+      .trim()
+      .toLowerCase();
+    if (picked === 'office' || picked === 'wfh') {
+      return picked;
+    }
+    const expected = resolveExpectedLocation(schedule, workWeek, workDate);
+    if (expected === 'office' || expected === 'wfh') {
+      return expected;
+    }
+    return 'office';
+  }
+
+  private bypassLocationBackfillDone = false;
+
+  /** Repair older admin-bypassed days that never got work_location_type (unpaid in period math). */
+  private async backfillBypassMissingLocations(): Promise<void> {
+    if (this.bypassLocationBackfillDone) {
+      return;
+    }
+    this.bypassLocationBackfillDone = true;
+    try {
+      await this.databaseService.query(
+        `UPDATE pcmazing_attendance
+         SET work_location_type = 'office',
+             updated_at = NOW()
+         WHERE work_location_type IS NULL
+           AND time_in IS NOT NULL
+           AND (
+             time_in_bypassed_by_admin_id IS NOT NULL
+             OR time_out_bypassed_by_admin_id IS NOT NULL
+             OR lunch_out_bypassed_by_admin_id IS NOT NULL
+             OR lunch_in_bypassed_by_admin_id IS NOT NULL
+           )`,
+      );
+    } catch {
+      this.bypassLocationBackfillDone = false;
+    }
   }
 
   private toNullableNumber(

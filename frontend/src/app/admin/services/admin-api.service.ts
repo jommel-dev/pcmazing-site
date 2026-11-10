@@ -237,6 +237,7 @@ export interface InventoryServiceItem {
   endedAt: string | null;
   durationMinutes: number | null;
   notes?: string | null;
+  promotion?: string | null;
   cancelReason?: string | null;
   refundReason?: string | null;
   refundAmount?: number;
@@ -259,6 +260,8 @@ export interface InventoryServiceItem {
     labor?: number;
     discountType?: 'none' | 'senior' | 'pwd';
     discountAmount?: number;
+    warrantyValue?: number | null;
+    warrantyUnit?: 'day' | 'week' | 'month' | 'year' | null;
   }>;
   createdAt?: string | null;
   updatedAt: string | null;
@@ -299,6 +302,8 @@ export interface CreateInventoryServicePayload {
     labor?: number;
     discountType?: 'none' | 'senior' | 'pwd';
     discountAmount?: number;
+    warrantyValue?: number | null;
+    warrantyUnit?: 'day' | 'week' | 'month' | 'year' | null;
     createCatalogService?: boolean;
     createInventoryMaterial?: boolean;
   }>;
@@ -310,6 +315,7 @@ export interface CreateInventoryServicePayload {
   paymentMethod?: string;
   status?: string;
   notes?: string;
+  promotion?: string;
   startedAt?: string;
   endedAt?: string;
   manualTotalAmount?: number | null;
@@ -325,15 +331,18 @@ export interface SalesOrderSummary {
 
 export interface SalesOrderItem {
   id: number;
-  materialId: number;
+  materialId: number | null;
   materialName: string | null;
   materialCode: string | null;
+  customItemName?: string | null;
   description: string | null;
   quantity: number;
   refundedQuantity: number;
   refundableQuantity: number;
   unitPrice: number;
   discountType: 'none' | 'senior' | 'pwd';
+  warrantyValue?: number | null;
+  warrantyUnit?: 'day' | 'week' | 'month' | 'year' | null;
 }
 
 export interface SalesOrderListItem {
@@ -342,10 +351,12 @@ export interface SalesOrderListItem {
   customerName: string;
   customerPhone: string | null;
   notes: string | null;
+  promotion?: string | null;
   customDiscount: number;
   subtotal: number;
   discountTotal: number;
   totalAmount: number;
+  manualTotalAmount?: number | null;
   refundAmount: number;
   netTotalAmount: number;
   refundReason: string | null;
@@ -374,13 +385,19 @@ export interface CreateSalesOrderPayload {
   customerName: string;
   customerPhone?: string;
   notes?: string;
+  promotion?: string;
   customDiscount?: number;
+  useManualTotal?: boolean;
+  manualTotalAmount?: number | null;
   saleDate?: string;
   items: Array<{
-    materialId: number;
+    materialId?: number | null;
+    customItemName?: string;
     quantity: number;
     unitPrice?: number;
     discountType?: 'none' | 'senior' | 'pwd';
+    warrantyValue?: number | null;
+    warrantyUnit?: 'day' | 'week' | 'month' | 'year' | null;
   }>;
 }
 
@@ -2791,6 +2808,7 @@ export class AdminApiService {
     workDate: string;
     action: AttendanceBypassAction;
     at?: string | null;
+    workLocationType?: 'office' | 'wfh' | null;
   }) {
     return this.http.post<ItemResponse<PayrollAttendanceItem>>(
       `${APP_CONFIG.apiUrl}/admin/payroll/attendance/bypass`,

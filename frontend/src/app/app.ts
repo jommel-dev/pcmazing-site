@@ -2,6 +2,7 @@ import { Component, DestroyRef, inject, OnInit } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs';
+import { AdminAlertHostComponent } from './admin/components/admin-alert-host/admin-alert-host.component';
 import { AppUpdateService } from './core/services/app-update.service';
 import { PwaInstallService } from './core/services/pwa-install.service';
 import { SeoService } from './website/seo/seo.service';
@@ -9,8 +10,11 @@ import { resolvePageSeo } from './website/seo/website-seo.data';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet],
-  template: '<router-outlet />',
+  imports: [RouterOutlet, AdminAlertHostComponent],
+  template: `
+    <router-outlet />
+    <app-admin-alert-host />
+  `,
 })
 export class App implements OnInit {
   private readonly appUpdate = inject(AppUpdateService);

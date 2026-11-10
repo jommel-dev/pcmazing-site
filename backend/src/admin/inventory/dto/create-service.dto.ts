@@ -77,6 +77,19 @@ class CreateServicePartDto {
   @Min(0)
   @Max(999999999.99)
   discountAmount?: number;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  warrantyValue?: number | null;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsString()
+  @IsIn(['day', 'week', 'month', 'year'])
+  warrantyUnit?: 'day' | 'week' | 'month' | 'year' | null;
 }
 
 export class CreateServiceDto {
@@ -197,6 +210,12 @@ export class CreateServiceDto {
   @IsString()
   @MaxLength(2000)
   notes?: string;
+
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() || undefined : value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(180)
+  promotion?: string;
 
   @IsOptional()
   @IsDateString()

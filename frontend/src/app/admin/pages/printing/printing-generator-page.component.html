@@ -8,13 +8,6 @@
     </div>
   </div>
 
-  @if (error()) {
-    <div class="alert alert-error">{{ error() }}</div>
-  }
-  @if (success()) {
-    <div class="alert alert-success">{{ success() }}</div>
-  }
-
   @if (loading()) {
     <div class="panel loading-panel">Loading printing workspace...</div>
   } @else {
@@ -223,7 +216,7 @@
           <div class="content-block span-2">
             <label class="checkbox-row content-toggle">
               <input type="checkbox" formControlName="showWarrantyPolicy" />
-              <span>Include warranty policy</span>
+              <span>Include warranty terms &amp; condition</span>
             </label>
             <label>
               <span>Warranty policy text</span>

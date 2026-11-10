@@ -187,6 +187,35 @@
   margin: 0;
 }
 
+.receipt-promotion {
+  margin: 0 0 0.45rem;
+  text-align: left;
+  font-weight: 700;
+  font-size: 13px !important;
+  line-height: 1.3;
+  color: #111;
+}
+
+.template-table-stack {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.template-table-stack .receipt-promotion {
+  margin: 0 0 2mm;
+}
+
+.template-print-element .receipt-promotion,
+.template-flow-body .receipt-promotion {
+  position: relative;
+  width: 100%;
+}
+
+.template-print-element[data-type='table'] {
+  overflow: visible;
+}
+
 .receipt-table {
   width: 100%;
   border-collapse: collapse;
