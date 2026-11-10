@@ -49,6 +49,8 @@ type ReceiptLine = {
   discountAmount: number;
   warrantyLabel: string;
   isCustomDiscount?: boolean;
+  /** Catalog/service/labor lines — still show Ext Price under manual total. */
+  isService?: boolean;
 };
 
 const TEMPLATE_STORAGE_KEY = 'pcmazing.receipt.selectedTemplateId';
@@ -146,6 +148,7 @@ export class InventoryServiceReceiptPageComponent implements OnInit, OnDestroy {
           extPrice: amountGross,
           discountAmount: resolveDiscount(amountGross),
           warrantyLabel: '',
+          isService: true,
         });
         continue;
       }
@@ -160,6 +163,7 @@ export class InventoryServiceReceiptPageComponent implements OnInit, OnDestroy {
         extPrice: amountGross,
         discountAmount: resolveDiscount(amountGross),
         warrantyLabel: formatWarrantyLabel(part.warrantyValue, part.warrantyUnit),
+        isService: false,
       });
 
       if (labor > 0) {
@@ -172,6 +176,7 @@ export class InventoryServiceReceiptPageComponent implements OnInit, OnDestroy {
           extPrice: labor,
           discountAmount: resolveDiscount(labor, storedDiscount > 0),
           warrantyLabel: '',
+          isService: true,
         });
       }
     }
@@ -191,6 +196,7 @@ export class InventoryServiceReceiptPageComponent implements OnInit, OnDestroy {
         extPrice: serviceLabor,
         discountAmount: laborDiscount.discountAmount,
         warrantyLabel: '',
+        isService: true,
       });
     }
 
@@ -204,6 +210,7 @@ export class InventoryServiceReceiptPageComponent implements OnInit, OnDestroy {
         extPrice: Number(current.totalSales) || 0,
         discountAmount: 0,
         warrantyLabel: '',
+        isService: true,
       });
     }
 
@@ -225,13 +232,54 @@ export class InventoryServiceReceiptPageComponent implements OnInit, OnDestroy {
     return rows;
   });
 
-  readonly subtotal = computed(() =>
+  readonly linesSubtotal = computed(() =>
     this.lines().reduce((sum, line) => sum + line.extPrice, 0),
   );
+
+  /** Displayed Subtotal — manual jobs show the manual total so part prices stay private. */
+  readonly subtotal = computed(() => {
+    if (this.usesManualTotal()) {
+      return this.receiptTotal();
+    }
+    return this.linesSubtotal();
+  });
 
   readonly discountTotal = computed(() =>
     this.lines().reduce((sum, line) => sum + line.discountAmount, 0),
   );
+
+  /** Hide Price / Ext Price columns when every item line is 0 or empty. */
+  readonly showPriceColumns = computed(() =>
+    this.lines().some(
+      (line) =>
+        !line.isCustomDiscount &&
+        ((Number(line.unitPrice) || 0) > 0 || (Number(line.extPrice) || 0) > 0),
+    ),
+  );
+
+  readonly usesManualTotal = computed(
+    () =>
+      this.item()?.manualTotalAmount != null &&
+      Number.isFinite(Number(this.item()?.manualTotalAmount)),
+  );
+
+  /** Unit Price column — hidden when the job uses a manual receipt total. */
+  readonly showUnitPriceColumn = computed(
+    () => this.showPriceColumns() && !this.usesManualTotal(),
+  );
+
+  readonly showExtPriceColumn = computed(() => this.showPriceColumns());
+
+  readonly lineItemsColspan = computed(() => {
+    let count = 5; // name, description, warranty, qty, discount
+    if (this.showUnitPriceColumn()) {
+      count += 1;
+    }
+    if (this.showExtPriceColumn()) {
+      count += 1;
+    }
+    return count;
+  });
 
   readonly receiptTotal = computed(() => {
     const job = this.item();
@@ -241,14 +289,8 @@ export class InventoryServiceReceiptPageComponent implements OnInit, OnDestroy {
     if (job?.totalSales != null && Number.isFinite(Number(job.totalSales)) && job.manualTotalAmount != null) {
       return Math.max(0, Number(job.totalSales));
     }
-    return Math.max(0, this.subtotal() - this.discountTotal());
+    return Math.max(0, this.linesSubtotal() - this.discountTotal());
   });
-
-  readonly usesManualTotal = computed(
-    () =>
-      this.item()?.manualTotalAmount != null &&
-      Number.isFinite(Number(this.item()?.manualTotalAmount)),
-  );
 
   readonly promotionLabel = computed(() => {
     const value = String(this.item()?.promotion ?? '').trim();
@@ -520,6 +562,17 @@ readonly activeTemplates = computed(() =>
       line.discountType === 'senior' ? 'SC' : line.discountType === 'pwd' ? 'PWD' : '';
     const amount = this.formatMoney(line.discountAmount);
     return label ? `${label} ${amount}` : amount;
+  }
+
+  formatExtPrice(line: ReceiptLine): string {
+    if (line.isCustomDiscount) {
+      return '—';
+    }
+    // Manual total: hide part prices; still show service/labor amounts.
+    if (this.usesManualTotal() && !line.isService) {
+      return '—';
+    }
+    return this.formatMoney(line.extPrice);
   }
 
   templateSheetStyle(): Record<string, string> {

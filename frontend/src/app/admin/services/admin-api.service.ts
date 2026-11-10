@@ -356,6 +356,7 @@ export interface SalesOrderListItem {
   subtotal: number;
   discountTotal: number;
   totalAmount: number;
+  manualTotalAmount?: number | null;
   refundAmount: number;
   netTotalAmount: number;
   refundReason: string | null;
@@ -386,6 +387,8 @@ export interface CreateSalesOrderPayload {
   notes?: string;
   promotion?: string;
   customDiscount?: number;
+  useManualTotal?: boolean;
+  manualTotalAmount?: number | null;
   saleDate?: string;
   items: Array<{
     materialId?: number | null;
@@ -2805,6 +2808,7 @@ export class AdminApiService {
     workDate: string;
     action: AttendanceBypassAction;
     at?: string | null;
+    workLocationType?: 'office' | 'wfh' | null;
   }) {
     return this.http.post<ItemResponse<PayrollAttendanceItem>>(
       `${APP_CONFIG.apiUrl}/admin/payroll/attendance/bypass`,

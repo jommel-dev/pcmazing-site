@@ -8,13 +8,6 @@
     </div>
   </div>
 
-  @if (error()) {
-    <div class="alert alert-error">{{ error() }}</div>
-  }
-  @if (success()) {
-    <div class="alert alert-success">{{ success() }}</div>
-  }
-
   @if (loading()) {
     <div class="panel loading-panel">Loading printing workspace...</div>
   } @else {

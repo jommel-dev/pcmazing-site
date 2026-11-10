@@ -16,6 +16,7 @@ import { ensureSalesOrderItemWarrantyColumns } from './item-warranty.schema';
 import { normalizeWarranty, type WarrantyUnit } from './item-warranty.util';
 import { ensureSalesOrderPromotionColumn } from './order-promotion.schema';
 import { ensureSalesOrderCustomItemsSchema } from './sales-order-custom-items.schema';
+import { ensureSalesOrderManualTotalColumn } from './sales-order-manual-total.schema';
 import { ensureSalesOrderRefundColumns } from './sales-order-refund.schema';
 
 export interface SalesOrderListItem {
@@ -29,6 +30,7 @@ export interface SalesOrderListItem {
   subtotal: number;
   discountTotal: number;
   totalAmount: number;
+  manualTotalAmount?: number | null;
   refundAmount: number;
   netTotalAmount: number;
   refundReason: string | null;
@@ -92,6 +94,7 @@ export class SalesOrdersService {
     await ensureSalesOrderCustomItemsSchema(this.databaseService);
     await ensureSalesOrderPromotionColumn(this.databaseService);
     await ensureSalesOrderItemWarrantyColumns(this.databaseService);
+    await ensureSalesOrderManualTotalColumn(this.databaseService);
 
     const { page, limit, offset } = buildPagination(pageRaw, limitRaw);
     const params: unknown[] = [];
@@ -246,6 +249,7 @@ export class SalesOrdersService {
     await ensureSalesOrderCustomItemsSchema(this.databaseService);
     await ensureSalesOrderPromotionColumn(this.databaseService);
     await ensureSalesOrderItemWarrantyColumns(this.databaseService);
+    await ensureSalesOrderManualTotalColumn(this.databaseService);
 
     const result = await this.databaseService.query<{
       id: number;
@@ -257,6 +261,7 @@ export class SalesOrdersService {
       subtotal: string;
       discount_total: string;
       total_amount: string;
+      manual_total_amount: string | null;
       refund_amount: string;
       refund_reason: string | null;
       refunded_at: string | null;
@@ -279,6 +284,7 @@ export class SalesOrdersService {
         o.subtotal::text,
         o.discount_total::text,
         o.total_amount::text,
+        o.manual_total_amount::text,
         COALESCE(o.refund_amount, 0)::text AS refund_amount,
         o.refund_reason,
         o.refunded_at::text,
@@ -328,6 +334,7 @@ export class SalesOrdersService {
     await ensureSalesOrderCustomItemsSchema(this.databaseService);
     await ensureSalesOrderPromotionColumn(this.databaseService);
     await ensureSalesOrderItemWarrantyColumns(this.databaseService);
+    await ensureSalesOrderManualTotalColumn(this.databaseService);
 
     const customerName = dto.customerName?.trim();
     if (!customerName) {
@@ -346,6 +353,15 @@ export class SalesOrdersService {
 
     const normalizedItems = await this.normalizeItems(items);
     const totals = this.calculateTotals(normalizedItems, dto.customDiscount ?? 0);
+    const useManualTotal = Boolean(dto.useManualTotal);
+    const manualTotalAmount = useManualTotal
+      ? Math.max(0, Number(dto.manualTotalAmount) || 0)
+      : null;
+    if (useManualTotal && !Number.isFinite(Number(dto.manualTotalAmount))) {
+      throw new BadRequestException('Manual total amount is required and must be zero or greater.');
+    }
+    const persistedTotal =
+      manualTotalAmount != null ? manualTotalAmount : totals.totalAmount;
 
     const newId = await this.databaseService.withTransaction(async (client) => {
       await this.assertStockAvailable(
@@ -365,9 +381,10 @@ export class SalesOrdersService {
           subtotal,
           discount_total,
           total_amount,
+          manual_total_amount,
           sale_date,
           created_by
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         RETURNING id`,
         [
           customerName,
@@ -377,7 +394,8 @@ export class SalesOrdersService {
           totals.customDiscount,
           totals.subtotal,
           totals.discountTotal,
-          totals.totalAmount,
+          persistedTotal,
+          manualTotalAmount,
           saleDate.toISOString(),
           createdBy ?? null,
         ],
@@ -930,6 +948,7 @@ export class SalesOrdersService {
     subtotal: string;
     discount_total: string;
     total_amount: string;
+    manual_total_amount?: string | null;
     refund_amount?: string;
     refund_reason?: string | null;
     refunded_at?: string | null;
@@ -942,6 +961,10 @@ export class SalesOrdersService {
   }): SalesOrderListItem {
     const totalAmount = Number(row.total_amount ?? 0);
     const refundAmount = Number(row.refund_amount ?? 0);
+    const manualTotalAmount =
+      row.manual_total_amount !== null && row.manual_total_amount !== undefined
+        ? Number(row.manual_total_amount)
+        : null;
     return {
       id: Number(row.id),
       referenceNo: row.reference_no,
@@ -953,6 +976,9 @@ export class SalesOrdersService {
       subtotal: Number(row.subtotal ?? 0),
       discountTotal: Number(row.discount_total ?? 0),
       totalAmount,
+      manualTotalAmount: Number.isFinite(manualTotalAmount as number)
+        ? (manualTotalAmount as number)
+        : null,
       refundAmount,
       netTotalAmount: Math.max(0, totalAmount - refundAmount),
       refundReason: row.refund_reason ?? null,

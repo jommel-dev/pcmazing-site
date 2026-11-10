@@ -354,7 +354,7 @@
                         (change)="toggleRefundItem(line.id, $any($event.target).checked)"
                       />
                         <span>
-                          <span class="font-medium text-slate-800">{{ line.materialName || line.materialCode || 'Item' }}</span>
+                          <span class="font-medium text-slate-800">{{ line.customItemName || line.materialName || line.materialCode || 'Item' }}</span>
                           @if (line.materialCode) {
                             <span class="block text-xs text-slate-500">{{ line.materialCode }}</span>
                           }

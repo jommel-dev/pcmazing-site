@@ -1,12 +1,14 @@
 import { DecimalPipe, DatePipe } from '@angular/common';
 import { Component, computed, inject, OnInit, signal } from '@angular/core';
-import { FormArray, FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormArray, FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
+import { AdminAlertService } from '../../services/admin-alert.service';
 import {
   AdminApiService,
   CreateSalesOrderPayload,
   MaterialItem,
+  PartsPriceHit,
   SalesOrderDetail,
 } from '../../services/admin-api.service';
 import {
@@ -31,15 +33,16 @@ const DISCOUNT_OPTIONS: Array<{ value: PhDiscountType; label: string }> = [
 
 @Component({
   selector: 'app-sales-order-create-page',
-  imports: [ReactiveFormsModule, RouterLink, DecimalPipe, DatePipe],
+  imports: [FormsModule, ReactiveFormsModule, RouterLink, DecimalPipe, DatePipe],
   templateUrl: './sales-order-create-page.component.html',
 })
 export class SalesOrderCreatePageComponent implements OnInit {
   private readonly adminApi = inject(AdminApiService);
+  private readonly adminAlert = inject(AdminAlertService);
   private readonly formBuilder = inject(FormBuilder);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
-  private materialSearchTimers = new Map<number, ReturnType<typeof setTimeout>>();
+  private materialSearchTimer: ReturnType<typeof setTimeout> | null = null;
   private partSearchCloseTimer: ReturnType<typeof setTimeout> | null = null;
 
   readonly discountOptions = DISCOUNT_OPTIONS;
@@ -54,21 +57,24 @@ export class SalesOrderCreatePageComponent implements OnInit {
   readonly saving = signal(false);
   readonly voiding = signal(false);
   readonly error = signal('');
-  readonly formError = signal('');
-  readonly formSuccess = signal('');
   readonly materials = signal<MaterialItem[]>([]);
-  readonly partQueries = signal<string[]>([]);
-  readonly materialSearchResults = signal<Record<number, MaterialItem[]>>({});
-  readonly openPartSearchIndex = signal<number | null>(null);
+  readonly partQuery = signal('');
+  readonly materialSearchResults = signal<MaterialItem[]>([]);
+  readonly openPartSearch = signal(false);
   readonly partSearchLoading = signal(false);
+  readonly webSearchResults = signal<PartsPriceHit[]>([]);
+  readonly webSearchErrors = signal<string[]>([]);
+  readonly webSearchLoading = signal(false);
   readonly orderId = signal<number | null>(null);
   readonly order = signal<SalesOrderDetail | null>(null);
   readonly pendingVoid = signal(false);
   readonly referenceNo = signal<string | null>(null);
   readonly warrantyPopupIndex = signal<number | null>(null);
+  readonly warrantyPopupMode = signal<'single' | 'bulk'>('single');
   readonly warrantyDraftValue = signal(1);
-  readonly warrantyDraftUnit = signal<WarrantyUnit>('year');
+  readonly warrantyDraftUnit = signal<WarrantyUnit>('day');
   readonly warrantyPopupHadPrior = signal(false);
+  readonly warrantySelectedIndices = signal<Set<number>>(new Set());
 
   readonly isViewMode = computed(() => this.orderId() !== null);
   readonly isVoided = computed(() => !!this.order()?.isVoid);
@@ -87,6 +93,8 @@ export class SalesOrderCreatePageComponent implements OnInit {
     notes: ['', [Validators.maxLength(2000)]],
     promotion: ['', [Validators.maxLength(180)]],
     customDiscount: [0, [Validators.min(0)]],
+    useManualTotal: [false],
+    manualTotalAmount: [0 as number, [Validators.min(0)]],
     saleDate: [this.toLocalDateTimeInputValue(new Date())],
     items: this.formBuilder.array([]),
   });
@@ -117,8 +125,6 @@ export class SalesOrderCreatePageComponent implements OnInit {
 
       if (orderResponse?.data) {
         this.populateFromOrder(normalizeSalesOrderDetail(orderResponse.data));
-      } else {
-        this.addItem();
       }
     } catch {
       this.error.set('Unable to load sales order form.');
@@ -139,44 +145,73 @@ export class SalesOrderCreatePageComponent implements OnInit {
       saleDate: order.saleDate ? this.toLocalDateTimeInputValue(new Date(order.saleDate)) : '',
     });
     this.itemsArray.clear();
-    this.partQueries.set([]);
+    this.warrantySelectedIndices.set(new Set());
     for (const item of order.items) {
       const isCustom = item.materialId == null || Number(item.materialId) <= 0;
-      this.itemsArray.push(
-        this.formBuilder.nonNullable.group({
-          materialId: [isCustom ? '' : String(item.materialId)],
-          customItemName: [item.customItemName || (isCustom ? item.materialName || '' : '')],
-          quantity: [item.quantity, [Validators.required, Validators.min(0.01)]],
-          unitPrice: [item.unitPrice, [Validators.required, Validators.min(0)]],
-          discountType: [normalizePhDiscountType(item.discountType)],
-          warrantyValue: [item.warrantyValue ?? null],
-          warrantyUnit: [item.warrantyUnit ?? ''],
-        }),
-      );
-      this.partQueries.update((queries) => [
-        ...queries,
-        item.customItemName || item.materialName || '',
-      ]);
+      this.pushItemRow({
+        materialId: isCustom ? '' : String(item.materialId),
+        customItemName: item.customItemName || (isCustom ? item.materialName || '' : ''),
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        discountType: normalizePhDiscountType(item.discountType),
+        warrantyValue: item.warrantyValue ?? null,
+        warrantyUnit: (item.warrantyUnit as WarrantyUnit | '') ?? '',
+      });
     }
     this.form.disable();
   }
 
-  addItem(): void {
-    if (this.isViewMode()) {
-      return;
-    }
+  private pushItemRow(options: {
+    materialId?: string;
+    customItemName?: string;
+    quantity?: number;
+    unitPrice?: number;
+    discountType?: PhDiscountType;
+    warrantyValue?: number | null;
+    warrantyUnit?: WarrantyUnit | '';
+  }): void {
     this.itemsArray.push(
       this.formBuilder.nonNullable.group({
-        materialId: [''],
-        customItemName: [''],
-        quantity: [1, [Validators.required, Validators.min(0.01)]],
-        unitPrice: [0, [Validators.required, Validators.min(0)]],
-        discountType: ['none' as PhDiscountType],
-        warrantyValue: [null as number | null],
-        warrantyUnit: ['' as WarrantyUnit | ''],
+        materialId: [options.materialId ?? ''],
+        customItemName: [options.customItemName ?? ''],
+        quantity: [options.quantity ?? 1, [Validators.required, Validators.min(0.01)]],
+        unitPrice: [options.unitPrice ?? 0, [Validators.required, Validators.min(0)]],
+        discountType: [(options.discountType ?? 'none') as PhDiscountType],
+        warrantyValue: [options.warrantyValue ?? null],
+        warrantyUnit: [(options.warrantyUnit ?? '') as WarrantyUnit | ''],
       }),
     );
-    this.partQueries.update((queries) => [...queries, '']);
+  }
+
+  itemDisplayName(index: number): string {
+    const group = this.itemsArray.at(index);
+    if (!group) {
+      return '';
+    }
+    const { materialId, customItemName } = group.getRawValue() as {
+      materialId: string;
+      customItemName?: string;
+    };
+    if (customItemName?.trim()) {
+      return customItemName.trim();
+    }
+    if (materialId) {
+      const fromOrder = this.order()?.items?.[index]?.materialName;
+      return fromOrder || this.materialName(materialId) || 'Unknown item';
+    }
+    return '';
+  }
+
+  isCustomItem(index: number): boolean {
+    const group = this.itemsArray.at(index);
+    if (!group) {
+      return false;
+    }
+    const { materialId, customItemName } = group.getRawValue() as {
+      materialId: string;
+      customItemName?: string;
+    };
+    return !materialId && !!customItemName?.trim();
   }
 
   itemWarrantyLabel(index: number): string {
@@ -191,18 +226,63 @@ export class SalesOrderCreatePageComponent implements OnInit {
     return !!this.itemWarrantyLabel(index);
   }
 
-  onWarrantyCheckboxChange(index: number, checked: boolean): void {
+  isItemWarrantySelected(index: number): boolean {
+    return this.warrantySelectedIndices().has(index);
+  }
+
+  toggleItemWarrantySelect(index: number): void {
     if (this.isViewMode()) {
       return;
     }
-    if (!checked) {
-      this.clearItemWarranty(index);
-      if (this.warrantyPopupIndex() === index) {
-        this.warrantyPopupIndex.set(null);
-      }
+    const next = new Set(this.warrantySelectedIndices());
+    if (next.has(index)) {
+      next.delete(index);
+    } else {
+      next.add(index);
+    }
+    this.warrantySelectedIndices.set(next);
+  }
+
+  toggleSelectAllItemWarranties(): void {
+    if (this.isViewMode()) {
       return;
     }
-    this.openWarrantyPopup(index);
+    if (this.allItemWarrantiesSelected()) {
+      this.warrantySelectedIndices.set(new Set());
+      return;
+    }
+    this.warrantySelectedIndices.set(new Set(this.itemsArray.controls.map((_, i) => i)));
+  }
+
+  allItemWarrantiesSelected(): boolean {
+    const n = this.itemsArray.length;
+    return n > 0 && this.warrantySelectedIndices().size === n;
+  }
+
+  itemWarrantySelectedCount(): number {
+    return this.warrantySelectedIndices().size;
+  }
+
+  private remapWarrantySelectionAfterRemove(removedIndex: number): void {
+    const next = new Set<number>();
+    for (const index of this.warrantySelectedIndices()) {
+      if (index === removedIndex) {
+        continue;
+      }
+      next.add(index > removedIndex ? index - 1 : index);
+    }
+    this.warrantySelectedIndices.set(next);
+  }
+
+  openBulkWarrantyPopup(): void {
+    if (this.isViewMode() || this.itemWarrantySelectedCount() < 1) {
+      return;
+    }
+    this.warrantyPopupMode.set('bulk');
+    this.warrantyPopupHadPrior.set(true);
+    this.warrantyDraftValue.set(1);
+    this.warrantyDraftUnit.set('day');
+    this.warrantyPopupIndex.set(-1);
   }
 
   openWarrantyPopup(index: number): void {
@@ -214,9 +294,10 @@ export class SalesOrderCreatePageComponent implements OnInit {
       warrantyUnit?: string | null;
     };
     const existing = normalizeWarrantyInput(raw?.warrantyValue, raw?.warrantyUnit);
+    this.warrantyPopupMode.set('single');
     this.warrantyPopupHadPrior.set(!!existing);
     this.warrantyDraftValue.set(existing?.warrantyValue ?? 1);
-    this.warrantyDraftUnit.set(existing?.warrantyUnit ?? 'year');
+    this.warrantyDraftUnit.set(existing?.warrantyUnit ?? 'day');
     this.warrantyPopupIndex.set(index);
   }
 
@@ -225,28 +306,54 @@ export class SalesOrderCreatePageComponent implements OnInit {
     this.warrantyDraftUnit.set(unit);
   }
 
+  onWarrantyDraftValueInput(event: Event): void {
+    const raw = Number((event.target as HTMLInputElement).value);
+    this.warrantyDraftValue.set(Number.isFinite(raw) && raw >= 1 ? Math.floor(raw) : 1);
+  }
+
+  onWarrantyDraftUnitChange(event: Event): void {
+    const value = String((event.target as HTMLSelectElement).value) as WarrantyUnit;
+    this.warrantyDraftUnit.set(value);
+  }
+
   saveWarrantyPopup(): void {
-    const index = this.warrantyPopupIndex();
-    if (index == null) {
+    if (this.warrantyPopupIndex() == null) {
       return;
     }
     const normalized = normalizeWarrantyInput(this.warrantyDraftValue(), this.warrantyDraftUnit());
     if (!normalized) {
-      this.formError.set('Enter a warranty of at least 1 day, week, month, or year.');
+      this.adminAlert.error('Enter a warranty of at least 1 day, week, month, or year.');
       return;
     }
-    const group = this.itemsArray.at(index);
-    group?.patchValue({
-      warrantyValue: normalized.warrantyValue,
-      warrantyUnit: normalized.warrantyUnit,
-    });
+    if (this.warrantyPopupMode() === 'bulk') {
+      for (const index of this.warrantySelectedIndices()) {
+        this.itemsArray.at(index)?.patchValue({
+          warrantyValue: normalized.warrantyValue,
+          warrantyUnit: normalized.warrantyUnit,
+        });
+      }
+      this.warrantySelectedIndices.set(new Set());
+    } else {
+      const index = this.warrantyPopupIndex();
+      if (index == null || index < 0) {
+        return;
+      }
+      this.itemsArray.at(index)?.patchValue({
+        warrantyValue: normalized.warrantyValue,
+        warrantyUnit: normalized.warrantyUnit,
+      });
+    }
     this.warrantyPopupIndex.set(null);
-    this.formError.set('');
+    this.adminAlert.close();
   }
 
   cancelWarrantyPopup(): void {
     const index = this.warrantyPopupIndex();
     if (index == null) {
+      return;
+    }
+    if (this.warrantyPopupMode() === 'bulk') {
+      this.warrantyPopupIndex.set(null);
       return;
     }
     if (!this.warrantyPopupHadPrior()) {
@@ -267,26 +374,15 @@ export class SalesOrderCreatePageComponent implements OnInit {
       return;
     }
     this.itemsArray.removeAt(index);
-    this.partQueries.update((queries) => queries.filter((_, itemIndex) => itemIndex !== index));
-    this.materialSearchResults.update((current) => {
-      const next: Record<number, MaterialItem[]> = {};
-      for (const [key, value] of Object.entries(current)) {
-        const itemIndex = Number(key);
-        if (itemIndex < index) {
-          next[itemIndex] = value;
-        } else if (itemIndex > index) {
-          next[itemIndex - 1] = value;
-        }
-      }
-      return next;
-    });
+    this.remapWarrantySelectionAfterRemove(index);
+    if (this.warrantyPopupIndex() === index) {
+      this.warrantyPopupIndex.set(null);
+    } else if (this.warrantyPopupIndex() != null && (this.warrantyPopupIndex() as number) > index) {
+      this.warrantyPopupIndex.set((this.warrantyPopupIndex() as number) - 1);
+    }
   }
 
-  partQuery(index: number): string {
-    return this.partQueries()[index] ?? '';
-  }
-
-  openPartSearch(index: number): void {
+  openPartLookup(): void {
     if (this.isViewMode()) {
       return;
     }
@@ -294,8 +390,9 @@ export class SalesOrderCreatePageComponent implements OnInit {
       clearTimeout(this.partSearchCloseTimer);
       this.partSearchCloseTimer = null;
     }
-    this.openPartSearchIndex.set(index);
-    void this.searchMaterialsForPart(index, this.partQuery(index));
+    this.openPartSearch.set(true);
+    void this.searchMaterials(this.partQuery());
+    void this.searchWebParts(this.partQuery());
   }
 
   scheduleClosePartSearch(): void {
@@ -303,184 +400,225 @@ export class SalesOrderCreatePageComponent implements OnInit {
       clearTimeout(this.partSearchCloseTimer);
     }
     this.partSearchCloseTimer = setTimeout(() => {
-      this.openPartSearchIndex.set(null);
+      this.openPartSearch.set(false);
       this.partSearchCloseTimer = null;
     }, 150);
   }
 
-  onPartQueryInput(index: number, value: string): void {
+  onPartQueryInput(value: string): void {
     if (this.isViewMode()) {
       return;
     }
-    this.partQueries.update((items) => {
-      const next = [...items];
-      next[index] = value;
-      return next;
-    });
-
-    const group = this.itemsArray.at(index);
-    if (group) {
-      const { materialId, customItemName } = group.getRawValue() as {
-        materialId: string;
-        customItemName?: string;
-      };
-      if (materialId) {
-        const selectedName = this.materialName(materialId);
-        if (value.trim() !== selectedName) {
-          group.patchValue(
-            { materialId: '', customItemName: '', unitPrice: 0 },
-            { emitEvent: false },
-          );
-        }
-      } else if (customItemName && value.trim() !== String(customItemName).trim()) {
-        group.patchValue({ customItemName: '' }, { emitEvent: false });
-      }
-    }
-
-    this.openPartSearchIndex.set(index);
-    this.scheduleMaterialSearch(index, value);
+    this.partQuery.set(value);
+    this.openPartSearch.set(true);
+    this.scheduleMaterialSearch(value);
   }
 
-  onPartSearchKeydown(event: Event, index: number): void {
+  onPartSearchKeydown(event: Event): void {
     const keyboard = event as KeyboardEvent;
     if (keyboard.key !== 'Enter') {
       return;
     }
     keyboard.preventDefault();
-    this.useCustomItem(index);
+    this.addTypedCustomItem();
   }
 
-  canUseCustomItem(index: number): boolean {
-    const name = this.partQuery(index).trim();
-    if (!name) {
-      return false;
+  private scheduleMaterialSearch(value: string): void {
+    if (this.materialSearchTimer) {
+      clearTimeout(this.materialSearchTimer);
     }
-    const group = this.itemsArray.at(index);
-    if (!group) {
-      return false;
-    }
-    const { materialId, customItemName } = group.getRawValue() as {
-      materialId: string;
-      customItemName?: string;
-    };
-    if (materialId && this.materialName(materialId) === name) {
-      return false;
-    }
-    if (customItemName && String(customItemName).trim() === name) {
-      return false;
-    }
-    return true;
-  }
-
-  useCustomItem(index: number): void {
-    if (this.isViewMode() || !this.canUseCustomItem(index)) {
-      return;
-    }
-    const name = this.partQuery(index).trim();
-    const group = this.itemsArray.at(index);
-    if (!group || !name) {
-      return;
-    }
-    if (this.partSearchCloseTimer) {
-      clearTimeout(this.partSearchCloseTimer);
-      this.partSearchCloseTimer = null;
-    }
-    group.patchValue(
-      {
-        materialId: '',
-        customItemName: name,
-      },
-      { emitEvent: false },
-    );
-    this.openPartSearchIndex.set(null);
-  }
-
-  private scheduleMaterialSearch(index: number, value: string): void {
-    const existing = this.materialSearchTimers.get(index);
-    if (existing) {
-      clearTimeout(existing);
-    }
-    const timer = setTimeout(() => {
-      void this.searchMaterialsForPart(index, value);
+    this.materialSearchTimer = setTimeout(() => {
+      void this.searchMaterials(value);
+      void this.searchWebParts(value);
     }, 250);
-    this.materialSearchTimers.set(index, timer);
   }
 
-  private async searchMaterialsForPart(index: number, value: string): Promise<void> {
+  private async searchMaterials(value: string): Promise<void> {
     this.partSearchLoading.set(true);
     try {
       const response = await firstValueFrom(this.adminApi.listMaterials(1, 100, value.trim()));
       const results = response.data.map((item) => this.normalizeMaterial(item));
       this.upsertMaterials(results);
-      this.materialSearchResults.update((current) => ({ ...current, [index]: results }));
+      this.materialSearchResults.set(results);
+    } catch {
+      // Keep existing materials if search fails.
     } finally {
       this.partSearchLoading.set(false);
     }
   }
 
-  selectPartMaterial(index: number, item: MaterialItem): void {
+  private async searchWebParts(value: string): Promise<void> {
+    const query = value.trim();
+    if (query.length < 3) {
+      this.webSearchResults.set([]);
+      this.webSearchErrors.set([]);
+      return;
+    }
+    this.webSearchLoading.set(true);
+    try {
+      const response = await firstValueFrom(this.adminApi.searchPartsPrices(query, { limit: 8 }));
+      this.webSearchResults.set(response.data.items ?? []);
+      this.webSearchErrors.set(
+        (response.data.sourceErrors ?? []).map((error) => `${error.sourceLabel}: ${error.message}`),
+      );
+    } catch {
+      this.webSearchResults.set([]);
+      this.webSearchErrors.set(['Unable to search connected stores right now.']);
+    } finally {
+      this.webSearchLoading.set(false);
+    }
+  }
+
+  addItemFromCatalog(item: MaterialItem): void {
+    if (this.isViewMode() || !this.isMaterialSelectable(item)) {
+      return;
+    }
+    if (this.selectedMaterialIds().has(Number(item.id))) {
+      this.clearPartSearch();
+      return;
+    }
+    this.pushItemRow({
+      materialId: String(item.id),
+      customItemName: '',
+      quantity: 1,
+      unitPrice: this.resolveMaterialUnitPrice(item),
+    });
+    this.clearPartSearch();
+  }
+
+  addTypedCustomItem(): void {
     if (this.isViewMode()) {
       return;
     }
-    if (!this.isMaterialSelectable(item)) {
+    const name = this.partQuery().trim();
+    if (!name) {
       return;
     }
-    const group = this.itemsArray.at(index);
-    if (!group) {
+    if (this.canCreateNewItem()) {
+      this.pushItemRow({
+        materialId: '',
+        customItemName: name,
+        quantity: 1,
+        unitPrice: 0,
+      });
+      this.clearPartSearch();
       return;
     }
-    if (this.partSearchCloseTimer) {
-      clearTimeout(this.partSearchCloseTimer);
-      this.partSearchCloseTimer = null;
+    const exact = this.exactMaterialMatch();
+    if (exact) {
+      this.addItemFromCatalog(exact);
     }
-    group.patchValue(
-      {
-        materialId: String(item.id),
-        customItemName: '',
-        unitPrice: this.resolveMaterialUnitPrice(item),
-      },
-      { emitEvent: false },
-    );
-    this.partQueries.update((items) => {
-      const next = [...items];
-      next[index] = item.materialName;
-      return next;
-    });
-    this.openPartSearchIndex.set(null);
   }
 
-  onPartSuggestionPointerDown(event: Event, index: number, item: MaterialItem): void {
+  selectWebPart(hit: PartsPriceHit): void {
+    if (this.isViewMode()) {
+      return;
+    }
+    const name = hit.title.trim().slice(0, 180);
+    if (!name) {
+      return;
+    }
+    this.pushItemRow({
+      materialId: '',
+      customItemName: name,
+      quantity: 1,
+      unitPrice: Number(hit.pricePhp) || 0,
+    });
+    this.clearPartSearch();
+  }
+
+  onWebPartSuggestionPointerDown(event: Event, hit: PartsPriceHit): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.selectWebPart(hit);
+  }
+
+  onPartSuggestionPointerDown(event: Event, item: MaterialItem): void {
     if (!this.isMaterialSelectable(item)) {
       return;
     }
     event.preventDefault();
     event.stopPropagation();
-    this.selectPartMaterial(index, item);
+    this.addItemFromCatalog(item);
+  }
+
+  private clearPartSearch(): void {
+    if (this.partSearchCloseTimer) {
+      clearTimeout(this.partSearchCloseTimer);
+      this.partSearchCloseTimer = null;
+    }
+    this.partQuery.set('');
+    this.openPartSearch.set(false);
+    this.webSearchResults.set([]);
+    this.webSearchErrors.set([]);
+  }
+
+  canCreateNewItem(): boolean {
+    const name = this.partQuery().trim();
+    if (!name) {
+      return false;
+    }
+    if (this.selectedItemNames().has(name.toLowerCase())) {
+      return false;
+    }
+    const exact = this.materials().find(
+      (item) => item.materialName.toLowerCase() === name.toLowerCase(),
+    );
+    if (!exact) {
+      return true;
+    }
+    if (this.selectedMaterialIds().has(Number(exact.id))) {
+      return false;
+    }
+    return !this.isMaterialSelectable(exact);
+  }
+
+  exactMaterialMatch(): MaterialItem | null {
+    const name = this.partQuery().trim().toLowerCase();
+    if (!name) {
+      return null;
+    }
+    const selectedIds = this.selectedMaterialIds();
+    return (
+      this.materials().find(
+        (item) =>
+          item.materialName.toLowerCase() === name &&
+          !selectedIds.has(Number(item.id)) &&
+          this.isMaterialSelectable(item),
+      ) ?? null
+    );
+  }
+
+  isNonInventoryMaterial(item: MaterialItem): boolean {
+    const type = String(item.productTypeName ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/[_-]+/g, ' ');
+    return type === 'non inventory' || type === 'noninventory';
   }
 
   isMaterialSelectable(item: MaterialItem): boolean {
+    if (this.isNonInventoryMaterial(item)) {
+      return true;
+    }
     return isMaterialInStock(item);
   }
 
-  filteredMaterials(index: number): MaterialItem[] {
-    const query = this.partQuery(index).trim().toLowerCase();
-    const currentId = Number((this.itemsArray.at(index)?.getRawValue() as { materialId: string })?.materialId);
-    const selectedIds = this.selectedMaterialIds(index);
-    const searched = this.materialSearchResults()[index];
-    const source =
-      searched ??
-      this.materials().filter(
-        (item) =>
-          Number(item.id) === currentId ||
-          !query ||
-          item.materialName.toLowerCase().includes(query) ||
-          (item.materialCode ?? '').toLowerCase().includes(query),
-      );
+  materialStockQty(item: MaterialItem): number {
+    return stockQty(item);
+  }
 
+  filteredMaterials(): MaterialItem[] {
+    const query = this.partQuery().trim().toLowerCase();
+    const selectedIds = this.selectedMaterialIds();
+    const selectedNames = this.selectedItemNames();
+    const source = this.materialSearchResults().length ? this.materialSearchResults() : this.materials();
     return source
       .filter((item) => {
-        const id = Number(item.id);
-        if (selectedIds.has(id)) {
+        if (selectedIds.has(Number(item.id))) {
+          return false;
+        }
+        if (selectedNames.has(item.materialName.toLowerCase())) {
           return false;
         }
         if (!query) {
@@ -495,15 +633,19 @@ export class SalesOrderCreatePageComponent implements OnInit {
       .slice(0, 25);
   }
 
-  private selectedMaterialIds(exceptIndex: number): Set<number> {
+  selectedMaterialIds(): Set<number> {
     return new Set(
       this.itemsArray.controls
-        .map((control, controlIndex) =>
-          controlIndex === exceptIndex
-            ? null
-            : Number((control.getRawValue() as { materialId: string }).materialId),
-        )
-        .filter((id): id is number => typeof id === 'number' && Number.isFinite(id) && id > 0),
+        .map((control) => Number((control.getRawValue() as { materialId: string }).materialId))
+        .filter((id) => Number.isFinite(id) && id > 0),
+    );
+  }
+
+  selectedItemNames(): Set<string> {
+    return new Set(
+      this.itemsArray.controls
+        .map((_, index) => this.itemDisplayName(index).trim().toLowerCase())
+        .filter((name) => !!name),
     );
   }
 
@@ -554,11 +696,27 @@ export class SalesOrderCreatePageComponent implements OnInit {
     return Math.max(0, Number(this.form.controls.customDiscount.value) || 0);
   }
 
+  calculatedCustomerPayment(): number {
+    return Math.max(0, this.itemsNetSubtotal() - this.customDiscountAmount());
+  }
+
+  onUseManualTotalModelChange(checked: boolean): void {
+    this.form.controls.useManualTotal.setValue(Boolean(checked), { emitEvent: false });
+    if (checked && !Number(this.form.controls.manualTotalAmount.value)) {
+      this.form.controls.manualTotalAmount.setValue(this.calculatedCustomerPayment(), {
+        emitEvent: false,
+      });
+    }
+  }
+
   totalCustomerPayment(): number {
     if (this.isViewMode()) {
       return this.order()?.totalAmount ?? 0;
     }
-    return Math.max(0, this.itemsNetSubtotal() - this.customDiscountAmount());
+    if (this.form.controls.useManualTotal.value) {
+      return Math.max(0, Number(this.form.getRawValue().manualTotalAmount) || 0);
+    }
+    return this.calculatedCustomerPayment();
   }
 
   discountLabel(value: string | null | undefined): string {
@@ -605,40 +763,39 @@ export class SalesOrderCreatePageComponent implements OnInit {
       return;
     }
 
-    this.formError.set('');
-    this.formSuccess.set('');
-
-    // Commit any typed custom names that were not explicitly selected.
-    this.itemsArray.controls.forEach((_, index) => {
-      if (this.canUseCustomItem(index)) {
-        this.useCustomItem(index);
-      }
-    });
+    this.adminAlert.close();
 
     if (this.form.invalid) {
       this.form.markAllAsTouched();
-      this.formError.set('Please complete the required fields.');
+      this.adminAlert.error('Please complete the required fields.');
       return;
     }
 
     if (this.itemsArray.length === 0) {
-      this.formError.set('Add at least one item.');
+      this.adminAlert.error('Add at least one item.');
       return;
     }
 
-    const invalidItemIndex = this.itemsArray.controls.findIndex((control, index) => {
+    if (this.form.controls.useManualTotal.value) {
+      const manual = Number(this.form.getRawValue().manualTotalAmount);
+      if (!Number.isFinite(manual) || manual < 0) {
+        this.adminAlert.error('Manual total amount is required and must be zero or greater.');
+        return;
+      }
+    }
+
+    const invalidItemIndex = this.itemsArray.controls.findIndex((control) => {
       const item = control.getRawValue() as {
         materialId: string;
         customItemName?: string;
       };
       const materialId = Number(item.materialId);
       const hasMaterial = Number.isFinite(materialId) && materialId > 0;
-      const customName =
-        String(item.customItemName ?? '').trim() || this.partQuery(index).trim();
+      const customName = String(item.customItemName ?? '').trim();
       return !hasMaterial && !customName;
     });
     if (invalidItemIndex >= 0) {
-      this.formError.set(
+      this.adminAlert.error(
         `Select an inventory item or enter a custom item name for row ${invalidItemIndex + 1}.`,
       );
       return;
@@ -651,8 +808,12 @@ export class SalesOrderCreatePageComponent implements OnInit {
       notes: value.notes.trim() || undefined,
       promotion: value.promotion.trim() || undefined,
       customDiscount: Number(value.customDiscount) || 0,
+      useManualTotal: Boolean(value.useManualTotal),
+      manualTotalAmount: value.useManualTotal
+        ? Math.max(0, Number(value.manualTotalAmount) || 0)
+        : null,
       saleDate: value.saleDate ? new Date(value.saleDate).toISOString() : undefined,
-      items: this.itemsArray.controls.map((control, index) => {
+      items: this.itemsArray.controls.map((control) => {
         const item = control.getRawValue() as {
           materialId: string;
           customItemName?: string;
@@ -664,8 +825,7 @@ export class SalesOrderCreatePageComponent implements OnInit {
         };
         const materialId = Number(item.materialId);
         const hasMaterial = Number.isFinite(materialId) && materialId > 0;
-        const customItemName =
-          String(item.customItemName ?? '').trim() || this.partQuery(index).trim();
+        const customItemName = String(item.customItemName ?? '').trim();
         const warranty = normalizeWarrantyInput(item.warrantyValue, item.warrantyUnit);
         return {
           materialId: hasMaterial ? materialId : null,
@@ -682,10 +842,10 @@ export class SalesOrderCreatePageComponent implements OnInit {
     this.saving.set(true);
     try {
       const response = await firstValueFrom(this.adminApi.createSalesOrder(payload));
-      this.formSuccess.set('Sales order saved.');
+      this.adminAlert.success('Sales order saved.');
       await this.router.navigate(['/admin/sales-order', response.data.id]);
     } catch (err: unknown) {
-      this.formError.set(this.readError(err, 'Unable to save sales order.'));
+      this.adminAlert.error(this.readError(err, 'Unable to save sales order.'));
     } finally {
       this.saving.set(false);
     }
@@ -730,9 +890,9 @@ export class SalesOrderCreatePageComponent implements OnInit {
       const response = await firstValueFrom(this.adminApi.voidSalesOrder(id));
       this.order.set(response.data);
       this.pendingVoid.set(false);
-      this.formSuccess.set('Sales order voided and inventory restored.');
+      this.adminAlert.success('Sales order voided and inventory restored.');
     } catch (err: unknown) {
-      this.formError.set(this.readError(err, 'Unable to void sales order.'));
+      this.adminAlert.error(this.readError(err, 'Unable to void sales order.'));
     } finally {
       this.voiding.set(false);
     }

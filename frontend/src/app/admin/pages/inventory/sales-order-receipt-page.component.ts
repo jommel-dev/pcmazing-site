@@ -145,9 +145,56 @@ export class SalesOrderReceiptPageComponent implements OnInit, OnDestroy {
     return rows;
   });
 
-  readonly subtotal = computed(() => this.lines().reduce((sum, line) => sum + line.extPrice, 0));
+  readonly linesSubtotal = computed(() => this.lines().reduce((sum, line) => sum + line.extPrice, 0));
   readonly discountTotal = computed(() => this.lines().reduce((sum, line) => sum + line.discountAmount, 0));
-  readonly receiptTotal = computed(() => this.subtotal() - this.discountTotal());
+
+  readonly usesManualTotal = computed(
+    () =>
+      this.order()?.manualTotalAmount != null &&
+      Number.isFinite(Number(this.order()?.manualTotalAmount)),
+  );
+
+  readonly receiptTotal = computed(() => {
+    if (this.usesManualTotal()) {
+      return Math.max(0, Number(this.order()?.manualTotalAmount));
+    }
+    return Math.max(0, this.linesSubtotal() - this.discountTotal());
+  });
+
+  /** Displayed Subtotal — manual orders show the manual total so line prices stay private. */
+  readonly subtotal = computed(() => {
+    if (this.usesManualTotal()) {
+      return this.receiptTotal();
+    }
+    return this.linesSubtotal();
+  });
+
+  /** Hide Price / Ext Price columns when every item line is 0 or empty. */
+  readonly showPriceColumns = computed(() =>
+    this.lines().some(
+      (line) =>
+        !line.isCustomDiscount &&
+        ((Number(line.unitPrice) || 0) > 0 || (Number(line.extPrice) || 0) > 0),
+    ),
+  );
+
+  /** Unit Price column — hidden when the order uses a manual receipt total. */
+  readonly showUnitPriceColumn = computed(
+    () => this.showPriceColumns() && !this.usesManualTotal(),
+  );
+
+  readonly showExtPriceColumn = computed(() => this.showPriceColumns());
+
+  formatExtPrice(line: ReceiptLine): string {
+    if (line.isCustomDiscount) {
+      return '—';
+    }
+    // Manual total: hide per-item prices so customers only see the agreed total.
+    if (this.usesManualTotal()) {
+      return '—';
+    }
+    return this.formatMoney(line.extPrice);
+  }
   readonly barcodeBars = computed(() => this.buildBarcodeBars(this.receiptNo()));
   readonly barcodeBarStyle = barcodeBarStyle;
 

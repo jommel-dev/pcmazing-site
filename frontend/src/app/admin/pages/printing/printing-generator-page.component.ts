@@ -2,6 +2,7 @@ import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
+import { AdminAlertService } from '../../services/admin-alert.service';
 import { AdminApiService } from '../../services/admin-api.service';
 import { fieldsForDocument } from './printing-fields.data';
 import { PrintingTemplateCanvasComponent } from './printing-template-canvas.component';
@@ -49,6 +50,7 @@ type BluetoothNavigator = Navigator & {
 })
 export class PrintingGeneratorPageComponent implements OnInit {
   private readonly adminApi = inject(AdminApiService);
+  private readonly adminAlert = inject(AdminAlertService);
   private readonly formBuilder = inject(FormBuilder);
 
   readonly activeTab = signal<TabKey>('settings');
@@ -58,8 +60,6 @@ export class PrintingGeneratorPageComponent implements OnInit {
   readonly testingPrinter = signal(false);
   readonly pairingBluetooth = signal(false);
   readonly savingTemplate = signal(false);
-  readonly error = signal('');
-  readonly success = signal('');
   readonly templates = signal<PrintingTemplate[]>([]);
   readonly selectedTemplateId = signal<number | null>(null);
   readonly selectedElementId = signal<string | null>(null);
@@ -148,7 +148,7 @@ export class PrintingGeneratorPageComponent implements OnInit {
 
   async initialize(): Promise<void> {
     this.loading.set(true);
-    this.error.set('');
+    this.clearMessages();
 
     try {
       const [settingsResponse, templatesResponse] = await Promise.all([
@@ -201,7 +201,7 @@ export class PrintingGeneratorPageComponent implements OnInit {
         this.startNewTemplate();
       }
     } catch (err: unknown) {
-      this.error.set(
+      this.adminAlert.error(
         this.readError(
           err,
           'Unable to load printing settings. Apply migrations 042_printing.sql and 043_printing_printer_connection.sql.',
@@ -232,7 +232,7 @@ export class PrintingGeneratorPageComponent implements OnInit {
     this.clearMessages();
     if (this.settingsForm.invalid) {
       this.settingsForm.markAllAsTouched();
-      this.error.set('Please complete the required printing settings fields.');
+      this.adminAlert.error('Please complete the required printing settings fields.');
       return;
     }
 
@@ -277,9 +277,9 @@ export class PrintingGeneratorPageComponent implements OnInit {
         printerAutoPrint: response.data.printerAutoPrint,
       });
       this.applyPrinterTestState(response.data);
-      this.success.set('Printing settings saved.');
+      this.adminAlert.success('Printing settings saved.');
     } catch (err: unknown) {
-      this.error.set(this.readError(err, 'Unable to save printing settings.'));
+      this.adminAlert.error(this.readError(err, 'Unable to save printing settings.'));
     } finally {
       this.savingSettings.set(false);
     }
@@ -289,7 +289,7 @@ export class PrintingGeneratorPageComponent implements OnInit {
     this.clearMessages();
     if (this.contentForm.invalid) {
       this.contentForm.markAllAsTouched();
-      this.error.set('Please check the receipt content fields.');
+      this.adminAlert.error('Please check the receipt content fields.');
       return;
     }
 
@@ -316,9 +316,9 @@ export class PrintingGeneratorPageComponent implements OnInit {
           this.setDraftElements(structuredClone(refreshed.layout.elements));
         }
       }
-      this.success.set('Receipt content saved and applied to all print templates.');
+      this.adminAlert.success('Receipt content saved and applied to all print templates.');
     } catch (err: unknown) {
-      this.error.set(this.readError(err, 'Unable to save receipt content.'));
+      this.adminAlert.error(this.readError(err, 'Unable to save receipt content.'));
     } finally {
       this.savingContent.set(false);
     }
@@ -328,7 +328,7 @@ export class PrintingGeneratorPageComponent implements OnInit {
     this.clearMessages();
     const bluetooth = (navigator as BluetoothNavigator).bluetooth;
     if (!bluetooth) {
-      this.error.set(
+      this.adminAlert.error(
         'Web Bluetooth is not available in this browser. Use Chrome or Edge over HTTPS/localhost.',
       );
       return;
@@ -350,13 +350,13 @@ export class PrintingGeneratorPageComponent implements OnInit {
         printerBluetoothDeviceName: device.name || 'Bluetooth printer',
         printerName: device.name || this.settingsForm.controls.printerName.value,
       });
-      this.success.set(
+      this.adminAlert.success(
         `Paired with "${device.name || device.id}". Save settings to keep this printer.`,
       );
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Bluetooth pairing cancelled.';
       if (!/cancel|abort/i.test(message)) {
-        this.error.set(message);
+        this.adminAlert.error(message);
       }
     } finally {
       this.pairingBluetooth.set(false);
@@ -389,12 +389,12 @@ export class PrintingGeneratorPageComponent implements OnInit {
 
       this.applyPrinterTestState(response.data.settings);
       if (response.data.ok) {
-        this.success.set(response.data.message);
+        this.adminAlert.success(response.data.message);
       } else {
-        this.error.set(response.data.message);
+        this.adminAlert.error(response.data.message);
       }
     } catch (err: unknown) {
-      this.error.set(this.readError(err, 'Unable to test printer connection.'));
+      this.adminAlert.error(this.readError(err, 'Unable to test printer connection.'));
     } finally {
       this.testingPrinter.set(false);
     }
@@ -457,7 +457,7 @@ export class PrintingGeneratorPageComponent implements OnInit {
     }
     this.setDraftElements(jobOrderSalesReceiptLayout().elements);
     this.selectedElementId.set(null);
-    this.success.set('Loaded the current Job Order sales receipt layout.');
+    this.adminAlert.success('Loaded the current Job Order sales receipt layout.');
   }
 
   onDocumentTypeChange(): void {
@@ -590,7 +590,7 @@ export class PrintingGeneratorPageComponent implements OnInit {
     this.clearMessages();
     if (this.templateForm.invalid) {
       this.templateForm.markAllAsTouched();
-      this.error.set('Template name and paper size are required.');
+      this.adminAlert.error('Template name and paper size are required.');
       return;
     }
 
@@ -631,9 +631,9 @@ export class PrintingGeneratorPageComponent implements OnInit {
       }
 
       this.selectTemplate(saved.id);
-      this.success.set('Template saved.');
+      this.adminAlert.success('Template saved.');
     } catch (err: unknown) {
-      this.error.set(this.readError(err, 'Unable to save template.'));
+      this.adminAlert.error(this.readError(err, 'Unable to save template.'));
     } finally {
       this.savingTemplate.set(false);
     }
@@ -650,9 +650,9 @@ export class PrintingGeneratorPageComponent implements OnInit {
       const response = await firstValueFrom(this.adminApi.duplicatePrintingTemplate(id));
       this.templates.update((items) => [...items, response.data]);
       this.selectTemplate(response.data.id);
-      this.success.set('Template duplicated.');
+      this.adminAlert.success('Template duplicated.');
     } catch (err: unknown) {
-      this.error.set(this.readError(err, 'Unable to duplicate template.'));
+      this.adminAlert.error(this.readError(err, 'Unable to duplicate template.'));
     }
   }
 
@@ -676,15 +676,14 @@ export class PrintingGeneratorPageComponent implements OnInit {
       } else {
         this.startNewTemplate();
       }
-      this.success.set('Template deleted.');
+      this.adminAlert.success('Template deleted.');
     } catch (err: unknown) {
-      this.error.set(this.readError(err, 'Unable to delete template.'));
+      this.adminAlert.error(this.readError(err, 'Unable to delete template.'));
     }
   }
 
   private clearMessages(): void {
-    this.error.set('');
-    this.success.set('');
+    this.adminAlert.close();
   }
 
   private readError(err: unknown, fallback: string): string {

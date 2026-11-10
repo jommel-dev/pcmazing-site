@@ -27,11 +27,16 @@ const PART_COST_UNIT_PRICE_SQL = `
   END
 `;
 
-/** Customer-facing unit price for receipts and job-order line display (uses sell price). */
+/**
+ * Customer-facing unit price for receipts and job-order line display.
+ * Prefer the saved part unit_price (including explicit 0). Only fall back to
+ * catalog sell/unit price when the part row has no unit_price stored.
+ */
 const PART_SALE_UNIT_PRICE_SQL = `
   CASE
     WHEN sp.material_id IS NULL THEN COALESCE(sp.unit_price, 0)
-    ELSE COALESCE(NULLIF(sp.unit_price, 0), NULLIF(m.sell_price, 0), NULLIF(m.unit_price, 0), 0)
+    WHEN sp.unit_price IS NOT NULL THEN sp.unit_price
+    ELSE COALESCE(NULLIF(m.sell_price, 0), NULLIF(m.unit_price, 0), 0)
   END
 `;
 

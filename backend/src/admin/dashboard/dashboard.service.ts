@@ -118,7 +118,8 @@ const JOB_PARTS_LATERAL_SQL = `
       COALESCE(SUM(
         sp.quantity * CASE
           WHEN sp.material_id IS NULL THEN COALESCE(sp.unit_price, 0)
-          ELSE COALESCE(NULLIF(sp.unit_price, 0), NULLIF(m.sell_price, 0), NULLIF(m.unit_price, 0), 0)
+          WHEN sp.unit_price IS NOT NULL THEN sp.unit_price
+          ELSE COALESCE(NULLIF(m.sell_price, 0), NULLIF(m.unit_price, 0), 0)
         END
       ), 0) AS parts_sales,
       COALESCE(SUM(COALESCE(sp.discount_amount, 0)), 0) AS parts_discount

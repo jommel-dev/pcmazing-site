@@ -2,6 +2,7 @@ import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsDateString,
   IsIn,
   IsInt,
@@ -86,6 +87,18 @@ export class CreateSalesOrderDto {
   @Min(0)
   @Max(999999999.99)
   customDiscount?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  useManualTotal?: boolean;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(999999999.99)
+  manualTotalAmount?: number | null;
 
   @IsOptional()
   @IsDateString()
