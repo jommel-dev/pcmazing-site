@@ -101,6 +101,7 @@ export class PayrollPageComponent implements OnInit {
     action: AttendanceBypassAction;
     useCustomTime: boolean;
     customAt: string;
+    workLocationType: 'office' | 'wfh';
   } | null>(null);
   readonly bypassSaving = signal(false);
   readonly bypassError = signal('');
@@ -1747,15 +1748,18 @@ export class PayrollPageComponent implements OnInit {
 
   openBypassForRow(item: PayrollAttendanceItem, action: AttendanceBypassAction): void {
     this.bypassError.set('');
-    this.bypassDialog.set({
+    const workDate = item.workDate || this.workDate() || '';
+    this.bypassDialog.set(this.buildBypassDialogState({
       userId: item.userId,
       userSource: item.userSource,
       fullName: item.fullName,
-      workDate: item.workDate || this.workDate() || '',
+      workDate,
       action,
-      useCustomTime: false,
-      customAt: '',
-    });
+      workLocationType:
+        item.workLocationType === 'wfh' || item.workLocationType === 'office'
+          ? item.workLocationType
+          : 'office',
+    }));
   }
 
   openBypassPicker(): void {
@@ -1767,15 +1771,38 @@ export class PayrollPageComponent implements OnInit {
   startBypassTimeInForEmployee(item: PayrollEmployeeItem): void {
     this.bypassPickerOpen.set(false);
     this.bypassError.set('');
-    this.bypassDialog.set({
-      userId: item.userId,
-      userSource: item.userSource,
-      fullName: item.fullName,
-      workDate: this.workDate() || new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }),
-      action: 'time_in',
-      useCustomTime: false,
-      customAt: '',
-    });
+    const workDate =
+      this.workDate() ||
+      new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+    this.bypassDialog.set(
+      this.buildBypassDialogState({
+        userId: item.userId,
+        userSource: item.userSource,
+        fullName: item.fullName,
+        workDate,
+        action: 'time_in',
+        workLocationType: 'office',
+      }),
+    );
+  }
+
+  private buildBypassDialogState(input: {
+    userId: number;
+    userSource: 'pcmazing_admin_users' | 'tblusers';
+    fullName: string;
+    workDate: string;
+    action: AttendanceBypassAction;
+    workLocationType: 'office' | 'wfh';
+  }) {
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+    const isPastDay = Boolean(input.workDate && input.workDate < today);
+    const defaultHour = input.action === 'time_out' ? '18:00' : '09:00';
+    return {
+      ...input,
+      useCustomTime: isPastDay,
+      customAt: isPastDay ? `${input.workDate}T${defaultHour}` : '',
+      workLocationType: input.workLocationType,
+    };
   }
 
   closeBypassDialog(): void {
@@ -1789,6 +1816,7 @@ export class PayrollPageComponent implements OnInit {
       useCustomTime: boolean;
       customAt: string;
       action: AttendanceBypassAction;
+      workLocationType: 'office' | 'wfh';
     }>,
   ): void {
     const current = this.bypassDialog();
@@ -1825,6 +1853,8 @@ export class PayrollPageComponent implements OnInit {
           workDate: dialog.workDate,
           action: dialog.action,
           at,
+          workLocationType:
+            dialog.action === 'time_in' ? dialog.workLocationType : undefined,
         }),
       );
       this.bypassDialog.set(null);

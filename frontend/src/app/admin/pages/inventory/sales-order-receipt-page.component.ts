@@ -34,6 +34,7 @@ import {
   normalizePhDiscountType,
   PhDiscountType,
 } from './ph-discount.util';
+import { formatWarrantyLabel } from './item-warranty.util';
 
 type ReceiptLine = {
   itemName: string;
@@ -43,6 +44,7 @@ type ReceiptLine = {
   discountType: PhDiscountType;
   extPrice: number;
   discountAmount: number;
+  warrantyLabel: string;
   isCustomDiscount?: boolean;
 };
 
@@ -95,6 +97,11 @@ export class SalesOrderReceiptPageComponent implements OnInit, OnDestroy {
     return String(current.id);
   });
 
+  readonly promotionLabel = computed(() => {
+    const value = String(this.order()?.promotion ?? '').trim();
+    return value ? `Promotion: ${value.toUpperCase()}` : '';
+  });
+
   readonly lines = computed<ReceiptLine[]>(() => {
     const current = this.order();
     if (!current) {
@@ -109,13 +116,14 @@ export class SalesOrderReceiptPageComponent implements OnInit, OnDestroy {
       const amountGross = qty * unitPrice;
       const amountDiscount = applyPhSpecialDiscount(amountGross, discountType);
       rows.push({
-        itemName: item.materialName || item.materialCode || 'Item',
+        itemName: item.customItemName || item.materialName || item.materialCode || 'Item',
         description: String(item.description ?? '').trim(),
         qty,
         unitPrice,
         discountType,
         extPrice: amountGross,
         discountAmount: amountDiscount.discountAmount,
+        warrantyLabel: formatWarrantyLabel(item.warrantyValue, item.warrantyUnit),
       });
     }
 
@@ -129,6 +137,7 @@ export class SalesOrderReceiptPageComponent implements OnInit, OnDestroy {
         discountType: 'none',
         extPrice: 0,
         discountAmount: customDiscount,
+        warrantyLabel: '',
         isCustomDiscount: true,
       });
     }
@@ -136,9 +145,56 @@ export class SalesOrderReceiptPageComponent implements OnInit, OnDestroy {
     return rows;
   });
 
-  readonly subtotal = computed(() => this.lines().reduce((sum, line) => sum + line.extPrice, 0));
+  readonly linesSubtotal = computed(() => this.lines().reduce((sum, line) => sum + line.extPrice, 0));
   readonly discountTotal = computed(() => this.lines().reduce((sum, line) => sum + line.discountAmount, 0));
-  readonly receiptTotal = computed(() => this.subtotal() - this.discountTotal());
+
+  readonly usesManualTotal = computed(
+    () =>
+      this.order()?.manualTotalAmount != null &&
+      Number.isFinite(Number(this.order()?.manualTotalAmount)),
+  );
+
+  readonly receiptTotal = computed(() => {
+    if (this.usesManualTotal()) {
+      return Math.max(0, Number(this.order()?.manualTotalAmount));
+    }
+    return Math.max(0, this.linesSubtotal() - this.discountTotal());
+  });
+
+  /** Displayed Subtotal — manual orders show the manual total so line prices stay private. */
+  readonly subtotal = computed(() => {
+    if (this.usesManualTotal()) {
+      return this.receiptTotal();
+    }
+    return this.linesSubtotal();
+  });
+
+  /** Hide Price / Ext Price columns when every item line is 0 or empty. */
+  readonly showPriceColumns = computed(() =>
+    this.lines().some(
+      (line) =>
+        !line.isCustomDiscount &&
+        ((Number(line.unitPrice) || 0) > 0 || (Number(line.extPrice) || 0) > 0),
+    ),
+  );
+
+  /** Unit Price column — hidden when the order uses a manual receipt total. */
+  readonly showUnitPriceColumn = computed(
+    () => this.showPriceColumns() && !this.usesManualTotal(),
+  );
+
+  readonly showExtPriceColumn = computed(() => this.showPriceColumns());
+
+  formatExtPrice(line: ReceiptLine): string {
+    if (line.isCustomDiscount) {
+      return '—';
+    }
+    // Manual total: hide per-item prices so customers only see the agreed total.
+    if (this.usesManualTotal()) {
+      return '—';
+    }
+    return this.formatMoney(line.extPrice);
+  }
   readonly barcodeBars = computed(() => this.buildBarcodeBars(this.receiptNo()));
   readonly barcodeBarStyle = barcodeBarStyle;
 
@@ -191,6 +247,7 @@ export class SalesOrderReceiptPageComponent implements OnInit, OnDestroy {
       customerName: current?.customerName || '',
       customerPhone: current?.customerPhone || '',
       jobNotes: String(current?.notes ?? '').trim(),
+      promotion: this.promotionLabel(),
       discountTotal: `Total Sales Discounts: ${this.formatMoney(this.discountTotal())}`,
       subtotal: `Subtotal  ${this.formatMoney(this.subtotal())}`,
       receiptTotal: `RECEIPT TOTAL  ${this.formatMoney(this.receiptTotal())}`,
@@ -361,14 +418,24 @@ export class SalesOrderReceiptPageComponent implements OnInit, OnDestroy {
   elementStyle(element: PrintLayoutElement): Record<string, string> {
     const width = element.width ?? (element.type === 'line' ? 40 : 30);
     const height = element.height ?? (element.type === 'line' ? 2 : 8);
-    return {
+    const base: Record<string, string> = {
       left: `${element.x}mm`,
       top: `${element.y}mm`,
       width: `${width}mm`,
-      height: `${height}mm`,
       fontSize: `${element.fontSize || 11}pt`,
       fontWeight: element.fontWeight || 'normal',
       textAlign: element.textAlign || 'left',
+    };
+    if (element.type === 'table') {
+      return {
+        ...base,
+        minHeight: `${height}mm`,
+        height: 'auto',
+      };
+    }
+    return {
+      ...base,
+      height: `${height}mm`,
     };
   }
 
@@ -417,6 +484,9 @@ export class SalesOrderReceiptPageComponent implements OnInit, OnDestroy {
       return true;
     }
     if (element.fieldKey === 'jobNotes' && !this.fieldValues()['jobNotes']) {
+      return true;
+    }
+    if (element.fieldKey === 'promotion' && !this.fieldValues()['promotion']) {
       return true;
     }
     if (element.fieldKey === 'customerPhone' && !this.fieldValues()['customerPhone']) {
@@ -495,7 +565,7 @@ export class SalesOrderReceiptPageComponent implements OnInit, OnDestroy {
   }
 
   showWarrantyPolicy(): boolean {
-    return this.printingSettings()?.showWarrantyPolicy !== false;
+    return this.printingSettings()?.showWarrantyPolicy === true;
   }
 
   showFooterNote(): boolean {

@@ -4,6 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormArray, FormBuilder, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
+import { AdminAlertService } from '../../services/admin-alert.service';
 import { AdminAuthService } from '../../services/admin-auth.service';
 import {
   AdminApiService,
@@ -12,6 +13,7 @@ import {
   InventoryServiceItem,
   JobOrderCustomerSuggestion,
   MaterialItem,
+  PartsPriceHit,
   ServiceTypeItem,
 } from '../../services/admin-api.service';
 import {
@@ -19,6 +21,12 @@ import {
   applyPhSpecialDiscount,
   normalizePhDiscountType,
 } from './ph-discount.util';
+import {
+  WARRANTY_PRESETS,
+  formatWarrantyLabel,
+  normalizeWarrantyInput,
+  type WarrantyUnit,
+} from './item-warranty.util';
 import { isMaterialInStock, stockQty } from './inventory-stock.util';
 
 const DEFAULT_STATUSES = ['Active', 'Pending', 'Cancelled', 'Done', 'Refunded'];
@@ -31,6 +39,7 @@ const SETTLEMENT_PAYMENT_METHODS = ['Cash', 'Gcash', 'Bank Transfer'] as const;
 })
 export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
   private readonly adminApi = inject(AdminApiService);
+  private readonly adminAlert = inject(AdminAlertService);
   private readonly adminAuth = inject(AdminAuthService);
   private readonly formBuilder = inject(FormBuilder);
   private readonly router = inject(Router);
@@ -38,11 +47,22 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
   private readonly destroyRef = inject(DestroyRef);
 
   readonly statuses = DEFAULT_STATUSES;
+  readonly warrantyPresets = WARRANTY_PRESETS;
+  readonly warrantyUnits: Array<{ value: WarrantyUnit; label: string }> = [
+    { value: 'day', label: 'Day' },
+    { value: 'week', label: 'Week' },
+    { value: 'month', label: 'Month' },
+    { value: 'year', label: 'Year' },
+  ];
   readonly loading = signal(true);
   readonly saving = signal(false);
   readonly error = signal('');
-  readonly formError = signal('');
-  readonly formSuccess = signal('');
+  readonly warrantyPopupIndex = signal<number | null>(null);
+  readonly warrantyPopupMode = signal<'single' | 'bulk'>('single');
+  readonly warrantyDraftValue = signal(1);
+  readonly warrantyDraftUnit = signal<WarrantyUnit>('day');
+  readonly warrantyPopupHadPrior = signal(false);
+  readonly warrantySelectedIndices = signal<Set<number>>(new Set());
   readonly users = signal<AdminUser[]>([]);
   readonly materials = signal<MaterialItem[]>([]);
   readonly serviceTypes = signal<ServiceTypeItem[]>([]);
@@ -50,6 +70,9 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
   readonly materialSearchResults = signal<MaterialItem[]>([]);
   readonly openPartSearch = signal(false);
   readonly partSearchLoading = signal(false);
+  readonly webSearchResults = signal<PartsPriceHit[]>([]);
+  readonly webSearchErrors = signal<string[]>([]);
+  readonly webSearchLoading = signal(false);
   private materialSearchTimer: ReturnType<typeof setTimeout> | null = null;
   private partSearchCloseTimer: ReturnType<typeof setTimeout> | null = null;
   readonly customerQuery = signal('');
@@ -105,6 +128,7 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
     startedAt: [''],
     endedAt: [''],
     notes: ['', [Validators.maxLength(2000)]],
+    promotion: ['', [Validators.maxLength(180)]],
     services: this.formBuilder.array([]),
     parts: this.formBuilder.array([]),
   });
@@ -230,6 +254,7 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
           startedAt: item.startedAt ?? '',
           endedAt: item.endedAt ?? '',
           notes: item.notes ?? '',
+          promotion: item.promotion ?? '',
         });
         this.loadedManualTotalAmount =
           item.manualTotalAmount != null ? Number(item.manualTotalAmount) : null;
@@ -279,6 +304,8 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
               part.brandName ??
                 this.materials().find((entry) => Number(entry.id) === materialId)?.brandName ??
                 '',
+              part.warrantyValue ?? null,
+              part.warrantyUnit ?? '',
             );
           } else if (part.customItemName) {
             const amount = this.resolveServiceLineAmount(part);
@@ -604,6 +631,8 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
     this.addPartRow(String(item.id), 1, unitPrice, 0, item.materialName, false, item.brandName ?? '');
     this.partQuery.set('');
     this.openPartSearch.set(false);
+    this.webSearchResults.set([]);
+    this.webSearchErrors.set([]);
     this.syncCostWithParts();
   }
 
@@ -612,17 +641,22 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
       return;
     }
     const name = this.partQuery().trim();
-    if (!name || !this.canCreateNewPart()) {
-      const exact = this.exactMaterialMatch();
-      if (exact) {
-        this.addPartFromCatalog(exact);
-      }
+    if (!name) {
       return;
     }
-    this.addPartRow('', 1, 0, 0, name, true);
-    this.partQuery.set('');
-    this.openPartSearch.set(false);
-    this.syncCostWithParts();
+    if (this.canCreateNewPart()) {
+      this.addPartRow('', 1, 0, 0, name, true);
+      this.partQuery.set('');
+      this.openPartSearch.set(false);
+      this.webSearchResults.set([]);
+      this.webSearchErrors.set([]);
+      this.syncCostWithParts();
+      return;
+    }
+    const exact = this.exactMaterialMatch();
+    if (exact) {
+      this.addPartFromCatalog(exact);
+    }
   }
 
   canCreateNewPart(): boolean {
@@ -633,7 +667,17 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
     if (this.selectedPartNames().has(name.toLowerCase())) {
       return false;
     }
-    return !this.materials().some((item) => item.materialName.toLowerCase() === name.toLowerCase());
+    const exact = this.materials().find(
+      (item) => item.materialName.toLowerCase() === name.toLowerCase(),
+    );
+    if (!exact) {
+      return true;
+    }
+    // Exact catalog name exists — only force using it when that item is selectable.
+    if (this.selectedMaterialIds().has(Number(exact.id))) {
+      return false;
+    }
+    return !this.isMaterialSelectable(exact);
   }
 
   exactMaterialMatch(): MaterialItem | null {
@@ -652,7 +696,19 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
     );
   }
 
+  isNonInventoryMaterial(item: MaterialItem): boolean {
+    const type = String(item.productTypeName ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/[_-]+/g, ' ');
+    return type === 'non inventory' || type === 'noninventory';
+  }
+
   isMaterialSelectable(item: MaterialItem): boolean {
+    // Non-inventory parts are not stock-tracked; always allow on job orders.
+    if (this.isNonInventoryMaterial(item)) {
+      return true;
+    }
     return isMaterialInStock(item);
   }
 
@@ -714,6 +770,8 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
     customName = '',
     isNew = false,
     brandName = '',
+    warrantyValue: number | null = null,
+    warrantyUnit: WarrantyUnit | '' = '',
   ): void {
     this.partsArray.push(
       this.formBuilder.nonNullable.group({
@@ -724,9 +782,166 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
         unitPrice: [unitPrice, [Validators.min(0)]],
         discountAmount: [discountAmount, [Validators.min(0)]],
         isNew: [isNew],
+        warrantyValue: [warrantyValue],
+        warrantyUnit: [warrantyUnit],
       }),
     );
     this.syncCostWithParts();
+  }
+
+  partWarrantyLabel(index: number): string {
+    const raw = this.partsArray.at(index)?.getRawValue() as {
+      warrantyValue?: number | null;
+      warrantyUnit?: string | null;
+    } | undefined;
+    return formatWarrantyLabel(raw?.warrantyValue, raw?.warrantyUnit);
+  }
+
+  partHasWarranty(index: number): boolean {
+    return !!this.partWarrantyLabel(index);
+  }
+
+  isPartWarrantySelected(index: number): boolean {
+    return this.warrantySelectedIndices().has(index);
+  }
+
+  togglePartWarrantySelect(index: number): void {
+    if (this.isDoneStatus()) {
+      return;
+    }
+    const next = new Set(this.warrantySelectedIndices());
+    if (next.has(index)) {
+      next.delete(index);
+    } else {
+      next.add(index);
+    }
+    this.warrantySelectedIndices.set(next);
+  }
+
+  toggleSelectAllPartWarranties(): void {
+    if (this.isDoneStatus()) {
+      return;
+    }
+    if (this.allPartWarrantiesSelected()) {
+      this.warrantySelectedIndices.set(new Set());
+      return;
+    }
+    this.warrantySelectedIndices.set(new Set(this.partsArray.controls.map((_, i) => i)));
+  }
+
+  allPartWarrantiesSelected(): boolean {
+    const n = this.partsArray.length;
+    return n > 0 && this.warrantySelectedIndices().size === n;
+  }
+
+  partWarrantySelectedCount(): number {
+    return this.warrantySelectedIndices().size;
+  }
+
+  private remapWarrantySelectionAfterRemove(removedIndex: number): void {
+    const next = new Set<number>();
+    for (const index of this.warrantySelectedIndices()) {
+      if (index === removedIndex) {
+        continue;
+      }
+      next.add(index > removedIndex ? index - 1 : index);
+    }
+    this.warrantySelectedIndices.set(next);
+  }
+
+  openBulkPartWarrantyPopup(): void {
+    if (this.isDoneStatus() || this.partWarrantySelectedCount() < 1) {
+      return;
+    }
+    this.warrantyPopupMode.set('bulk');
+    this.warrantyPopupHadPrior.set(true);
+    this.warrantyDraftValue.set(1);
+    this.warrantyDraftUnit.set('day');
+    this.warrantyPopupIndex.set(-1);
+  }
+
+  openPartWarrantyPopup(index: number): void {
+    if (this.isDoneStatus()) {
+      return;
+    }
+    const raw = this.partsArray.at(index)?.getRawValue() as {
+      warrantyValue?: number | null;
+      warrantyUnit?: string | null;
+    };
+    const existing = normalizeWarrantyInput(raw?.warrantyValue, raw?.warrantyUnit);
+    this.warrantyPopupMode.set('single');
+    this.warrantyPopupHadPrior.set(!!existing);
+    this.warrantyDraftValue.set(existing?.warrantyValue ?? 1);
+    this.warrantyDraftUnit.set(existing?.warrantyUnit ?? 'day');
+    this.warrantyPopupIndex.set(index);
+  }
+
+  applyPartWarrantyPreset(value: number, unit: WarrantyUnit): void {
+    this.warrantyDraftValue.set(value);
+    this.warrantyDraftUnit.set(unit);
+  }
+
+  onPartWarrantyDraftValueInput(event: Event): void {
+    const raw = Number((event.target as HTMLInputElement).value);
+    this.warrantyDraftValue.set(Number.isFinite(raw) && raw >= 1 ? Math.floor(raw) : 1);
+  }
+
+  onPartWarrantyDraftUnitChange(event: Event): void {
+    const value = String((event.target as HTMLSelectElement).value) as WarrantyUnit;
+    this.warrantyDraftUnit.set(value);
+  }
+
+  savePartWarrantyPopup(): void {
+    if (this.warrantyPopupIndex() == null) {
+      return;
+    }
+    const normalized = normalizeWarrantyInput(this.warrantyDraftValue(), this.warrantyDraftUnit());
+    if (!normalized) {
+      this.adminAlert.error('Enter a warranty of at least 1 day, week, month, or year.');
+      return;
+    }
+    if (this.warrantyPopupMode() === 'bulk') {
+      for (const index of this.warrantySelectedIndices()) {
+        this.partsArray.at(index)?.patchValue({
+          warrantyValue: normalized.warrantyValue,
+          warrantyUnit: normalized.warrantyUnit,
+        });
+      }
+      this.warrantySelectedIndices.set(new Set());
+    } else {
+      const index = this.warrantyPopupIndex();
+      if (index == null || index < 0) {
+        return;
+      }
+      this.partsArray.at(index)?.patchValue({
+        warrantyValue: normalized.warrantyValue,
+        warrantyUnit: normalized.warrantyUnit,
+      });
+    }
+    this.warrantyPopupIndex.set(null);
+    this.adminAlert.close();
+  }
+
+  cancelPartWarrantyPopup(): void {
+    const index = this.warrantyPopupIndex();
+    if (index == null) {
+      return;
+    }
+    if (this.warrantyPopupMode() === 'bulk') {
+      this.warrantyPopupIndex.set(null);
+      return;
+    }
+    if (!this.warrantyPopupHadPrior()) {
+      this.clearPartWarranty(index);
+    }
+    this.warrantyPopupIndex.set(null);
+  }
+
+  private clearPartWarranty(index: number): void {
+    this.partsArray.at(index)?.patchValue({
+      warrantyValue: null,
+      warrantyUnit: '',
+    });
   }
 
   removePart(index: number): void {
@@ -734,6 +949,12 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
       return;
     }
     this.partsArray.removeAt(index);
+    this.remapWarrantySelectionAfterRemove(index);
+    if (this.warrantyPopupIndex() === index) {
+      this.warrantyPopupIndex.set(null);
+    } else if (this.warrantyPopupIndex() != null && (this.warrantyPopupIndex() as number) > index) {
+      this.warrantyPopupIndex.set((this.warrantyPopupIndex() as number) - 1);
+    }
     this.syncCostWithParts();
   }
 
@@ -799,6 +1020,7 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
     }
     this.openPartSearch.set(true);
     void this.searchMaterials(this.partQuery());
+    void this.searchWebParts(this.partQuery());
   }
 
   scheduleClosePartSearch(): void {
@@ -826,6 +1048,7 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
     }
     this.materialSearchTimer = setTimeout(() => {
       void this.searchMaterials(value);
+      void this.searchWebParts(value);
     }, 250);
   }
 
@@ -841,6 +1064,55 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
     } finally {
       this.partSearchLoading.set(false);
     }
+  }
+
+  private async searchWebParts(value: string): Promise<void> {
+    const query = value.trim();
+    if (query.length < 3) {
+      this.webSearchResults.set([]);
+      this.webSearchErrors.set([]);
+      return;
+    }
+
+    this.webSearchLoading.set(true);
+    try {
+      const response = await firstValueFrom(this.adminApi.searchPartsPrices(query, { limit: 8 }));
+      this.webSearchResults.set(response.data.items ?? []);
+      this.webSearchErrors.set(
+        (response.data.sourceErrors ?? []).map((error) => `${error.sourceLabel}: ${error.message}`),
+      );
+    } catch {
+      this.webSearchResults.set([]);
+      this.webSearchErrors.set(['Unable to search connected stores right now.']);
+    } finally {
+      this.webSearchLoading.set(false);
+    }
+  }
+
+  selectWebPart(hit: PartsPriceHit): void {
+    if (this.isDoneStatus()) {
+      return;
+    }
+    if (this.partSearchCloseTimer) {
+      clearTimeout(this.partSearchCloseTimer);
+      this.partSearchCloseTimer = null;
+    }
+    const name = hit.title.trim().slice(0, 180);
+    if (!name) {
+      return;
+    }
+    this.addPartRow('', 1, Number(hit.pricePhp) || 0, 0, name, true, hit.sourceLabel || '');
+    this.partQuery.set('');
+    this.openPartSearch.set(false);
+    this.webSearchResults.set([]);
+    this.webSearchErrors.set([]);
+    this.syncCostWithParts();
+  }
+
+  onWebPartSuggestionPointerDown(event: Event, hit: PartsPriceHit): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.selectWebPart(hit);
   }
 
   onPartSuggestionPointerDown(event: Event, item: MaterialItem): void {
@@ -1113,6 +1385,8 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
       unitPrice: number | string;
       discountAmount?: number | string;
       isNew?: boolean;
+      warrantyValue?: number | null;
+      warrantyUnit?: string | null;
     }>;
     const inventoryParts = rawParts
       .map((part) => {
@@ -1120,6 +1394,7 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
         const hasCatalogId = Number.isFinite(materialId) && materialId > 0;
         const customName = String(part.customName ?? '').trim();
         const brandName = String(part.brandName ?? '').trim();
+        const warranty = normalizeWarrantyInput(part.warrantyValue, part.warrantyUnit);
         return {
           materialId: hasCatalogId ? materialId : undefined,
           customItemName: customName || undefined,
@@ -1128,6 +1403,8 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
           unitPrice: Number(part.unitPrice) || 0,
           discountType: 'none' as const,
           discountAmount: Math.max(0, Number(part.discountAmount) || 0),
+          warrantyValue: warranty?.warrantyValue ?? null,
+          warrantyUnit: warranty?.warrantyUnit ?? null,
           createInventoryMaterial: Boolean(part.isNew) || (!hasCatalogId && Boolean(customName)),
         };
       })
@@ -1198,6 +1475,7 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
         startedAt: startedAt ? startedAt.toISOString() : undefined,
         endedAt: endedAt ? endedAt.toISOString() : undefined,
         notes: value.notes.trim() || undefined,
+        promotion: value.promotion.trim() || undefined,
         manualTotalAmount: value.useManualTotal
           ? Math.max(0, Number(this.form.getRawValue().manualTotalAmount) || 0)
           : null,
@@ -1207,19 +1485,18 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
   }
 
   requestSubmit(): void {
-    this.formError.set('');
-    this.formSuccess.set('');
+    this.adminAlert.close();
 
     const built = this.buildPayload();
     if ('error' in built) {
-      this.formError.set(built.error);
+      this.adminAlert.error(built.error);
       return;
     }
 
     if (this.form.controls.useManualTotal.value) {
       const manual = Number(this.form.getRawValue().manualTotalAmount);
       if (!Number.isFinite(manual) || manual < 0) {
-        this.formError.set('Manual total amount is required and must be zero or greater.');
+        this.adminAlert.error('Manual total amount is required and must be zero or greater.');
         return;
       }
     }
@@ -1236,7 +1513,7 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
           nextManual != null &&
           Math.round(previous * 100) !== Math.round(nextManual * 100));
       if (changed && String(this.form.controls.manualTotalReason.value ?? '').trim().length < 8) {
-        this.formError.set(
+        this.adminAlert.error(
           'A reason of at least 8 characters is required when changing the job order total.',
         );
         return;
@@ -1258,19 +1535,18 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
   }
 
   async submit(): Promise<void> {
-    this.formError.set('');
-    this.formSuccess.set('');
+    this.adminAlert.close();
 
     const built = this.buildPayload();
     if ('error' in built) {
-      this.formError.set(built.error);
+      this.adminAlert.error(built.error);
       return;
     }
 
     if (this.form.controls.useManualTotal.value) {
       const manual = Number(this.form.controls.manualTotalAmount.value);
       if (!Number.isFinite(manual) || manual < 0) {
-        this.formError.set('Manual total amount is required and must be zero or greater.');
+        this.adminAlert.error('Manual total amount is required and must be zero or greater.');
         return;
       }
     }
@@ -1287,7 +1563,7 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
           nextManual != null &&
           Math.round(previous * 100) !== Math.round(nextManual * 100));
       if (changed && String(this.form.controls.manualTotalReason.value ?? '').trim().length < 8) {
-        this.formError.set(
+        this.adminAlert.error(
           'A reason of at least 8 characters is required when changing the job order total.',
         );
         return;
@@ -1316,7 +1592,7 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
           this.applySavedService(saved);
           this.pendingPaymentReview.set(false);
           await this.router.navigate(['/admin/job-order', saved.id, 'edit'], { replaceUrl: true });
-          this.formError.set(
+          this.adminAlert.error(
             'Job order created, but the laptop photo could not be uploaded. You can add it from this form.',
           );
           return;
@@ -1330,12 +1606,12 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
         await this.router.navigate(['/admin/job-order', saved.id], { replaceUrl: true });
       }
 
-      this.formSuccess.set(wasCreate ? 'Job order created.' : 'Job order updated.');
+      this.adminAlert.success(wasCreate ? 'Job order created.' : 'Job order updated.');
     } catch (err: unknown) {
       const httpErr = err as { error?: { message?: string | string[] } };
       const msg = httpErr?.error?.message;
       const detail = Array.isArray(msg) ? msg.join(', ') : (msg || 'Unknown error');
-      this.formError.set(`Unable to ${this.isEditMode() ? 'update' : 'create'} service: ${detail}`);
+      this.adminAlert.error(`Unable to ${this.isEditMode() ? 'update' : 'create'} service: ${detail}`);
     } finally {
       this.saving.set(false);
     }
@@ -1451,7 +1727,7 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
   }
 
   requestDelete(): void {
-    this.formError.set('');
+    this.adminAlert.close();
     this.pendingDelete.set(true);
   }
 
@@ -1469,7 +1745,7 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
     }
 
     this.deleting.set(true);
-    this.formError.set('');
+    this.adminAlert.close();
 
     try {
       await firstValueFrom(this.adminApi.deleteInventoryService(id));
@@ -1479,7 +1755,7 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
       const httpErr = err as { error?: { message?: string | string[] } };
       const msg = httpErr?.error?.message;
       const detail = Array.isArray(msg) ? msg.join(', ') : msg || 'Unknown error';
-      this.formError.set(`Unable to delete job order: ${detail}`);
+      this.adminAlert.error(`Unable to delete job order: ${detail}`);
       this.pendingDelete.set(false);
     } finally {
       this.deleting.set(false);
@@ -1496,17 +1772,17 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
     }
 
     if (!file.type.startsWith('image/')) {
-      this.formError.set('Please choose an image file.');
+      this.adminAlert.error('Please choose an image file.');
       return;
     }
 
     if (file.size > 2 * 1024 * 1024) {
-      this.formError.set('Image must be 2MB or smaller.');
+      this.adminAlert.error('Image must be 2MB or smaller.');
       return;
     }
 
     const id = this.serviceId();
-    this.formError.set('');
+    this.adminAlert.close();
 
     if (!id) {
       this.setPendingLaptopFile(file);
@@ -1525,7 +1801,7 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
       const httpErr = err as { error?: { message?: string | string[] } };
       const msg = httpErr?.error?.message;
       const detail = Array.isArray(msg) ? msg.join(', ') : msg || 'Unknown error';
-      this.formError.set(`Unable to upload laptop photo: ${detail}`);
+      this.adminAlert.error(`Unable to upload laptop photo: ${detail}`);
     } finally {
       this.laptopImageUploading.set(false);
     }
@@ -1576,7 +1852,7 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
       return;
     }
 
-    this.formError.set('');
+    this.adminAlert.close();
     this.settlementError.set('');
     this.settlementAmountReceived.set(Number(this.balanceDueAmount().toFixed(2)));
     this.settlementPaymentMethod.set(this.form.controls.paymentMethod.value || '');
@@ -1612,10 +1888,10 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
       return;
     }
 
-    this.formError.set('');
+    this.adminAlert.close();
     const built = this.buildPayload('Done');
     if ('error' in built) {
-      this.formError.set(built.error);
+      this.adminAlert.error(built.error);
       return;
     }
 
@@ -1641,7 +1917,7 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
       const detail = Array.isArray(msg) ? msg.join(', ') : msg || 'Unknown error';
       const message = `Unable to settle job: ${detail}`;
       this.settlementError.set(message);
-      this.formError.set(message);
+      this.adminAlert.error(message);
     } finally {
       this.markingDone.set(false);
     }

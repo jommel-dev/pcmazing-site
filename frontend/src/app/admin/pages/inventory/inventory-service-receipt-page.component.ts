@@ -37,6 +37,7 @@ import {
   normalizePhDiscountType,
   PhDiscountType,
 } from './ph-discount.util';
+import { formatWarrantyLabel } from './item-warranty.util';
 
 type ReceiptLine = {
   itemName: string;
@@ -46,7 +47,10 @@ type ReceiptLine = {
   discountType: PhDiscountType;
   extPrice: number;
   discountAmount: number;
+  warrantyLabel: string;
   isCustomDiscount?: boolean;
+  /** Catalog/service/labor lines — still show Ext Price under manual total. */
+  isService?: boolean;
 };
 
 const TEMPLATE_STORAGE_KEY = 'pcmazing.receipt.selectedTemplateId';
@@ -143,6 +147,8 @@ export class InventoryServiceReceiptPageComponent implements OnInit, OnDestroy {
           discountType: storedDiscount > 0 ? 'none' : discountType,
           extPrice: amountGross,
           discountAmount: resolveDiscount(amountGross),
+          warrantyLabel: '',
+          isService: true,
         });
         continue;
       }
@@ -156,6 +162,8 @@ export class InventoryServiceReceiptPageComponent implements OnInit, OnDestroy {
         discountType: storedDiscount > 0 ? 'none' : discountType,
         extPrice: amountGross,
         discountAmount: resolveDiscount(amountGross),
+        warrantyLabel: formatWarrantyLabel(part.warrantyValue, part.warrantyUnit),
+        isService: false,
       });
 
       if (labor > 0) {
@@ -167,6 +175,8 @@ export class InventoryServiceReceiptPageComponent implements OnInit, OnDestroy {
           discountType: storedDiscount > 0 ? 'none' : discountType,
           extPrice: labor,
           discountAmount: resolveDiscount(labor, storedDiscount > 0),
+          warrantyLabel: '',
+          isService: true,
         });
       }
     }
@@ -185,6 +195,8 @@ export class InventoryServiceReceiptPageComponent implements OnInit, OnDestroy {
         discountType: normalizePhDiscountType(current.laborDiscountType),
         extPrice: serviceLabor,
         discountAmount: laborDiscount.discountAmount,
+        warrantyLabel: '',
+        isService: true,
       });
     }
 
@@ -197,6 +209,8 @@ export class InventoryServiceReceiptPageComponent implements OnInit, OnDestroy {
         discountType: 'none',
         extPrice: Number(current.totalSales) || 0,
         discountAmount: 0,
+        warrantyLabel: '',
+        isService: true,
       });
     }
 
@@ -210,6 +224,7 @@ export class InventoryServiceReceiptPageComponent implements OnInit, OnDestroy {
         discountType: 'none',
         extPrice: 0,
         discountAmount: customDiscount,
+        warrantyLabel: '',
         isCustomDiscount: true,
       });
     }
@@ -217,13 +232,54 @@ export class InventoryServiceReceiptPageComponent implements OnInit, OnDestroy {
     return rows;
   });
 
-  readonly subtotal = computed(() =>
+  readonly linesSubtotal = computed(() =>
     this.lines().reduce((sum, line) => sum + line.extPrice, 0),
   );
+
+  /** Displayed Subtotal — manual jobs show the manual total so part prices stay private. */
+  readonly subtotal = computed(() => {
+    if (this.usesManualTotal()) {
+      return this.receiptTotal();
+    }
+    return this.linesSubtotal();
+  });
 
   readonly discountTotal = computed(() =>
     this.lines().reduce((sum, line) => sum + line.discountAmount, 0),
   );
+
+  /** Hide Price / Ext Price columns when every item line is 0 or empty. */
+  readonly showPriceColumns = computed(() =>
+    this.lines().some(
+      (line) =>
+        !line.isCustomDiscount &&
+        ((Number(line.unitPrice) || 0) > 0 || (Number(line.extPrice) || 0) > 0),
+    ),
+  );
+
+  readonly usesManualTotal = computed(
+    () =>
+      this.item()?.manualTotalAmount != null &&
+      Number.isFinite(Number(this.item()?.manualTotalAmount)),
+  );
+
+  /** Unit Price column — hidden when the job uses a manual receipt total. */
+  readonly showUnitPriceColumn = computed(
+    () => this.showPriceColumns() && !this.usesManualTotal(),
+  );
+
+  readonly showExtPriceColumn = computed(() => this.showPriceColumns());
+
+  readonly lineItemsColspan = computed(() => {
+    let count = 5; // name, description, warranty, qty, discount
+    if (this.showUnitPriceColumn()) {
+      count += 1;
+    }
+    if (this.showExtPriceColumn()) {
+      count += 1;
+    }
+    return count;
+  });
 
   readonly receiptTotal = computed(() => {
     const job = this.item();
@@ -233,14 +289,13 @@ export class InventoryServiceReceiptPageComponent implements OnInit, OnDestroy {
     if (job?.totalSales != null && Number.isFinite(Number(job.totalSales)) && job.manualTotalAmount != null) {
       return Math.max(0, Number(job.totalSales));
     }
-    return Math.max(0, this.subtotal() - this.discountTotal());
+    return Math.max(0, this.linesSubtotal() - this.discountTotal());
   });
 
-  readonly usesManualTotal = computed(
-    () =>
-      this.item()?.manualTotalAmount != null &&
-      Number.isFinite(Number(this.item()?.manualTotalAmount)),
-  );
+  readonly promotionLabel = computed(() => {
+    const value = String(this.item()?.promotion ?? '').trim();
+    return value ? `Promotion: ${value.toUpperCase()}` : '';
+  });
 
   readonly downpaymentAmount = computed(() => Math.max(0, Number(this.item()?.downpayment) || 0));
 
@@ -353,6 +408,7 @@ readonly activeTemplates = computed(() =>
         ? `Address: ${job.customerAddress.trim()}`
         : '',
       jobNotes: String(job?.notes ?? '').trim(),
+      promotion: this.promotionLabel(),
       discountTotal: `Total Sales Discounts: ${this.formatMoney(this.discountTotal())}`,
       subtotal: `Subtotal  ${this.formatMoney(this.subtotal())}`,
       receiptTotal: `RECEIPT TOTAL  ${this.formatMoney(this.receiptTotal())}`,
@@ -508,6 +564,17 @@ readonly activeTemplates = computed(() =>
     return label ? `${label} ${amount}` : amount;
   }
 
+  formatExtPrice(line: ReceiptLine): string {
+    if (line.isCustomDiscount) {
+      return '—';
+    }
+    // Manual total: hide part prices; still show service/labor amounts.
+    if (this.usesManualTotal() && !line.isService) {
+      return '—';
+    }
+    return this.formatMoney(line.extPrice);
+  }
+
   templateSheetStyle(): Record<string, string> {
     const template = this.selectedTemplate();
     const settings = this.printingSettings();
@@ -570,6 +637,16 @@ readonly activeTemplates = computed(() =>
       marginLeft: `${table?.x ?? 10}mm`,
       width: `${table?.width ?? 190}mm`,
       fontSize: `${table?.fontSize || 10}pt`,
+    };
+  }
+
+  flowPromotionStyle(): Record<string, string> {
+    const table = this.templateTableElement();
+    return {
+      marginLeft: `${table?.x ?? 10}mm`,
+      width: `${table?.width ?? 190}mm`,
+      marginBottom: '2mm',
+      fontSize: '13px',
     };
   }
 
@@ -663,6 +740,9 @@ flowFooterElementStyle(element: PrintLayoutElement): Record<string, string> {
       return true;
     }
     if (element.fieldKey === 'customerPhone' && !this.fieldValues()['customerPhone']) {
+      return true;
+    }
+    if (element.fieldKey === 'promotion' && !this.fieldValues()['promotion']) {
       return true;
     }
     if (element.fieldKey === 'customerEmail' && !this.fieldValues()['customerEmail']) {
@@ -787,7 +867,7 @@ flowFooterElementStyle(element: PrintLayoutElement): Record<string, string> {
   }
 
   showWarrantyPolicy(): boolean {
-    return this.printingSettings()?.showWarrantyPolicy !== false;
+    return this.printingSettings()?.showWarrantyPolicy === true;
   }
 
   showFooterNote(): boolean {

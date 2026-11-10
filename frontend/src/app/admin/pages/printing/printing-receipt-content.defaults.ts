@@ -18,7 +18,7 @@ export function storeAddressWithPhone(
   return `${addr}\nTel: ${tel}`;
 }
 
-export const DEFAULT_WARRANTY_POLICY = `"PCmazing Warranty Policy"
+export const DEFAULT_WARRANTY_POLICY = `"PCmazing Warranty Terms & Condition"
 Major PC Parts: 1-Year Warranty, 5-Day Replacement (Factory Defects Only)
 PC Accessories: 5-Day Replacement, 1-Month Warranty (Factory Defects Only)
 Original Receipt Required — NO RECEIPT, NO WARRANTY

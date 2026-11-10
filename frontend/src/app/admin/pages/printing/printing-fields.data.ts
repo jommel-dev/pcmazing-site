@@ -123,6 +123,12 @@ export const PRINT_FIELD_DEFINITIONS: PrintFieldDefinition[] = [
     documentTypes: ['sales_receipt', 'custom'],
   },
   {
+    key: 'promotion',
+    label: 'Promotion',
+    sample: 'Promotion: PACKAGE DEAL',
+    documentTypes: ['sales_receipt', 'custom'],
+  },
+  {
     key: 'lineItems',
     label: 'Line items table',
     sample: 'Item Name · Description · Qty · Price · Discount · Ext Price',
@@ -173,7 +179,7 @@ export const PRINT_FIELD_DEFINITIONS: PrintFieldDefinition[] = [
   {
     key: 'warrantyPolicy',
     label: 'Warranty policy block',
-    sample: '“PCmazing Warranty Policy” · Major PC Parts · Accessories · No receipt, no warranty',
+    sample: '“PCmazing Warranty Terms & Condition” · Major PC Parts · Accessories · No receipt, no warranty',
     documentTypes: ['sales_receipt', 'custom'],
   },
   {

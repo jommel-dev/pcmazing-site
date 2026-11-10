@@ -72,15 +72,23 @@
 
         @if (templateTableElement(); as tableElement) {
           <div class="template-flow-body" [ngStyle]="flowBodyStyle()">
+            @if (promotionLabel()) {
+              <p class="receipt-promotion" [ngStyle]="flowPromotionStyle()">{{ promotionLabel() }}</p>
+            }
             <table class="template-line-items" [ngStyle]="flowTableStyle()">
               <thead>
                 <tr>
                   <th>Item Name</th>
                   <th>Item Description</th>
+                  <th>Warranty</th>
                   <th class="num">Qty</th>
-                  <th class="num">Price</th>
+                  @if (showUnitPriceColumn()) {
+                    <th class="num">Price</th>
+                  }
                   <th class="num">Discount</th>
-                  <th class="num">Ext Price</th>
+                  @if (showExtPriceColumn()) {
+                    <th class="num">Ext Price</th>
+                  }
                 </tr>
               </thead>
               <tbody>
@@ -88,15 +96,20 @@
                   <tr>
                     <td>{{ line.itemName }}</td>
                     <td>{{ line.description }}</td>
+                    <td>{{ line.warrantyLabel || '—' }}</td>
                     <td class="num">{{ line.isCustomDiscount ? '—' : (line.qty | number:'1.0-2') }}</td>
-                    <td class="num">{{ line.isCustomDiscount ? '—' : formatMoney(line.unitPrice) }}</td>
+                    @if (showUnitPriceColumn()) {
+                      <td class="num">{{ line.isCustomDiscount ? '—' : formatMoney(line.unitPrice) }}</td>
+                    }
                     <td class="num">{{ formatDiscount(line) }}</td>
-                    <td class="num">{{ line.isCustomDiscount ? '—' : formatMoney(line.extPrice) }}</td>
+                    @if (showExtPriceColumn()) {
+                      <td class="num">{{ formatExtPrice(line) }}</td>
+                    }
                   </tr>
                 }
                 @if (job.notes) {
                   <tr class="remarks-row">
-                    <td colspan="6">{{ job.notes }}</td>
+                    <td [attr.colspan]="lineItemsColspan()">{{ job.notes }}</td>
                   </tr>
                 }
               </tbody>
@@ -216,15 +229,24 @@
           }
         </div>
 
+        @if (promotionLabel()) {
+          <p class="receipt-promotion">{{ promotionLabel() }}</p>
+        }
+
         <table class="receipt-table">
           <thead>
             <tr>
               <th>Item Name</th>
               <th>Item Description</th>
+              <th>Warranty</th>
               <th class="num">Qty</th>
-              <th class="num">Price</th>
+              @if (showUnitPriceColumn()) {
+                <th class="num">Price</th>
+              }
               <th class="num">Discount</th>
-              <th class="num">Ext Price</th>
+              @if (showExtPriceColumn()) {
+                <th class="num">Ext Price</th>
+              }
             </tr>
           </thead>
           <tbody>
@@ -232,15 +254,20 @@
               <tr>
                 <td>{{ line.itemName }}</td>
                 <td>{{ line.description }}</td>
+                <td>{{ line.warrantyLabel || '—' }}</td>
                 <td class="num">{{ line.isCustomDiscount ? '—' : (line.qty | number:'1.0-2') }}</td>
-                <td class="num">{{ line.isCustomDiscount ? '—' : formatMoney(line.unitPrice) }}</td>
+                @if (showUnitPriceColumn()) {
+                  <td class="num">{{ line.isCustomDiscount ? '—' : formatMoney(line.unitPrice) }}</td>
+                }
                 <td class="num">{{ formatDiscount(line) }}</td>
-                <td class="num">{{ line.isCustomDiscount ? '—' : formatMoney(line.extPrice) }}</td>
+                @if (showExtPriceColumn()) {
+                  <td class="num">{{ formatExtPrice(line) }}</td>
+                }
               </tr>
             }
             @if (job.notes) {
               <tr class="remarks-row">
-                <td colspan="6">{{ job.notes }}</td>
+                <td [attr.colspan]="lineItemsColspan()">{{ job.notes }}</td>
               </tr>
             }
           </tbody>

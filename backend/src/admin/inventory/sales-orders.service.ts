@@ -12,6 +12,11 @@ import {
 } from '../common/admin-table.util';
 import { CreateSalesOrderDto } from './dto/create-sales-order.dto';
 import { RefundSalesOrderDto } from './dto/refund-sales-order.dto';
+import { ensureSalesOrderItemWarrantyColumns } from './item-warranty.schema';
+import { normalizeWarranty, type WarrantyUnit } from './item-warranty.util';
+import { ensureSalesOrderPromotionColumn } from './order-promotion.schema';
+import { ensureSalesOrderCustomItemsSchema } from './sales-order-custom-items.schema';
+import { ensureSalesOrderManualTotalColumn } from './sales-order-manual-total.schema';
 import { ensureSalesOrderRefundColumns } from './sales-order-refund.schema';
 
 export interface SalesOrderListItem {
@@ -20,10 +25,12 @@ export interface SalesOrderListItem {
   customerName: string;
   customerPhone: string | null;
   notes: string | null;
+  promotion?: string | null;
   customDiscount: number;
   subtotal: number;
   discountTotal: number;
   totalAmount: number;
+  manualTotalAmount?: number | null;
   refundAmount: number;
   netTotalAmount: number;
   refundReason: string | null;
@@ -38,15 +45,18 @@ export interface SalesOrderListItem {
 
 export interface SalesOrderItem {
   id: number;
-  materialId: number;
+  materialId: number | null;
   materialName: string | null;
   materialCode: string | null;
+  customItemName?: string | null;
   description: string | null;
   quantity: number;
   refundedQuantity: number;
   refundableQuantity: number;
   unitPrice: number;
   discountType: 'none' | 'senior' | 'pwd';
+  warrantyValue: number | null;
+  warrantyUnit: WarrantyUnit | null;
 }
 
 export interface SalesOrderDetail extends SalesOrderListItem {
@@ -81,6 +91,10 @@ export class SalesOrdersService {
     }
 
     await ensureSalesOrderRefundColumns(this.databaseService);
+    await ensureSalesOrderCustomItemsSchema(this.databaseService);
+    await ensureSalesOrderPromotionColumn(this.databaseService);
+    await ensureSalesOrderItemWarrantyColumns(this.databaseService);
+    await ensureSalesOrderManualTotalColumn(this.databaseService);
 
     const { page, limit, offset } = buildPagination(pageRaw, limitRaw);
     const params: unknown[] = [];
@@ -158,6 +172,7 @@ export class SalesOrdersService {
       customer_name: string;
       customer_phone: string | null;
       notes: string | null;
+      promotion: string | null;
       custom_discount: string;
       subtotal: string;
       discount_total: string;
@@ -178,6 +193,7 @@ export class SalesOrdersService {
         o.customer_name,
         o.customer_phone,
         o.notes,
+        o.promotion,
         o.custom_discount::text,
         o.subtotal::text,
         o.discount_total::text,
@@ -195,7 +211,11 @@ export class SalesOrdersService {
        LEFT JOIN LATERAL (
          SELECT
            COUNT(*)::int AS item_count,
-           STRING_AGG(DISTINCT COALESCE(m.material_name, m.material_code, 'Item'), ', ' ORDER BY COALESCE(m.material_name, m.material_code, 'Item')) AS items_summary
+           STRING_AGG(
+             DISTINCT COALESCE(NULLIF(TRIM(i.custom_item_name), ''), m.material_name, m.material_code, 'Item'),
+             ', '
+             ORDER BY COALESCE(NULLIF(TRIM(i.custom_item_name), ''), m.material_name, m.material_code, 'Item')
+           ) AS items_summary
          FROM pcmazing_sales_order_items i
          LEFT JOIN tblmaterials m ON m.id = i.material_id
          WHERE i.sales_order_id = o.id AND i.deleted_at IS NULL
@@ -226,6 +246,10 @@ export class SalesOrdersService {
     }
 
     await ensureSalesOrderRefundColumns(this.databaseService);
+    await ensureSalesOrderCustomItemsSchema(this.databaseService);
+    await ensureSalesOrderPromotionColumn(this.databaseService);
+    await ensureSalesOrderItemWarrantyColumns(this.databaseService);
+    await ensureSalesOrderManualTotalColumn(this.databaseService);
 
     const result = await this.databaseService.query<{
       id: number;
@@ -237,6 +261,7 @@ export class SalesOrdersService {
       subtotal: string;
       discount_total: string;
       total_amount: string;
+      manual_total_amount: string | null;
       refund_amount: string;
       refund_reason: string | null;
       refunded_at: string | null;
@@ -246,6 +271,7 @@ export class SalesOrdersService {
       item_count: string;
       items_summary: string | null;
       updated_at: string | null;
+      promotion: string | null;
     }>(
       `SELECT
         o.id,
@@ -253,10 +279,12 @@ export class SalesOrdersService {
         o.customer_name,
         o.customer_phone,
         o.notes,
+        o.promotion,
         o.custom_discount::text,
         o.subtotal::text,
         o.discount_total::text,
         o.total_amount::text,
+        o.manual_total_amount::text,
         COALESCE(o.refund_amount, 0)::text AS refund_amount,
         o.refund_reason,
         o.refunded_at::text,
@@ -270,7 +298,11 @@ export class SalesOrdersService {
        LEFT JOIN LATERAL (
          SELECT
            COUNT(*)::int AS item_count,
-           STRING_AGG(DISTINCT COALESCE(m.material_name, m.material_code, 'Item'), ', ' ORDER BY COALESCE(m.material_name, m.material_code, 'Item')) AS items_summary
+           STRING_AGG(
+             DISTINCT COALESCE(NULLIF(TRIM(i.custom_item_name), ''), m.material_name, m.material_code, 'Item'),
+             ', '
+             ORDER BY COALESCE(NULLIF(TRIM(i.custom_item_name), ''), m.material_name, m.material_code, 'Item')
+           ) AS items_summary
          FROM pcmazing_sales_order_items i
          LEFT JOIN tblmaterials m ON m.id = i.material_id
          WHERE i.sales_order_id = o.id AND i.deleted_at IS NULL
@@ -299,6 +331,11 @@ export class SalesOrdersService {
       );
     }
 
+    await ensureSalesOrderCustomItemsSchema(this.databaseService);
+    await ensureSalesOrderPromotionColumn(this.databaseService);
+    await ensureSalesOrderItemWarrantyColumns(this.databaseService);
+    await ensureSalesOrderManualTotalColumn(this.databaseService);
+
     const customerName = dto.customerName?.trim();
     if (!customerName) {
       throw new BadRequestException('Customer name is required.');
@@ -316,31 +353,49 @@ export class SalesOrdersService {
 
     const normalizedItems = await this.normalizeItems(items);
     const totals = this.calculateTotals(normalizedItems, dto.customDiscount ?? 0);
+    const useManualTotal = Boolean(dto.useManualTotal);
+    const manualTotalAmount = useManualTotal
+      ? Math.max(0, Number(dto.manualTotalAmount) || 0)
+      : null;
+    if (useManualTotal && !Number.isFinite(Number(dto.manualTotalAmount))) {
+      throw new BadRequestException('Manual total amount is required and must be zero or greater.');
+    }
+    const persistedTotal =
+      manualTotalAmount != null ? manualTotalAmount : totals.totalAmount;
 
     const newId = await this.databaseService.withTransaction(async (client) => {
-      await this.assertStockAvailable(client, normalizedItems);
+      await this.assertStockAvailable(
+        client,
+        normalizedItems.filter(
+          (item): item is typeof item & { materialId: number } => item.materialId != null,
+        ),
+      );
 
       const insertResult = await client.query<{ id: number }>(
         `INSERT INTO pcmazing_sales_orders (
           customer_name,
           customer_phone,
           notes,
+          promotion,
           custom_discount,
           subtotal,
           discount_total,
           total_amount,
+          manual_total_amount,
           sale_date,
           created_by
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         RETURNING id`,
         [
           customerName,
           dto.customerPhone?.trim() || null,
           dto.notes?.trim() || null,
+          dto.promotion?.trim() || null,
           totals.customDiscount,
           totals.subtotal,
           totals.discountTotal,
-          totals.totalAmount,
+          persistedTotal,
+          manualTotalAmount,
           saleDate.toISOString(),
           createdBy ?? null,
         ],
@@ -364,27 +419,35 @@ export class SalesOrdersService {
           `INSERT INTO pcmazing_sales_order_items (
              sales_order_id,
              material_id,
+             custom_item_name,
              quantity,
              unit_price,
-             discount_type
+             discount_type,
+             warranty_value,
+             warranty_unit
            )
-           VALUES ($1, $2, $3, $4, $5)`,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
           [
             salesOrderId,
             item.materialId,
+            item.customItemName,
             item.quantity,
             item.unitPrice,
             item.discountType,
+            item.warrantyValue,
+            item.warrantyUnit,
           ],
         );
 
-        await client.query(
-          `UPDATE tblmaterials
-           SET on_hand_stock = COALESCE(on_hand_stock, 0) - $1,
-               updated_at = NOW()
-           WHERE id = $2 AND deleted_at IS NULL`,
-          [item.quantity, item.materialId],
-        );
+        if (item.materialId != null) {
+          await client.query(
+            `UPDATE tblmaterials
+             SET on_hand_stock = COALESCE(on_hand_stock, 0) - $1,
+                 updated_at = NOW()
+             WHERE id = $2 AND deleted_at IS NULL`,
+            [item.quantity, item.materialId],
+          );
+        }
       }
 
       return salesOrderId;
@@ -411,6 +474,9 @@ export class SalesOrdersService {
       );
 
       for (const item of existing.items) {
+        if (item.materialId == null) {
+          continue;
+        }
         const restoreQty = Math.max(0, item.quantity - (item.refundedQuantity ?? 0));
         if (restoreQty <= 0) {
           continue;
@@ -454,7 +520,7 @@ export class SalesOrdersService {
     const normalizedLines: Array<{
       itemId: number;
       quantity: number;
-      materialId: number;
+      materialId: number | null;
     }> = [];
 
     for (const line of refundLines) {
@@ -470,7 +536,8 @@ export class SalesOrdersService {
 
       const remaining = Math.max(0, item.quantity - item.refundedQuantity);
       if (quantity > remaining + 0.0001) {
-        const label = item.materialName || item.materialCode || `item ${item.id}`;
+        const label =
+          item.customItemName || item.materialName || item.materialCode || `item ${item.id}`;
         throw new BadRequestException(
           `Refund quantity for "${label}" exceeds remaining quantity (${remaining}).`,
         );
@@ -516,13 +583,15 @@ export class SalesOrdersService {
           [line.quantity, line.itemId, id],
         );
 
-        await client.query(
-          `UPDATE tblmaterials
-           SET on_hand_stock = COALESCE(on_hand_stock, 0) + $1,
-               updated_at = NOW()
-           WHERE id = $2 AND deleted_at IS NULL`,
-          [line.quantity, line.materialId],
-        );
+        if (line.materialId != null) {
+          await client.query(
+            `UPDATE tblmaterials
+             SET on_hand_stock = COALESCE(on_hand_stock, 0) + $1,
+                 updated_at = NOW()
+             WHERE id = $2 AND deleted_at IS NULL`,
+            [line.quantity, line.materialId],
+          );
+        }
       }
 
       await client.query(
@@ -541,27 +610,36 @@ export class SalesOrdersService {
   }
 
   private async loadItems(salesOrderId: number): Promise<SalesOrderItem[]> {
+    await ensureSalesOrderCustomItemsSchema(this.databaseService);
+    await ensureSalesOrderItemWarrantyColumns(this.databaseService);
+
     const result = await this.databaseService.query<{
       id: number;
-      material_id: number;
+      material_id: string | null;
       material_name: string | null;
       material_code: string | null;
+      custom_item_name: string | null;
       description: string | null;
       quantity: string;
       refunded_quantity: string;
       unit_price: string;
       discount_type: 'none' | 'senior' | 'pwd';
+      warranty_value: string | null;
+      warranty_unit: string | null;
     }>(
       `SELECT
         i.id,
-        i.material_id,
+        i.material_id::text,
         m.material_name,
         m.material_code,
+        i.custom_item_name,
         m.description,
         i.quantity::text,
         COALESCE(i.refunded_quantity, 0)::text AS refunded_quantity,
         i.unit_price::text,
-        i.discount_type
+        i.discount_type,
+        i.warranty_value::text,
+        i.warranty_unit
        FROM pcmazing_sales_order_items i
        LEFT JOIN tblmaterials m ON m.id = i.material_id
        WHERE i.sales_order_id = $1 AND i.deleted_at IS NULL
@@ -572,17 +650,40 @@ export class SalesOrdersService {
     return result.rows.map((row) => {
       const quantity = Number(row.quantity ?? 0);
       const refundedQuantity = Number(row.refunded_quantity ?? 0);
+      const customItemName = row.custom_item_name?.trim() || null;
+      const materialId =
+        row.material_id != null && row.material_id !== ''
+          ? Number(row.material_id)
+          : null;
+      let warrantyValue: number | null = null;
+      let warrantyUnit: WarrantyUnit | null = null;
+      try {
+        const warranty = normalizeWarranty(
+          row.warranty_value != null && row.warranty_value !== ''
+            ? Number(row.warranty_value)
+            : null,
+          row.warranty_unit,
+        );
+        warrantyValue = warranty?.warrantyValue ?? null;
+        warrantyUnit = warranty?.warrantyUnit ?? null;
+      } catch {
+        warrantyValue = null;
+        warrantyUnit = null;
+      }
       return {
         id: Number(row.id),
-        materialId: Number(row.material_id),
-        materialName: row.material_name,
+        materialId: Number.isFinite(materialId) ? materialId : null,
+        materialName: customItemName || row.material_name,
         materialCode: row.material_code,
+        customItemName,
         description: row.description,
         quantity,
         refundedQuantity,
         refundableQuantity: Math.max(0, quantity - refundedQuantity),
         unitPrice: Number(row.unit_price ?? 0),
         discountType: this.normalizeDiscountType(row.discount_type),
+        warrantyValue,
+        warrantyUnit,
       };
     });
   }
@@ -616,62 +717,109 @@ export class SalesOrdersService {
     items: CreateSalesOrderDto['items'],
   ): Promise<
     Array<{
-      materialId: number;
+      materialId: number | null;
+      customItemName: string | null;
       quantity: number;
       unitPrice: number;
       discountType: 'none' | 'senior' | 'pwd';
+      warrantyValue: number | null;
+      warrantyUnit: WarrantyUnit | null;
       materialName: string;
       onHandStock: number;
     }>
   > {
-    if (!(await tableExists(this.databaseService, 'tblmaterials'))) {
-      throw new ServiceUnavailableException('Inventory materials table is not available.');
-    }
-
-    const materialIds = [...new Set(items.map((item) => item.materialId))];
-    const materialsResult = await this.databaseService.query<{
-      id: number;
-      material_name: string;
-      sell_price: string | null;
-      unit_price: string | null;
-      on_hand_stock: string | null;
-    }>(
-      `SELECT id, material_name, sell_price::text, unit_price::text, on_hand_stock::text
-       FROM tblmaterials
-       WHERE id = ANY($1::bigint[]) AND deleted_at IS NULL`,
-      [materialIds],
-    );
+    const materialIds = [
+      ...new Set(
+        items
+          .map((item) => Number(item.materialId))
+          .filter((id) => Number.isFinite(id) && id > 0),
+      ),
+    ];
 
     const materialMap = new Map<
       number,
       { materialName: string; sellPrice: number; onHandStock: number }
-    >(
-      materialsResult.rows.map((row) => [
-        Number(row.id),
-        {
+    >();
+
+    if (materialIds.length > 0) {
+      if (!(await tableExists(this.databaseService, 'tblmaterials'))) {
+        throw new ServiceUnavailableException('Inventory materials table is not available.');
+      }
+
+      const materialsResult = await this.databaseService.query<{
+        id: number;
+        material_name: string;
+        sell_price: string | null;
+        unit_price: string | null;
+        on_hand_stock: string | null;
+      }>(
+        `SELECT id, material_name, sell_price::text, unit_price::text, on_hand_stock::text
+         FROM tblmaterials
+         WHERE id = ANY($1::bigint[]) AND deleted_at IS NULL`,
+        [materialIds],
+      );
+
+      for (const row of materialsResult.rows) {
+        materialMap.set(Number(row.id), {
           materialName: row.material_name,
           sellPrice: Number(row.sell_price ?? row.unit_price ?? 0),
           onHandStock: Number(row.on_hand_stock ?? 0),
-        },
-      ]),
-    );
+        });
+      }
+    }
 
-    return items.map((item) => {
-      const material = materialMap.get(item.materialId);
-      if (!material) {
-        throw new BadRequestException(`Material ${item.materialId} was not found.`);
+    return items.map((item, index) => {
+      const materialIdRaw = Number(item.materialId);
+      const hasMaterial = Number.isFinite(materialIdRaw) && materialIdRaw > 0;
+      const customItemName = String(item.customItemName ?? '').trim() || null;
+
+      if (!hasMaterial && !customItemName) {
+        throw new BadRequestException(
+          `Row ${index + 1}: select an inventory item or enter a custom item name.`,
+        );
       }
 
+      if (hasMaterial) {
+        const material = materialMap.get(materialIdRaw);
+        if (!material) {
+          throw new BadRequestException(`Material ${materialIdRaw} was not found.`);
+        }
+
+        const warranty = normalizeWarranty(item.warrantyValue, item.warrantyUnit);
+        return {
+          materialId: materialIdRaw,
+          customItemName: null,
+          quantity: Number(item.quantity),
+          unitPrice:
+            item.unitPrice !== undefined && item.unitPrice !== null
+              ? Number(item.unitPrice)
+              : material.sellPrice,
+          discountType: this.normalizeDiscountType(item.discountType),
+          warrantyValue: warranty?.warrantyValue ?? null,
+          warrantyUnit: warranty?.warrantyUnit ?? null,
+          materialName: material.materialName,
+          onHandStock: material.onHandStock,
+        };
+      }
+
+      const unitPrice = Number(item.unitPrice);
+      if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+        throw new BadRequestException(
+          `Row ${index + 1}: set a unit price for custom item "${customItemName}".`,
+        );
+      }
+
+      const warranty = normalizeWarranty(item.warrantyValue, item.warrantyUnit);
       return {
-        materialId: item.materialId,
+        materialId: null,
+        customItemName,
         quantity: Number(item.quantity),
-        unitPrice:
-          item.unitPrice !== undefined && item.unitPrice !== null
-            ? Number(item.unitPrice)
-            : material.sellPrice,
+        unitPrice,
         discountType: this.normalizeDiscountType(item.discountType),
-        materialName: material.materialName,
-        onHandStock: material.onHandStock,
+        warrantyValue: warranty?.warrantyValue ?? null,
+        warrantyUnit: warranty?.warrantyUnit ?? null,
+        materialName: customItemName!,
+        onHandStock: 0,
       };
     });
   }
@@ -680,6 +828,10 @@ export class SalesOrdersService {
     client: { query: DatabaseService['query'] },
     items: Array<{ materialId: number; quantity: number; materialName: string; onHandStock: number }>,
   ): Promise<void> {
+    if (!items.length) {
+      return;
+    }
+
     const requiredByMaterial = new Map<number, { quantity: number; materialName: string; onHandStock: number }>();
 
     for (const item of items) {
@@ -791,10 +943,12 @@ export class SalesOrdersService {
     customer_name: string;
     customer_phone: string | null;
     notes: string | null;
+    promotion?: string | null;
     custom_discount: string;
     subtotal: string;
     discount_total: string;
     total_amount: string;
+    manual_total_amount?: string | null;
     refund_amount?: string;
     refund_reason?: string | null;
     refunded_at?: string | null;
@@ -807,16 +961,24 @@ export class SalesOrdersService {
   }): SalesOrderListItem {
     const totalAmount = Number(row.total_amount ?? 0);
     const refundAmount = Number(row.refund_amount ?? 0);
+    const manualTotalAmount =
+      row.manual_total_amount !== null && row.manual_total_amount !== undefined
+        ? Number(row.manual_total_amount)
+        : null;
     return {
       id: Number(row.id),
       referenceNo: row.reference_no,
       customerName: row.customer_name,
       customerPhone: row.customer_phone,
       notes: row.notes,
+      promotion: row.promotion?.trim() || null,
       customDiscount: Number(row.custom_discount ?? 0),
       subtotal: Number(row.subtotal ?? 0),
       discountTotal: Number(row.discount_total ?? 0),
       totalAmount,
+      manualTotalAmount: Number.isFinite(manualTotalAmount as number)
+        ? (manualTotalAmount as number)
+        : null,
       refundAmount,
       netTotalAmount: Math.max(0, totalAmount - refundAmount),
       refundReason: row.refund_reason ?? null,

@@ -2509,7 +2509,37 @@
         </p>
         <p class="mt-2 text-xs text-slate-500">
           No selfie required. Your admin profile photo will be stored on this punch.
+          Pay counts toward the attendance date shown above (not today).
         </p>
+        @if (bypass.action === 'time_in') {
+          <div class="mt-4">
+            <p class="mb-2 text-xs font-semibold uppercase text-slate-600 dark:text-slate-300">Work location</p>
+            <div class="flex gap-2">
+              <button
+                type="button"
+                class="rounded-xl border px-3 py-2 text-sm font-semibold"
+                [class.border-pcmazing-500]="bypass.workLocationType === 'office'"
+                [class.bg-pcmazing-50]="bypass.workLocationType === 'office'"
+                [class.text-pcmazing-700]="bypass.workLocationType === 'office'"
+                [class.border-slate-200]="bypass.workLocationType !== 'office'"
+                (click)="updateBypassDialog({ workLocationType: 'office' })"
+              >
+                Office
+              </button>
+              <button
+                type="button"
+                class="rounded-xl border px-3 py-2 text-sm font-semibold"
+                [class.border-pcmazing-500]="bypass.workLocationType === 'wfh'"
+                [class.bg-pcmazing-50]="bypass.workLocationType === 'wfh'"
+                [class.text-pcmazing-700]="bypass.workLocationType === 'wfh'"
+                [class.border-slate-200]="bypass.workLocationType !== 'wfh'"
+                (click)="updateBypassDialog({ workLocationType: 'wfh' })"
+              >
+                Work from home
+              </button>
+            </div>
+          </div>
+        }
         <label class="mt-4 flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
           <input
             type="checkbox"
@@ -2527,6 +2557,7 @@
             (ngModelChange)="updateBypassDialog({ customAt: $event })"
             name="bypassCustomAt"
           />
+          <p class="mt-1 text-xs text-slate-500">Must fall on {{ bypass.workDate }}.</p>
         }
         @if (bypassError()) {
           <p class="mt-3 text-sm font-semibold text-rose-600">{{ bypassError() }}</p>
