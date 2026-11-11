@@ -5,7 +5,9 @@
       <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
         Human Information Resource System - attendance, payroll, overtime, and employee memos. Configure salary fields in
         <a routerLink="/admin/users" class="font-semibold text-pcmazing-500 hover:underline">User Management</a>.
-        Weekly and Semi-Monthly Amount is a daily rate: 9h+ = full day, owner-agreed undertime (default 30 min early) still pays a full day, 4h to under that = half day. Overtime over 9 hours needs employee request + admin approval.
+        Weekly and Semi-Monthly Amount is a daily rate: 8 paid working hours (+1h break) = full day.
+        Owner-agreed undertime (default 30 min early) still pays a full day. Shorter days pay for hours worked (daily ÷ 8).
+        Overtime over 9 clocked hours needs employee request + admin approval.
       </p>
     </div>
     <button
@@ -747,7 +749,7 @@
         Dates {{ meta.dateFrom }} -> {{ meta.dateTo }} · {{ periodType() === 'cutoff' ? 'Custom' : salaryTypeLabel(periodType()) }} · {{ workWeekLabel(workWeek()) }}.
         Period type sets From/To for every employee. Pay formula still uses each employee profile (daily rate x paid days, or fixed monthly).
         Work week marks rest days: Mon-Fri (Sat+Sun rest), Mon-Sat (Sunday rest), or day-off basis (plotted day offs only).
-        Undertime grace ({{ undertimeGraceMinutes() }} min) still pays a full day if they clock out a little early for an owner-approved reason.
+        Undertime grace ({{ undertimeGraceMinutes() }} min) still pays a full day if paid hours are just under 8 for an owner-approved early out.
         Preview each payslip, then confirm generate. If this range overlaps an existing payslip, you will be asked to confirm before publishing.
       </p>
     }
@@ -1322,7 +1324,7 @@
 
     <p class="mb-4 text-sm text-slate-500">
       Employees who forgot to clock out can upload a time-out photo and why they left (emergency, appointment, event).
-      Approving writes that time onto the attendance record. If the hours still fall within undertime grace, payroll pays a full day.
+      Approving writes that time onto the attendance record. If paid hours still fall within undertime grace of a full 8-hour day, payroll pays a full day.
     </p>
 
     @if (adjustmentItems().length === 0) {
@@ -1867,6 +1869,7 @@
                       <th class="px-3 py-2 text-left text-xs font-bold text-slate-500">Hours</th>
                       <th class="px-3 py-2 text-left text-xs font-bold text-slate-500">Day</th>
                       <th class="px-3 py-2 text-left text-xs font-bold text-slate-500">Day pay</th>
+                      <th class="px-3 py-2 text-left text-xs font-bold text-slate-500">Short</th>
                       <th class="px-3 py-2 text-left text-xs font-bold text-slate-500">OT</th>
                       <th class="px-3 py-2 text-left text-xs font-bold text-slate-500">OT pay</th>
                     </tr>
@@ -1879,25 +1882,32 @@
                         <td class="px-3 py-2 text-slate-700 dark:text-slate-200">{{ formatHours(day.hoursWorked) }}</td>
                         <td class="px-3 py-2 text-slate-700 dark:text-slate-200">{{ day.dayType }}</td>
                         <td class="px-3 py-2 text-slate-900 dark:text-white">{{ formatMoney(day.dayPay) }}</td>
+                        <td class="px-3 py-2 text-red-700 dark:text-red-300">
+                          @if ((day.shortDayAmount ?? 0) > 0) {
+                            -{{ formatMoney(day.shortDayAmount) }}
+                          } @else {
+                            —
+                          }
+                        </td>
                         <td class="px-3 py-2 text-slate-700 dark:text-slate-200">
                           @if (day.overtimeHours > 0) {
                             {{ formatHours(day.overtimeHours) }}
                             <span class="block text-[11px] capitalize text-slate-500">{{ day.overtimeStatus }}</span>
                           } @else {
- - 
+                            —
                           }
                         </td>
                         <td class="px-3 py-2 text-slate-900 dark:text-white">
                           @if (day.overtimePay > 0) {
                             {{ formatMoney(day.overtimePay) }}
                           } @else {
- - 
+                            —
                           }
                         </td>
                       </tr>
                     } @empty {
                       <tr>
-                        <td colspan="7" class="px-3 py-6 text-center text-sm text-slate-500">
+                        <td colspan="8" class="px-3 py-6 text-center text-sm text-slate-500">
                           No days in this payroll period.
                         </td>
                       </tr>
@@ -1930,6 +1940,11 @@
                 }
                 <p>Base pay: {{ formatMoney(detail.totals.basePay) }}</p>
                 <p>Overtime pay: {{ formatMoney(detail.totals.overtimePay) }}</p>
+                @if ((detail.totals.shortDayTotal ?? 0) > 0) {
+                  <p class="text-red-700 sm:col-span-2">
+                    Short-day / early-out: -{{ formatMoney(detail.totals.shortDayTotal) }}
+                  </p>
+                }
                 @if (detail.breakdown; as breakdown) {
                   <p class="text-emerald-700">Commissions: {{ formatMoney(breakdown.commissionsTotal) }}</p>
                   <p class="text-red-700">Late deductions: {{ formatMoney(breakdown.lateTotal) }}</p>

@@ -565,7 +565,14 @@
                           {{ day.timeInLabel }}-{{ day.timeOutLabel }} · {{ formatHours(day.hoursWorked) }} · {{ day.dayType }}
                         </p>
                       </div>
-                      <p class="shrink-0 text-sm font-bold text-slate-900 dark:text-white">{{ formatMoney(day.dayPay) }}</p>
+                      <div class="shrink-0 text-right">
+                        <p class="text-sm font-bold text-slate-900 dark:text-white">{{ formatMoney(day.dayPay) }}</p>
+                        @if ((day.shortDayAmount ?? 0) > 0) {
+                          <p class="text-[11px] font-semibold text-red-700 dark:text-red-300">
+                            Short -{{ formatMoney(day.shortDayAmount) }}
+                          </p>
+                        }
+                      </div>
                     </div>
                     @if (day.overtimeHours > 0) {
                       <p class="mt-2 text-[11px] text-slate-500 dark:text-slate-400">
@@ -605,6 +612,11 @@
                 }
                 <p>Base pay: {{ formatMoney(detail.totals.basePay) }}</p>
                 <p>Overtime pay: {{ formatMoney(detail.totals.overtimePay) }}</p>
+                @if ((detail.totals.shortDayTotal ?? 0) > 0) {
+                  <p class="text-red-700 dark:text-red-300">
+                    Short-day / early-out: -{{ formatMoney(detail.totals.shortDayTotal) }}
+                  </p>
+                }
                 @if (detail.breakdown; as breakdown) {
                   <p class="text-emerald-700 dark:text-emerald-300">
                     Commissions: {{ formatMoney(breakdown.commissionsTotal) }}

@@ -14,6 +14,8 @@ export interface PayslipDayBreakdownRow {
   dayType: string;
   paidUnits: number;
   dayPay: number;
+  /** Unpaid portion of a full daily rate (display only; already reflected in dayPay). */
+  shortDayAmount: number;
   overtimeHours: number;
   overtimeStatus: string;
   overtimePay: number;
@@ -42,6 +44,8 @@ export interface PayslipPdfPayload {
     basePay: number;
     overtimePay: number;
     estimatedPay: number;
+    /** Sum of per-day shortDayAmount (display only). */
+    shortDayTotal?: number;
     periodDays?: number;
     salaryTypeLabel?: string;
     payBasis?: string;
@@ -143,11 +147,12 @@ export async function buildPayslipPdfBuffer(
 
     const col = {
       date: left,
-      shift: left + 70,
-      hours: left + 160,
-      type: left + 210,
-      dayPay: left + 275,
-      ot: left + 350,
+      shift: left + 58,
+      hours: left + 138,
+      type: left + 178,
+      dayPay: left + 238,
+      short: left + 298,
+      ot: left + 358,
       otPay: left + 430,
     };
     const rowHeight = 16;
@@ -155,13 +160,14 @@ export async function buildPayslipPdfBuffer(
     const drawTableHeader = () => {
       const y = doc.y;
       doc.fontSize(8).fillColor('#64748b');
-      doc.text('Date', col.date, y, { width: 65, lineBreak: false });
-      doc.text('Shift', col.shift, y, { width: 85, lineBreak: false });
-      doc.text('Hours', col.hours, y, { width: 45, lineBreak: false });
-      doc.text('Day', col.type, y, { width: 60, lineBreak: false });
-      doc.text('Day pay', col.dayPay, y, { width: 70, lineBreak: false });
-      doc.text('OT hrs', col.ot, y, { width: 75, lineBreak: false });
-      doc.text('OT pay', col.otPay, y, { width: 70, lineBreak: false });
+      doc.text('Date', col.date, y, { width: 55, lineBreak: false });
+      doc.text('Shift', col.shift, y, { width: 75, lineBreak: false });
+      doc.text('Hours', col.hours, y, { width: 38, lineBreak: false });
+      doc.text('Day', col.type, y, { width: 55, lineBreak: false });
+      doc.text('Day pay', col.dayPay, y, { width: 55, lineBreak: false });
+      doc.text('Short', col.short, y, { width: 55, lineBreak: false });
+      doc.text('OT hrs', col.ot, y, { width: 68, lineBreak: false });
+      doc.text('OT pay', col.otPay, y, { width: 60, lineBreak: false });
       resetCursor(y + 12);
       doc
         .strokeColor('#e2e8f0')
@@ -185,18 +191,23 @@ export async function buildPayslipPdfBuffer(
       ensureRowSpace(rowHeight);
       const y = doc.y;
       doc.fontSize(8).fillColor('#0f172a');
-      doc.text(day.workDate, col.date, y, { width: 65, lineBreak: false });
+      doc.text(day.workDate, col.date, y, { width: 55, lineBreak: false });
       doc.text(`${day.timeInLabel}-${day.timeOutLabel}`, col.shift, y, {
-        width: 85,
+        width: 75,
         lineBreak: false,
       });
       doc.text(day.hoursWorked.toFixed(2), col.hours, y, {
-        width: 45,
+        width: 38,
         lineBreak: false,
       });
-      doc.text(day.dayType, col.type, y, { width: 60, lineBreak: false });
+      doc.text(day.dayType, col.type, y, { width: 55, lineBreak: false });
       doc.text(money(day.dayPay), col.dayPay, y, {
-        width: 70,
+        width: 55,
+        lineBreak: false,
+      });
+      const shortAmount = Number(day.shortDayAmount) || 0;
+      doc.text(shortAmount > 0 ? `-${money(shortAmount)}` : '-', col.short, y, {
+        width: 55,
         lineBreak: false,
       });
       doc.text(
@@ -206,7 +217,7 @@ export async function buildPayslipPdfBuffer(
         col.ot,
         y,
         {
-          width: 75,
+          width: 68,
           lineBreak: false,
         },
       );
@@ -214,7 +225,7 @@ export async function buildPayslipPdfBuffer(
         day.overtimePay > 0 ? money(day.overtimePay) : '-',
         col.otPay,
         y,
-        { width: 70, lineBreak: false },
+        { width: 60, lineBreak: false },
       );
       resetCursor(y + rowHeight);
     }
@@ -248,9 +259,7 @@ export async function buildPayslipPdfBuffer(
     writeLine(
       `Days present / completed: ${t.daysPresent} / ${t.daysCompleted}`,
     );
-    writeLine(
-      `Paid day units: ${t.paidDayUnits.toFixed(2)} (full=1.0, half=0.5)`,
-    );
+    writeLine(`Paid day units: ${t.paidDayUnits.toFixed(2)} (full=1.0)`);
     writeLine(`Total hours: ${t.totalHours.toFixed(2)} h`);
     writeLine(`Approved overtime: ${t.approvedOvertimeHours.toFixed(2)} h`);
     if (t.pendingOvertimeHours > 0) {
@@ -263,6 +272,13 @@ export async function buildPayslipPdfBuffer(
     doc.moveDown(0.35);
     writeLine(`Base pay: ${money(t.basePay)}`);
     writeLine(`Overtime pay: ${money(t.overtimePay)}`);
+    if ((t.shortDayTotal ?? 0) > 0) {
+      doc.fillColor('#b91c1c');
+      writeLine(
+        `Short-day / early-out: -${money(t.shortDayTotal ?? 0)}`,
+      );
+      doc.fillColor('#0f172a');
+    }
     if (payload.breakdown) {
       writeLine(`Commissions: ${money(payload.breakdown.commissionsTotal)}`);
       writeLine(`Late deductions: ${money(payload.breakdown.lateTotal)}`);
