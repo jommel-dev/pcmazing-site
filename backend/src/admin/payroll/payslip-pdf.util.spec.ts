@@ -182,6 +182,7 @@ describe('buildPayslipPdfBuffer', () => {
         dayType: 'REGULAR',
         paidUnits: 1,
         dayPay: 500,
+        shortDayAmount: 0,
         overtimeHours: 0,
         overtimeStatus: 'NONE',
         overtimePay: 0,

@@ -908,6 +908,7 @@ export interface EmployeePayslipDetail {
     dayType: string;
     paidUnits: number;
     dayPay: number;
+    shortDayAmount?: number;
     overtimeHours: number;
     overtimeStatus: string;
     overtimePay: number;
@@ -922,6 +923,7 @@ export interface EmployeePayslipDetail {
     basePay: number;
     overtimePay: number;
     estimatedPay: number;
+    shortDayTotal?: number;
     periodDays?: number;
     salaryTypeLabel?: string;
     payBasis?: string;
