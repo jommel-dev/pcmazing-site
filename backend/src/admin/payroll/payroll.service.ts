@@ -70,6 +70,15 @@ import {
   pickSalaryAmountForLocation,
 } from './location-pay.util';
 import {
+  STANDARD_WORK_HOURS,
+  OT_ELAPSED_THRESHOLD_HOURS,
+  LEGACY_FULL_DAY_ELAPSED_HOURS,
+  toPaidHours,
+  dayPayUnitsFromElapsed,
+  dayPayUnitsLegacy,
+  formatDayPayLabel,
+} from './day-pay-hours.util';
+import {
   computeEqualInstallmentAmount,
   computePayslipNet,
   PayslipLedgerLine,
@@ -450,10 +459,8 @@ export type TimeClockLocationInput = {
   locationLabel?: string | null;
 };
 
-/** Hours required for a full paid day (and OT threshold). */
-const FULL_DAY_HOURS = 9;
-/** Minimum hours for half-day pay (half of daily amount). */
-const HALF_DAY_MIN_HOURS = 4;
+/** Elapsed hours before OT may be requested (approval still required). */
+const OT_THRESHOLD = OT_ELAPSED_THRESHOLD_HOURS;
 /** Ordinary overtime multiplier (Philippines Labor Code default for regular OT). */
 const OVERTIME_MULTIPLIER = 1.25;
 
@@ -4311,7 +4318,7 @@ export class PayrollService {
     const fixedRates = usesFixedSalary
       ? {
           dailyRate: 0,
-          hourlyRate: fixedMonthly / 22 / FULL_DAY_HOURS,
+          hourlyRate: fixedMonthly / 22 / STANDARD_WORK_HOURS,
         }
       : null;
 
@@ -4323,6 +4330,7 @@ export class PayrollService {
     let pendingOvertimeHours = 0;
     let overtimePayTotal = 0;
     let dayPayTotal = 0;
+    let shortDayTotal = 0;
 
     const punchByDate = new Map(
       input.punches.map((row) => [String(row.work_date).slice(0, 10), row]),
@@ -4344,6 +4352,7 @@ export class PayrollService {
             : 'Absent',
           paidUnits: 0,
           dayPay: 0,
+          shortDayAmount: 0,
           overtimeHours: 0,
           overtimeStatus: 'none',
           overtimePay: 0,
@@ -4357,10 +4366,14 @@ export class PayrollService {
       const otHours = Number(row.overtime_hours ?? 0) || 0;
       const otStatus = this.normalizeOvertimeStatus(row.overtime_status);
 
-      let units = this.dayPayUnits(hours, undertimeGraceMinutes);
+      const unitMode: 'hourly' | 'legacy' = usesFixedSalary
+        ? 'legacy'
+        : 'hourly';
+      let units = this.dayPayUnits(hours, undertimeGraceMinutes, unitMode);
       let dayPay = 0;
       let overtimePay = 0;
       let hourlyRate = 0;
+      let dailyRateForShort = 0;
 
       if (usesFixedSalary && fixedRates) {
         // Location amounts unused for fixed pay; null/off punch type → 0 units / OT pay.
@@ -4397,6 +4410,7 @@ export class PayrollService {
             weeklyHourBase,
           );
           hourlyRate = rates.hourlyRate;
+          dailyRateForShort = rates.dailyRate;
           dayPay = Math.round(units * rates.dailyRate * 100) / 100;
           overtimePay =
             otHours > 0 && otStatus === 'approved'
@@ -4406,12 +4420,26 @@ export class PayrollService {
         }
       }
 
+      // Display-only: unpaid slice of a full day. Incomplete / fixed monthly → 0.
+      const shortDayAmount =
+        !usesFixedSalary &&
+        hours != null &&
+        dailyRateForShort > 0
+          ? Math.max(
+              0,
+              Math.round((dailyRateForShort - dayPay) * 100) / 100,
+            )
+          : 0;
+
       if (hours != null) {
         daysCompleted += 1;
         totalHours += hours;
         paidDayUnits += units;
-        regularHours += Math.min(hours, FULL_DAY_HOURS);
+        regularHours += usesFixedSalary
+          ? Math.min(hours, LEGACY_FULL_DAY_ELAPSED_HOURS)
+          : Math.min(toPaidHours(hours), STANDARD_WORK_HOURS);
         dayPayTotal += dayPay;
+        shortDayTotal += shortDayAmount;
         if (otHours > 0 && otStatus === 'approved') {
           // Null/off punch type: hours may still show, but do not add to payable OT.
           if (punchedType != null && punchedType !== 'off') {
@@ -4429,10 +4457,15 @@ export class PayrollService {
         timeOutLabel: this.formatPunchLabel(row.time_out),
         hoursWorked: hours ?? 0,
         dayType:
-          this.dayPayLabel(units, hours, undertimeGraceMinutes) +
-          locationPayLabelSuffix(punchedType ?? 'off'),
+          formatDayPayLabel(
+            units,
+            hours,
+            hours == null ? null : toPaidHours(hours),
+            undertimeGraceMinutes,
+          ) + locationPayLabelSuffix(punchedType ?? 'off'),
         paidUnits: units,
         dayPay,
+        shortDayAmount,
         overtimeHours: otHours,
         overtimeStatus: otStatus,
         overtimePay,
@@ -4480,6 +4513,7 @@ export class PayrollService {
         basePay,
         overtimePay: Math.round(overtimePayTotal * 100) / 100,
         estimatedPay,
+        shortDayTotal: Math.round(shortDayTotal * 100) / 100,
         periodDays: input.periodDays,
         salaryTypeLabel: this.salaryTypeLabel(input.salaryType),
         payBasis: this.describePayBasis(
@@ -4595,15 +4629,15 @@ export class PayrollService {
     switch (salaryType) {
       case 'weekly':
       case 'semi_monthly':
-        return { dailyRate: amount, hourlyRate: amount / FULL_DAY_HOURS };
+        return { dailyRate: amount, hourlyRate: amount / STANDARD_WORK_HOURS };
       case 'cutoff': {
         const dailyRate = periodDays > 0 ? amount / periodDays : 0;
-        return { dailyRate, hourlyRate: dailyRate / FULL_DAY_HOURS };
+        return { dailyRate, hourlyRate: dailyRate / STANDARD_WORK_HOURS };
       }
       case 'monthly':
       default: {
         const dailyRate = amount / 22;
-        return { dailyRate, hourlyRate: dailyRate / FULL_DAY_HOURS };
+        return { dailyRate, hourlyRate: dailyRate / STANDARD_WORK_HOURS };
       }
     }
   }
@@ -4613,19 +4647,12 @@ export class PayrollService {
     hours: number | null,
     undertimeGraceMinutes = 30,
   ): string {
-    if (hours == null) {
-      return 'Incomplete';
-    }
-    if (units >= 1 && hours < FULL_DAY_HOURS) {
-      return `Undertime (paid, ≤${undertimeGraceMinutes}m)`;
-    }
-    if (units >= 1) {
-      return 'Full day';
-    }
-    if (units >= 0.5) {
-      return 'Half day';
-    }
-    return 'Unpaid';
+    return formatDayPayLabel(
+      units,
+      hours,
+      hours == null ? null : toPaidHours(hours),
+      undertimeGraceMinutes,
+    );
   }
 
   private salaryTypeLabel(value: PayrollSalaryType): string {
@@ -5150,13 +5177,13 @@ export class PayrollService {
 
     const hours = this.computeHours(row.time_in, row.time_out) ?? 0;
     const overtimeHours =
-      hours > FULL_DAY_HOURS
-        ? Math.round((hours - FULL_DAY_HOURS) * 100) / 100
+      hours > OT_THRESHOLD
+        ? Math.round((hours - OT_THRESHOLD) * 100) / 100
         : Number(row.overtime_hours) || 0;
 
     if (overtimeHours <= 0) {
       throw new BadRequestException(
-        `Overtime can only be requested when you work more than ${FULL_DAY_HOURS} hours.`,
+        `Overtime can only be requested when you work more than ${OT_THRESHOLD} hours.`,
       );
     }
 
@@ -5351,8 +5378,8 @@ export class PayrollService {
   ): Promise<void> {
     const hours = this.computeHours(timeIn, timeOut) ?? 0;
     const overtimeHours =
-      hours > FULL_DAY_HOURS
-        ? Math.round((hours - FULL_DAY_HOURS) * 100) / 100
+      hours > OT_THRESHOLD
+        ? Math.round((hours - OT_THRESHOLD) * 100) / 100
         : 0;
 
     await this.databaseService.query(
@@ -5965,13 +5992,13 @@ export class PayrollService {
   ): number {
     switch (workWeek) {
       case 'mon_fri':
-        return 5 * FULL_DAY_HOURS;
+        return 5 * LEGACY_FULL_DAY_ELAPSED_HOURS;
       case 'mon_sat':
-        return 6 * FULL_DAY_HOURS;
+        return 6 * LEGACY_FULL_DAY_ELAPSED_HOURS;
       case 'day_off_basis':
       default: {
         const workingDays = Math.max(1, periodDays - restDayCount);
-        return workingDays * FULL_DAY_HOURS;
+        return workingDays * LEGACY_FULL_DAY_ELAPSED_HOURS;
       }
     }
   }
@@ -6062,7 +6089,10 @@ export class PayrollService {
       const otHours = Number(punch.overtime_hours ?? 0) || 0;
       const otStatus = this.normalizeOvertimeStatus(punch.overtime_status);
 
-      let units = this.dayPayUnits(hours, undertimeGraceMinutes);
+      const unitMode: 'hourly' | 'legacy' = usesFixedSalary
+        ? 'legacy'
+        : 'hourly';
+      let units = this.dayPayUnits(hours, undertimeGraceMinutes, unitMode);
 
       if (usesFixedSalary) {
         // Location amounts unused for fixed pay; null/off punch type → 0 units / OT pay.
@@ -6103,7 +6133,9 @@ export class PayrollService {
       totalHours += hours;
       daysCompleted += 1;
       paidDayUnits += units;
-      regularHours += Math.min(hours, FULL_DAY_HOURS);
+      regularHours += usesFixedSalary
+        ? Math.min(hours, LEGACY_FULL_DAY_ELAPSED_HOURS)
+        : Math.min(toPaidHours(hours), STANDARD_WORK_HOURS);
       if (otHours > 0 && otStatus === 'approved') {
         // Null/off punch type: do not add approved OT hours to payable OT totals.
         if (punchedType != null && punchedType !== 'off') {
@@ -6255,7 +6287,7 @@ export class PayrollService {
 
     if (fixedMonthly != null) {
       const basePay = this.scheduledFixedPay(fixedMonthly, input.salaryType);
-      const hourlyRate = fixedMonthly / 22 / FULL_DAY_HOURS;
+      const hourlyRate = fixedMonthly / 22 / STANDARD_WORK_HOURS;
       const overtimePay =
         input.approvedOvertimeHours > 0 && hourlyRate > 0
           ? input.approvedOvertimeHours * hourlyRate * OVERTIME_MULTIPLIER
@@ -6275,9 +6307,9 @@ export class PayrollService {
       case 'weekly':
       case 'semi_monthly': {
         // Weekly and semi-monthly salary amount is the daily rate.
-        // Full day (9h+) = 1×, half day (4–<9h) = 0.5×.
+        // Day units are paidHours/8 (hourly path) or legacy buckets (fixed monthly).
         basePay = input.paidDayUnits * amount;
-        hourlyRate = amount / FULL_DAY_HOURS;
+        hourlyRate = amount / STANDARD_WORK_HOURS;
         break;
       }
       case 'cutoff': {
@@ -6287,14 +6319,14 @@ export class PayrollService {
         }
         const daily = amount / input.periodDays;
         basePay = input.paidDayUnits * daily;
-        hourlyRate = daily / FULL_DAY_HOURS;
+        hourlyRate = daily / STANDARD_WORK_HOURS;
         break;
       }
       case 'monthly':
       default: {
         const daily = amount / 22;
         basePay = input.paidDayUnits * daily;
-        hourlyRate = daily / FULL_DAY_HOURS;
+        hourlyRate = daily / STANDARD_WORK_HOURS;
         break;
       }
     }
@@ -6308,29 +6340,17 @@ export class PayrollService {
   }
 
   /**
-   * Full day (≥9h, or within owner-agreed undertime grace) = 1.0 unit.
-   * Half day (≥4h and below the full-day threshold) = 0.5 unit.
-   * Below 4h = unpaid.
+   * Daily-rate: paidHours/8 (assumed 1h break after 5h elapsed) with undertime grace.
+   * Fixed monthly: legacy 9h full / 4h half buckets.
    */
   private dayPayUnits(
     hours: number | null | undefined,
     undertimeGraceMinutes = 30,
+    mode: 'hourly' | 'legacy' = 'hourly',
   ): number {
-    if (hours == null || !Number.isFinite(hours) || hours <= 0) {
-      return 0;
-    }
-    const graceHours = this.normalizeUndertimeGrace(undertimeGraceMinutes) / 60;
-    const fullDayThreshold = Math.max(
-      HALF_DAY_MIN_HOURS,
-      FULL_DAY_HOURS - graceHours,
-    );
-    if (hours + 0.0001 >= fullDayThreshold) {
-      return 1;
-    }
-    if (hours >= HALF_DAY_MIN_HOURS) {
-      return 0.5;
-    }
-    return 0;
+    return mode === 'legacy'
+      ? dayPayUnitsLegacy(hours, undertimeGraceMinutes)
+      : dayPayUnitsFromElapsed(hours, undertimeGraceMinutes);
   }
 
   private normalizeUndertimeGrace(
