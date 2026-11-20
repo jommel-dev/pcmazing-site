@@ -242,4 +242,107 @@ export class CreateServiceDto {
   @IsString()
   @MaxLength(120)
   deviceSerial?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['in_store', 'onsite_home', 'onsite_office'])
+  serviceArrangement?: 'in_store' | 'onsite_home' | 'onsite_office';
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['laptop', 'desktop', 'printer', 'iphone', 'android', 'others'])
+  deviceType?: 'laptop' | 'desktop' | 'printer' | 'iphone' | 'android' | 'others';
+
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() || undefined : value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  deviceTypeOther?: string;
+
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() || undefined : value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  deviceCpu?: string;
+
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() || undefined : value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  deviceRam?: string;
+
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() || undefined : value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  deviceStorage?: string;
+
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() || undefined : value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  deviceDisplay?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(30)
+  @IsString({ each: true })
+  includedAccessories?: string[];
+
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() || undefined : value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  includedAccessoriesOther?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['good', 'minor', 'defective', 'others'])
+  unitCondition?: 'good' | 'minor' | 'defective' | 'others';
+
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() || undefined : value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  unitConditionOther?: string;
+
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() || undefined : value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(5000)
+  customerReportedIssue?: string;
+
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() || undefined : value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(5000)
+  technicianDiagnosis?: string;
+
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() || undefined : value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(5000)
+  serviceRequested?: string;
+
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() || undefined : value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  expectedCompletion?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true' || value === 1 || value === '1')
+  @IsBoolean()
+  consentSoftwareInstall?: boolean;
+
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true' || value === 1 || value === '1')
+  @IsBoolean()
+  consentDataBackupAck?: boolean;
+
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() || undefined : value))
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  releasedBy?: string;
 }

@@ -28,6 +28,14 @@ import {
   type WarrantyUnit,
 } from './item-warranty.util';
 import { isMaterialInStock, stockQty } from './inventory-stock.util';
+import {
+  JO_ACCESSORY_OPTIONS,
+  JO_CONSENT_BACKUP_LABEL,
+  JO_CONSENT_SOFTWARE_LABEL,
+  JO_DEVICE_TYPE_OPTIONS,
+  JO_SERVICE_ARRANGEMENT_OPTIONS,
+  JO_UNIT_CONDITION_OPTIONS,
+} from './job-order-intake.util';
 
 const DEFAULT_STATUSES = ['Active', 'Pending', 'Cancelled', 'Done', 'Refunded'];
 const SETTLEMENT_PAYMENT_METHODS = ['Cash', 'Gcash', 'Bank Transfer'] as const;
@@ -47,6 +55,12 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
   private readonly destroyRef = inject(DestroyRef);
 
   readonly statuses = DEFAULT_STATUSES;
+  readonly serviceArrangementOptions = JO_SERVICE_ARRANGEMENT_OPTIONS;
+  readonly deviceTypeOptions = JO_DEVICE_TYPE_OPTIONS;
+  readonly unitConditionOptions = JO_UNIT_CONDITION_OPTIONS;
+  readonly accessoryOptions = JO_ACCESSORY_OPTIONS;
+  readonly consentSoftwareLabel = JO_CONSENT_SOFTWARE_LABEL;
+  readonly consentBackupLabel = JO_CONSENT_BACKUP_LABEL;
   readonly warrantyPresets = WARRANTY_PRESETS;
   readonly warrantyUnits: Array<{ value: WarrantyUnit; label: string }> = [
     { value: 'day', label: 'Day' },
@@ -129,6 +143,24 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
     endedAt: [''],
     notes: ['', [Validators.maxLength(2000)]],
     promotion: ['', [Validators.maxLength(180)]],
+    serviceArrangement: [''],
+    deviceType: [''],
+    deviceTypeOther: ['', [Validators.maxLength(120)]],
+    deviceCpu: ['', [Validators.maxLength(120)]],
+    deviceRam: ['', [Validators.maxLength(120)]],
+    deviceStorage: ['', [Validators.maxLength(120)]],
+    deviceDisplay: ['', [Validators.maxLength(120)]],
+    includedAccessories: [[] as string[]],
+    includedAccessoriesOther: ['', [Validators.maxLength(255)]],
+    unitCondition: [''],
+    unitConditionOther: ['', [Validators.maxLength(120)]],
+    customerReportedIssue: ['', [Validators.maxLength(4000)]],
+    technicianDiagnosis: ['', [Validators.maxLength(4000)]],
+    serviceRequested: ['', [Validators.maxLength(4000)]],
+    expectedCompletion: ['', [Validators.maxLength(120)]],
+    consentSoftwareInstall: [false],
+    consentDataBackupAck: [false],
+    releasedBy: ['', [Validators.maxLength(120)]],
     services: this.formBuilder.array([]),
     parts: this.formBuilder.array([]),
   });
@@ -255,6 +287,24 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
           endedAt: item.endedAt ?? '',
           notes: item.notes ?? '',
           promotion: item.promotion ?? '',
+          serviceArrangement: item.serviceArrangement ?? '',
+          deviceType: item.deviceType ?? '',
+          deviceTypeOther: item.deviceTypeOther ?? '',
+          deviceCpu: item.deviceCpu ?? '',
+          deviceRam: item.deviceRam ?? '',
+          deviceStorage: item.deviceStorage ?? '',
+          deviceDisplay: item.deviceDisplay ?? '',
+          includedAccessories: [...(item.includedAccessories ?? [])],
+          includedAccessoriesOther: item.includedAccessoriesOther ?? '',
+          unitCondition: item.unitCondition ?? '',
+          unitConditionOther: item.unitConditionOther ?? '',
+          customerReportedIssue: item.customerReportedIssue ?? '',
+          technicianDiagnosis: item.technicianDiagnosis ?? '',
+          serviceRequested: item.serviceRequested ?? '',
+          expectedCompletion: item.expectedCompletion ?? '',
+          consentSoftwareInstall: Boolean(item.consentSoftwareInstall),
+          consentDataBackupAck: Boolean(item.consentDataBackupAck),
+          releasedBy: item.releasedBy ?? '',
         });
         this.loadedManualTotalAmount =
           item.manualTotalAmount != null ? Number(item.manualTotalAmount) : null;
@@ -1444,6 +1494,10 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
         ? this.normalizeJobStatus(this.loadedStatus())
         : 'Pending';
     const serviceTypeLabel = serviceParts.map((service) => service.customItemName).join(', ');
+    const serviceRequested =
+      String(value.serviceRequested ?? '').trim() ||
+      serviceParts.map((service) => service.customItemName).join(', ') ||
+      undefined;
 
     return {
       payload: {
@@ -1480,8 +1534,52 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
           ? Math.max(0, Number(this.form.getRawValue().manualTotalAmount) || 0)
           : null,
         manualTotalReason: String(value.manualTotalReason ?? '').trim() || undefined,
+        serviceArrangement: value.serviceArrangement.trim() || null,
+        deviceType: value.deviceType.trim() || null,
+        deviceTypeOther: value.deviceTypeOther.trim() || null,
+        deviceCpu: value.deviceCpu.trim() || null,
+        deviceRam: value.deviceRam.trim() || null,
+        deviceStorage: value.deviceStorage.trim() || null,
+        deviceDisplay: value.deviceDisplay.trim() || null,
+        includedAccessories: Array.isArray(value.includedAccessories)
+          ? [...value.includedAccessories]
+          : [],
+        includedAccessoriesOther: value.includedAccessoriesOther.trim() || null,
+        unitCondition: value.unitCondition.trim() || null,
+        unitConditionOther: value.unitConditionOther.trim() || null,
+        customerReportedIssue: value.customerReportedIssue.trim() || null,
+        technicianDiagnosis: value.technicianDiagnosis.trim() || null,
+        serviceRequested: serviceRequested || null,
+        expectedCompletion: value.expectedCompletion.trim() || null,
+        consentSoftwareInstall: Boolean(value.consentSoftwareInstall),
+        consentDataBackupAck: Boolean(value.consentDataBackupAck),
+        releasedBy: value.releasedBy.trim() || null,
       },
     };
+  }
+
+  isAccessorySelected(key: string): boolean {
+    const selected = this.form.controls.includedAccessories.value ?? [];
+    return selected.includes(key);
+  }
+
+  toggleAccessory(key: string, checked: boolean): void {
+    const selected = [...(this.form.controls.includedAccessories.value ?? [])];
+    const index = selected.indexOf(key);
+    if (checked && index < 0) {
+      selected.push(key);
+    } else if (!checked && index >= 0) {
+      selected.splice(index, 1);
+    }
+    this.form.controls.includedAccessories.setValue(selected);
+  }
+
+  openJobOrderForm(): void {
+    const id = this.serviceId();
+    if (!id) {
+      return;
+    }
+    void this.router.navigate(['/admin/job-order', id, 'form']);
   }
 
   requestSubmit(): void {
@@ -1640,6 +1738,24 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
           ? Number(item.manualTotalAmount)
           : Number(item.calculatedTotal ?? item.totalSales ?? 0),
       manualTotalReason: '',
+      serviceArrangement: item.serviceArrangement ?? '',
+      deviceType: item.deviceType ?? '',
+      deviceTypeOther: item.deviceTypeOther ?? '',
+      deviceCpu: item.deviceCpu ?? '',
+      deviceRam: item.deviceRam ?? '',
+      deviceStorage: item.deviceStorage ?? '',
+      deviceDisplay: item.deviceDisplay ?? '',
+      includedAccessories: [...(item.includedAccessories ?? [])],
+      includedAccessoriesOther: item.includedAccessoriesOther ?? '',
+      unitCondition: item.unitCondition ?? '',
+      unitConditionOther: item.unitConditionOther ?? '',
+      customerReportedIssue: item.customerReportedIssue ?? '',
+      technicianDiagnosis: item.technicianDiagnosis ?? '',
+      serviceRequested: item.serviceRequested ?? '',
+      expectedCompletion: item.expectedCompletion ?? '',
+      consentSoftwareInstall: Boolean(item.consentSoftwareInstall),
+      consentDataBackupAck: Boolean(item.consentDataBackupAck),
+      releasedBy: item.releasedBy ?? '',
     });
     this.syncSavedCatalogServices(item);
     this.syncSavedInventoryParts(item);

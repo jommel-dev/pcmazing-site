@@ -265,6 +265,24 @@ export interface InventoryServiceItem {
   }>;
   createdAt?: string | null;
   updatedAt: string | null;
+  serviceArrangement?: string | null;
+  deviceType?: string | null;
+  deviceTypeOther?: string | null;
+  deviceCpu?: string | null;
+  deviceRam?: string | null;
+  deviceStorage?: string | null;
+  deviceDisplay?: string | null;
+  includedAccessories?: string[];
+  includedAccessoriesOther?: string | null;
+  unitCondition?: string | null;
+  unitConditionOther?: string | null;
+  customerReportedIssue?: string | null;
+  technicianDiagnosis?: string | null;
+  serviceRequested?: string | null;
+  expectedCompletion?: string | null;
+  consentSoftwareInstall?: boolean;
+  consentDataBackupAck?: boolean;
+  releasedBy?: string | null;
 }
 
 export interface JobOrderAuditLogItem {
@@ -320,6 +338,24 @@ export interface CreateInventoryServicePayload {
   endedAt?: string;
   manualTotalAmount?: number | null;
   manualTotalReason?: string;
+  serviceArrangement?: string | null;
+  deviceType?: string | null;
+  deviceTypeOther?: string | null;
+  deviceCpu?: string | null;
+  deviceRam?: string | null;
+  deviceStorage?: string | null;
+  deviceDisplay?: string | null;
+  includedAccessories?: string[];
+  includedAccessoriesOther?: string | null;
+  unitCondition?: string | null;
+  unitConditionOther?: string | null;
+  customerReportedIssue?: string | null;
+  technicianDiagnosis?: string | null;
+  serviceRequested?: string | null;
+  expectedCompletion?: string | null;
+  consentSoftwareInstall?: boolean;
+  consentDataBackupAck?: boolean;
+  releasedBy?: string | null;
 }
 
 export interface SalesOrderSummary {

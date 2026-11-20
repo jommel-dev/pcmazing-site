@@ -44,7 +44,7 @@
       <div class="space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
       <div class="grid gap-4 sm:grid-cols-2">
         <div class="relative sm:col-span-2">
-          <label class="mb-2 block text-sm font-semibold text-slate-800">Customer name</label>
+          <label class="mb-2 block text-sm font-semibold text-slate-800">Customer's Name</label>
           <input
             type="text"
             class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-500"
@@ -96,18 +96,18 @@
             class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none read-only:bg-slate-100 read-only:text-slate-500"
             formControlName="customerEmail"
             [readOnly]="isDoneStatus()"
-            placeholder="e.g. customer@email.com"
+            placeholder="Email"
           />
         </div>
 
         <div>
-          <label class="mb-2 block text-sm font-semibold text-slate-800">Contact</label>
+          <label class="mb-2 block text-sm font-semibold text-slate-800">Contact No.</label>
           <input
             type="text"
             class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none read-only:bg-slate-100 read-only:text-slate-500"
             formControlName="customerContact"
             [readOnly]="isDoneStatus()"
-            placeholder="e.g. 0917 123 4567"
+            placeholder="Contact No."
           />
         </div>
 
@@ -210,7 +210,7 @@
                 class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none read-only:bg-slate-100 read-only:text-slate-500"
                 formControlName="deviceBrand"
                 [readOnly]="isDoneStatus()"
-                placeholder="e.g. ASUS, Lenovo, HP"
+                placeholder="Brand"
               />
             </div>
             <div>
@@ -220,18 +220,212 @@
                 class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none read-only:bg-slate-100 read-only:text-slate-500"
                 formControlName="deviceModel"
                 [readOnly]="isDoneStatus()"
-                placeholder="e.g. TUF Gaming F15"
+                placeholder="Model"
               />
             </div>
             <div class="sm:col-span-2">
-              <label class="mb-2 block text-sm font-semibold text-slate-800">Serial No.</label>
+              <label class="mb-2 block text-sm font-semibold text-slate-800">Serial No. (if available)</label>
               <input
                 type="text"
                 class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none read-only:bg-slate-100 read-only:text-slate-500"
                 formControlName="deviceSerial"
                 [readOnly]="isDoneStatus()"
-                placeholder="Serial number or service tag"
+                placeholder="Serial No. (if available)"
               />
+            </div>
+            <div>
+              <label class="mb-2 block text-sm font-semibold text-slate-800">Processor (CPU)</label>
+              <input
+                type="text"
+                class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none read-only:bg-slate-100 read-only:text-slate-500"
+                formControlName="deviceCpu"
+                [readOnly]="isDoneStatus()"
+                placeholder="Processor (CPU)"
+              />
+            </div>
+            <div>
+              <label class="mb-2 block text-sm font-semibold text-slate-800">Memory (RAM)</label>
+              <input
+                type="text"
+                class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none read-only:bg-slate-100 read-only:text-slate-500"
+                formControlName="deviceRam"
+                [readOnly]="isDoneStatus()"
+                placeholder="Memory (RAM)"
+              />
+            </div>
+            <div>
+              <label class="mb-2 block text-sm font-semibold text-slate-800">Storage</label>
+              <input
+                type="text"
+                class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none read-only:bg-slate-100 read-only:text-slate-500"
+                formControlName="deviceStorage"
+                [readOnly]="isDoneStatus()"
+                placeholder="Storage"
+              />
+            </div>
+            <div>
+              <label class="mb-2 block text-sm font-semibold text-slate-800">Display (LCD/LED)</label>
+              <input
+                type="text"
+                class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none read-only:bg-slate-100 read-only:text-slate-500"
+                formControlName="deviceDisplay"
+                [readOnly]="isDoneStatus()"
+                placeholder="e.g. 15.6&quot; FHD"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="rounded-2xl border border-slate-200 p-4">
+        <div class="mb-4">
+          <p class="text-sm font-semibold text-slate-800">Job Order Form intake</p>
+          <p class="text-xs text-slate-500">Same fields as the printed Job Order Form. Optional — leave blank if not needed.</p>
+        </div>
+
+        <div class="space-y-5">
+          <div>
+            <p class="mb-2 text-sm font-semibold text-slate-800">Service Arrangement (Please check one)</p>
+            <div class="flex flex-wrap gap-3">
+              @for (option of serviceArrangementOptions; track option.value) {
+                <label class="inline-flex items-center gap-2 text-sm text-slate-700">
+                  <input type="radio" class="size-4" formControlName="serviceArrangement" [value]="option.value" [disabled]="isDoneStatus()" />
+                  {{ option.label }}
+                </label>
+              }
+            </div>
+          </div>
+
+          <div>
+            <p class="mb-2 text-sm font-semibold text-slate-800">Device Type</p>
+            <div class="flex flex-wrap gap-3">
+              @for (option of deviceTypeOptions; track option.value) {
+                <label class="inline-flex items-center gap-2 text-sm text-slate-700">
+                  <input type="radio" class="size-4" formControlName="deviceType" [value]="option.value" [disabled]="isDoneStatus()" />
+                  {{ option.label }}
+                </label>
+              }
+            </div>
+            @if (form.controls.deviceType.value === 'others') {
+              <input
+                type="text"
+                class="mt-2 w-full max-w-md rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-pcmazing-500 focus:outline-none"
+                formControlName="deviceTypeOther"
+                [readOnly]="isDoneStatus()"
+                placeholder="Others"
+              />
+            }
+          </div>
+
+          <div>
+            <p class="mb-2 text-sm font-semibold text-slate-800">Included Items / Accessories (Check all that apply)</p>
+            <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              @for (option of accessoryOptions; track option.value) {
+                <label class="inline-flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    class="size-4 rounded border-slate-300"
+                    [checked]="isAccessorySelected(option.value)"
+                    [disabled]="isDoneStatus()"
+                    (change)="toggleAccessory(option.value, $any($event.target).checked)"
+                  />
+                  {{ option.label }}
+                </label>
+              }
+            </div>
+            @if (isAccessorySelected('others')) {
+              <input
+                type="text"
+                class="mt-2 w-full max-w-md rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-pcmazing-500 focus:outline-none"
+                formControlName="includedAccessoriesOther"
+                [readOnly]="isDoneStatus()"
+                placeholder="Others"
+              />
+            }
+          </div>
+
+          <div>
+            <p class="mb-2 text-sm font-semibold text-slate-800">Unit Condition (Upon Receipt)</p>
+            <div class="flex flex-wrap gap-3">
+              @for (option of unitConditionOptions; track option.value) {
+                <label class="inline-flex items-center gap-2 text-sm text-slate-700">
+                  <input type="radio" class="size-4" formControlName="unitCondition" [value]="option.value" [disabled]="isDoneStatus()" />
+                  {{ option.label }}
+                </label>
+              }
+            </div>
+            @if (form.controls.unitCondition.value === 'others') {
+              <input
+                type="text"
+                class="mt-2 w-full max-w-md rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-pcmazing-500 focus:outline-none"
+                formControlName="unitConditionOther"
+                [readOnly]="isDoneStatus()"
+                placeholder="Others"
+              />
+            }
+          </div>
+
+          <div class="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label class="mb-2 block text-sm font-semibold text-slate-800">Customer's Reported Issue</label>
+              <p class="mb-1 text-xs text-slate-500">(Customer Complaint / Concern)</p>
+              <textarea
+                rows="3"
+                class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none"
+                formControlName="customerReportedIssue"
+                [readOnly]="isDoneStatus()"
+                placeholder="Customer Complaint / Concern"
+              ></textarea>
+            </div>
+            <div>
+              <label class="mb-2 block text-sm font-semibold text-slate-800">Technician's Diagnosis</label>
+              <p class="mb-1 text-xs text-slate-500">(Initial Assessment / Findings)</p>
+              <textarea
+                rows="3"
+                class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none"
+                formControlName="technicianDiagnosis"
+                [readOnly]="isDoneStatus()"
+                placeholder="Initial Assessment / Findings"
+              ></textarea>
+            </div>
+            <div class="sm:col-span-2">
+              <label class="mb-2 block text-sm font-semibold text-slate-800">Service Requested</label>
+              <textarea
+                rows="2"
+                class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none"
+                formControlName="serviceRequested"
+                [readOnly]="isDoneStatus()"
+                placeholder="Service Requested (defaults from selected services if blank)"
+              ></textarea>
+            </div>
+            <div>
+              <label class="mb-2 block text-sm font-semibold text-slate-800">Expected Completion</label>
+              <input
+                type="text"
+                class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none"
+                formControlName="expectedCompletion"
+                [readOnly]="isDoneStatus()"
+                placeholder="Expected Completion"
+              />
+            </div>
+            <div>
+              <label class="mb-2 block text-sm font-semibold text-slate-800">Released by</label>
+              <input
+                type="text"
+                class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none"
+                formControlName="releasedBy"
+                placeholder="Released by"
+              />
+            </div>
+            <div class="sm:col-span-2 space-y-2">
+              <label class="flex items-start gap-2 text-sm text-slate-700">
+                <input type="checkbox" class="mt-0.5 size-4 rounded border-slate-300" formControlName="consentSoftwareInstall" [disabled]="isDoneStatus()" />
+                <span>{{ consentSoftwareLabel }}</span>
+              </label>
+              <label class="flex items-start gap-2 text-sm text-slate-700">
+                <input type="checkbox" class="mt-0.5 size-4 rounded border-slate-300" formControlName="consentDataBackupAck" [disabled]="isDoneStatus()" />
+                <span>{{ consentBackupLabel }}</span>
+              </label>
             </div>
           </div>
         </div>
@@ -732,6 +926,15 @@
           </div>
         </div>
         <div class="flex flex-wrap justify-end gap-2">
+          @if (isEditMode()) {
+            <button
+              type="button"
+              class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50"
+              (click)="openJobOrderForm()"
+            >
+              Print Job Order Form
+            </button>
+          }
           @if (isEditMode() && selectedStatus() === 'Done') {
             <button type="button" class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50" (click)="openReceipt()">
               View receipt
