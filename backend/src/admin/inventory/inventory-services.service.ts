@@ -15,6 +15,13 @@ import { ensureJobOrderManualTotalSchema } from './job-order-manual-total.schema
 import { ensureJobOrderPartWarrantyColumns } from './item-warranty.schema';
 import { normalizeWarranty, type WarrantyUnit } from './item-warranty.util';
 import { ensureJobOrderPromotionColumn } from './order-promotion.schema';
+import { ensureJobOrderIntakeColumns } from './job-order-intake.schema';
+import {
+  normalizeAccessories,
+  normalizeDeviceType,
+  normalizeServiceArrangement,
+  normalizeUnitCondition,
+} from './job-order-intake.util';
 
 const JOB_PAYMENT_METHODS = ['Cash', 'Gcash', 'Bank Transfer'] as const;
 type JobPaymentMethod = (typeof JOB_PAYMENT_METHODS)[number];
@@ -67,6 +74,24 @@ export interface InventoryServiceListItem {
   deviceBrand?: string | null;
   deviceModel?: string | null;
   deviceSerial?: string | null;
+  serviceArrangement?: string | null;
+  deviceType?: string | null;
+  deviceTypeOther?: string | null;
+  deviceCpu?: string | null;
+  deviceRam?: string | null;
+  deviceStorage?: string | null;
+  deviceDisplay?: string | null;
+  includedAccessories?: string[];
+  includedAccessoriesOther?: string | null;
+  unitCondition?: string | null;
+  unitConditionOther?: string | null;
+  customerReportedIssue?: string | null;
+  technicianDiagnosis?: string | null;
+  serviceRequested?: string | null;
+  expectedCompletion?: string | null;
+  consentSoftwareInstall?: boolean;
+  consentDataBackupAck?: boolean;
+  releasedBy?: string | null;
   totalCosting: number;
   totalSales: number;
   calculatedTotal?: number;
@@ -173,6 +198,7 @@ export class InventoryServicesService {
     await ensureJobOrderManualTotalSchema(this.databaseService);
     await ensureJobOrderPromotionColumn(this.databaseService);
     await ensureJobOrderPartWarrantyColumns(this.databaseService);
+    await ensureJobOrderIntakeColumns(this.databaseService);
 
     const { page, limit, offset } = buildPagination(pageRaw, limitRaw);
     const listParams: unknown[] = [];
@@ -542,6 +568,7 @@ export class InventoryServicesService {
     await ensureJobOrderManualTotalSchema(this.databaseService);
     await ensureJobOrderPromotionColumn(this.databaseService);
     await ensureJobOrderPartWarrantyColumns(this.databaseService);
+    await ensureJobOrderIntakeColumns(this.databaseService);
 
     const customerName = dto.customerName?.trim() || '';
     const customerEmail = dto.customerEmail?.trim() || null;
@@ -550,6 +577,7 @@ export class InventoryServicesService {
     const deviceBrand = dto.deviceBrand?.trim() || null;
     const deviceModel = dto.deviceModel?.trim() || null;
     const deviceSerial = dto.deviceSerial?.trim() || null;
+    const intake = this.normalizeIntakeFromDto(dto);
     const serviceName = dto.serviceName?.trim() || '';
     const serviceType = dto.type?.trim() || '';
     const source = dto.personInChargeSource ?? 'tblusers';
@@ -603,8 +631,29 @@ export class InventoryServicesService {
           device_model,
           device_serial,
           manual_total_amount,
+          service_arrangement,
+          device_type,
+          device_type_other,
+          device_cpu,
+          device_ram,
+          device_storage,
+          device_display,
+          included_accessories,
+          included_accessories_other,
+          unit_condition,
+          unit_condition_other,
+          customer_reported_issue,
+          technician_diagnosis,
+          service_requested,
+          expected_completion,
+          consent_software_install,
+          consent_data_backup_ack,
+          released_by,
           created_by
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23,
+          $24, $25, $26, $27, $28, $29, $30, $31::jsonb, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42
+        )
         RETURNING id`,
         [
           customerName,
@@ -630,6 +679,24 @@ export class InventoryServicesService {
           deviceModel,
           deviceSerial,
           manualTotalAmount,
+          intake.serviceArrangement,
+          intake.deviceType,
+          intake.deviceTypeOther,
+          intake.deviceCpu,
+          intake.deviceRam,
+          intake.deviceStorage,
+          intake.deviceDisplay,
+          JSON.stringify(intake.includedAccessories),
+          intake.includedAccessoriesOther,
+          intake.unitCondition,
+          intake.unitConditionOther,
+          intake.customerReportedIssue,
+          intake.technicianDiagnosis,
+          intake.serviceRequested,
+          intake.expectedCompletion,
+          intake.consentSoftwareInstall,
+          intake.consentDataBackupAck,
+          intake.releasedBy,
           createdBy ?? null,
         ],
       );
@@ -731,6 +798,7 @@ export class InventoryServicesService {
     await ensureJobOrderManualTotalSchema(this.databaseService);
     await ensureJobOrderPromotionColumn(this.databaseService);
     await ensureJobOrderPartWarrantyColumns(this.databaseService);
+    await ensureJobOrderIntakeColumns(this.databaseService);
 
     const existing = await this.getById(id);
 
@@ -741,6 +809,7 @@ export class InventoryServicesService {
     const deviceBrand = dto.deviceBrand?.trim() || null;
     const deviceModel = dto.deviceModel?.trim() || null;
     const deviceSerial = dto.deviceSerial?.trim() || null;
+    const intake = this.normalizeIntakeFromDto(dto);
     const serviceName = dto.serviceName?.trim() || '';
     const serviceType = dto.type?.trim() || '';
     const nextStatus = dto.status?.trim() || 'Active';
@@ -809,8 +878,26 @@ export class InventoryServicesService {
              device_model = $21,
              device_serial = $22,
              manual_total_amount = $23,
+             service_arrangement = $24,
+             device_type = $25,
+             device_type_other = $26,
+             device_cpu = $27,
+             device_ram = $28,
+             device_storage = $29,
+             device_display = $30,
+             included_accessories = $31::jsonb,
+             included_accessories_other = $32,
+             unit_condition = $33,
+             unit_condition_other = $34,
+             customer_reported_issue = $35,
+             technician_diagnosis = $36,
+             service_requested = $37,
+             expected_completion = $38,
+             consent_software_install = $39,
+             consent_data_backup_ack = $40,
+             released_by = $41,
              updated_at = NOW()
-         WHERE id = $24 AND deleted_at IS NULL`,
+         WHERE id = $42 AND deleted_at IS NULL`,
         [
           customerName,
           customerEmail,
@@ -835,6 +922,24 @@ export class InventoryServicesService {
           deviceModel,
           deviceSerial,
           nextManualTotal,
+          intake.serviceArrangement,
+          intake.deviceType,
+          intake.deviceTypeOther,
+          intake.deviceCpu,
+          intake.deviceRam,
+          intake.deviceStorage,
+          intake.deviceDisplay,
+          JSON.stringify(intake.includedAccessories),
+          intake.includedAccessoriesOther,
+          intake.unitCondition,
+          intake.unitConditionOther,
+          intake.customerReportedIssue,
+          intake.technicianDiagnosis,
+          intake.serviceRequested,
+          intake.expectedCompletion,
+          intake.consentSoftwareInstall,
+          intake.consentDataBackupAck,
+          intake.releasedBy,
           id,
         ],
       );
@@ -1293,6 +1398,7 @@ export class InventoryServicesService {
     await ensureJobOrderManualTotalSchema(this.databaseService);
     await ensureJobOrderPromotionColumn(this.databaseService);
     await ensureJobOrderPartWarrantyColumns(this.databaseService);
+    await ensureJobOrderIntakeColumns(this.databaseService);
 
     const result = await this.databaseService.query<{
       id: number;
@@ -1325,6 +1431,24 @@ export class InventoryServicesService {
       device_brand: string | null;
       device_model: string | null;
       device_serial: string | null;
+      service_arrangement: string | null;
+      device_type: string | null;
+      device_type_other: string | null;
+      device_cpu: string | null;
+      device_ram: string | null;
+      device_storage: string | null;
+      device_display: string | null;
+      included_accessories: unknown;
+      included_accessories_other: string | null;
+      unit_condition: string | null;
+      unit_condition_other: string | null;
+      customer_reported_issue: string | null;
+      technician_diagnosis: string | null;
+      service_requested: string | null;
+      expected_completion: string | null;
+      consent_software_install: boolean | null;
+      consent_data_backup_ack: boolean | null;
+      released_by: string | null;
       started_at: string | null;
       ended_at: string | null;
       created_at: string | null;
@@ -1361,6 +1485,24 @@ export class InventoryServicesService {
         s.device_brand,
         s.device_model,
         s.device_serial,
+        s.service_arrangement,
+        s.device_type,
+        s.device_type_other,
+        s.device_cpu,
+        s.device_ram,
+        s.device_storage,
+        s.device_display,
+        s.included_accessories,
+        s.included_accessories_other,
+        s.unit_condition,
+        s.unit_condition_other,
+        s.customer_reported_issue,
+        s.technician_diagnosis,
+        s.service_requested,
+        s.expected_completion,
+        s.consent_software_install,
+        s.consent_data_backup_ack,
+        s.released_by,
         s.started_at::text,
         s.ended_at::text,
         s.created_at::text,
@@ -1514,6 +1656,7 @@ export class InventoryServicesService {
       deviceBrand: row.device_brand?.trim() || null,
       deviceModel: row.device_model?.trim() || null,
       deviceSerial: row.device_serial?.trim() || null,
+      ...this.mapIntakeFromRow(row),
       totalCosting: partsCost,
       totalSales: Math.max(0, grossSales - refundAmount),
       calculatedTotal,
@@ -2100,6 +2243,125 @@ export class InventoryServicesService {
       Number(item.customDiscount) || 0,
       item.laborDiscountType,
     );
+  }
+
+  private normalizeIntakeFromDto(dto: CreateServiceDto): {
+    serviceArrangement: string | null;
+    deviceType: string | null;
+    deviceTypeOther: string | null;
+    deviceCpu: string | null;
+    deviceRam: string | null;
+    deviceStorage: string | null;
+    deviceDisplay: string | null;
+    includedAccessories: string[];
+    includedAccessoriesOther: string | null;
+    unitCondition: string | null;
+    unitConditionOther: string | null;
+    customerReportedIssue: string | null;
+    technicianDiagnosis: string | null;
+    serviceRequested: string | null;
+    expectedCompletion: string | null;
+    consentSoftwareInstall: boolean;
+    consentDataBackupAck: boolean;
+    releasedBy: string | null;
+  } {
+    return {
+      serviceArrangement: normalizeServiceArrangement(dto.serviceArrangement),
+      deviceType: normalizeDeviceType(dto.deviceType),
+      deviceTypeOther: dto.deviceTypeOther?.trim() || null,
+      deviceCpu: dto.deviceCpu?.trim() || null,
+      deviceRam: dto.deviceRam?.trim() || null,
+      deviceStorage: dto.deviceStorage?.trim() || null,
+      deviceDisplay: dto.deviceDisplay?.trim() || null,
+      includedAccessories: normalizeAccessories(dto.includedAccessories),
+      includedAccessoriesOther: dto.includedAccessoriesOther?.trim() || null,
+      unitCondition: normalizeUnitCondition(dto.unitCondition),
+      unitConditionOther: dto.unitConditionOther?.trim() || null,
+      customerReportedIssue: dto.customerReportedIssue?.trim() || null,
+      technicianDiagnosis: dto.technicianDiagnosis?.trim() || null,
+      serviceRequested: dto.serviceRequested?.trim() || null,
+      expectedCompletion: dto.expectedCompletion?.trim() || null,
+      consentSoftwareInstall: Boolean(dto.consentSoftwareInstall),
+      consentDataBackupAck: Boolean(dto.consentDataBackupAck),
+      releasedBy: dto.releasedBy?.trim() || null,
+    };
+  }
+
+  private mapIntakeFromRow(row: {
+    service_arrangement?: string | null;
+    device_type?: string | null;
+    device_type_other?: string | null;
+    device_cpu?: string | null;
+    device_ram?: string | null;
+    device_storage?: string | null;
+    device_display?: string | null;
+    included_accessories?: unknown;
+    included_accessories_other?: string | null;
+    unit_condition?: string | null;
+    unit_condition_other?: string | null;
+    customer_reported_issue?: string | null;
+    technician_diagnosis?: string | null;
+    service_requested?: string | null;
+    expected_completion?: string | null;
+    consent_software_install?: boolean | null;
+    consent_data_backup_ack?: boolean | null;
+    released_by?: string | null;
+  }): Pick<
+    InventoryServiceListItem,
+    | 'serviceArrangement'
+    | 'deviceType'
+    | 'deviceTypeOther'
+    | 'deviceCpu'
+    | 'deviceRam'
+    | 'deviceStorage'
+    | 'deviceDisplay'
+    | 'includedAccessories'
+    | 'includedAccessoriesOther'
+    | 'unitCondition'
+    | 'unitConditionOther'
+    | 'customerReportedIssue'
+    | 'technicianDiagnosis'
+    | 'serviceRequested'
+    | 'expectedCompletion'
+    | 'consentSoftwareInstall'
+    | 'consentDataBackupAck'
+    | 'releasedBy'
+  > {
+    let accessories: string[] = [];
+    const raw = row.included_accessories;
+    if (Array.isArray(raw)) {
+      accessories = normalizeAccessories(raw.map(String));
+    } else if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw) as unknown;
+        if (Array.isArray(parsed)) {
+          accessories = normalizeAccessories(parsed.map(String));
+        }
+      } catch {
+        accessories = [];
+      }
+    }
+
+    return {
+      serviceArrangement: normalizeServiceArrangement(row.service_arrangement),
+      deviceType: normalizeDeviceType(row.device_type),
+      deviceTypeOther: row.device_type_other?.trim() || null,
+      deviceCpu: row.device_cpu?.trim() || null,
+      deviceRam: row.device_ram?.trim() || null,
+      deviceStorage: row.device_storage?.trim() || null,
+      deviceDisplay: row.device_display?.trim() || null,
+      includedAccessories: accessories,
+      includedAccessoriesOther: row.included_accessories_other?.trim() || null,
+      unitCondition: normalizeUnitCondition(row.unit_condition),
+      unitConditionOther: row.unit_condition_other?.trim() || null,
+      customerReportedIssue: row.customer_reported_issue?.trim() || null,
+      technicianDiagnosis: row.technician_diagnosis?.trim() || null,
+      serviceRequested: row.service_requested?.trim() || null,
+      expectedCompletion: row.expected_completion?.trim() || null,
+      consentSoftwareInstall: Boolean(row.consent_software_install),
+      consentDataBackupAck: Boolean(row.consent_data_backup_ack),
+      releasedBy: row.released_by?.trim() || null,
+    };
   }
 
   private applyManualTotal(calculated: number, manual: number | null | undefined): number {
