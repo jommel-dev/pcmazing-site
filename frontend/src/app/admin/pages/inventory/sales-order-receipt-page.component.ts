@@ -1,277 +1,134 @@
-import { DatePipe, DecimalPipe, NgStyle } from '@angular/common';
-import { ChangeDetectorRef, Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
-import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { DatePipe, DecimalPipe } from '@angular/common';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { AdminAuthService } from '../../services/admin-auth.service';
-import {
-  AdminApiService,
-  PrintingSettingsItem,
-  PrintingTemplateItem,
-  SalesOrderDetail,
-} from '../../services/admin-api.service';
-import { PrintLayoutElement } from '../printing/printing.types';
-import {
-  A4_PRINT_HEIGHT_MM,
-  A4_PRINT_WIDTH_MM,
-  barcodeBarStyle,
-  receiptPrintPageCss,
-} from '../printing/printing-print-page.util';
-import {
-  DEFAULT_FOOTER_NOTE,
-  DEFAULT_STORE_PHONE,
-  DEFAULT_THANKS_MESSAGE,
-  DEFAULT_WARRANTY_POLICY,
-  storeAddressWithPhone,
-} from '../printing/printing-receipt-content.defaults';
-import {
-  compactReceiptText,
-  fitReceiptTemplate,
-  receiptContentFieldKeyFor,
-} from '../printing/printing-receipt-content.util';
+import { AdminApiService, SalesOrderDetail } from '../../services/admin-api.service';
 import {
   applyPhSpecialDiscount,
   normalizePhDiscountType,
-  PhDiscountType,
 } from './ph-discount.util';
-import { formatWarrantyLabel } from './item-warranty.util';
+import { normalizeSalesOrderDetail } from './sales-order.util';
+import {
+  SALES_INVOICE_LETTERHEAD,
+  SALES_INVOICE_TERMS,
+  SO_INVOICE_MAX_ITEMS,
+  computeInvoicePaymentSummary,
+  formatInvoiceMoney,
+  padInvoiceRows,
+} from './sales-invoice.util';
 
-type ReceiptLine = {
-  itemName: string;
+type InvoiceLine = {
+  code: string;
   description: string;
-  qty: number;
-  unitPrice: number;
-  discountType: PhDiscountType;
-  extPrice: number;
-  discountAmount: number;
-  warrantyLabel: string;
-  isCustomDiscount?: boolean;
+  serialNo: string;
+  qty: number | '';
+  unit: string;
+  unitPrice: number | '';
+  amount: number | '';
 };
-
-const TEMPLATE_STORAGE_KEY = 'pcmazing.salesReceipt.selectedTemplateId';
-const BUILTIN_TEMPLATE_VALUE = 0;
-/** Temporarily hide Store/Workstation/Date/Page on receipts; flip to true to restore. */
-const SHOW_RECEIPT_HEADER_EXTRAS = false;
 
 @Component({
   selector: 'app-sales-order-receipt-page',
-  imports: [RouterLink, DatePipe, DecimalPipe, FormsModule, NgStyle],
+  imports: [RouterLink, DatePipe, DecimalPipe],
   templateUrl: './sales-order-receipt-page.component.html',
   styleUrl: './sales-order-receipt-page.component.css',
 })
 export class SalesOrderReceiptPageComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
-  private readonly router = inject(Router);
   private readonly adminApi = inject(AdminApiService);
   private readonly adminAuth = inject(AdminAuthService);
-  private readonly changeDetector = inject(ChangeDetectorRef);
   private printStyleEl: HTMLStyleElement | null = null;
 
   readonly loading = signal(true);
   readonly error = signal('');
   readonly order = signal<SalesOrderDetail | null>(null);
-  readonly printedAt = signal(new Date());
   readonly autoPrint = signal(false);
-  readonly autoReprint = signal(false);
   readonly showReprinted = signal(false);
-  /** Kept for future use — Store/Workstation/Date/Page header lines. */
-  readonly showReceiptHeaderExtras = SHOW_RECEIPT_HEADER_EXTRAS;
-  readonly templates = signal<PrintingTemplateItem[]>([]);
-  readonly printingSettings = signal<PrintingSettingsItem | null>(null);
-  readonly selectedTemplateId = signal<number>(BUILTIN_TEMPLATE_VALUE);
+  readonly letterhead = SALES_INVOICE_LETTERHEAD;
+  readonly terms = SALES_INVOICE_TERMS;
 
-  readonly cashierName = computed(
-    () => this.adminAuth.getStoredUser()?.fullName || this.adminAuth.getStoredUser()?.username || 'Cashier',
-  );
+  readonly cashierName = computed(() => {
+    const fromOrder = this.order()?.salesperson?.trim();
+    if (fromOrder) {
+      return fromOrder;
+    }
+    return (
+      this.adminAuth.getStoredUser()?.fullName ||
+      this.adminAuth.getStoredUser()?.username ||
+      ''
+    );
+  });
 
-  readonly receiptNo = computed(() => {
+  readonly invoiceNo = computed(() => {
     const current = this.order();
     if (!current) {
       return '';
     }
-    const ref = current.referenceNo?.trim();
-    if (ref) {
-      const digits = ref.replace(/\D+/g, '');
-      return digits || String(current.id);
-    }
-    return String(current.id);
+    return current.referenceNo?.trim() || String(current.id);
   });
 
-  readonly promotionLabel = computed(() => {
-    const value = String(this.order()?.promotion ?? '').trim();
-    return value ? `Promotion: ${value.toUpperCase()}` : '';
-  });
-
-  readonly lines = computed<ReceiptLine[]>(() => {
+  readonly totalSales = computed(() => {
     const current = this.order();
     if (!current) {
-      return [];
+      return 0;
     }
+    if (current.manualTotalAmount != null && Number.isFinite(Number(current.manualTotalAmount))) {
+      return Math.max(0, Number(current.manualTotalAmount));
+    }
+    return Math.max(0, Number(current.totalAmount) || 0);
+  });
 
-    const rows: ReceiptLine[] = [];
-    for (const item of current.items ?? []) {
+  readonly paymentSummary = computed(() =>
+    computeInvoicePaymentSummary({
+      totalSales: this.totalSales(),
+      withholdingTax: Number(this.order()?.withholdingTax) || 0,
+      amountPaid: Number(this.order()?.amountPaid) || 0,
+    }),
+  );
+
+  readonly invoiceRows = computed(() => {
+    const current = this.order();
+    const items = (current?.items ?? []).slice(0, SO_INVOICE_MAX_ITEMS);
+    const mapped: InvoiceLine[] = items.map((item) => {
       const qty = Number(item.quantity) || 0;
       const unitPrice = Number(item.unitPrice) || 0;
       const discountType = normalizePhDiscountType(item.discountType);
-      const amountGross = qty * unitPrice;
-      const amountDiscount = applyPhSpecialDiscount(amountGross, discountType);
-      rows.push({
-        itemName: item.customItemName || item.materialName || item.materialCode || 'Item',
-        description: String(item.description ?? '').trim(),
+      const amount = applyPhSpecialDiscount(qty * unitPrice, discountType).net;
+      const description =
+        String(item.description ?? '').trim() ||
+        item.customItemName ||
+        item.materialName ||
+        '';
+      return {
+        code: item.materialCode?.trim() || '',
+        description,
+        serialNo: item.serialNo?.trim() || '',
         qty,
+        unit: item.unit?.trim() || 'PCS',
         unitPrice,
-        discountType,
-        extPrice: amountGross,
-        discountAmount: amountDiscount.discountAmount,
-        warrantyLabel: formatWarrantyLabel(item.warrantyValue, item.warrantyUnit),
-      });
-    }
-
-    const customDiscount = Number(current.customDiscount) || 0;
-    if (customDiscount > 0) {
-      rows.push({
-        itemName: 'Discount',
-        description: '',
-        qty: 1,
-        unitPrice: 0,
-        discountType: 'none',
-        extPrice: 0,
-        discountAmount: customDiscount,
-        warrantyLabel: '',
-        isCustomDiscount: true,
-      });
-    }
-
-    return rows;
-  });
-
-  readonly linesSubtotal = computed(() => this.lines().reduce((sum, line) => sum + line.extPrice, 0));
-  readonly discountTotal = computed(() => this.lines().reduce((sum, line) => sum + line.discountAmount, 0));
-
-  readonly usesManualTotal = computed(
-    () =>
-      this.order()?.manualTotalAmount != null &&
-      Number.isFinite(Number(this.order()?.manualTotalAmount)),
-  );
-
-  readonly receiptTotal = computed(() => {
-    if (this.usesManualTotal()) {
-      return Math.max(0, Number(this.order()?.manualTotalAmount));
-    }
-    return Math.max(0, this.linesSubtotal() - this.discountTotal());
-  });
-
-  /** Displayed Subtotal — manual orders show the manual total so line prices stay private. */
-  readonly subtotal = computed(() => {
-    if (this.usesManualTotal()) {
-      return this.receiptTotal();
-    }
-    return this.linesSubtotal();
-  });
-
-  /** Hide Price / Ext Price columns when every item line is 0 or empty. */
-  readonly showPriceColumns = computed(() =>
-    this.lines().some(
-      (line) =>
-        !line.isCustomDiscount &&
-        ((Number(line.unitPrice) || 0) > 0 || (Number(line.extPrice) || 0) > 0),
-    ),
-  );
-
-  /** Unit Price column — hidden when the order uses a manual receipt total. */
-  readonly showUnitPriceColumn = computed(
-    () => this.showPriceColumns() && !this.usesManualTotal(),
-  );
-
-  readonly showExtPriceColumn = computed(() => this.showPriceColumns());
-
-  formatExtPrice(line: ReceiptLine): string {
-    if (line.isCustomDiscount) {
-      return '—';
-    }
-    // Manual total: hide per-item prices so customers only see the agreed total.
-    if (this.usesManualTotal()) {
-      return '—';
-    }
-    return this.formatMoney(line.extPrice);
-  }
-  readonly barcodeBars = computed(() => this.buildBarcodeBars(this.receiptNo()));
-  readonly barcodeBarStyle = barcodeBarStyle;
-
-  readonly selectedTemplate = computed(() => {
-    const id = this.selectedTemplateId();
-    if (!id) {
-      return null;
-    }
-    return this.templates().find((template) => template.id === id) ?? null;
-  });
-
-  readonly useCustomTemplate = computed(() => !!this.selectedTemplate());
-  readonly templateElements = computed(() => this.selectedTemplate()?.layout?.elements ?? []);
-  readonly activeTemplates = computed(() => this.templates().filter((template) => template.isActive !== false));
-
-  readonly fieldValues = computed<Record<string, string>>(() => {
-    const current = this.order();
-    const settings = this.printingSettings();
-    const printed = this.printedAt();
-    const receiptNo = this.receiptNo();
-    const cashier = this.cashierName();
-    const printedAtLabel = printed.toLocaleString('en-US', {
-      month: 'numeric',
-      day: 'numeric',
-      year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: true,
+        amount,
+      };
     });
-    const printedDateLabel = printed.toLocaleDateString('en-US');
-    const voidLabel = current?.isVoid ? 'VOID' : '';
-
-    return {
-      reprintedLabel: this.showReprinted() ? 'REPRINTED' : voidLabel,
-      printedAt: `Printed: ${printedAtLabel}`,
-      printedDate: `Date: ${printedDateLabel}`,
-      storeCode: `Store: ${settings?.storeCode || '1'}`,
-      workstationNo: `Workstation: ${settings?.workstationNo || '1'}`,
-      pageNumber: settings?.showPageNumbers === false ? '' : 'Page 1',
-      storeLogo: '/images/logopcm.png',
-      storeName: settings?.storeName || 'PCmazing',
-      storeAddress: storeAddressWithPhone(
-        settings?.storeAddress || 'Mabini Extension, Cabanatuan City, 3100',
-        settings?.storePhone || DEFAULT_STORE_PHONE,
-      ),
-      storePhone: settings?.storePhone?.trim() || DEFAULT_STORE_PHONE,
-      receiptNo: `Sales Receipt #${receiptNo}`,
-      cashierName: `Cashier: ${cashier}`,
-      customerName: current?.customerName || '',
-      customerPhone: current?.customerPhone || '',
-      jobNotes: String(current?.notes ?? '').trim(),
-      promotion: this.promotionLabel(),
-      discountTotal: `Total Sales Discounts: ${this.formatMoney(this.discountTotal())}`,
-      subtotal: `Subtotal  ${this.formatMoney(this.subtotal())}`,
-      receiptTotal: `RECEIPT TOTAL  ${this.formatMoney(this.receiptTotal())}`,
-      warrantyPolicy: this.warrantyPolicyText(),
-      footerNote: this.footerNoteText(),
-      thanksMessage: this.thanksMessageText(),
-      barcode: receiptNo,
-      signatureLine: '',
-      lineItems: 'Line items',
-    };
+    return padInvoiceRows(mapped, SO_INVOICE_MAX_ITEMS);
   });
+
+  readonly isCash = computed(() => (this.order()?.salesType ?? 'cash') !== 'charge');
+  readonly isCharge = computed(() => (this.order()?.salesType ?? 'cash') === 'charge');
 
   ngOnInit(): void {
     this.autoPrint.set(this.route.snapshot.queryParamMap.get('print') === '1');
-    this.autoReprint.set(this.route.snapshot.queryParamMap.get('reprint') === '1');
-    void this.loadReceipt();
+    this.showReprinted.set(this.route.snapshot.queryParamMap.get('reprint') === '1');
+    void this.load();
   }
 
   ngOnDestroy(): void {
-    this.printStyleEl?.remove();
-    this.printStyleEl = null;
+    this.removePrintStyle();
   }
 
-  async loadReceipt(): Promise<void> {
+  private async load(): Promise<void> {
+    this.loading.set(true);
+    this.error.set('');
     const id = Number(this.route.snapshot.paramMap.get('id'));
     if (!Number.isFinite(id) || id <= 0) {
       this.error.set('Invalid sales order.');
@@ -279,321 +136,57 @@ export class SalesOrderReceiptPageComponent implements OnInit, OnDestroy {
       return;
     }
 
-    this.loading.set(true);
-    this.error.set('');
-
     try {
-      const [orderResponse, templatesResult, settingsResult] = await Promise.all([
-        firstValueFrom(this.adminApi.getSalesOrder(id)),
-        firstValueFrom(this.adminApi.listPrintingTemplates('sales_receipt')).catch(() => null),
-        firstValueFrom(this.adminApi.getPrintingSettings()).catch(() => null),
-      ]);
-
-      this.order.set(orderResponse.data);
-      this.printedAt.set(new Date());
-
-      const receiptContent = {
-        warrantyPolicy: settingsResult?.data?.warrantyPolicy || DEFAULT_WARRANTY_POLICY,
-        footerNote: settingsResult?.data?.footerNote || DEFAULT_FOOTER_NOTE,
-        thanksMessage: settingsResult?.data?.thanksMessage || DEFAULT_THANKS_MESSAGE,
-      };
-      const templates = (templatesResult?.data ?? [])
-        .filter((template) => template.documentType === 'sales_receipt' || !template.documentType)
-        .map((template) => fitReceiptTemplate(template, receiptContent));
-      this.templates.set(templates);
-      this.printingSettings.set(settingsResult?.data ?? null);
-      this.selectedTemplateId.set(this.resolveInitialTemplateId(templates, settingsResult?.data));
-      this.applyPrintPageStyle();
-
+      const response = await firstValueFrom(this.adminApi.getSalesOrder(id));
+      this.order.set(normalizeSalesOrderDetail(response.data));
       if (this.autoPrint()) {
-        queueMicrotask(() => {
-          setTimeout(() => {
-            if (this.autoReprint()) {
-              this.reprintReceipt();
-            } else {
-              this.printReceipt();
-            }
-          }, 350);
-        });
+        setTimeout(() => this.printInvoice(), 250);
       }
     } catch {
-      this.error.set('Unable to load sales order receipt.');
+      this.error.set('Unable to load sales invoice.');
     } finally {
       this.loading.set(false);
     }
   }
 
-  onTemplateChange(rawValue: string | number): void {
-    const nextId = Number(rawValue);
-    this.selectedTemplateId.set(Number.isFinite(nextId) ? nextId : BUILTIN_TEMPLATE_VALUE);
-    this.applyPrintPageStyle();
-    try {
-      sessionStorage.setItem(TEMPLATE_STORAGE_KEY, String(this.selectedTemplateId()));
-    } catch {
-      // ignore storage errors
-    }
+  printInvoice(): void {
+    this.injectPrintStyle();
+    window.print();
   }
 
-  printReceipt(): void {
-    this.openPrintDialog(false);
+  fill(value: string | null | undefined): string {
+    return String(value ?? '').trim();
   }
 
-  reprintReceipt(): void {
-    this.openPrintDialog(true);
+  money(value: number | '' | null | undefined): string {
+    return formatInvoiceMoney(value);
   }
 
-  private openPrintDialog(reprinted: boolean): void {
-    this.showReprinted.set(reprinted);
-    this.printedAt.set(new Date());
-    this.applyPrintPageStyle();
-    this.changeDetector.detectChanges();
-    setTimeout(() => window.print(), 0);
-  }
-
-  backToOrder(): void {
-    const id = this.order()?.id;
-    if (id) {
-      void this.router.navigate(['/admin/sales-order', id]);
-      return;
-    }
-    void this.router.navigate(['/admin/sales-order']);
-  }
-
-  storeAddressBlock(): string {
-    const settings = this.printingSettings();
-    return storeAddressWithPhone(
-      settings?.storeAddress || 'Mabini Extension, Cabanatuan City, 3100',
-      settings?.storePhone || DEFAULT_STORE_PHONE,
-    );
-  }
-
-  formatMoney(value: number): string {
-    return `P${value.toLocaleString('en-PH', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })}`;
-  }
-
-  formatDiscount(line: ReceiptLine): string {
-    if (line.discountAmount <= 0) {
-      return '—';
-    }
-    if (line.isCustomDiscount) {
-      return this.formatMoney(line.discountAmount);
-    }
-    const label = line.discountType === 'senior' ? 'SC' : line.discountType === 'pwd' ? 'PWD' : '';
-    const amount = this.formatMoney(line.discountAmount);
-    return label ? `${label} ${amount}` : amount;
-  }
-
-  templateSheetStyle(): Record<string, string> {
-    const template = this.selectedTemplate();
-    const settings = this.printingSettings();
-    return {
-      width: `${template?.paperWidthMm || 210}mm`,
-      minHeight: `${template?.paperHeightMm || 297}mm`,
-      fontFamily: settings?.fontFamily || `'Times New Roman', Times, serif`,
-    };
-  }
-
-  printPageCss(): string {
-    return receiptPrintPageCss({
-      widthMm: A4_PRINT_WIDTH_MM,
-      heightMm: A4_PRINT_HEIGHT_MM,
-    });
-  }
-
-  private applyPrintPageStyle(): void {
-    if (typeof document === 'undefined') {
-      return;
-    }
-    if (!this.printStyleEl) {
-      this.printStyleEl = document.createElement('style');
-      this.printStyleEl.setAttribute('data-pcmazing-receipt-print', 'true');
-      document.head.appendChild(this.printStyleEl);
-    }
-    this.printStyleEl.textContent = this.printPageCss();
-  }
-
-  elementStyle(element: PrintLayoutElement): Record<string, string> {
-    const width = element.width ?? (element.type === 'line' ? 40 : 30);
-    const height = element.height ?? (element.type === 'line' ? 2 : 8);
-    const base: Record<string, string> = {
-      left: `${element.x}mm`,
-      top: `${element.y}mm`,
-      width: `${width}mm`,
-      fontSize: `${element.fontSize || 11}pt`,
-      fontWeight: element.fontWeight || 'normal',
-      textAlign: element.textAlign || 'left',
-    };
-    if (element.type === 'table') {
-      return {
-        ...base,
-        minHeight: `${height}mm`,
-        height: 'auto',
-      };
-    }
-    return {
-      ...base,
-      height: `${height}mm`,
-    };
-  }
-
-  barcodeWrapStyle(element: PrintLayoutElement): Record<string, string> {
-    const align = element.textAlign || 'center';
-    const alignItems = align === 'right' ? 'flex-end' : align === 'center' ? 'center' : 'flex-start';
-    return { display: 'flex', flexDirection: 'column', alignItems, width: '100%', height: '100%' };
-  }
-
-  fieldValue(element: PrintLayoutElement): string {
-    if (element.fieldKey === 'reprintedLabel' && !this.showReprinted() && !this.order()?.isVoid) {
+  /** Split ship-to text across the three handwriting lines on the form. */
+  shipLine(value: string | null | undefined, index: number): string {
+    const text = this.fill(value);
+    if (!text) {
       return '';
     }
-
-    const contentKey = receiptContentFieldKeyFor(element);
-    if (contentKey === 'warrantyPolicy') {
-      return this.warrantyPolicyText();
+    const parts = text.split(/\n+/).map((p) => p.trim()).filter(Boolean);
+    if (parts.length > 1) {
+      return parts[index] ?? '';
     }
-    if (contentKey === 'footerNote') {
-      return this.footerNoteText();
-    }
-    if (contentKey === 'thanksMessage') {
-      return this.thanksMessageText();
-    }
-
-    if (element.type === 'text') {
-      return element.content || element.label || '';
-    }
-    return this.fieldValues()[element.fieldKey || ''] ?? element.content ?? element.label ?? '';
+    const chunk = Math.ceil(text.length / 3) || 1;
+    return text.slice(index * chunk, (index + 1) * chunk).trim();
   }
 
-  isHiddenElement(element: PrintLayoutElement): boolean {
-    if (element.fieldKey === 'reprintedLabel' && !this.showReprinted() && !this.order()?.isVoid) {
-      return true;
-    }
-    if (
-      !SHOW_RECEIPT_HEADER_EXTRAS &&
-      (element.fieldKey === 'storeCode' ||
-        element.fieldKey === 'workstationNo' ||
-        element.fieldKey === 'printedDate' ||
-        element.fieldKey === 'pageNumber')
-    ) {
-      return true;
-    }
-    if (element.fieldKey === 'pageNumber' && this.printingSettings()?.showPageNumbers === false) {
-      return true;
-    }
-    if (element.fieldKey === 'jobNotes' && !this.fieldValues()['jobNotes']) {
-      return true;
-    }
-    if (element.fieldKey === 'promotion' && !this.fieldValues()['promotion']) {
-      return true;
-    }
-    if (element.fieldKey === 'customerPhone' && !this.fieldValues()['customerPhone']) {
-      return true;
-    }
-    const contentKey = receiptContentFieldKeyFor(element);
-    if (contentKey === 'warrantyPolicy' && !this.showWarrantyPolicy()) {
-      return true;
-    }
-    if (contentKey === 'footerNote' && !this.showFooterNote()) {
-      return true;
-    }
-    if (contentKey === 'thanksMessage' && !this.showThanksMessage()) {
-      return true;
-    }
-    return false;
+  private injectPrintStyle(): void {
+    this.removePrintStyle();
+    const style = document.createElement('style');
+    style.setAttribute('data-sales-invoice-print', '1');
+    style.textContent = `@page { size: A4 portrait; margin: 8mm; }`;
+    document.head.appendChild(style);
+    this.printStyleEl = style;
   }
 
-  usesPreWrapField(elementOrKey?: PrintLayoutElement | string): boolean {
-    const fieldKey =
-      typeof elementOrKey === 'string' || elementOrKey == null
-        ? elementOrKey
-        : receiptContentFieldKeyFor(elementOrKey) || elementOrKey.fieldKey;
-    return (
-      fieldKey === 'warrantyPolicy' ||
-      fieldKey === 'footerNote' ||
-      fieldKey === 'thanksMessage' ||
-      fieldKey === 'jobNotes'
-    );
-  }
-
-  private resolveInitialTemplateId(
-    templates: PrintingTemplateItem[],
-    settings: PrintingSettingsItem | null | undefined,
-  ): number {
-    let stored: number | null = null;
-    try {
-      const raw = sessionStorage.getItem(TEMPLATE_STORAGE_KEY);
-      if (raw != null) {
-        stored = Number(raw);
-      }
-    } catch {
-      stored = null;
-    }
-
-    if (stored === BUILTIN_TEMPLATE_VALUE) {
-      return BUILTIN_TEMPLATE_VALUE;
-    }
-    if (stored && templates.some((template) => template.id === stored && template.isActive !== false)) {
-      return stored;
-    }
-    if (
-      settings?.defaultTemplateId &&
-      templates.some((template) => template.id === settings.defaultTemplateId && template.isActive !== false)
-    ) {
-      return settings.defaultTemplateId;
-    }
-    const defaultTemplate = templates.find((template) => template.isDefault && template.isActive !== false);
-    if (defaultTemplate) {
-      return defaultTemplate.id;
-    }
-    const firstActive = templates.find((template) => template.isActive !== false);
-    return firstActive?.id ?? BUILTIN_TEMPLATE_VALUE;
-  }
-
-  warrantyPolicyText(): string {
-    return compactReceiptText(this.printingSettings()?.warrantyPolicy || DEFAULT_WARRANTY_POLICY);
-  }
-
-  footerNoteText(): string {
-    return compactReceiptText(this.printingSettings()?.footerNote || DEFAULT_FOOTER_NOTE);
-  }
-
-  thanksMessageText(): string {
-    return compactReceiptText(this.printingSettings()?.thanksMessage || DEFAULT_THANKS_MESSAGE);
-  }
-
-  showWarrantyPolicy(): boolean {
-    return this.printingSettings()?.showWarrantyPolicy === true;
-  }
-
-  showFooterNote(): boolean {
-    return this.printingSettings()?.showFooterNote !== false;
-  }
-
-  showThanksMessage(): boolean {
-    return this.printingSettings()?.showThanksMessage !== false;
-  }
-
-  private buildBarcodeBars(value: string): Array<{ width: number; filled: boolean }> {
-    const digits = value.replace(/\D+/g, '') || '0';
-    const bars: Array<{ width: number; filled: boolean }> = [
-      { width: 2, filled: true },
-      { width: 1, filled: false },
-      { width: 2, filled: true },
-      { width: 1, filled: false },
-    ];
-    for (const char of digits) {
-      const n = Number(char);
-      bars.push(
-        { width: 1 + (n % 3), filled: true },
-        { width: 1 + ((n + 1) % 2), filled: false },
-        { width: 1 + ((n + 2) % 3), filled: true },
-        { width: 1, filled: false },
-      );
-    }
-    bars.push({ width: 2, filled: true }, { width: 1, filled: false }, { width: 3, filled: true });
-    return bars;
+  private removePrintStyle(): void {
+    this.printStyleEl?.remove();
+    this.printStyleEl = null;
   }
 }

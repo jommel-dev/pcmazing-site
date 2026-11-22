@@ -6,6 +6,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
@@ -14,6 +15,7 @@ import { Request } from 'express';
 import { AdminJwtPayload, JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateSalesOrderDto } from './dto/create-sales-order.dto';
 import { RefundSalesOrderDto } from './dto/refund-sales-order.dto';
+import { UpdateSalesOrderDto } from './dto/update-sales-order.dto';
 import { SalesOrdersService } from './sales-orders.service';
 
 @Controller('admin/inventory/sales-orders')
@@ -58,6 +60,18 @@ export class SalesOrdersController {
   getById(@Param('id', ParseIntPipe) id: number) {
     return this.salesOrdersService.getById(id).then((item) => ({
       success: true,
+      data: item,
+    }));
+  }
+
+  @Put(':id')
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateSalesOrderDto,
+  ) {
+    return this.salesOrdersService.update(id, dto).then((item) => ({
+      success: true,
+      message: 'Sales order updated.',
       data: item,
     }));
   }
