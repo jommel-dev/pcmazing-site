@@ -209,14 +209,6 @@ export class InventoryServiceViewPageComponent implements OnInit {
     return String(this.item()?.status ?? '').trim().toLowerCase() === 'cancelled';
   }
 
-  printReceipt(): void {
-    const id = this.item()?.id;
-    if (!id || this.isCancelled()) {
-      return;
-    }
-    void this.router.navigate(['/admin/job-order', id, 'receipt']);
-  }
-
   printJobOrderForm(): void {
     const id = this.item()?.id;
     if (!id || this.isCancelled()) {

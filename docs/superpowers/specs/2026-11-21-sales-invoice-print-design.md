@@ -1,6 +1,6 @@
 # Sales Invoice print (A4 — replace Sales Order receipt)
 
-**Status:** Draft (awaiting user review)  
+**Status:** Approved  
 **Date:** 2026-11-21  
 **Area:** Sales Order create/edit + replace receipt print with A4 Sales Invoice  
 **Reference:** Attached PCmazing Sales Invoice (paper layout)

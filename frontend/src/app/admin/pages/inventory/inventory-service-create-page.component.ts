@@ -1945,24 +1945,6 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
     this.laptopImageFailed.set(true);
   }
 
-  openReceipt(): void {
-    const id = this.serviceId();
-    if (!id || this.normalizeJobStatus(this.selectedStatus()) === 'Cancelled') {
-      return;
-    }
-    void this.router.navigate(['/admin/job-order', id, 'receipt']);
-  }
-
-  reprintReceipt(): void {
-    const id = this.serviceId();
-    if (!id || this.normalizeJobStatus(this.selectedStatus()) === 'Cancelled') {
-      return;
-    }
-    void this.router.navigate(['/admin/job-order', id, 'receipt'], {
-      queryParams: { reprint: '1', print: '1' },
-    });
-  }
-
   requestMarkAsDone(): void {
     if (!this.isEditMode() || this.selectedStatus() === 'Done' || this.markingDone()) {
       return;
@@ -2014,7 +1996,7 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
     this.markingDone.set(true);
 
     try {
-      // Persist discounts and other form edits before opening the receipt.
+      // Persist discounts and other form edits before opening the Job Order Form.
       const response = await firstValueFrom(
         this.adminApi.updateInventoryService(id, built.payload),
       );
@@ -2024,7 +2006,7 @@ export class InventoryServiceCreatePageComponent implements OnInit, OnDestroy {
       this.persistedImageUrl = response.data.imageUrl ?? this.persistedImageUrl;
       this.imageUrl.set(this.persistedImageUrl);
       this.pendingSettlement.set(false);
-      await this.router.navigate(['/admin/job-order', id, 'receipt'], {
+      await this.router.navigate(['/admin/job-order', id, 'form'], {
         queryParams: { print: '1' },
       });
     } catch (err: unknown) {
