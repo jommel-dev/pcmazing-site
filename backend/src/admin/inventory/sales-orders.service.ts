@@ -12,9 +12,17 @@ import {
 } from '../common/admin-table.util';
 import { CreateSalesOrderDto } from './dto/create-sales-order.dto';
 import { RefundSalesOrderDto } from './dto/refund-sales-order.dto';
+import { UpdateSalesOrderDto } from './dto/update-sales-order.dto';
 import { ensureSalesOrderItemWarrantyColumns } from './item-warranty.schema';
 import { normalizeWarranty, type WarrantyUnit } from './item-warranty.util';
 import { ensureSalesOrderPromotionColumn } from './order-promotion.schema';
+import { ensureSalesInvoiceColumns } from './sales-invoice.schema';
+import {
+  normalizeMoney,
+  normalizeSalesType,
+  SO_INVOICE_MAX_ITEMS,
+  type SalesType,
+} from './sales-invoice.util';
 import { ensureSalesOrderCustomItemsSchema } from './sales-order-custom-items.schema';
 import { ensureSalesOrderManualTotalColumn } from './sales-order-manual-total.schema';
 import { ensureSalesOrderRefundColumns } from './sales-order-refund.schema';
@@ -41,6 +49,18 @@ export interface SalesOrderListItem {
   itemCount: number;
   itemsSummary: string[];
   updatedAt: string | null;
+  customerAddress?: string | null;
+  customerEmail?: string | null;
+  customerTin?: string | null;
+  businessStyle?: string | null;
+  shipToAddress?: string | null;
+  salesType?: SalesType;
+  customerPoNo?: string | null;
+  salesperson?: string | null;
+  paymentMethod?: string | null;
+  paymentTerms?: string | null;
+  withholdingTax?: number;
+  amountPaid?: number;
 }
 
 export interface SalesOrderItem {
@@ -57,6 +77,8 @@ export interface SalesOrderItem {
   discountType: 'none' | 'senior' | 'pwd';
   warrantyValue: number | null;
   warrantyUnit: WarrantyUnit | null;
+  serialNo?: string | null;
+  unit?: string | null;
 }
 
 export interface SalesOrderDetail extends SalesOrderListItem {
@@ -90,11 +112,7 @@ export class SalesOrdersService {
       );
     }
 
-    await ensureSalesOrderRefundColumns(this.databaseService);
-    await ensureSalesOrderCustomItemsSchema(this.databaseService);
-    await ensureSalesOrderPromotionColumn(this.databaseService);
-    await ensureSalesOrderItemWarrantyColumns(this.databaseService);
-    await ensureSalesOrderManualTotalColumn(this.databaseService);
+    await this.ensureSalesOrderSchemas();
 
     const { page, limit, offset } = buildPagination(pageRaw, limitRaw);
     const params: unknown[] = [];
@@ -245,11 +263,7 @@ export class SalesOrdersService {
       );
     }
 
-    await ensureSalesOrderRefundColumns(this.databaseService);
-    await ensureSalesOrderCustomItemsSchema(this.databaseService);
-    await ensureSalesOrderPromotionColumn(this.databaseService);
-    await ensureSalesOrderItemWarrantyColumns(this.databaseService);
-    await ensureSalesOrderManualTotalColumn(this.databaseService);
+    await this.ensureSalesOrderSchemas();
 
     const result = await this.databaseService.query<{
       id: number;
@@ -272,6 +286,18 @@ export class SalesOrdersService {
       items_summary: string | null;
       updated_at: string | null;
       promotion: string | null;
+      customer_address: string | null;
+      customer_email: string | null;
+      customer_tin: string | null;
+      business_style: string | null;
+      ship_to_address: string | null;
+      sales_type: string | null;
+      customer_po_no: string | null;
+      salesperson: string | null;
+      payment_method: string | null;
+      payment_terms: string | null;
+      withholding_tax: string;
+      amount_paid: string;
     }>(
       `SELECT
         o.id,
@@ -293,7 +319,19 @@ export class SalesOrdersService {
         o.sale_date::text,
         COALESCE(items.item_count, 0)::text AS item_count,
         items.items_summary,
-        o.updated_at::text
+        o.updated_at::text,
+        o.customer_address,
+        o.customer_email,
+        o.customer_tin,
+        o.business_style,
+        o.ship_to_address,
+        o.sales_type,
+        o.customer_po_no,
+        o.salesperson,
+        o.payment_method,
+        o.payment_terms,
+        COALESCE(o.withholding_tax, 0)::text AS withholding_tax,
+        COALESCE(o.amount_paid, 0)::text AS amount_paid
        FROM pcmazing_sales_orders o
        LEFT JOIN LATERAL (
          SELECT
@@ -331,42 +369,14 @@ export class SalesOrdersService {
       );
     }
 
-    await ensureSalesOrderCustomItemsSchema(this.databaseService);
-    await ensureSalesOrderPromotionColumn(this.databaseService);
-    await ensureSalesOrderItemWarrantyColumns(this.databaseService);
-    await ensureSalesOrderManualTotalColumn(this.databaseService);
+    await this.ensureSalesOrderSchemas();
 
-    const customerName = dto.customerName?.trim();
-    if (!customerName) {
-      throw new BadRequestException('Customer name is required.');
-    }
-
-    const items = dto.items ?? [];
-    if (!items.length) {
-      throw new BadRequestException('Add at least one item to the sales order.');
-    }
-
-    const saleDate = dto.saleDate ? new Date(dto.saleDate) : new Date();
-    if (Number.isNaN(saleDate.getTime())) {
-      throw new BadRequestException('Sale date is invalid.');
-    }
-
-    const normalizedItems = await this.normalizeItems(items);
-    const totals = this.calculateTotals(normalizedItems, dto.customDiscount ?? 0);
-    const useManualTotal = Boolean(dto.useManualTotal);
-    const manualTotalAmount = useManualTotal
-      ? Math.max(0, Number(dto.manualTotalAmount) || 0)
-      : null;
-    if (useManualTotal && !Number.isFinite(Number(dto.manualTotalAmount))) {
-      throw new BadRequestException('Manual total amount is required and must be zero or greater.');
-    }
-    const persistedTotal =
-      manualTotalAmount != null ? manualTotalAmount : totals.totalAmount;
+    const prepared = await this.prepareOrderWrite(dto);
 
     const newId = await this.databaseService.withTransaction(async (client) => {
       await this.assertStockAvailable(
         client,
-        normalizedItems.filter(
+        prepared.normalizedItems.filter(
           (item): item is typeof item & { materialId: number } => item.materialId != null,
         ),
       );
@@ -383,21 +393,48 @@ export class SalesOrdersService {
           total_amount,
           manual_total_amount,
           sale_date,
-          created_by
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          created_by,
+          customer_address,
+          customer_email,
+          customer_tin,
+          business_style,
+          ship_to_address,
+          sales_type,
+          customer_po_no,
+          salesperson,
+          payment_method,
+          payment_terms,
+          withholding_tax,
+          amount_paid
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+          $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23
+        )
         RETURNING id`,
         [
-          customerName,
-          dto.customerPhone?.trim() || null,
-          dto.notes?.trim() || null,
-          dto.promotion?.trim() || null,
-          totals.customDiscount,
-          totals.subtotal,
-          totals.discountTotal,
-          persistedTotal,
-          manualTotalAmount,
-          saleDate.toISOString(),
+          prepared.customerName,
+          prepared.customerPhone,
+          prepared.notes,
+          prepared.promotion,
+          prepared.totals.customDiscount,
+          prepared.totals.subtotal,
+          prepared.totals.discountTotal,
+          prepared.persistedTotal,
+          prepared.manualTotalAmount,
+          prepared.saleDateIso,
           createdBy ?? null,
+          prepared.invoice.customerAddress,
+          prepared.invoice.customerEmail,
+          prepared.invoice.customerTin,
+          prepared.invoice.businessStyle,
+          prepared.invoice.shipToAddress,
+          prepared.invoice.salesType,
+          prepared.invoice.customerPoNo,
+          prepared.invoice.salesperson,
+          prepared.invoice.paymentMethod,
+          prepared.invoice.paymentTerms,
+          prepared.invoice.withholdingTax,
+          prepared.invoice.amountPaid,
         ],
       );
 
@@ -414,46 +451,124 @@ export class SalesOrdersService {
         [referenceNo, salesOrderId],
       );
 
-      for (const item of normalizedItems) {
-        await client.query(
-          `INSERT INTO pcmazing_sales_order_items (
-             sales_order_id,
-             material_id,
-             custom_item_name,
-             quantity,
-             unit_price,
-             discount_type,
-             warranty_value,
-             warranty_unit
-           )
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-          [
-            salesOrderId,
-            item.materialId,
-            item.customItemName,
-            item.quantity,
-            item.unitPrice,
-            item.discountType,
-            item.warrantyValue,
-            item.warrantyUnit,
-          ],
-        );
-
-        if (item.materialId != null) {
-          await client.query(
-            `UPDATE tblmaterials
-             SET on_hand_stock = COALESCE(on_hand_stock, 0) - $1,
-                 updated_at = NOW()
-             WHERE id = $2 AND deleted_at IS NULL`,
-            [item.quantity, item.materialId],
-          );
-        }
-      }
+      await this.insertOrderItems(client, salesOrderId, prepared.normalizedItems);
 
       return salesOrderId;
     });
 
     return this.getById(newId);
+  }
+
+  async update(id: number, dto: UpdateSalesOrderDto): Promise<SalesOrderDetail> {
+    if (!(await tableExists(this.databaseService, 'pcmazing_sales_orders'))) {
+      throw new ServiceUnavailableException(
+        'Sales orders table is not available. Apply migration 047_sales_orders.sql.',
+      );
+    }
+
+    await this.ensureSalesOrderSchemas();
+
+    const existing = await this.getById(id);
+    if (existing.isVoid) {
+      throw new BadRequestException('Voided sales orders cannot be edited.');
+    }
+    if (existing.items.some((item) => (item.refundedQuantity ?? 0) > 0)) {
+      throw new BadRequestException(
+        'Cannot edit a sales order after a partial refund. Void or create a new order instead.',
+      );
+    }
+
+    const prepared = await this.prepareOrderWrite(dto);
+
+    await this.databaseService.withTransaction(async (client) => {
+      for (const item of existing.items) {
+        if (item.materialId == null) {
+          continue;
+        }
+        const restoreQty = Math.max(0, item.quantity - (item.refundedQuantity ?? 0));
+        if (restoreQty <= 0) {
+          continue;
+        }
+        await client.query(
+          `UPDATE tblmaterials
+           SET on_hand_stock = COALESCE(on_hand_stock, 0) + $1,
+               updated_at = NOW()
+           WHERE id = $2 AND deleted_at IS NULL`,
+          [restoreQty, item.materialId],
+        );
+      }
+
+      await client.query(
+        `UPDATE pcmazing_sales_order_items
+         SET deleted_at = NOW(), updated_at = NOW()
+         WHERE sales_order_id = $1 AND deleted_at IS NULL`,
+        [id],
+      );
+
+      await this.assertStockAvailable(
+        client,
+        prepared.normalizedItems.filter(
+          (item): item is typeof item & { materialId: number } => item.materialId != null,
+        ),
+      );
+
+      await client.query(
+        `UPDATE pcmazing_sales_orders
+         SET customer_name = $1,
+             customer_phone = $2,
+             notes = $3,
+             promotion = $4,
+             custom_discount = $5,
+             subtotal = $6,
+             discount_total = $7,
+             total_amount = $8,
+             manual_total_amount = $9,
+             sale_date = $10,
+             customer_address = $11,
+             customer_email = $12,
+             customer_tin = $13,
+             business_style = $14,
+             ship_to_address = $15,
+             sales_type = $16,
+             customer_po_no = $17,
+             salesperson = $18,
+             payment_method = $19,
+             payment_terms = $20,
+             withholding_tax = $21,
+             amount_paid = $22,
+             updated_at = NOW()
+         WHERE id = $23 AND deleted_at IS NULL`,
+        [
+          prepared.customerName,
+          prepared.customerPhone,
+          prepared.notes,
+          prepared.promotion,
+          prepared.totals.customDiscount,
+          prepared.totals.subtotal,
+          prepared.totals.discountTotal,
+          prepared.persistedTotal,
+          prepared.manualTotalAmount,
+          prepared.saleDateIso,
+          prepared.invoice.customerAddress,
+          prepared.invoice.customerEmail,
+          prepared.invoice.customerTin,
+          prepared.invoice.businessStyle,
+          prepared.invoice.shipToAddress,
+          prepared.invoice.salesType,
+          prepared.invoice.customerPoNo,
+          prepared.invoice.salesperson,
+          prepared.invoice.paymentMethod,
+          prepared.invoice.paymentTerms,
+          prepared.invoice.withholdingTax,
+          prepared.invoice.amountPaid,
+          id,
+        ],
+      );
+
+      await this.insertOrderItems(client, id, prepared.normalizedItems);
+    });
+
+    return this.getById(id);
   }
 
   async voidOrder(id: number, voidedBy?: number): Promise<SalesOrderDetail> {
@@ -609,9 +724,133 @@ export class SalesOrdersService {
     return this.getById(id);
   }
 
+  private async ensureSalesOrderSchemas(): Promise<void> {
+    await ensureSalesOrderRefundColumns(this.databaseService);
+    await ensureSalesOrderCustomItemsSchema(this.databaseService);
+    await ensureSalesOrderPromotionColumn(this.databaseService);
+    await ensureSalesOrderItemWarrantyColumns(this.databaseService);
+    await ensureSalesOrderManualTotalColumn(this.databaseService);
+    await ensureSalesInvoiceColumns(this.databaseService);
+  }
+
+  private async prepareOrderWrite(dto: CreateSalesOrderDto | UpdateSalesOrderDto) {
+    const customerName = dto.customerName?.trim();
+    if (!customerName) {
+      throw new BadRequestException('Customer name is required.');
+    }
+
+    const items = dto.items ?? [];
+    if (!items.length) {
+      throw new BadRequestException('Add at least one item to the sales order.');
+    }
+    if (items.length > SO_INVOICE_MAX_ITEMS) {
+      throw new BadRequestException(`Maximum ${SO_INVOICE_MAX_ITEMS} line items.`);
+    }
+
+    const saleDate = dto.saleDate ? new Date(dto.saleDate) : new Date();
+    if (Number.isNaN(saleDate.getTime())) {
+      throw new BadRequestException('Sale date is invalid.');
+    }
+
+    const normalizedItems = await this.normalizeItems(items);
+    const totals = this.calculateTotals(normalizedItems, dto.customDiscount ?? 0);
+    const useManualTotal = Boolean(dto.useManualTotal);
+    const manualTotalAmount = useManualTotal
+      ? Math.max(0, Number(dto.manualTotalAmount) || 0)
+      : null;
+    if (useManualTotal && !Number.isFinite(Number(dto.manualTotalAmount))) {
+      throw new BadRequestException('Manual total amount is required and must be zero or greater.');
+    }
+    const persistedTotal =
+      manualTotalAmount != null ? manualTotalAmount : totals.totalAmount;
+
+    return {
+      customerName,
+      customerPhone: dto.customerPhone?.trim() || null,
+      notes: dto.notes?.trim() || null,
+      promotion: dto.promotion?.trim() || null,
+      saleDateIso: saleDate.toISOString(),
+      totals,
+      manualTotalAmount,
+      persistedTotal,
+      normalizedItems,
+      invoice: {
+        customerAddress: dto.customerAddress?.trim() || null,
+        customerEmail: dto.customerEmail?.trim() || null,
+        customerTin: dto.customerTin?.trim() || null,
+        businessStyle: dto.businessStyle?.trim() || null,
+        shipToAddress: dto.shipToAddress?.trim() || null,
+        salesType: normalizeSalesType(dto.salesType),
+        customerPoNo: dto.customerPoNo?.trim() || null,
+        salesperson: dto.salesperson?.trim() || null,
+        paymentMethod: dto.paymentMethod?.trim() || null,
+        paymentTerms: dto.paymentTerms?.trim() || null,
+        withholdingTax: normalizeMoney(dto.withholdingTax),
+        amountPaid: normalizeMoney(dto.amountPaid),
+      },
+    };
+  }
+
+  private async insertOrderItems(
+    client: { query: DatabaseService['query'] },
+    salesOrderId: number,
+    normalizedItems: Array<{
+      materialId: number | null;
+      customItemName: string | null;
+      quantity: number;
+      unitPrice: number;
+      discountType: 'none' | 'senior' | 'pwd';
+      warrantyValue: number | null;
+      warrantyUnit: WarrantyUnit | null;
+      serialNo: string | null;
+      unit: string;
+    }>,
+  ): Promise<void> {
+    for (const item of normalizedItems) {
+      await client.query(
+        `INSERT INTO pcmazing_sales_order_items (
+           sales_order_id,
+           material_id,
+           custom_item_name,
+           quantity,
+           unit_price,
+           discount_type,
+           warranty_value,
+           warranty_unit,
+           serial_no,
+           unit
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          salesOrderId,
+          item.materialId,
+          item.customItemName,
+          item.quantity,
+          item.unitPrice,
+          item.discountType,
+          item.warrantyValue,
+          item.warrantyUnit,
+          item.serialNo,
+          item.unit,
+        ],
+      );
+
+      if (item.materialId != null) {
+        await client.query(
+          `UPDATE tblmaterials
+           SET on_hand_stock = COALESCE(on_hand_stock, 0) - $1,
+               updated_at = NOW()
+           WHERE id = $2 AND deleted_at IS NULL`,
+          [item.quantity, item.materialId],
+        );
+      }
+    }
+  }
+
   private async loadItems(salesOrderId: number): Promise<SalesOrderItem[]> {
     await ensureSalesOrderCustomItemsSchema(this.databaseService);
     await ensureSalesOrderItemWarrantyColumns(this.databaseService);
+    await ensureSalesInvoiceColumns(this.databaseService);
 
     const result = await this.databaseService.query<{
       id: number;
@@ -626,6 +865,8 @@ export class SalesOrdersService {
       discount_type: 'none' | 'senior' | 'pwd';
       warranty_value: string | null;
       warranty_unit: string | null;
+      serial_no: string | null;
+      unit: string | null;
     }>(
       `SELECT
         i.id,
@@ -639,7 +880,9 @@ export class SalesOrdersService {
         i.unit_price::text,
         i.discount_type,
         i.warranty_value::text,
-        i.warranty_unit
+        i.warranty_unit,
+        i.serial_no,
+        COALESCE(NULLIF(TRIM(i.unit), ''), 'PCS') AS unit
        FROM pcmazing_sales_order_items i
        LEFT JOIN tblmaterials m ON m.id = i.material_id
        WHERE i.sales_order_id = $1 AND i.deleted_at IS NULL
@@ -684,6 +927,8 @@ export class SalesOrdersService {
         discountType: this.normalizeDiscountType(row.discount_type),
         warrantyValue,
         warrantyUnit,
+        serialNo: row.serial_no?.trim() || null,
+        unit: row.unit?.trim() || 'PCS',
       };
     });
   }
@@ -726,6 +971,8 @@ export class SalesOrdersService {
       warrantyUnit: WarrantyUnit | null;
       materialName: string;
       onHandStock: number;
+      serialNo: string | null;
+      unit: string;
     }>
   > {
     const materialIds = [
@@ -738,7 +985,7 @@ export class SalesOrdersService {
 
     const materialMap = new Map<
       number,
-      { materialName: string; sellPrice: number; onHandStock: number }
+      { materialName: string; sellPrice: number; onHandStock: number; unit: string }
     >();
 
     if (materialIds.length > 0) {
@@ -752,8 +999,10 @@ export class SalesOrdersService {
         sell_price: string | null;
         unit_price: string | null;
         on_hand_stock: string | null;
+        unit: string | null;
       }>(
-        `SELECT id, material_name, sell_price::text, unit_price::text, on_hand_stock::text
+        `SELECT id, material_name, sell_price::text, unit_price::text, on_hand_stock::text,
+                COALESCE(NULLIF(TRIM(unit), ''), 'PCS') AS unit
          FROM tblmaterials
          WHERE id = ANY($1::bigint[]) AND deleted_at IS NULL`,
         [materialIds],
@@ -764,6 +1013,7 @@ export class SalesOrdersService {
           materialName: row.material_name,
           sellPrice: Number(row.sell_price ?? row.unit_price ?? 0),
           onHandStock: Number(row.on_hand_stock ?? 0),
+          unit: row.unit?.trim() || 'PCS',
         });
       }
     }
@@ -772,6 +1022,8 @@ export class SalesOrdersService {
       const materialIdRaw = Number(item.materialId);
       const hasMaterial = Number.isFinite(materialIdRaw) && materialIdRaw > 0;
       const customItemName = String(item.customItemName ?? '').trim() || null;
+      const serialNo = String(item.serialNo ?? '').trim() || null;
+      const unitOverride = String(item.unit ?? '').trim() || null;
 
       if (!hasMaterial && !customItemName) {
         throw new BadRequestException(
@@ -799,6 +1051,8 @@ export class SalesOrdersService {
           warrantyUnit: warranty?.warrantyUnit ?? null,
           materialName: material.materialName,
           onHandStock: material.onHandStock,
+          serialNo,
+          unit: unitOverride || material.unit || 'PCS',
         };
       }
 
@@ -820,6 +1074,8 @@ export class SalesOrdersService {
         warrantyUnit: warranty?.warrantyUnit ?? null,
         materialName: customItemName!,
         onHandStock: 0,
+        serialNo,
+        unit: unitOverride || 'PCS',
       };
     });
   }
@@ -958,6 +1214,18 @@ export class SalesOrdersService {
     item_count: string;
     items_summary: string | null;
     updated_at: string | null;
+    customer_address?: string | null;
+    customer_email?: string | null;
+    customer_tin?: string | null;
+    business_style?: string | null;
+    ship_to_address?: string | null;
+    sales_type?: string | null;
+    customer_po_no?: string | null;
+    salesperson?: string | null;
+    payment_method?: string | null;
+    payment_terms?: string | null;
+    withholding_tax?: string | null;
+    amount_paid?: string | null;
   }): SalesOrderListItem {
     const totalAmount = Number(row.total_amount ?? 0);
     const refundAmount = Number(row.refund_amount ?? 0);
@@ -991,6 +1259,18 @@ export class SalesOrdersService {
         ? row.items_summary.split(', ').filter(Boolean)
         : [],
       updatedAt: row.updated_at,
+      customerAddress: row.customer_address?.trim() || null,
+      customerEmail: row.customer_email?.trim() || null,
+      customerTin: row.customer_tin?.trim() || null,
+      businessStyle: row.business_style?.trim() || null,
+      shipToAddress: row.ship_to_address?.trim() || null,
+      salesType: normalizeSalesType(row.sales_type),
+      customerPoNo: row.customer_po_no?.trim() || null,
+      salesperson: row.salesperson?.trim() || null,
+      paymentMethod: row.payment_method?.trim() || null,
+      paymentTerms: row.payment_terms?.trim() || null,
+      withholdingTax: normalizeMoney(row.withholding_tax),
+      amountPaid: normalizeMoney(row.amount_paid),
     };
   }
 }

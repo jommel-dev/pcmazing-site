@@ -4,6 +4,7 @@ import { FormArray, FormBuilder, FormsModule, ReactiveFormsModule, Validators } 
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { AdminAlertService } from '../../services/admin-alert.service';
+import { AdminAuthService } from '../../services/admin-auth.service';
 import {
   AdminApiService,
   CreateSalesOrderPayload,
@@ -24,6 +25,10 @@ import {
 } from './item-warranty.util';
 import { normalizeSalesOrderDetail } from './sales-order.util';
 import { isMaterialInStock, stockQty } from './inventory-stock.util';
+import {
+  SO_INVOICE_MAX_ITEMS,
+  computeInvoicePaymentSummary,
+} from './sales-invoice.util';
 
 const DISCOUNT_OPTIONS: Array<{ value: PhDiscountType; label: string }> = [
   { value: 'none', label: 'No discount' },
@@ -39,9 +44,11 @@ const DISCOUNT_OPTIONS: Array<{ value: PhDiscountType; label: string }> = [
 export class SalesOrderCreatePageComponent implements OnInit {
   private readonly adminApi = inject(AdminApiService);
   private readonly adminAlert = inject(AdminAlertService);
+  private readonly adminAuth = inject(AdminAuthService);
   private readonly formBuilder = inject(FormBuilder);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+  readonly invoiceMaxItems = SO_INVOICE_MAX_ITEMS;
   private materialSearchTimer: ReturnType<typeof setTimeout> | null = null;
   private partSearchCloseTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -76,9 +83,13 @@ export class SalesOrderCreatePageComponent implements OnInit {
   readonly warrantyPopupHadPrior = signal(false);
   readonly warrantySelectedIndices = signal<Set<number>>(new Set());
 
-  readonly isViewMode = computed(() => this.orderId() !== null);
+  readonly isExistingOrder = computed(() => this.orderId() !== null);
   readonly isVoided = computed(() => !!this.order()?.isVoid);
   readonly hasRefund = computed(() => (this.order()?.refundAmount ?? 0) > 0);
+  /** Locked when voided or after refund (backend rejects item edits). */
+  readonly isReadOnly = computed(() => this.isVoided() || this.hasRefund());
+  /** @deprecated Prefer isExistingOrder / isReadOnly — kept for template compatibility during rename. */
+  readonly isViewMode = computed(() => this.isReadOnly());
   readonly netTotalAmount = computed(() => {
     const order = this.order();
     if (!order) {
@@ -96,6 +107,18 @@ export class SalesOrderCreatePageComponent implements OnInit {
     useManualTotal: [false],
     manualTotalAmount: [0 as number, [Validators.min(0)]],
     saleDate: [this.toLocalDateTimeInputValue(new Date())],
+    customerAddress: ['', [Validators.maxLength(2000)]],
+    customerEmail: ['', [Validators.maxLength(255)]],
+    customerTin: ['', [Validators.maxLength(64)]],
+    businessStyle: ['', [Validators.maxLength(255)]],
+    shipToAddress: ['', [Validators.maxLength(2000)]],
+    salesType: ['cash' as 'cash' | 'charge'],
+    customerPoNo: ['', [Validators.maxLength(120)]],
+    salesperson: ['', [Validators.maxLength(120)]],
+    paymentMethod: ['', [Validators.maxLength(120)]],
+    paymentTerms: ['', [Validators.maxLength(120)]],
+    withholdingTax: [0, [Validators.min(0)]],
+    amountPaid: [0, [Validators.min(0)]],
     items: this.formBuilder.array([]),
   });
 
@@ -125,6 +148,12 @@ export class SalesOrderCreatePageComponent implements OnInit {
 
       if (orderResponse?.data) {
         this.populateFromOrder(normalizeSalesOrderDetail(orderResponse.data));
+      } else {
+        const salesperson =
+          this.adminAuth.getStoredUser()?.fullName?.trim() ||
+          this.adminAuth.getStoredUser()?.username?.trim() ||
+          '';
+        this.form.patchValue({ salesperson, salesType: 'cash' });
       }
     } catch {
       this.error.set('Unable to load sales order form.');
@@ -136,13 +165,30 @@ export class SalesOrderCreatePageComponent implements OnInit {
   private populateFromOrder(order: SalesOrderDetail): void {
     this.order.set(order);
     this.referenceNo.set(order.referenceNo);
+    const useManual =
+      order.manualTotalAmount != null && Number.isFinite(Number(order.manualTotalAmount));
+    this.form.enable();
     this.form.patchValue({
       customerName: order.customerName,
       customerPhone: order.customerPhone ?? '',
       notes: order.notes ?? '',
       promotion: order.promotion ?? '',
       customDiscount: order.customDiscount ?? 0,
+      useManualTotal: useManual,
+      manualTotalAmount: useManual ? Number(order.manualTotalAmount) : 0,
       saleDate: order.saleDate ? this.toLocalDateTimeInputValue(new Date(order.saleDate)) : '',
+      customerAddress: order.customerAddress ?? '',
+      customerEmail: order.customerEmail ?? '',
+      customerTin: order.customerTin ?? '',
+      businessStyle: order.businessStyle ?? '',
+      shipToAddress: order.shipToAddress ?? '',
+      salesType: order.salesType === 'charge' ? 'charge' : 'cash',
+      customerPoNo: order.customerPoNo ?? '',
+      salesperson: order.salesperson ?? '',
+      paymentMethod: order.paymentMethod ?? '',
+      paymentTerms: order.paymentTerms ?? '',
+      withholdingTax: order.withholdingTax ?? 0,
+      amountPaid: order.amountPaid ?? 0,
     });
     this.itemsArray.clear();
     this.warrantySelectedIndices.set(new Set());
@@ -156,9 +202,13 @@ export class SalesOrderCreatePageComponent implements OnInit {
         discountType: normalizePhDiscountType(item.discountType),
         warrantyValue: item.warrantyValue ?? null,
         warrantyUnit: (item.warrantyUnit as WarrantyUnit | '') ?? '',
+        serialNo: item.serialNo ?? '',
+        unit: item.unit ?? 'PCS',
       });
     }
-    this.form.disable();
+    if (this.isReadOnly()) {
+      this.form.disable();
+    }
   }
 
   private pushItemRow(options: {
@@ -169,6 +219,8 @@ export class SalesOrderCreatePageComponent implements OnInit {
     discountType?: PhDiscountType;
     warrantyValue?: number | null;
     warrantyUnit?: WarrantyUnit | '';
+    serialNo?: string;
+    unit?: string;
   }): void {
     this.itemsArray.push(
       this.formBuilder.nonNullable.group({
@@ -179,8 +231,18 @@ export class SalesOrderCreatePageComponent implements OnInit {
         discountType: [(options.discountType ?? 'none') as PhDiscountType],
         warrantyValue: [options.warrantyValue ?? null],
         warrantyUnit: [(options.warrantyUnit ?? '') as WarrantyUnit | ''],
+        serialNo: [options.serialNo ?? ''],
+        unit: [options.unit ?? 'PCS'],
       }),
     );
+  }
+
+  private assertCanAddItem(): boolean {
+    if (this.itemsArray.length >= SO_INVOICE_MAX_ITEMS) {
+      this.adminAlert.error(`Maximum ${SO_INVOICE_MAX_ITEMS} line items on a Sales Invoice.`);
+      return false;
+    }
+    return true;
   }
 
   itemDisplayName(index: number): string {
@@ -231,7 +293,7 @@ export class SalesOrderCreatePageComponent implements OnInit {
   }
 
   toggleItemWarrantySelect(index: number): void {
-    if (this.isViewMode()) {
+    if (this.isReadOnly()) {
       return;
     }
     const next = new Set(this.warrantySelectedIndices());
@@ -244,7 +306,7 @@ export class SalesOrderCreatePageComponent implements OnInit {
   }
 
   toggleSelectAllItemWarranties(): void {
-    if (this.isViewMode()) {
+    if (this.isReadOnly()) {
       return;
     }
     if (this.allItemWarrantiesSelected()) {
@@ -275,7 +337,7 @@ export class SalesOrderCreatePageComponent implements OnInit {
   }
 
   openBulkWarrantyPopup(): void {
-    if (this.isViewMode() || this.itemWarrantySelectedCount() < 1) {
+    if (this.isReadOnly() || this.itemWarrantySelectedCount() < 1) {
       return;
     }
     this.warrantyPopupMode.set('bulk');
@@ -286,7 +348,7 @@ export class SalesOrderCreatePageComponent implements OnInit {
   }
 
   openWarrantyPopup(index: number): void {
-    if (this.isViewMode()) {
+    if (this.isReadOnly()) {
       return;
     }
     const raw = this.itemsArray.at(index)?.getRawValue() as {
@@ -370,7 +432,7 @@ export class SalesOrderCreatePageComponent implements OnInit {
   }
 
   removeItem(index: number): void {
-    if (this.isViewMode()) {
+    if (this.isReadOnly()) {
       return;
     }
     this.itemsArray.removeAt(index);
@@ -383,7 +445,7 @@ export class SalesOrderCreatePageComponent implements OnInit {
   }
 
   openPartLookup(): void {
-    if (this.isViewMode()) {
+    if (this.isReadOnly()) {
       return;
     }
     if (this.partSearchCloseTimer) {
@@ -406,7 +468,7 @@ export class SalesOrderCreatePageComponent implements OnInit {
   }
 
   onPartQueryInput(value: string): void {
-    if (this.isViewMode()) {
+    if (this.isReadOnly()) {
       return;
     }
     this.partQuery.set(value);
@@ -470,7 +532,10 @@ export class SalesOrderCreatePageComponent implements OnInit {
   }
 
   addItemFromCatalog(item: MaterialItem): void {
-    if (this.isViewMode() || !this.isMaterialSelectable(item)) {
+    if (this.isReadOnly() || !this.isMaterialSelectable(item)) {
+      return;
+    }
+    if (!this.assertCanAddItem()) {
       return;
     }
     if (this.selectedMaterialIds().has(Number(item.id))) {
@@ -482,12 +547,13 @@ export class SalesOrderCreatePageComponent implements OnInit {
       customItemName: '',
       quantity: 1,
       unitPrice: this.resolveMaterialUnitPrice(item),
+      unit: item.unit?.trim() || 'PCS',
     });
     this.clearPartSearch();
   }
 
   addTypedCustomItem(): void {
-    if (this.isViewMode()) {
+    if (this.isReadOnly()) {
       return;
     }
     const name = this.partQuery().trim();
@@ -495,11 +561,15 @@ export class SalesOrderCreatePageComponent implements OnInit {
       return;
     }
     if (this.canCreateNewItem()) {
+      if (!this.assertCanAddItem()) {
+        return;
+      }
       this.pushItemRow({
         materialId: '',
         customItemName: name,
         quantity: 1,
         unitPrice: 0,
+        unit: 'PCS',
       });
       this.clearPartSearch();
       return;
@@ -511,11 +581,14 @@ export class SalesOrderCreatePageComponent implements OnInit {
   }
 
   selectWebPart(hit: PartsPriceHit): void {
-    if (this.isViewMode()) {
+    if (this.isReadOnly()) {
       return;
     }
     const name = hit.title.trim().slice(0, 180);
     if (!name) {
+      return;
+    }
+    if (!this.assertCanAddItem()) {
       return;
     }
     this.pushItemRow({
@@ -523,6 +596,7 @@ export class SalesOrderCreatePageComponent implements OnInit {
       customItemName: name,
       quantity: 1,
       unitPrice: Number(hit.pricePhp) || 0,
+      unit: 'PCS',
     });
     this.clearPartSearch();
   }
@@ -690,7 +764,7 @@ export class SalesOrderCreatePageComponent implements OnInit {
   }
 
   customDiscountAmount(): number {
-    if (this.isViewMode()) {
+    if (this.isReadOnly()) {
       return this.order()?.customDiscount ?? 0;
     }
     return Math.max(0, Number(this.form.controls.customDiscount.value) || 0);
@@ -710,13 +784,19 @@ export class SalesOrderCreatePageComponent implements OnInit {
   }
 
   totalCustomerPayment(): number {
-    if (this.isViewMode()) {
-      return this.order()?.totalAmount ?? 0;
-    }
     if (this.form.controls.useManualTotal.value) {
       return Math.max(0, Number(this.form.getRawValue().manualTotalAmount) || 0);
     }
     return this.calculatedCustomerPayment();
+  }
+
+  paymentPreview() {
+    const raw = this.form.getRawValue();
+    return computeInvoicePaymentSummary({
+      totalSales: this.totalCustomerPayment(),
+      withholdingTax: Number(raw.withholdingTax) || 0,
+      amountPaid: Number(raw.amountPaid) || 0,
+    });
   }
 
   discountLabel(value: string | null | undefined): string {
@@ -759,7 +839,7 @@ export class SalesOrderCreatePageComponent implements OnInit {
   }
 
   async submit(): Promise<void> {
-    if (this.isViewMode()) {
+    if (this.isReadOnly()) {
       return;
     }
 
@@ -773,6 +853,11 @@ export class SalesOrderCreatePageComponent implements OnInit {
 
     if (this.itemsArray.length === 0) {
       this.adminAlert.error('Add at least one item.');
+      return;
+    }
+
+    if (this.itemsArray.length > SO_INVOICE_MAX_ITEMS) {
+      this.adminAlert.error(`Maximum ${SO_INVOICE_MAX_ITEMS} line items on a Sales Invoice.`);
       return;
     }
 
@@ -813,6 +898,18 @@ export class SalesOrderCreatePageComponent implements OnInit {
         ? Math.max(0, Number(value.manualTotalAmount) || 0)
         : null,
       saleDate: value.saleDate ? new Date(value.saleDate).toISOString() : undefined,
+      customerAddress: value.customerAddress.trim() || undefined,
+      customerEmail: value.customerEmail.trim() || undefined,
+      customerTin: value.customerTin.trim() || undefined,
+      businessStyle: value.businessStyle.trim() || undefined,
+      shipToAddress: value.shipToAddress.trim() || undefined,
+      salesType: value.salesType === 'charge' ? 'charge' : 'cash',
+      customerPoNo: value.customerPoNo.trim() || undefined,
+      salesperson: value.salesperson.trim() || undefined,
+      paymentMethod: value.paymentMethod.trim() || undefined,
+      paymentTerms: value.paymentTerms.trim() || undefined,
+      withholdingTax: Number(value.withholdingTax) || 0,
+      amountPaid: Number(value.amountPaid) || 0,
       items: this.itemsArray.controls.map((control) => {
         const item = control.getRawValue() as {
           materialId: string;
@@ -822,6 +919,8 @@ export class SalesOrderCreatePageComponent implements OnInit {
           discountType?: PhDiscountType;
           warrantyValue?: number | null;
           warrantyUnit?: string | null;
+          serialNo?: string;
+          unit?: string;
         };
         const materialId = Number(item.materialId);
         const hasMaterial = Number.isFinite(materialId) && materialId > 0;
@@ -835,15 +934,25 @@ export class SalesOrderCreatePageComponent implements OnInit {
           discountType: normalizePhDiscountType(item.discountType),
           warrantyValue: warranty?.warrantyValue ?? null,
           warrantyUnit: warranty?.warrantyUnit ?? null,
+          serialNo: String(item.serialNo ?? '').trim() || undefined,
+          unit: String(item.unit ?? '').trim() || 'PCS',
         };
       }),
     };
 
     this.saving.set(true);
     try {
-      const response = await firstValueFrom(this.adminApi.createSalesOrder(payload));
-      this.adminAlert.success('Sales order saved.');
-      await this.router.navigate(['/admin/sales-order', response.data.id]);
+      const existingId = this.orderId();
+      const response = existingId
+        ? await firstValueFrom(this.adminApi.updateSalesOrder(existingId, payload))
+        : await firstValueFrom(this.adminApi.createSalesOrder(payload));
+      this.adminAlert.success(existingId ? 'Sales order updated.' : 'Sales order saved.');
+      const id = response.data.id;
+      this.populateFromOrder(normalizeSalesOrderDetail(response.data));
+      this.orderId.set(id);
+      if (!existingId) {
+        await this.router.navigate(['/admin/sales-order', id]);
+      }
     } catch (err: unknown) {
       this.adminAlert.error(this.readError(err, 'Unable to save sales order.'));
     } finally {

@@ -6,31 +6,35 @@
   <div class="mt-4 mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
     <div>
       <h2 class="text-2xl font-bold text-slate-900">
-        @if (isViewMode()) { Sales Order {{ referenceNo() || ('#' + orderId()) }} } @else { New Sales Order }
+        @if (isExistingOrder()) { Sales Order {{ referenceNo() || ('#' + orderId()) }} } @else { New Sales Order }
       </h2>
       <p class="mt-1 text-sm text-slate-500">
-        @if (isViewMode()) {
-          Saved sales record. Inventory was deducted when this order was created.
+        @if (isExistingOrder()) {
+          @if (isReadOnly()) {
+            This order is locked (voided or refunded).
+          } @else {
+            Edit invoice details and items, then save. Print opens the Sales Invoice.
+          }
         } @else {
           Record a sale and automatically deduct inventory stock on save.
         }
       </p>
     </div>
-    @if (isViewMode()) {
+    @if (isExistingOrder()) {
       <div class="flex flex-wrap gap-2">
         <button
           type="button"
           class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50"
           (click)="printReceipt()"
         >
-          Print receipt
+          Print Sales Invoice
         </button>
         <button
           type="button"
           class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600"
           (click)="reprintReceipt()"
         >
-          Re-print receipt
+          Re-print Sales Invoice
         </button>
         @if (!isVoided()) {
           <button
@@ -101,7 +105,70 @@
 
           <div class="sm:col-span-2">
             <label class="mb-2 block text-sm font-semibold text-slate-800">Notes</label>
-            <textarea rows="3" class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none disabled:bg-slate-50" formControlName="notes" placeholder="Optional notes about this sale"></textarea>
+            <textarea rows="3" class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none disabled:bg-slate-50" formControlName="notes" placeholder="Optional notes / remarks on the invoice"></textarea>
+          </div>
+        </div>
+
+        <div class="rounded-2xl border border-slate-200 p-4">
+          <p class="text-sm font-semibold text-slate-800">Sales Invoice / Sold To</p>
+          <p class="mb-4 text-xs text-slate-500">Optional fields fill the printed Sales Invoice. Leave blank for handwriting.</p>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label class="mb-2 block text-sm font-semibold text-slate-800">TIN</label>
+              <input type="text" class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none disabled:bg-slate-50" formControlName="customerTin" />
+            </div>
+            <div>
+              <label class="mb-2 block text-sm font-semibold text-slate-800">Business Style</label>
+              <input type="text" class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none disabled:bg-slate-50" formControlName="businessStyle" />
+            </div>
+            <div class="sm:col-span-2">
+              <label class="mb-2 block text-sm font-semibold text-slate-800">Address</label>
+              <textarea rows="2" class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none disabled:bg-slate-50" formControlName="customerAddress"></textarea>
+            </div>
+            <div>
+              <label class="mb-2 block text-sm font-semibold text-slate-800">Email</label>
+              <input type="email" class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none disabled:bg-slate-50" formControlName="customerEmail" />
+            </div>
+            <div class="sm:col-span-2">
+              <label class="mb-2 block text-sm font-semibold text-slate-800">Ship To / Delivery Address</label>
+              <textarea rows="2" class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none disabled:bg-slate-50" formControlName="shipToAddress" placeholder="Only if different from buyer"></textarea>
+            </div>
+            <div>
+              <label class="mb-2 block text-sm font-semibold text-slate-800">Sales Type</label>
+              <select class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none disabled:bg-slate-50" formControlName="salesType">
+                <option value="cash">Cash</option>
+                <option value="charge">Charge</option>
+              </select>
+            </div>
+            <div>
+              <label class="mb-2 block text-sm font-semibold text-slate-800">Customer PO No.</label>
+              <input type="text" class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none disabled:bg-slate-50" formControlName="customerPoNo" />
+            </div>
+            <div>
+              <label class="mb-2 block text-sm font-semibold text-slate-800">Salesperson</label>
+              <input type="text" class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none disabled:bg-slate-50" formControlName="salesperson" />
+            </div>
+            <div>
+              <label class="mb-2 block text-sm font-semibold text-slate-800">Payment Method</label>
+              <input type="text" class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none disabled:bg-slate-50" formControlName="paymentMethod" placeholder="Cash / GCash / Bank / Charge" />
+            </div>
+            <div>
+              <label class="mb-2 block text-sm font-semibold text-slate-800">Terms</label>
+              <input type="text" class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none disabled:bg-slate-50" formControlName="paymentTerms" placeholder="COD / Net 30" />
+            </div>
+            <div>
+              <label class="mb-2 block text-sm font-semibold text-slate-800">CWT (Withholding)</label>
+              <input type="number" min="0" step="0.01" class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none disabled:bg-slate-50" formControlName="withholdingTax" />
+            </div>
+            <div>
+              <label class="mb-2 block text-sm font-semibold text-slate-800">Amount Paid</label>
+              <input type="number" min="0" step="0.01" class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-pcmazing-500 focus:outline-none disabled:bg-slate-50" formControlName="amountPaid" />
+            </div>
+            <div class="sm:col-span-2 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
+              <div class="flex justify-between"><span>Amount Due</span><span class="font-semibold">₱{{ paymentPreview().amountDue | number:'1.2-2' }}</span></div>
+              <div class="mt-1 flex justify-between"><span>Change</span><span>₱{{ paymentPreview().change | number:'1.2-2' }}</span></div>
+              <div class="mt-1 flex justify-between"><span>Balance</span><span>₱{{ paymentPreview().balance | number:'1.2-2' }}</span></div>
+            </div>
           </div>
         </div>
 
@@ -314,6 +381,16 @@
                   <input type="hidden" formControlName="materialId" />
                   <input type="hidden" formControlName="customItemName" />
                   <p class="mt-1 min-h-4 text-xs leading-4 text-slate-500">{{ itemRowHint(itemIndex) }}</p>
+                  <div class="mt-2 grid gap-2 sm:grid-cols-2">
+                    <div>
+                      <label class="mb-1 block text-[10px] font-semibold uppercase text-slate-600">Serial / IMEI</label>
+                      <input type="text" class="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs focus:border-pcmazing-500 focus:outline-none disabled:bg-slate-100" formControlName="serialNo" />
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-[10px] font-semibold uppercase text-slate-600">Unit</label>
+                      <input type="text" class="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs focus:border-pcmazing-500 focus:outline-none disabled:bg-slate-100" formControlName="unit" />
+                    </div>
+                  </div>
                 </div>
 
                 <div>
@@ -453,17 +530,18 @@
           }
         </div>
 
-        @if (!isViewMode()) {
+        @if (!isReadOnly()) {
           <button type="submit" class="mt-6 w-full rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:opacity-60" [disabled]="saving()">
-            @if (saving()) { Saving... } @else { Save sales order }
+            @if (saving()) { Saving... } @else if (isExistingOrder()) { Update sales order } @else { Save sales order }
           </button>
-        } @else {
+        }
+        @if (isExistingOrder()) {
           <div class="mt-6 space-y-3 border-t border-slate-200 pt-4">
             <button type="button" class="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50" (click)="printReceipt()">
-              Print receipt
+              Print Sales Invoice
             </button>
             <button type="button" class="w-full rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600" (click)="reprintReceipt()">
-              Re-print receipt
+              Re-print Sales Invoice
             </button>
           </div>
         }
