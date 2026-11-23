@@ -216,7 +216,6 @@ export class UserManagementPageComponent implements OnInit {
     this.populateUserForm(user);
     this.formMode.set('edit');
     this.userForm.enable({ emitEvent: false });
-    this.userForm.controls.username.disable({ emitEvent: false });
     this.userForm.controls.password.clearValidators();
     this.userForm.controls.password.updateValueAndValidity();
     this.formOpen.set(true);
@@ -505,6 +504,7 @@ export class UserManagementPageComponent implements OnInit {
 
         const response = await firstValueFrom(
           this.adminApi.updateUser(user.id, {
+            username: username.trim(),
             fullName: fullName.trim(),
             email: email.trim() || undefined,
             role,

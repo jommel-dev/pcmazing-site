@@ -559,9 +559,54 @@ export class UsersService {
     }
   }
 
+  private async assertUsernameAvailable(
+    username: string,
+    exclude?: { id: number; source: 'tblusers' | 'pcmazing_admin_users' },
+  ): Promise<void> {
+    const normalized = username.trim();
+    if (!normalized) {
+      throw new BadRequestException('Username is required.');
+    }
+
+    if (await tableExists(this.databaseService, 'tblusers')) {
+      const params: unknown[] = [normalized];
+      let sql = `SELECT id FROM tblusers WHERE LOWER(TRIM(username)) = LOWER(TRIM($1))`;
+      if (exclude?.source === 'tblusers') {
+        params.push(exclude.id);
+        sql += ` AND id <> $${params.length}`;
+      }
+      sql += ' LIMIT 1';
+      const hit = await this.databaseService.query<{ id: number }>(sql, params);
+      if (hit.rows[0]) {
+        throw new ConflictException('Username is already taken.');
+      }
+    }
+
+    if (await tableExists(this.databaseService, 'pcmazing_admin_users')) {
+      const params: unknown[] = [normalized];
+      let sql = `SELECT id FROM pcmazing_admin_users WHERE LOWER(TRIM(username)) = LOWER(TRIM($1))`;
+      if (exclude?.source === 'pcmazing_admin_users') {
+        params.push(exclude.id);
+        sql += ` AND id <> $${params.length}`;
+      }
+      sql += ' LIMIT 1';
+      const hit = await this.databaseService.query<{ id: number }>(sql, params);
+      if (hit.rows[0]) {
+        throw new ConflictException('Username is already taken.');
+      }
+    }
+  }
+
   private async updateTbluser(id: number, dto: UpdateUserDto) {
     const updates: string[] = [];
     const params: unknown[] = [];
+
+    if (dto.username !== undefined) {
+      const username = dto.username.trim();
+      await this.assertUsernameAvailable(username, { id, source: 'tblusers' });
+      params.push(username);
+      updates.push(`username = $${params.length}`);
+    }
 
     if (dto.fullName !== undefined) {
       params.push(dto.fullName.trim());
@@ -602,6 +647,16 @@ export class UsersService {
   private async updatePcmazingUser(id: number, dto: UpdateUserDto) {
     const fields: string[] = [];
     const params: unknown[] = [];
+
+    if (dto.username !== undefined) {
+      const username = dto.username.trim();
+      await this.assertUsernameAvailable(username, {
+        id,
+        source: 'pcmazing_admin_users',
+      });
+      params.push(username);
+      fields.push(`username = $${params.length}`);
+    }
 
     if (dto.fullName !== undefined) {
       params.push(dto.fullName.trim());

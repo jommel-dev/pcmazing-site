@@ -1,0 +1,89 @@
+// Bakes API_URL into a Kotlin constant before compile.
+// Precedence: -PAPI_URL, then API_URL in this checkout's ../.env.docker, then the
+// API_URL environment variable, then the production origin.
+// The employee API is the origin itself. Do not append /api.
+
+def pkg = project.ext.releaseApiPackage as String
+def constName = project.ext.releaseApiConst as String
+
+def apiUrlFromProp = providers.gradleProperty("API_URL").orElse("")
+def apiUrlFromEnv = providers.environmentVariable("API_URL").orElse("")
+def envFile = rootProject.file("../.env.docker")
+def outputDir = layout.buildDirectory.dir("generated/releaseApi/kotlin")
+def defaultOrigin = "https://v1-api.pcmazing.com"
+
+tasks.register("generateReleaseApiUrl") {
+    inputs.property("apiUrlFromProp", apiUrlFromProp)
+    inputs.property("apiUrlFromEnv", apiUrlFromEnv)
+    inputs.files(envFile).optional()
+    outputs.dir(outputDir)
+
+    doLast {
+        def prop = apiUrlFromProp.get().trim()
+        def env = apiUrlFromEnv.get().trim()
+        def fromFile = null
+        if (envFile.isFile()) {
+            for (String line : envFile.readLines("UTF-8")) {
+                String trimmed = line.trim()
+                if (!trimmed || trimmed.startsWith("#")) continue
+                if (trimmed.startsWith("export ")) trimmed = trimmed.substring("export ".length()).trim()
+                int eq = trimmed.indexOf("=")
+                if (eq <= 0) continue
+                if (trimmed.substring(0, eq).trim() != "API_URL") continue
+                String value = trimmed.substring(eq + 1).trim()
+                if (value.length() >= 2) {
+                    char quote = value.charAt(0)
+                    if ((quote == '"' || quote == '\'') && value.charAt(value.length() - 1) == quote) {
+                        value = value.substring(1, value.length() - 1).trim()
+                    }
+                }
+                fromFile = value
+                break
+            }
+        }
+
+        def origin
+        def source
+        if (prop) {
+            origin = prop
+            source = "-PAPI_URL"
+        } else if (fromFile != null && fromFile.trim()) {
+            origin = fromFile.trim()
+            source = envFile.absolutePath
+        } else if (envFile.isFile()) {
+            throw new GradleException(
+                "API_URL is missing in " + envFile.absolutePath +
+                    ". Set it to this environment's public API origin."
+            )
+        } else if (env) {
+            origin = env
+            source = "API_URL environment"
+        } else {
+            origin = defaultOrigin
+            source = "default (no " + envFile.absolutePath + ")"
+        }
+        def base = origin.trim()
+        while (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1)
+        }
+        if (!base) {
+            base = defaultOrigin
+        }
+        if (!(base.startsWith("https://") || base.startsWith("http://"))) {
+            throw new GradleException("API_URL must be an http(s) origin. Got: " + origin)
+        }
+
+        def escaped = base.replace("\\", "\\\\").replace("\"", "\\\"").replace("\$", "\\\$")
+        def outFile = outputDir.get().asFile.toPath()
+            .resolve(pkg.replace(".", "/") + "/GeneratedReleaseApiUrl.kt")
+            .toFile()
+        outFile.parentFile.mkdirs()
+        outFile.setText(
+            "package " + pkg + "\n\n" +
+                "// Generated from " + source + ". Do not edit.\n" +
+                "internal const val " + constName + " = \"" + escaped + "\"\n",
+            "UTF-8"
+        )
+        logger.lifecycle("[env] " + constName + "=" + base + " [" + source + "]")
+    }
+}

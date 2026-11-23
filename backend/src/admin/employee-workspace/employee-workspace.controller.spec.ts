@@ -13,14 +13,27 @@ describe('EmployeeWorkspaceController payslip PDF', () => {
     };
     const controller = new EmployeeWorkspaceController(
       workspaceService as unknown as EmployeeWorkspaceService,
+      {} as never,
     );
     const request = {
-      user: { sub: 7, source: 'pcmazing_admin_users', role: 'sales' },
+      user: {
+        sub: 7,
+        username: 'sales',
+        fullName: 'Sales',
+        email: null,
+        role: 'sales',
+        roleId: null,
+        source: 'pcmazing_admin_users' as const,
+      },
     } as unknown as Request & {
       user: {
         sub: number;
-        source: 'pcmazing_admin_users';
+        username: string;
+        fullName: string;
+        email: string | null;
         role: string;
+        roleId: number | null;
+        source: 'pcmazing_admin_users';
       };
     };
     return { controller, request, workspaceService };

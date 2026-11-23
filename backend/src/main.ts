@@ -44,6 +44,7 @@ async function bootstrap() {
     origin: corsOrigins,
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization', 'x-staff-gate', 'x-setup-key'],
+    exposedHeaders: ['Content-Disposition'],
   });
 
   const port = process.env.PORT ?? 3000;

@@ -84,15 +84,33 @@ export class PortalLoginPageComponent implements OnInit, OnDestroy {
   }
 
   private extractLoginError(error: unknown): string {
-    if (error && typeof error === 'object' && 'error' in error) {
-      const payload = (error as { error?: { message?: string | string[] } }).error;
+    if (error && typeof error === 'object') {
+      const httpError = error as {
+        status?: number;
+        message?: string;
+        error?: { message?: string | string[] } | string | ProgressEvent;
+      };
 
-      if (Array.isArray(payload?.message)) {
-        return payload.message.join(', ');
+      if (httpError.status === 0) {
+        return 'Cannot reach the server. Check that the API is running and try again.';
       }
 
-      if (typeof payload?.message === 'string' && payload.message.trim()) {
-        return payload.message;
+      const payload = httpError.error;
+      if (payload && typeof payload === 'object' && 'message' in payload) {
+        if (Array.isArray(payload.message)) {
+          return payload.message.join(', ');
+        }
+        if (typeof payload.message === 'string' && payload.message.trim()) {
+          return payload.message;
+        }
+      }
+
+      if (typeof payload === 'string' && payload.trim()) {
+        return payload;
+      }
+
+      if (typeof httpError.message === 'string' && /failed to fetch/i.test(httpError.message)) {
+        return 'Cannot reach the server. Check that the API is running and try again.';
       }
     }
 

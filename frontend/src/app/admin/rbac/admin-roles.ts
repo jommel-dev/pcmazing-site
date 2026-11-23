@@ -160,17 +160,28 @@ export function canUseAdminLogin(role?: string | null): boolean {
 }
 
 /** Roles allowed at /user/login (MyPeoplePortal). */
+export function isCoo(role?: string | null): boolean {
+  const key = normalizeRoleKey(role);
+  return key === 'coo' || key === 'chiefoperatingofficer';
+}
+
+export function isCeo(role?: string | null): boolean {
+  const key = normalizeRoleKey(role);
+  return key === 'ceo' || key === 'chiefexecutiveofficer';
+}
+
+export function isFounder(role?: string | null): boolean {
+  const key = normalizeRoleKey(role);
+  return key === 'founder' || key.includes('founder');
+}
+
+/**
+ * Roles allowed at /user/login (MyPeoplePortal).
+ * Any staff account with a role may use the portal — including custom RBAC
+ * user types. /admin/login stays Super Admin–only via canUseAdminLogin().
+ */
 export function canUsePortalLogin(role?: string | null): boolean {
-  if (canUseAdminLogin(role)) {
-    return true;
-  }
-  return (
-    isMarketing(role) ||
-    isOperationsManager(role) ||
-    isSalesRestrictedInventory(role) ||
-    isDeveloper(role) ||
-    isProjectManager(role)
-  );
+  return Boolean(role?.trim());
 }
 
 export function getAllowedModuleKeys(role?: string | null): Set<AdminModuleKey> | 'all' {

@@ -36,22 +36,29 @@ Uploaded files live in `backend/uploads` on the host and are bind-mounted into t
 
 ## Deploy
 
-Pull the commit that includes the Dockerfiles, then build each image and start from those images:
+Pull the commit, build the employee app in this checkout, then build each image and start from those images:
 
 ```bash
 cd ~/apps/pcmazing-site
 git pull
 
+cd portal-app
+chmod +x ./gradlew
+./gradlew :androidApp:assembleRelease
+
+cd ..
 docker compose --env-file .env.docker build pcmazing_frontend_app
 docker compose --env-file .env.docker build pcmazing_backend_api
 docker compose --env-file .env.docker up -d --no-build
 ```
 
+`gradlew.bat` is the Windows wrapper and will not run on the server. The release reads `API_URL` from this checkout's `.env.docker` and writes `backend/downloads/portal.apk`. The backend image copies that file in, so a new APK is served only after `pcmazing_backend_api` is rebuilt.
+
 Build first, then start. `up -d --no-build` only recreates containers when the new images exist. If a build fails, the containers that are already running stay up.
 
-`API_URL` and `PUBLIC_SITE_URL` from `.env.docker` are compiled into the frontend. Changing either value requires a frontend rebuild, not only a container restart.
+`API_URL` and `PUBLIC_SITE_URL` from `.env.docker` are compiled into the frontend. `API_URL` is also compiled into the release APK. Changing `API_URL` requires a portal release and a frontend rebuild, not only a container restart.
 
-A normal code deploy is the same three commands after `git pull`. You do not need to recreate `.env.docker`.
+A normal code deploy is the same commands after `git pull`. You do not need to recreate `.env.docker`.
 
 ## Check that it came up
 
@@ -68,6 +75,37 @@ docker exec pcmazing_backend_api node -e "fetch('http://127.0.0.1:3000/health').
 ```
 
 Then load `https://www.pcmazing.com` and confirm the site can reach `https://v1-api.pcmazing.com`.
+
+## Employee app download
+
+The public page is `https://www.pcmazing.com/app-downloads`. It asks for `APK_SERIAL_PORTAL` from `.env.docker` before it sends the file.
+
+The deploy commands above are the release. Gradle prints the origin it baked in, for example `[env] GENERATED_RELEASE_API_BASE_URL=https://v1-api.pcmazing.com [/root/apps/pcmazing-site/.env.docker]`. Restart the API when the serial changes:
+
+```bash
+docker compose --env-file .env.docker restart pcmazing_backend_api
+```
+
+One-time SDK install, if `./gradlew` stops with `SDK location not found`:
+
+```bash
+apt-get update
+apt-get install -y openjdk-17-jdk unzip wget
+mkdir -p /opt/android-sdk/cmdline-tools
+cd /tmp
+wget -O cmdtools.zip https://dl.google.com/android/repository/commandlinetools-linux-13114758_latest.zip
+unzip -q cmdtools.zip
+rm -rf /opt/android-sdk/cmdline-tools/latest
+mkdir -p /opt/android-sdk/cmdline-tools/latest
+mv cmdline-tools/* /opt/android-sdk/cmdline-tools/latest/
+printf 'sdk.dir=/opt/android-sdk\n' > ~/apps/pcmazing-site/portal-app/local.properties
+export ANDROID_HOME=/opt/android-sdk
+export PATH="$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools"
+yes | sdkmanager --licenses
+sdkmanager "platform-tools" "platforms;android-37" "build-tools;36.0.0"
+```
+
+Then run `./gradlew :androidApp:assembleRelease` again from `portal-app`.
 
 ## Logs and restart
 

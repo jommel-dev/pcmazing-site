@@ -8,6 +8,7 @@ import { ContactModule } from './website/contact/contact.module';
 import { DemoModule } from './website/demo/demo.module';
 import { ReviewsModule } from './website/reviews/reviews.module';
 import { AdminModule } from './admin/admin.module';
+import { DownloadsModule } from './downloads/downloads.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { AdminModule } from './admin/admin.module';
     ReviewsModule,
     DemoModule,
     AdminModule,
+    DownloadsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -4,6 +4,12 @@ import { PayrollProfileFieldsDto } from '../../payroll/dto/payroll-profile-field
 export class UpdateUserDto extends PayrollProfileFieldsDto {
   @IsOptional()
   @IsString()
+  @MinLength(3)
+  @MaxLength(80)
+  username?: string;
+
+  @IsOptional()
+  @IsString()
   @MinLength(2)
   @MaxLength(150)
   fullName?: string;
