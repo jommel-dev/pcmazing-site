@@ -201,14 +201,14 @@ export const adminRoutes: Routes = [
       {
         path: 'sales-order/:id/receipt',
         component: SalesOrderReceiptPageComponent,
-        title: 'Sales Receipt | PCMazing Admin',
+        title: 'Sales Invoice | PCMazing Admin',
         canActivate: [adminRoleGuard],
         data: { module: 'sales_order' },
       },
       {
         path: 'sales-order/:id',
         component: SalesOrderCreatePageComponent,
-        title: 'Sales Order | PCMazing Admin',
+        title: 'Edit Sales Order | PCMazing Admin',
         canActivate: [adminRoleGuard],
         data: { module: 'sales_order' },
       },

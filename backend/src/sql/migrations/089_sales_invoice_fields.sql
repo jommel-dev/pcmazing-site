@@ -1,0 +1,19 @@
+-- Sales Invoice fields (A4 print replaces SO receipt).
+
+ALTER TABLE pcmazing_sales_orders
+  ADD COLUMN IF NOT EXISTS customer_address TEXT,
+  ADD COLUMN IF NOT EXISTS customer_email VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS customer_tin VARCHAR(64),
+  ADD COLUMN IF NOT EXISTS business_style VARCHAR(255),
+  ADD COLUMN IF NOT EXISTS ship_to_address TEXT,
+  ADD COLUMN IF NOT EXISTS sales_type VARCHAR(20) NOT NULL DEFAULT 'cash',
+  ADD COLUMN IF NOT EXISTS customer_po_no VARCHAR(120),
+  ADD COLUMN IF NOT EXISTS salesperson VARCHAR(120),
+  ADD COLUMN IF NOT EXISTS payment_method VARCHAR(120),
+  ADD COLUMN IF NOT EXISTS payment_terms VARCHAR(120),
+  ADD COLUMN IF NOT EXISTS withholding_tax NUMERIC(14, 2) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS amount_paid NUMERIC(14, 2) NOT NULL DEFAULT 0;
+
+ALTER TABLE pcmazing_sales_order_items
+  ADD COLUMN IF NOT EXISTS serial_no VARCHAR(120),
+  ADD COLUMN IF NOT EXISTS unit VARCHAR(40) NOT NULL DEFAULT 'PCS';

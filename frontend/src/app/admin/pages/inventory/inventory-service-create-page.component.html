@@ -935,14 +935,7 @@
               Print Job Order Form
             </button>
           }
-          @if (isEditMode() && selectedStatus() === 'Done') {
-            <button type="button" class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50" (click)="openReceipt()">
-              View receipt
-            </button>
-            <button type="button" class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50" (click)="reprintReceipt()">
-              Re-print receipt
-            </button>
-          } @else if (isEditMode()) {
+          @if (isEditMode() && selectedStatus() !== 'Done') {
             <button
               type="button"
               class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
@@ -1239,7 +1232,7 @@
         <div>
           <h3 class="text-lg font-bold text-slate-900">Settlement</h3>
           <p class="mt-1 text-sm text-slate-500">
-            Collect the remaining balance to settle this job, then print the receipt.
+            Collect the remaining balance to settle this job, then print the Job Order Form.
           </p>
         </div>
         <button

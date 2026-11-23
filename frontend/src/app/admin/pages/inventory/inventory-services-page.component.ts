@@ -852,7 +852,7 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
       this.settlementJob.set(null);
 
       if (nextStatus === 'Done') {
-        await this.router.navigate(['/admin/job-order', item.id, 'receipt'], {
+        await this.router.navigate(['/admin/job-order', item.id, 'form'], {
           queryParams: { print: '1' },
         });
       }
@@ -895,9 +895,8 @@ export class InventoryServicesPageComponent implements OnInit, OnDestroy {
     if (this.normalizeJobStatus(item.status) === 'Cancelled') {
       return;
     }
-    const reprinted = this.normalizeJobStatus(item.status) === 'Done';
-    void this.router.navigate(['/admin/job-order', item.id, 'receipt'], {
-      queryParams: reprinted ? { reprint: '1', print: '1' } : { print: '1' },
+    void this.router.navigate(['/admin/job-order', item.id, 'form'], {
+      queryParams: { print: '1' },
     });
   }
 

@@ -379,6 +379,8 @@ export interface SalesOrderItem {
   discountType: 'none' | 'senior' | 'pwd';
   warrantyValue?: number | null;
   warrantyUnit?: 'day' | 'week' | 'month' | 'year' | null;
+  serialNo?: string | null;
+  unit?: string | null;
 }
 
 export interface SalesOrderListItem {
@@ -403,6 +405,18 @@ export interface SalesOrderListItem {
   itemCount: number;
   itemsSummary: string[];
   updatedAt: string | null;
+  customerAddress?: string | null;
+  customerEmail?: string | null;
+  customerTin?: string | null;
+  businessStyle?: string | null;
+  shipToAddress?: string | null;
+  salesType?: 'cash' | 'charge';
+  customerPoNo?: string | null;
+  salesperson?: string | null;
+  paymentMethod?: string | null;
+  paymentTerms?: string | null;
+  withholdingTax?: number;
+  amountPaid?: number;
 }
 
 export interface RefundSalesOrderPayload {
@@ -426,6 +440,18 @@ export interface CreateSalesOrderPayload {
   useManualTotal?: boolean;
   manualTotalAmount?: number | null;
   saleDate?: string;
+  customerAddress?: string;
+  customerEmail?: string;
+  customerTin?: string;
+  businessStyle?: string;
+  shipToAddress?: string;
+  salesType?: 'cash' | 'charge';
+  customerPoNo?: string;
+  salesperson?: string;
+  paymentMethod?: string;
+  paymentTerms?: string;
+  withholdingTax?: number;
+  amountPaid?: number;
   items: Array<{
     materialId?: number | null;
     customItemName?: string;
@@ -434,6 +460,8 @@ export interface CreateSalesOrderPayload {
     discountType?: 'none' | 'senior' | 'pwd';
     warrantyValue?: number | null;
     warrantyUnit?: 'day' | 'week' | 'month' | 'year' | null;
+    serialNo?: string;
+    unit?: string;
   }>;
 }
 
@@ -2156,6 +2184,14 @@ export class AdminApiService {
   createSalesOrder(payload: CreateSalesOrderPayload) {
     return this.http.post<ItemResponse<SalesOrderDetail>>(
       `${APP_CONFIG.apiUrl}/admin/inventory/sales-orders`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  updateSalesOrder(id: number, payload: CreateSalesOrderPayload) {
+    return this.http.put<ItemResponse<SalesOrderDetail>>(
+      `${APP_CONFIG.apiUrl}/admin/inventory/sales-orders/${id}`,
       payload,
       { headers: this.headers() },
     );

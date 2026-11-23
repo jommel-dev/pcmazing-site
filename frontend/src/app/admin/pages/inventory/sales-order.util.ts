@@ -25,6 +25,8 @@ export function normalizeSalesOrderItem(item: SalesOrderItem): SalesOrderItem {
     refundedQuantity,
     refundableQuantity: Math.max(0, Number(item.refundableQuantity ?? quantity - refundedQuantity)),
     unitPrice: Number(item.unitPrice) || 0,
+    serialNo: String(item.serialNo ?? '').trim() || null,
+    unit: String(item.unit ?? '').trim() || 'PCS',
   };
 }
 
@@ -34,12 +36,25 @@ export function normalizeSalesOrderListItem(item: SalesOrderListItem): SalesOrde
   const manualRaw = item.manualTotalAmount;
   const manualTotalAmount =
     manualRaw != null && Number.isFinite(Number(manualRaw)) ? Number(manualRaw) : null;
+  const salesTypeRaw = String(item.salesType ?? 'cash').trim().toLowerCase();
 
   return {
     ...item,
     refundAmount,
     manualTotalAmount,
     netTotalAmount: Number(item.netTotalAmount ?? totalAmount - refundAmount) || 0,
+    customerAddress: item.customerAddress?.trim() || null,
+    customerEmail: item.customerEmail?.trim() || null,
+    customerTin: item.customerTin?.trim() || null,
+    businessStyle: item.businessStyle?.trim() || null,
+    shipToAddress: item.shipToAddress?.trim() || null,
+    salesType: salesTypeRaw === 'charge' ? 'charge' : 'cash',
+    customerPoNo: item.customerPoNo?.trim() || null,
+    salesperson: item.salesperson?.trim() || null,
+    paymentMethod: item.paymentMethod?.trim() || null,
+    paymentTerms: item.paymentTerms?.trim() || null,
+    withholdingTax: Number(item.withholdingTax) || 0,
+    amountPaid: Number(item.amountPaid) || 0,
   };
 }
 

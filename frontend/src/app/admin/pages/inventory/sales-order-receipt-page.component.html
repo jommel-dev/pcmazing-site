@@ -1,263 +1,203 @@
-<section class="receipt-page min-w-0 max-w-full">
-  <div class="no-print mb-4 flex flex-wrap items-center justify-between gap-3">
-    <div>
-      <a routerLink="/admin/sales-order" class="text-sm font-bold text-pcmazing-500 hover:text-pcmazing-600">
-        ← Back to Sales Orders
-      </a>
-      <h2 class="mt-2 text-2xl font-bold text-slate-900">Sales Receipt</h2>
-      <p class="mt-1 text-sm text-slate-500">Review the receipt, then print or save as PDF.</p>
-    </div>
-    <div class="flex flex-wrap items-end gap-3">
-      <label class="template-picker">
-        <span>Print template</span>
-        <select
-          class="template-select"
-          [ngModel]="selectedTemplateId()"
-          (ngModelChange)="onTemplateChange($event)"
-          [disabled]="loading() || !!error() || !order()"
-        >
-          <option [ngValue]="0">Built-in Sales Order layout</option>
-          @for (template of activeTemplates(); track template.id) {
-            <option [ngValue]="template.id">
-              {{ template.name }}@if (template.isDefault) { (Default) }
-            </option>
-          }
-        </select>
-      </label>
-      <div class="flex flex-wrap gap-2">
-        <button type="button" class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50" (click)="backToOrder()">
-          Back to order
-        </button>
-        <button type="button" class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60" [disabled]="loading() || !!error() || !order()" (click)="printReceipt()">
-          Print receipt
-        </button>
-        <button type="button" class="rounded-xl bg-pcmazing-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-pcmazing-600 disabled:opacity-60" [disabled]="loading() || !!error() || !order()" (click)="reprintReceipt()">
-          Re-print receipt
-        </button>
-      </div>
+<section class="si-page">
+  <div class="no-print toolbar">
+    <a routerLink="/admin/sales-order" class="link-back">← Back to sales orders</a>
+    <div class="toolbar-actions">
+      @if (order(); as so) {
+        <a [routerLink]="['/admin/sales-order', so.id]" class="btn-secondary">Edit order</a>
+      }
+      <button type="button" class="btn-primary" [disabled]="loading() || !!error()" (click)="printInvoice()">
+        Print
+      </button>
     </div>
   </div>
 
   @if (loading()) {
-    <div class="no-print rounded-2xl border border-slate-200 bg-white px-6 py-10 text-center text-sm text-slate-500">
-      Loading receipt...
-    </div>
+    <div class="no-print status-box">Loading Sales Invoice...</div>
   } @else if (error()) {
-    <div class="no-print rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{{ error() }}</div>
-  } @else if (order(); as current) {
-    @if (useCustomTemplate() && selectedTemplate(); as template) {
-      <div class="receipt-sheet receipt-sheet-template mx-auto bg-white text-black shadow-sm" [ngStyle]="templateSheetStyle()">
-        @for (element of templateElements(); track element.id) {
-          @if (!isHiddenElement(element)) {
-            <div
-              class="template-print-element"
-              [class.wrap-content]="element.type === 'table' || usesPreWrapField(element)"
-              [attr.data-type]="element.type"
-              [ngStyle]="elementStyle(element)"
-            >
-              @switch (element.type) {
-                @case ('line') {
-                  <span class="template-line"></span>
-                }
-                @case ('image') {
-                  <img class="template-logo" [src]="fieldValue(element) || '/images/logopcm.png'" [alt]="element.label || 'Logo'" />
-                }
-                @case ('table') {
-                  <div class="template-table-stack">
-                    @if (promotionLabel()) {
-                      <p class="receipt-promotion">{{ promotionLabel() }}</p>
-                    }
-                    <table class="template-line-items">
-                      <thead>
-                        <tr>
-                          <th>Item Name</th>
-                          <th>Item Description</th>
-                          <th>Warranty</th>
-                          <th class="num">Qty</th>
-                          @if (showUnitPriceColumn()) {
-                            <th class="num">Price</th>
-                          }
-                          <th class="num">Discount</th>
-                          @if (showExtPriceColumn()) {
-                            <th class="num">Ext Price</th>
-                          }
-                        </tr>
-                      </thead>
-                      <tbody>
-                        @for (line of lines(); track $index) {
-                          <tr>
-                            <td>{{ line.itemName }}</td>
-                            <td>{{ line.description }}</td>
-                            <td>{{ line.warrantyLabel || '—' }}</td>
-                            <td class="num">{{ line.isCustomDiscount ? '—' : (line.qty | number:'1.0-2') }}</td>
-                            @if (showUnitPriceColumn()) {
-                              <td class="num">{{ line.isCustomDiscount ? '—' : formatMoney(line.unitPrice) }}</td>
-                            }
-                            <td class="num">{{ formatDiscount(line) }}</td>
-                            @if (showExtPriceColumn()) {
-                              <td class="num">{{ formatExtPrice(line) }}</td>
-                            }
-                          </tr>
-                        }
-                      </tbody>
-                    </table>
-                  </div>
-                }
-                @case ('field') {
-                  @if (element.fieldKey === 'barcode') {
-                    <div class="template-barcode-wrap" [ngStyle]="barcodeWrapStyle(element)">
-                      <div class="receipt-barcode template-receipt-barcode" aria-hidden="true">
-                        @for (bar of barcodeBars(); track $index) {
-                          <span [ngStyle]="barcodeBarStyle(bar)" [class.filled]="bar.filled" [class.bar-on]="bar.filled"></span>
-                        }
-                      </div>
-                      <p class="barcode-label">{{ receiptNo() }}</p>
-                    </div>
-                  } @else if (element.fieldKey === 'signatureLine') {
-                    <span class="template-signature"></span>
-                  } @else {
-                    <span class="template-field-text" [class.pre-wrap]="usesPreWrapField(element)">
-                      {{ fieldValue(element) }}
-                    </span>
-                  }
-                }
-                @default {
-                  <span class="template-field-text" [class.pre-wrap]="usesPreWrapField(element)">{{ fieldValue(element) }}</span>
-                }
-              }
-            </div>
-          }
-        }
+    <div class="no-print status-box error">{{ error() }}</div>
+  } @else if (order(); as so) {
+    <article class="form-sheet">
+      <div class="corner-stripe top-left" aria-hidden="true"></div>
+      <div class="corner-stripe bottom-right" aria-hidden="true"></div>
+
+      @if (so.isVoid) {
+        <div class="banner void">VOID</div>
+      }
+      @if (showReprinted()) {
+        <div class="banner reprint">REPRINTED</div>
+      }
+
+      <header class="letterhead">
+        <div class="brand">
+          <img class="brand-logo" src="/images/logopcm.png" alt="PCmazing" />
+          <div class="brand-slogan">
+            <span class="slogan-rule"></span>
+            <span>{{ letterhead.slogan }}</span>
+            <span class="slogan-rule"></span>
+          </div>
+        </div>
+        <div class="letterhead-divider" aria-hidden="true"></div>
+        <div class="letterhead-meta">
+          <div class="meta-line">
+            <svg class="meta-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 6h16v2H4V6zm0 5h16v2H4v-2zm0 5h10v2H4v-2z"/></svg>
+            <span>{{ letterhead.servicesLine }}</span>
+          </div>
+          <div class="meta-line">
+            <svg class="meta-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2C8.1 2 5 5.1 5 9c0 5.3 7 13 7 13s7-7.7 7-13c0-3.9-3.1-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6a2.5 2.5 0 0 1 0 5.5z"/></svg>
+            <span>{{ letterhead.address }}</span>
+          </div>
+          <div class="meta-line">
+            <svg class="meta-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1.1-.2 1.2.4 2.5.6 3.8.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.6.6 3.8.1.4 0 .8-.3 1.1l-2.2 2.9z"/></svg>
+            <span>{{ letterhead.phone }}</span>
+          </div>
+          <div class="meta-line">
+            <svg class="meta-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M22 12.1C22 6.5 17.5 2 11.9 2S2 6.5 2 12.1C2 17.1 5.7 21.3 10.4 22v-7H7.9v-2.9h2.5V9.9c0-2.5 1.5-3.9 3.8-3.9 1.1 0 2.2.2 2.2.2v2.4h-1.2c-1.2 0-1.6.8-1.6 1.5v1.8h2.7l-.4 2.9h-2.3V22C18.3 21.3 22 17.1 22 12.1z"/></svg>
+            <span>{{ letterhead.facebook }}</span>
+          </div>
+        </div>
+      </header>
+
+      <div class="title-meta-row">
+        <div class="title-bar">
+          <span>SALES INVOICE</span>
+          <span class="title-slashes" aria-hidden="true"></span>
+        </div>
+        <div class="meta-card">
+          <div class="meta-line-row">
+            <span class="meta-label">Invoice No.:</span>
+            <span class="meta-fill">{{ invoiceNo() }}</span>
+          </div>
+          <div class="meta-line-row">
+            <span class="meta-label">Date:</span>
+            <span class="meta-fill">{{ so.saleDate | date: 'MMM d, y' }}</span>
+          </div>
+          <div class="meta-line-row sales-type-row">
+            <span class="meta-label">Sales Type:</span>
+            <label class="check"><span class="box" [class.checked]="isCash()"></span> Cash Sales</label>
+            <label class="check"><span class="box" [class.checked]="isCharge()"></span> Charge Sales</label>
+          </div>
+          <div class="meta-line-row">
+            <span class="meta-label">Time:</span>
+            <span class="meta-fill">{{ so.saleDate | date: 'h:mm a' }}</span>
+          </div>
+        </div>
       </div>
-    } @else {
-      <div class="receipt-sheet mx-auto bg-white text-black shadow-sm">
-        <div class="receipt-meta">
-          <div class="receipt-meta-left">
-            <div>Printed: {{ printedAt() | date:'M/d/yyyy h:mm:ss a' }}</div>
-            @if (showReceiptHeaderExtras) {
-              <div>Store: {{ printingSettings()?.storeCode || '1' }}</div>
-              <div>Workstation: {{ printingSettings()?.workstationNo || '1' }}</div>
-            }
-          </div>
-          <div class="receipt-meta-right">
-            <div><strong>Sales Receipt #{{ receiptNo() }}</strong></div>
-            @if (showReceiptHeaderExtras) {
-              <div>Date: {{ printedAt() | date:'M/d/yyyy' }}</div>
-            }
-            <div>Cashier: {{ cashierName() }}</div>
-            @if (showReceiptHeaderExtras && printingSettings()?.showPageNumbers !== false) {
-              <div>Page 1</div>
-            }
+
+      <div class="ship-other-row">
+        <div class="panel">
+          <div class="section-bar">SHIP TO / DELIVERY ADDRESS <span class="bar-note">(if different from Buyer)</span></div>
+          <div class="lined-block">
+            <div class="write-line">{{ shipLine(so.shipToAddress, 0) }}</div>
+            <div class="write-line">{{ shipLine(so.shipToAddress, 1) }}</div>
+            <div class="write-line">{{ shipLine(so.shipToAddress, 2) }}</div>
           </div>
         </div>
-
-        <div class="receipt-brand">
-          @if (showReprinted()) {
-            <p class="receipt-reprinted">REPRINTED</p>
-          } @else if (current.isVoid) {
-            <p class="receipt-reprinted">VOID</p>
-          }
-          <img src="/images/logopcm.png" alt="PCmazing IT SERVICES" class="receipt-logo" />
-          <p class="receipt-company">{{ printingSettings()?.storeName || 'PCmazing' }}</p>
-          <p class="receipt-address whitespace-pre-line">{{ storeAddressBlock() }}</p>
+        <div class="panel">
+          <div class="section-bar">OTHER DETAILS</div>
+          <div class="lined-block">
+            <div class="field-line"><span class="field-label">Purchase Order (PO) / Reference No.:</span><span class="field-value">{{ fill(so.customerPoNo) }}</span></div>
+            <div class="field-line"><span class="field-label">Salesperson:</span><span class="field-value">{{ fill(so.salesperson) }}</span></div>
+            <div class="field-line"><span class="field-label">Payment Method:</span><span class="field-value">{{ fill(so.paymentMethod) }}</span></div>
+            <div class="field-line"><span class="field-label">Terms:</span><span class="field-value">{{ fill(so.paymentTerms) }}</span></div>
+          </div>
         </div>
+      </div>
 
-        <div class="receipt-bill-to">
-          <p><strong>Bill To:</strong></p>
-          <p>{{ current.customerName }}</p>
-          @if (current.customerPhone) {
-            <p>{{ current.customerPhone }}</p>
-          }
+      <div class="panel sold-to">
+        <div class="section-bar">SOLD TO / BUYER INFORMATION</div>
+        <div class="lined-block sold-grid">
+          <div class="field-line full"><span class="field-label">Name / Registered Name:</span><span class="field-value">{{ fill(so.customerName) }}</span></div>
+          <div class="field-line half"><span class="field-label">TIN (if applicable):</span><span class="field-value">{{ fill(so.customerTin) }}</span></div>
+          <div class="field-line half"><span class="field-label">Business Style:</span><span class="field-value">{{ fill(so.businessStyle) }}</span></div>
+          <div class="field-line full tall"><span class="field-label">Address:</span><span class="field-value multiline">{{ fill(so.customerAddress) }}</span></div>
+          <div class="field-line half"><span class="field-label">Contact No.:</span><span class="field-value">{{ fill(so.customerPhone) }}</span></div>
+          <div class="field-line half"><span class="field-label">Email (optional):</span><span class="field-value">{{ fill(so.customerEmail) }}</span></div>
         </div>
+      </div>
 
-        @if (promotionLabel()) {
-          <p class="receipt-promotion">{{ promotionLabel() }}</p>
-        }
-
-        <table class="receipt-table">
-          <thead>
+      <table class="items-table">
+        <thead>
+          <tr>
+            <th class="col-num">#</th>
+            <th class="col-code">ITEM CODE / SKU</th>
+            <th class="col-desc">DESCRIPTION (Product / Specification)</th>
+            <th class="col-serial">SERIAL NO. / IMEI</th>
+            <th class="col-qty">QTY</th>
+            <th class="col-unit">UNIT</th>
+            <th class="col-price">UNIT PRICE (₱)</th>
+            <th class="col-amt">AMOUNT (₱)</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of invoiceRows(); track $index; let i = $index) {
             <tr>
-              <th>Item Name</th>
-              <th>Item Description</th>
-              <th>Warranty</th>
-              <th class="num">Qty</th>
-              @if (showUnitPriceColumn()) {
-                <th class="num">Price</th>
-              }
-              <th class="num">Discount</th>
-              @if (showExtPriceColumn()) {
-                <th class="num">Ext Price</th>
-              }
+              <td class="col-num">{{ i + 1 }}</td>
+              <td>{{ row?.code || '' }}</td>
+              <td>{{ row?.description || '' }}</td>
+              <td>{{ row?.serialNo || '' }}</td>
+              <td class="num">{{ row?.qty === '' || row?.qty == null ? '' : row?.qty }}</td>
+              <td class="center">{{ row?.unit || '' }}</td>
+              <td class="num">{{ money(row?.unitPrice) }}</td>
+              <td class="num">{{ money(row?.amount) }}</td>
             </tr>
-          </thead>
-          <tbody>
-            @for (line of lines(); track $index) {
-              <tr>
-                <td>{{ line.itemName }}</td>
-                <td>{{ line.description }}</td>
-                <td>{{ line.warrantyLabel || '—' }}</td>
-                <td class="num">{{ line.isCustomDiscount ? '—' : (line.qty | number:'1.0-2') }}</td>
-                @if (showUnitPriceColumn()) {
-                  <td class="num">{{ line.isCustomDiscount ? '—' : formatMoney(line.unitPrice) }}</td>
-                }
-                <td class="num">{{ formatDiscount(line) }}</td>
-                @if (showExtPriceColumn()) {
-                  <td class="num">{{ formatExtPrice(line) }}</td>
-                }
-              </tr>
-            }
-          </tbody>
-        </table>
+          }
+        </tbody>
+      </table>
 
-        <div class="receipt-totals">
-          <div class="receipt-totals-left">
-            <div>Total Sales Discounts: {{ formatMoney(discountTotal()) }}</div>
-          </div>
-          <div class="receipt-totals-right">
-            <div class="totals-row">
-              <span>Subtotal</span>
-              <span>{{ formatMoney(subtotal()) }}</span>
-            </div>
-            <div class="totals-row totals-row-strong">
-              <span>RECEIPT TOTAL</span>
-              <span>{{ formatMoney(receiptTotal()) }}</span>
-            </div>
-          </div>
+      <div class="bottom-grid">
+        <div class="panel remarks">
+          <div class="section-bar soft">Remarks / Notes</div>
+          <div class="remarks-body">{{ fill(so.notes) }}</div>
         </div>
-
-        @if (current.notes) {
-          <div class="receipt-bill-to">
-            <p><strong>Notes:</strong></p>
-            <p>{{ current.notes }}</p>
-          </div>
-        }
-
-        @if (showWarrantyPolicy()) {
-          <div class="receipt-warranty">
-            <p class="warranty-text">{{ warrantyPolicyText() }}</p>
-          </div>
-        }
-
-        <div class="receipt-footer">
-          @if (showFooterNote()) {
-            <p>{{ footerNoteText() }}</p>
-          }
-          @if (showThanksMessage()) {
-            <p class="thanks">{{ thanksMessageText() }}</p>
-          }
-          <div class="receipt-barcode-wrap">
-            <div class="receipt-barcode" aria-hidden="true">
-              @for (bar of barcodeBars(); track $index) {
-                <span [ngStyle]="barcodeBarStyle(bar)" [class.filled]="bar.filled" [class.bar-on]="bar.filled"></span>
-              }
-            </div>
-            <p class="barcode-label">{{ receiptNo() }}</p>
-          </div>
-          <div class="receipt-signature">
-            <span></span>
-          </div>
+        <div class="panel payment">
+          <div class="section-bar soft">PAYMENT SUMMARY</div>
+          <div class="pay-row"><span>Total Sales</span><span>₱ {{ paymentSummary().totalSales | number: '1.2-2' }}</span></div>
+          <div class="pay-row"><span>Less: Creditable Withholding Tax <em>(if applicable)</em></span><span>₱ {{ paymentSummary().withholdingTax | number: '1.2-2' }}</span></div>
+          <div class="pay-row due"><span>TOTAL AMOUNT DUE</span><span>₱ {{ paymentSummary().amountDue | number: '1.2-2' }}</span></div>
+          <div class="pay-row"><span>Amount Paid</span><span>₱ {{ paymentSummary().amountPaid | number: '1.2-2' }}</span></div>
+          <div class="pay-row"><span>Change</span><span>₱ {{ paymentSummary().change | number: '1.2-2' }}</span></div>
+          <div class="pay-row"><span>Balance</span><span>₱ {{ paymentSummary().balance | number: '1.2-2' }}</span></div>
         </div>
       </div>
-    }
+
+      <div class="signatures">
+        <div class="sig">
+          <div class="sig-line"></div>
+          <div class="sig-role">Customer / Buyer</div>
+          <div class="sig-hint">(Signature over Printed Name)</div>
+          <div class="sig-name">{{ fill(so.customerName) }}</div>
+        </div>
+        <div class="sig">
+          <div class="sig-line"></div>
+          <div class="sig-role">Cashier</div>
+          <div class="sig-hint">(Signature over Printed Name)</div>
+          <div class="sig-name">{{ cashierName() }}</div>
+        </div>
+        <div class="sig">
+          <div class="sig-line"></div>
+          <div class="sig-role">Authorized Representative (PCMAZING)</div>
+          <div class="sig-hint">(Signature over Printed Name)</div>
+          <div class="sig-name"></div>
+        </div>
+      </div>
+
+      <div class="terms-panel">
+        <div class="terms-main">
+          <div class="section-bar slant-right">TERMS &amp; CONDITIONS</div>
+          <ol class="terms-list">
+            @for (term of terms; track $index) {
+              <li>{{ term }}</li>
+            }
+          </ol>
+        </div>
+        <div class="terms-side">
+          <div class="notice danger">
+            <span class="notice-icon" aria-hidden="true">!</span>
+            <span>STRICTLY NO RECEIPT, NO WARRANTY</span>
+          </div>
+          <div class="notice muted">THIS DOCUMENT IS NOT VALID FOR CLAIM OF INPUT TAX.</div>
+        </div>
+      </div>
+    </article>
   }
 </section>
