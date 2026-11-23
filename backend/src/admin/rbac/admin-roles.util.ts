@@ -95,6 +95,31 @@ export function canSeeInventoryCosts(role?: string | null): boolean {
   return !isSalesRestrictedInventory(role);
 }
 
+export function isFounder(role?: string | null): boolean {
+  const key = normalizeRoleKey(role);
+  return key === 'founder' || key.includes('founder');
+}
+
+export function isCoo(role?: string | null): boolean {
+  const key = normalizeRoleKey(role);
+  return key === 'coo' || key === 'chiefoperatingofficer';
+}
+
+export function isCeo(role?: string | null): boolean {
+  const key = normalizeRoleKey(role);
+  return key === 'ceo' || key === 'chiefexecutiveofficer';
+}
+
+/** COO, CEO, or Super Admin review an employee timesheet. */
+export function canReviewTimesheet(role?: string | null): boolean {
+  return isSuperAdmin(role) || isCoo(role) || isCeo(role);
+}
+
+/** Founder or Super Admin posts the payslip date after approval. */
+export function canFinalizePayslip(role?: string | null): boolean {
+  return isSuperAdmin(role) || isFounder(role);
+}
+
 /** Admin or Super Admin — may sign in at /admin/login. */
 export function canUseAdminLogin(role?: string | null): boolean {
   return isSuperAdmin(role);
@@ -110,7 +135,10 @@ export function canUsePortalLogin(role?: string | null): boolean {
     isOperationsManager(role) ||
     isSalesRestrictedInventory(role) ||
     isDeveloper(role) ||
-    isProjectManager(role)
+    isProjectManager(role) ||
+    isCoo(role) ||
+    isCeo(role) ||
+    isFounder(role)
   );
 }
 

@@ -21,6 +21,7 @@ import { SalesOrdersService } from './inventory/sales-orders.service';
 import { ServiceTypesController } from './inventory/service-types.controller';
 import { ServiceTypesService } from './inventory/service-types.service';
 import { EmployeeWorkspaceController } from './employee-workspace/employee-workspace.controller';
+import { EmployeeTimesheetService } from './employee-workspace/employee-timesheet.service';
 import { EmployeeWorkspaceService } from './employee-workspace/employee-workspace.service';
 import { PrintingSettingsController } from './printing/printing-settings.controller';
 import { PrintingSettingsService } from './printing/printing-settings.service';
@@ -103,6 +104,7 @@ import { PcConceptSyncScheduler } from './local-price-lists/pc-concept-sync.sche
     ClientProspectsService,
     CurrencyExchangeService,
     EmployeeWorkspaceService,
+    EmployeeTimesheetService,
     PrintingSettingsService,
     PrintingTemplatesService,
     CompanyExpensesService,

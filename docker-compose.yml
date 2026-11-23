@@ -50,6 +50,8 @@ services:
     volumes:
       # Keep existing files on the host: ~/apps/pcmazing-site/backend/uploads
       - ./backend/uploads:/app/uploads
+      # Released employee app. Copy portal.apk here after assembleRelease.
+      - ./backend/downloads:/app/downloads
     networks:
       - edge
     # Uncomment for local debug: ports: ["3000:3000"]

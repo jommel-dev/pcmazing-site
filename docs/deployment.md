@@ -69,6 +69,17 @@ docker exec pcmazing_backend_api node -e "fetch('http://127.0.0.1:3000/health').
 
 Then load `https://www.pcmazing.com` and confirm the site can reach `https://v1-api.pcmazing.com`.
 
+## Employee app download
+
+The public page is `https://www.pcmazing.com/app-downloads`. It asks for `APK_SERIAL_PORTAL` from `.env.docker` before it sends the file. Set that serial, then put the release APK at `backend/downloads/portal.apk`. A release build of the portal app copies the APK there:
+
+```bash
+cd portal-app
+./gradlew :androidApp:assembleRelease
+```
+
+The download directory is bind-mounted into the API container, so a new APK is picked up without rebuilding the image. Restart the API only when the serial changes.
+
 ## Logs and restart
 
 ```bash

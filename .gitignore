@@ -17,6 +17,7 @@ tmp/
 # Uploads & local runtime
 uploads/
 backend/uploads/
+backend/downloads/*.apk
 logs/
 *.log
 npm-debug.log*

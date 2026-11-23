@@ -59,6 +59,7 @@ import {
   savePayrollQrImageFile,
 } from './payroll-qr-image.util';
 import { ensurePayrollTables, manilaWorkDate } from './payroll.schema';
+import { ensureEmployeeWorkspaceTables } from '../employee-workspace/employee-workspace.schema';
 import {
   buildPayslipPdfBuffer,
   PayslipDayBreakdownRow,
@@ -3978,6 +3979,7 @@ export class PayrollService {
     limit = 6,
   ): Promise<EmployeePayslipItem[]> {
     await this.ensureReady();
+    await ensureEmployeeWorkspaceTables(this.databaseService);
     const capped = Math.min(Math.max(limit, 1), 24);
     const result = await this.databaseService.query<{
       id: number;
@@ -4009,6 +4011,18 @@ export class PayrollService {
        INNER JOIN pcmazing_payroll_runs r ON r.id = p.run_id
        WHERE p.user_id = $1
          AND p.user_source = $2
+         AND NOT EXISTS (
+           SELECT 1
+           FROM pcmazing_employee_timesheets t
+           WHERE t.user_id = p.user_id
+             AND t.user_source = p.user_source
+             AND t.period_from <= r.date_to
+             AND t.period_to >= r.date_from
+             AND (
+               t.status <> 'finalized'
+               OR t.posted_on > (NOW() AT TIME ZONE 'Asia/Manila')::date
+             )
+         )
        ORDER BY r.date_to DESC, r.id DESC
        LIMIT $3`,
       [userId, userSource, capped],

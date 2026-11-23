@@ -27,12 +27,16 @@ import {
   UpdateTodoDto,
   UpsertDayOffDto,
 } from './dto/employee-workspace.dto';
+import { EmployeeTimesheetService, FinalizeTimesheetDto, ReviewTimesheetDto, SubmitTimesheetDto } from './employee-timesheet.service';
 import { EmployeeWorkspaceService } from './employee-workspace.service';
 
 @Controller('admin/employee-workspace')
 @UseGuards(JwtAuthGuard)
 export class EmployeeWorkspaceController {
-  constructor(private readonly workspaceService: EmployeeWorkspaceService) {}
+  constructor(
+    private readonly workspaceService: EmployeeWorkspaceService,
+    private readonly timesheets: EmployeeTimesheetService,
+  ) {}
 
   private actor(req: Request & { user?: AdminJwtPayload }) {
     const user = req.user;
@@ -44,6 +48,14 @@ export class EmployeeWorkspaceController {
       userId: Number(user.sub),
       source: user.source,
     };
+  }
+
+  private actorUser(req: Request & { user?: AdminJwtPayload }): AdminJwtPayload {
+    const user = req.user;
+    if (!user?.sub || !user.source) {
+      throw new UnauthorizedException('Missing authenticated user.');
+    }
+    return user;
   }
 
   @Get('dashboard')
@@ -279,6 +291,66 @@ export class EmployeeWorkspaceController {
     const { userId, source } = this.actor(req);
     const data = await this.workspaceService.createActivity(userId, source, dto);
     return { success: true, message: 'Activity logged.', data };
+  }
+
+  @Get('timesheet')
+  async myTimesheet(
+    @Req() req: Request & { user?: AdminJwtPayload },
+    @Query('month') month?: string,
+  ) {
+    const data = await this.timesheets.mine(this.actorUser(req), month);
+    return { success: true, data };
+  }
+
+  @Post('timesheet/submit')
+  async submitTimesheet(
+    @Req() req: Request & { user?: AdminJwtPayload },
+    @Body() dto: SubmitTimesheetDto,
+  ) {
+    const data = await this.timesheets.submit(this.actorUser(req), dto);
+    return { success: true, message: 'Timesheet sent for approval.', data };
+  }
+
+  @Get('timesheets/review')
+  async reviewTimesheets(@Req() req: Request & { user?: AdminJwtPayload }) {
+    const data = await this.timesheets.reviewQueue(this.actorUser(req));
+    return { success: true, data };
+  }
+
+  @Post('timesheets/:id/approve')
+  async approveTimesheet(
+    @Req() req: Request & { user?: AdminJwtPayload },
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ReviewTimesheetDto,
+  ) {
+    const data = await this.timesheets.approve(this.actorUser(req), id, dto);
+    return { success: true, message: 'Timesheet approved.', data };
+  }
+
+  @Post('timesheets/:id/revert')
+  async revertTimesheet(
+    @Req() req: Request & { user?: AdminJwtPayload },
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ReviewTimesheetDto,
+  ) {
+    const data = await this.timesheets.revert(this.actorUser(req), id, dto);
+    return { success: true, message: 'Timesheet sent back for recheck.', data };
+  }
+
+  @Get('timesheets/finalize')
+  async finalizeTimesheets(@Req() req: Request & { user?: AdminJwtPayload }) {
+    const data = await this.timesheets.finalizeQueue(this.actorUser(req));
+    return { success: true, data };
+  }
+
+  @Post('timesheets/:id/finalize')
+  async finalizeTimesheet(
+    @Req() req: Request & { user?: AdminJwtPayload },
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: FinalizeTimesheetDto,
+  ) {
+    const data = await this.timesheets.finalize(this.actorUser(req), id, dto);
+    return { success: true, message: 'Payslip post date saved.', data };
   }
 
   @Get('memos')

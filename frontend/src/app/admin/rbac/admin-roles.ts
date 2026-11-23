@@ -160,6 +160,21 @@ export function canUseAdminLogin(role?: string | null): boolean {
 }
 
 /** Roles allowed at /user/login (MyPeoplePortal). */
+export function isCoo(role?: string | null): boolean {
+  const key = normalizeRoleKey(role);
+  return key === 'coo' || key === 'chiefoperatingofficer';
+}
+
+export function isCeo(role?: string | null): boolean {
+  const key = normalizeRoleKey(role);
+  return key === 'ceo' || key === 'chiefexecutiveofficer';
+}
+
+export function isFounder(role?: string | null): boolean {
+  const key = normalizeRoleKey(role);
+  return key === 'founder' || key.includes('founder');
+}
+
 export function canUsePortalLogin(role?: string | null): boolean {
   if (canUseAdminLogin(role)) {
     return true;
@@ -169,7 +184,10 @@ export function canUsePortalLogin(role?: string | null): boolean {
     isOperationsManager(role) ||
     isSalesRestrictedInventory(role) ||
     isDeveloper(role) ||
-    isProjectManager(role)
+    isProjectManager(role) ||
+    isCoo(role) ||
+    isCeo(role) ||
+    isFounder(role)
   );
 }
 

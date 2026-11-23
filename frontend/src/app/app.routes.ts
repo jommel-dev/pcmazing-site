@@ -11,6 +11,7 @@ import { LeaveReviewPageComponent } from './website/pages/leave-review/leave-rev
 import { SetupPageComponent } from './website/pages/setup/setup-page.component';
 import { TimeClockRedirectComponent } from './website/pages/time-clock/time-clock-redirect.component';
 import { PublicQuotationPageComponent } from './website/pages/public-quotation/public-quotation-page.component';
+import { AppDownloadsPageComponent } from './website/pages/app-downloads/app-downloads-page.component';
 import { setupAvailableGuard } from './core/guards/setup-available.guard';
 import { adminRoutes } from './admin/admin.routes';
 import { userRoutes } from './user/user.routes';
@@ -28,6 +29,11 @@ export const routes: Routes = [
     path: 'time-clock',
     component: TimeClockRedirectComponent,
     title: 'Time Clock | PCmazing',
+  },
+  {
+    path: 'app-downloads',
+    component: AppDownloadsPageComponent,
+    title: 'Download the employee app | PCmazing',
   },
   {
     path: 'q/:token',

@@ -73,14 +73,16 @@ export function resolvePageSeo(pathname: string): PageSeoMeta {
   if (
     normalized === '/setup' ||
     normalized === '/time-clock' ||
+    normalized === '/app-downloads' ||
     normalized.startsWith('/admin') ||
     normalized.startsWith('/user') ||
     normalized === '/q' ||
     normalized.startsWith('/q/')
   ) {
+    const title = normalized === '/app-downloads' ? 'Download the employee app | PCmazing' : 'PCmazing';
     return {
       path: normalized,
-      title: 'PCmazing',
+      title,
       description: 'PCmazing internal page.',
       indexable: false,
     };
