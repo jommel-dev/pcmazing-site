@@ -69,4 +69,9 @@ tasks.configureEach {
     if (name == "packageRelease" || name == "assembleRelease") {
         finalizedBy("publishDownloadApk")
     }
+    // Startup profiles are optional. On the Linux server this task dies with
+    // "bad byte" while reading the release dex, which stops the APK.
+    if (name.contains("ArtProfile")) {
+        enabled = false
+    }
 }
