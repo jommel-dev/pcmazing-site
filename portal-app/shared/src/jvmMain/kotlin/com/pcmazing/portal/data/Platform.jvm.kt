@@ -14,7 +14,7 @@ internal object PortalApiRuntime {
 }
 
 actual fun portalApiBaseUrl(): String =
-    PortalApiRuntime.overrideUrl ?: PRODUCTION_API_BASE_URL
+    PortalApiRuntime.overrideUrl ?: GENERATED_RELEASE_API_BASE_URL
 
 actual suspend fun preparePortalApi(allowLocalApi: Boolean) {
     if (!allowLocalApi) {

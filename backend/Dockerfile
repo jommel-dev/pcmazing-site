@@ -48,6 +48,9 @@ RUN mkdir -p /app/uploads \
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY package*.json ./
+COPY downloads ./downloads
+
+RUN chown -R node:node /app/downloads
 
 USER node
 

@@ -8,6 +8,10 @@ plugins {
     alias(libs.plugins.kotlinxSerialization)
 }
 
+extra["releaseApiPackage"] = "com.pcmazing.portal.data"
+extra["releaseApiConst"] = "GENERATED_RELEASE_API_BASE_URL"
+apply(from = rootProject.file("../gradle/generate-release-api-url.gradle"))
+
 kotlin {
     listOf(
         iosArm64(),
@@ -46,6 +50,9 @@ kotlin {
         jvmMain.dependencies {
             implementation(libs.ktor.client.okhttp)
         }
+        named("commonMain").configure {
+            kotlin.srcDir(layout.buildDirectory.dir("generated/releaseApi/kotlin"))
+        }
         commonMain.dependencies {
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
@@ -67,4 +74,10 @@ compose.resources {
     publicResClass = true
     packageOfResClass = "com.pcmazing.portal.generated.resources"
     generateResClass = always
+}
+
+tasks.configureEach {
+    if (name.startsWith("compile")) {
+        dependsOn("generateReleaseApiUrl")
+    }
 }

@@ -7,6 +7,8 @@
 # Deploy on server (as root). Full steps: docs/deployment.md
 #   cd ~/apps/pcmazing-site
 #   cp .env.docker.example .env.docker   # first time only; edit DB + secrets
+#   cd portal-app && chmod +x ./gradlew && ./gradlew :androidApp:assembleRelease
+#   cd ..
 #   docker compose --env-file .env.docker build pcmazing_frontend_app
 #   docker compose --env-file .env.docker build pcmazing_backend_api
 #   docker compose --env-file .env.docker up -d --no-build
@@ -50,8 +52,6 @@ services:
     volumes:
       # Keep existing files on the host: ~/apps/pcmazing-site/backend/uploads
       - ./backend/uploads:/app/uploads
-      # Released employee app. Copy portal.apk here after assembleRelease.
-      - ./backend/downloads:/app/downloads
     networks:
       - edge
     # Uncomment for local debug: ports: ["3000:3000"]
