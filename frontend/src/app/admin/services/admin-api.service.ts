@@ -2789,6 +2789,7 @@ export class AdminApiService {
   updateUser(
     id: number,
     payload: {
+      username?: string;
       fullName?: string;
       email?: string;
       role?: string;
