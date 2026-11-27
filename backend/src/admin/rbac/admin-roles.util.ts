@@ -125,21 +125,13 @@ export function canUseAdminLogin(role?: string | null): boolean {
   return isSuperAdmin(role);
 }
 
-/** Roles allowed at /user/login (MyPeoplePortal). */
+/**
+ * Roles allowed at /user/login (MyPeoplePortal).
+ * Any staff account with a role may use the portal — including custom RBAC
+ * user types. /admin/login stays Super Admin–only via canUseAdminLogin().
+ */
 export function canUsePortalLogin(role?: string | null): boolean {
-  if (canUseAdminLogin(role)) {
-    return true;
-  }
-  return (
-    isMarketing(role) ||
-    isOperationsManager(role) ||
-    isSalesRestrictedInventory(role) ||
-    isDeveloper(role) ||
-    isProjectManager(role) ||
-    isCoo(role) ||
-    isCeo(role) ||
-    isFounder(role)
-  );
+  return Boolean(role?.trim());
 }
 
 export function rolesMatch(userRole: string | null | undefined, required: string): boolean {

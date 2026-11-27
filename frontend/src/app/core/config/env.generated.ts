@@ -2,7 +2,7 @@
 // Regenerated when you run `npm start` or `npm run build`.
 
 export const ENV = {
-  API_URL: 'http://localhost:3000',
+  API_URL: 'http://localhost:3001',
   PUBLIC_SITE_URL: 'http://localhost:4200',
-  BUILD_ID: 'mwsws48h-kwicsb',
+  BUILD_ID: 'mwtt0ox9-qpl4an',
 } as const;
