@@ -1,5 +1,13 @@
+import org.gradle.api.DefaultTask
+import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.TaskAction
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.Properties
+import java.util.zip.Adler32
+import java.util.zip.ZipFile
 
 plugins {
     alias(libs.plugins.androidApplication)
@@ -61,14 +69,46 @@ kotlin {
     }
 }
 
+abstract class VerifyReleaseDex : DefaultTask() {
+    @get:InputFile
+    abstract val apk: RegularFileProperty
+
+    @TaskAction
+    fun verify() {
+        ZipFile(apk.get().asFile).use { zip ->
+            val dexes = zip.entries().toList().filter { it.name.matches(Regex("classes\\d*\\.dex")) }
+            for (entry in dexes) {
+                val bytes = zip.getInputStream(entry).readBytes()
+                val stored = ByteBuffer.wrap(bytes, 8, 4).order(ByteOrder.LITTLE_ENDIAN).int.toLong() and 0xffffffffL
+                val adler = Adler32()
+                adler.update(bytes, 12, bytes.size - 12)
+                if (stored != adler.value) {
+                    throw GradleException(
+                        "${entry.name} checksum is ${"%08x".format(stored)} but the file hashes to ${"%08x".format(adler.value)}. Android will close the app on launch. Run ./gradlew clean :androidApp:assembleRelease",
+                    )
+                }
+            }
+        }
+    }
+}
+
+val releaseApk = layout.buildDirectory.file("outputs/apk/release/androidApp-release.apk")
+
+tasks.register<VerifyReleaseDex>("verifyReleaseDex") {
+    apk.set(releaseApk)
+}
+
 tasks.register<Copy>("publishDownloadApk") {
-    from(layout.buildDirectory.file("outputs/apk/release/androidApp-release.apk"))
+    from(releaseApk)
     into(rootProject.layout.projectDirectory.dir("../backend/downloads"))
     rename { "portal.apk" }
     duplicatesStrategy = DuplicatesStrategy.INCLUDE
 }
 tasks.configureEach {
     if (name == "packageRelease" || name == "assembleRelease") {
+        finalizedBy("verifyReleaseDex")
+    }
+    if (name == "verifyReleaseDex") {
         finalizedBy("publishDownloadApk")
     }
     // Startup profiles are optional. On the Linux server this task dies with

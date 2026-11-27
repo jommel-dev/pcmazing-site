@@ -8,7 +8,12 @@ const root = resolve(__dirname, '..');
 
 config({ path: resolve(root, '.env') });
 
+// `npm run start:live` serves the site against the live API through the dev-server proxy
+// (proxy.conf.json), so the browser never makes a cross-origin call.
+const useLiveProxy = process.argv.includes('--live');
+
 const apiUrl =
+  (useLiveProxy ? '/__api' : '') ||
   process.env.API_URL?.trim() ||
   process.env.NG_APP_API_URL?.trim() ||
   'http://localhost:3001';

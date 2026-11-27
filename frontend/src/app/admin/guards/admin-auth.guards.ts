@@ -55,6 +55,18 @@ export const adminAuthGuard: CanActivateFn = () => {
   return router.createUrlTree(['/admin/access']);
 };
 
+/** Only Super Admin keeps the admin clock; every other employee clocks in from the portal. */
+export const portalTimeClockRedirectGuard: CanActivateFn = () => {
+  const adminAuth = inject(AdminAuthService);
+  const router = inject(Router);
+
+  if (isSuperAdmin(adminAuth.getStoredUser()?.role)) {
+    return true;
+  }
+
+  return router.createUrlTree(['/user/clock']);
+};
+
 export const adminRoleGuard: CanActivateFn = (route) => {
   const adminAuth = inject(AdminAuthService);
   const router = inject(Router);

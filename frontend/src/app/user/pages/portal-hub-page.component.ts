@@ -1,13 +1,15 @@
 import { Component, inject, OnDestroy, OnInit } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
-import { getRoleHomeRoute } from '../../admin/rbac/admin-roles';
+import { getRoleHomeRoute, isSuperAdmin } from '../../admin/rbac/admin-roles';
 import { AdminAuthService } from '../../admin/services/admin-auth.service';
+import { PORTAL_HOME_ROUTE } from '../portal-post-login-route';
+import { PortalIconComponent } from '../portal/ui/portal-icon.component';
 
 export type PortalHubAppId = 'admin' | 'people';
 
 @Component({
   selector: 'app-portal-hub-page',
-  imports: [RouterLink],
+  imports: [RouterLink, PortalIconComponent],
   templateUrl: './portal-hub-page.component.html',
 })
 export class PortalHubPageComponent implements OnInit, OnDestroy {
@@ -30,7 +32,7 @@ export class PortalHubPageComponent implements OnInit, OnDestroy {
     {
       id: 'people',
       title: 'MyPeoplePortal',
-      description: 'Team sign-in for Marketing, Sales, and Development.',
+      description: 'Your pay, attendance, time clock and workspace.',
       path: '/user/login',
     },
   ];
@@ -48,6 +50,7 @@ export class PortalHubPageComponent implements OnInit, OnDestroy {
     if (!this.adminAuth.isAuthenticated()) {
       return;
     }
-    void this.router.navigateByUrl(getRoleHomeRoute(this.adminAuth.getStoredUser()?.role));
+    const role = this.adminAuth.getStoredUser()?.role;
+    void this.router.navigateByUrl(isSuperAdmin(role) ? getRoleHomeRoute(role) : PORTAL_HOME_ROUTE);
   }
 }

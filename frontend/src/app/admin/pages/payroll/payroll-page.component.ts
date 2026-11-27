@@ -284,7 +284,7 @@ export class PayrollPageComponent implements OnInit {
   readonly remarksDrafts = signal<Record<string, string>>({});
   readonly savingRemarksId = signal<string | number | null>(null);
 
-  readonly timeClockUrl = `${APP_CONFIG.publicSiteUrl.replace(/\/$/, '')}/user/login?returnUrl=${encodeURIComponent('/admin/time-clock')}`;
+  readonly timeClockUrl = `${APP_CONFIG.publicSiteUrl.replace(/\/$/, '')}/user/login?returnUrl=${encodeURIComponent('/user/clock')}`;
 
   ngOnInit(): void {
     const today = this.manilaToday();

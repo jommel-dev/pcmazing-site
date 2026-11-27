@@ -1,0 +1,56 @@
+﻿<div class="min-h-dvh bg-slate-100 font-outfit text-portal-ink">
+  <div
+    class="relative mx-auto flex min-h-dvh w-full max-w-[440px] flex-col bg-portal-page sm:border-x sm:border-portal-line sm:shadow-sm"
+  >
+    <main
+      class="flex-1"
+      [class]="
+        showBar()
+          ? 'flex-1 pb-[calc(5.25rem+env(safe-area-inset-bottom))]'
+          : 'flex-1 pb-[env(safe-area-inset-bottom)]'
+      "
+    >
+      <router-outlet />
+    </main>
+
+    @if (showBar()) {
+      <nav
+        aria-label="Portal"
+        class="fixed inset-x-0 bottom-0 z-30 mx-auto flex w-full max-w-[440px] border-t border-portal-line bg-white pt-2.5 pb-[calc(0.5rem+env(safe-area-inset-bottom))]"
+      >
+        <a
+          routerLink="/user/home"
+          routerLinkActive="is-active"
+          class="portal-tab flex flex-1 flex-col items-center gap-[5px]"
+        >
+          <span class="portal-pill"><app-portal-icon name="home" [size]="21" /></span>
+          <span class="portal-tab-label">Home</span>
+        </a>
+        <a
+          routerLink="/user/work"
+          routerLinkActive="is-active"
+          class="portal-tab flex flex-1 flex-col items-center gap-[5px]"
+        >
+          <span class="portal-pill"><app-portal-icon name="check" [size]="21" /></span>
+          <span class="portal-tab-label">{{ workspace.workLabel() }}</span>
+        </a>
+        <a
+          routerLink="/user/pay"
+          routerLinkActive="is-active"
+          class="portal-tab flex flex-1 flex-col items-center gap-[5px]"
+        >
+          <span class="portal-pill"><app-portal-icon name="nav_wallet" [size]="21" /></span>
+          <span class="portal-tab-label">Pay</span>
+        </a>
+        <a
+          routerLink="/user/profile"
+          routerLinkActive="is-active"
+          class="portal-tab flex flex-1 flex-col items-center gap-[5px]"
+        >
+          <span class="portal-pill"><app-portal-icon name="nav_user" [size]="21" /></span>
+          <span class="portal-tab-label">Profile</span>
+        </a>
+      </nav>
+    }
+  </div>
+</div>

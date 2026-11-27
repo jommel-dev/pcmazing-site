@@ -30,6 +30,11 @@ export interface TimeClockStatus {
   locationLat?: number | null;
   locationLng?: number | null;
   locationMismatch?: boolean;
+  timeOutLocationLabel?: string | null;
+  timeOutLocationLat?: number | null;
+  timeOutLocationLng?: number | null;
+  timeInSelfieUrl?: string | null;
+  timeOutSelfieUrl?: string | null;
 }
 
 export interface ServerClock {

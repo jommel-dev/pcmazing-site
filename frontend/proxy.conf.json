@@ -1,0 +1,9 @@
+{
+  "/__api": {
+    "target": "https://v1-api.pcmazing.com",
+    "secure": true,
+    "changeOrigin": true,
+    "pathRewrite": { "^/__api": "" },
+    "logLevel": "warn"
+  }
+}

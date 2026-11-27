@@ -127,6 +127,9 @@ export class EmployeeWorkspaceController {
   async timeClockTimeOut(
     @Req() req: Request & { user?: AdminJwtPayload },
     @Body('intent') intentRaw?: string,
+    @Body('locationLat') locationLat?: string,
+    @Body('locationLng') locationLng?: string,
+    @Body('locationLabel') locationLabel?: string,
     @UploadedFile() selfie?: Express.Multer.File,
   ) {
     const { userId, source } = this.actor(req);
@@ -143,6 +146,11 @@ export class EmployeeWorkspaceController {
       source,
       selfie,
       normalized,
+      {
+        locationLat,
+        locationLng,
+        locationLabel,
+      },
     );
     return {
       success: true,
@@ -150,6 +158,20 @@ export class EmployeeWorkspaceController {
         normalized === 'lunch' ? 'Lunch out recorded.' : 'Time out recorded.',
       data,
     };
+  }
+
+  @Get('employment')
+  async employment(@Req() req: Request & { user?: AdminJwtPayload }) {
+    const { userId, source } = this.actor(req);
+    const data = await this.workspaceService.getEmploymentCard(userId, source);
+    return { success: true, data };
+  }
+
+  @Get('pay-estimate')
+  async payEstimate(@Req() req: Request & { user?: AdminJwtPayload }) {
+    const { userId, source } = this.actor(req);
+    const data = await this.workspaceService.getPayEstimate(userId, source);
+    return { success: true, data };
   }
 
   @Get('payslips/:id')
@@ -211,9 +233,6 @@ export class EmployeeWorkspaceController {
     @UploadedFile() selfie?: Express.Multer.File,
   ) {
     const { userId, source } = this.actor(req);
-    if (!selfie) {
-      throw new BadRequestException('Upload a time-out photo before submitting.');
-    }
     if (!requestedTimeOut?.trim()) {
       throw new BadRequestException('Enter the time you actually left.');
     }

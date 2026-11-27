@@ -1,0 +1,137 @@
+<div class="px-6 pt-[calc(1rem+env(safe-area-inset-top))] pb-6">
+  <a routerLink="/user/attendance" class="inline-flex items-center gap-1.5 text-[13px] font-semibold text-portal-blue">
+    <span class="rotate-180"><app-portal-icon name="chevron" [size]="14" /></span>
+    Back
+  </a>
+
+  <h1 class="mt-4 text-[28px] leading-tight font-bold tracking-[-0.9px] text-portal-ink">{{ title() }}</h1>
+  <p class="mt-1.5 text-sm text-portal-muted">{{ subtitle() }}</p>
+
+  @if (workspace.error(); as error) {
+    <app-portal-prompt class="mt-3" tone="error" title="Couldn't load this day" [message]="error" />
+  }
+  @if (workspace.notice(); as notice) {
+    <app-portal-prompt class="mt-3" tone="success" title="Updated" [message]="notice" />
+  }
+
+  @if (day(); as punch) {
+    <div class="mt-4 space-y-2.5 rounded-[20px] border border-portal-line bg-white p-4">
+      @if (punch.overtimeStatus) {
+        <p class="text-[13px] text-portal-ink">Overtime: {{ punch.overtimeStatus }}</p>
+      }
+      @if (punch.adjustmentStatus) {
+        <p class="text-[13px] text-portal-ink">Time-out request: {{ punch.adjustmentStatus }}</p>
+      }
+      @if (punch.canRequestOvertime && punch.id != null) {
+        <button
+          type="button"
+          class="flex h-12 w-full items-center justify-center rounded-xl bg-portal-blue text-sm font-semibold text-white disabled:opacity-50"
+          [disabled]="workspace.busy()"
+          (click)="requestOvertime()"
+        >
+          {{ workspace.busy() ? 'Saving…' : 'Request overtime' }}
+        </button>
+      }
+      @if (punch.canRequestTimeOutAdjustment && punch.id != null) {
+        <a
+          class="flex h-12 items-center justify-center rounded-xl border border-portal-line text-sm font-semibold text-portal-ink"
+          [routerLink]="['/user/adjust', punch.id, date()]"
+        >
+          Request missed time-out
+        </a>
+      }
+    </div>
+  }
+
+  <h2 class="mt-[22px] text-[17px] font-bold text-portal-ink">Day off</h2>
+  <div class="mt-3 space-y-3 rounded-[20px] border border-portal-line bg-white p-4">
+    <label class="block text-[13px] font-semibold text-portal-ink" for="day-off-reason">Reason</label>
+    <input
+      id="day-off-reason"
+      type="text"
+      maxlength="200"
+      class="h-12 w-full rounded-xl border border-portal-line bg-portal-field px-3.5 text-sm text-portal-ink placeholder:text-portal-muted focus:border-portal-blue focus:ring-2 focus:ring-portal-halo focus:outline-none"
+      placeholder="Why you are off"
+      [ngModel]="reason()"
+      (ngModelChange)="editReason($event)"
+    />
+    <button
+      type="button"
+      class="flex h-12 w-full items-center justify-center rounded-xl bg-portal-blue text-sm font-semibold text-white disabled:opacity-50"
+      [disabled]="workspace.busy()"
+      (click)="saveDayOff()"
+    >
+      {{ workspace.busy() ? 'Saving…' : 'Save day off' }}
+    </button>
+    @if (off()) {
+      <button
+        type="button"
+        class="text-[13px] font-semibold text-portal-danger"
+        [disabled]="workspace.busy()"
+        (click)="removeDayOff()"
+      >
+        Remove day off
+      </button>
+    }
+  </div>
+
+  <h2 class="mt-[22px] text-[17px] font-bold text-portal-ink">Todos</h2>
+  <div class="mt-3 space-y-2.5 rounded-[20px] border border-portal-line bg-white p-4">
+    @if (todos().length === 0) {
+      <p class="text-[13px] text-portal-muted">Nothing due this day.</p>
+    }
+    @for (todo of todos(); track todo.id) {
+      <div class="flex items-center">
+        <button
+          type="button"
+          class="flex size-[22px] shrink-0 items-center justify-center rounded-md border text-xs font-bold"
+          [class]="todo.isDone ? 'border-portal-blue bg-portal-halo text-portal-blue' : 'border-portal-line bg-white'"
+          [attr.aria-pressed]="todo.isDone"
+          [attr.aria-label]="todo.isDone ? 'Mark not done' : 'Mark done'"
+          (click)="toggleTodo(todo.id, !todo.isDone)"
+        >
+          @if (todo.isDone) {
+            ✓
+          }
+        </button>
+        <span class="ml-2.5 flex-1 text-sm text-portal-ink">{{ todo.title }}</span>
+        <button type="button" class="text-xs text-portal-danger" (click)="deleteTodo(todo.id)">Delete</button>
+      </div>
+    }
+    <label class="mt-1 block text-[13px] font-semibold text-portal-ink" for="new-todo">New todo</label>
+    <input
+      id="new-todo"
+      type="text"
+      maxlength="200"
+      class="h-12 w-full rounded-xl border border-portal-line bg-portal-field px-3.5 text-sm text-portal-ink placeholder:text-portal-muted focus:border-portal-blue focus:ring-2 focus:ring-portal-halo focus:outline-none"
+      placeholder="Add a task"
+      [ngModel]="todoTitle()"
+      (ngModelChange)="todoTitle.set($event)"
+    />
+    <button
+      type="button"
+      class="flex h-12 w-full items-center justify-center rounded-xl bg-portal-blue text-sm font-semibold text-white disabled:opacity-50"
+      [disabled]="workspace.busy() || !todoTitle().trim()"
+      (click)="addTodo()"
+    >
+      Add todo
+    </button>
+  </div>
+
+  @if (activities().length > 0) {
+    <h2 class="mt-[22px] text-[17px] font-bold text-portal-ink">Activity</h2>
+    <div class="mt-3 rounded-[20px] border border-portal-line bg-white px-4">
+      @for (item of activities(); track item.id; let first = $first) {
+        @if (!first) {
+          <div class="h-px bg-portal-line"></div>
+        }
+        <div class="py-2.5">
+          <p class="text-sm font-semibold text-portal-ink">{{ item.title }}</p>
+          @if (item.details) {
+            <p class="text-xs text-portal-muted">{{ item.details }}</p>
+          }
+        </div>
+      }
+    </div>
+  }
+</div>

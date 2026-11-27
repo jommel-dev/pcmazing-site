@@ -1,0 +1,180 @@
+<div class="px-6 pt-[calc(0.75rem+env(safe-area-inset-top))] pb-4">
+  <!-- Greeting row -->
+  <div class="flex items-center">
+    <div
+      class="flex size-[42px] shrink-0 items-center justify-center overflow-hidden rounded-full bg-portal-halo text-base font-bold text-portal-blue"
+    >
+      @if (workspace.avatarUrl(); as photo) {
+        <img [src]="photo" alt="Profile photo" class="size-full object-cover" />
+      } @else {
+        {{ initial() }}
+      }
+    </div>
+    <div class="ml-3 min-w-0 flex-1">
+      <p class="text-[13px] text-portal-muted">Good day, {{ workspace.firstName() }}</p>
+      <p class="mt-[5px] truncate text-base font-semibold text-portal-ink">
+        {{ workspace.displayName() }}
+      </p>
+    </div>
+    <a
+      routerLink="/user/notifications"
+      aria-label="Notifications"
+      class="relative flex size-10 items-center justify-center text-portal-muted"
+    >
+      <app-portal-icon name="bell" [size]="22" />
+      @if (workspace.hasUnread()) {
+        <span class="absolute top-2 right-2 size-2 rounded-full bg-[#ef4444]"></span>
+      }
+    </a>
+    <a
+      routerLink="/user/profile"
+      aria-label="Profile and settings"
+      class="flex size-10 items-center justify-center text-portal-ink"
+    >
+      <app-portal-icon name="settings" [size]="22" />
+    </a>
+  </div>
+
+  <h1 class="mt-[22px] text-[28px] leading-tight font-bold tracking-[-0.9px] text-portal-ink">
+    Your work, at a glance
+  </h1>
+
+  @if (workspace.error(); as error) {
+    <app-portal-prompt
+      class="mt-3"
+      tone="error"
+      title="Couldn't load your workspace"
+      [message]="error"
+      actionLabel="Retry"
+      (action)="retry()"
+    />
+  }
+  @if (workspace.notice(); as notice) {
+    <app-portal-prompt class="mt-3" tone="success" title="Updated" [message]="notice" />
+  }
+
+  <!-- Month row -->
+  <div class="mt-[22px] flex items-center">
+    <span class="text-portal-muted"><app-portal-icon name="calendar" [size]="15" /></span>
+    <span class="ml-[7px] flex-1 text-xs font-medium text-portal-muted">
+      {{ workspace.dashboard()?.workDate ?? workspace.month() }}
+    </span>
+    <span
+      class="rounded-full bg-portal-halo px-2 py-1 text-[10px] font-semibold text-portal-blue"
+    >
+      THIS MONTH
+    </span>
+  </div>
+
+  <!-- Worked hours -->
+  <a
+    routerLink="/user/attendance"
+    class="mt-3.5 block rounded-[20px] border border-portal-line bg-white p-4"
+  >
+    <div class="flex items-center">
+      <span class="flex size-[34px] items-center justify-center rounded-[10px] bg-portal-halo text-portal-blue">
+        <app-portal-icon name="clock" [size]="18" />
+      </span>
+      <span class="ml-2.5 flex-1 text-sm font-semibold text-portal-ink">Worked hours</span>
+      <span class="text-portal-muted"><app-portal-icon name="chevron" [size]="16" /></span>
+    </div>
+    <div class="mt-[18px] flex items-end">
+      <span class="text-[34px] leading-none font-bold tracking-[-1px] text-portal-ink">
+        {{ trimHours(hours()) }}
+      </span>
+      <span class="mb-1 ml-1 text-[17px] text-portal-muted">/ {{ target }} hrs</span>
+    </div>
+    <div class="mt-[18px] h-[7px] overflow-hidden rounded-full bg-portal-track">
+      <div class="h-full rounded-full bg-portal-blue" [style.width.%]="ratio() * 100"></div>
+    </div>
+    <div class="mt-[18px] flex text-xs">
+      <span class="flex-1 text-portal-muted">{{ daysPresent() }} days present</span>
+      <span class="font-semibold text-portal-blue">{{ percent() }}%</span>
+    </div>
+  </a>
+
+  <!-- Latest payslip -->
+  <div class="mt-3.5 rounded-[20px] border border-portal-line bg-white p-4">
+    <div class="flex items-center">
+      <span class="flex size-[34px] items-center justify-center rounded-[10px] bg-portal-track text-portal-blue">
+        <app-portal-icon name="wallet" [size]="18" />
+      </span>
+      <span class="ml-2.5 flex-1 text-sm font-semibold text-portal-ink">Latest payslip</span>
+      <button
+        type="button"
+        class="text-portal-muted"
+        [attr.aria-label]="hidden() ? 'Show amount' : 'Hide amount'"
+        (click)="toggleHidden()"
+      >
+        <app-portal-icon name="eye" [size]="19" />
+      </button>
+    </div>
+    <p class="mt-3 text-4xl leading-tight font-bold tracking-[-1.2px] text-portal-ink">
+      {{ payText() }}
+    </p>
+    <p class="mt-3 text-xs text-portal-muted">Estimate from your latest payslip</p>
+  </div>
+
+  <!-- Quick actions -->
+  <h2 class="mt-[25px] text-[17px] font-bold text-portal-ink">Quick actions</h2>
+  <div class="mt-[15px] flex justify-between">
+    @for (action of quickActions; track action.label) {
+      <a [routerLink]="action.link" class="flex w-[72px] flex-col items-center">
+        <span
+          class="flex size-[52px] items-center justify-center rounded-2xl border border-portal-line bg-white text-portal-blue"
+        >
+          <app-portal-icon [name]="action.icon" [size]="22" />
+        </span>
+        <span class="mt-2 text-center text-[11px] font-medium text-portal-ink">{{ action.label }}</span>
+      </a>
+    }
+  </div>
+
+  <!-- Today -->
+  <h2 class="mt-[25px] text-[17px] font-bold text-portal-ink">Today</h2>
+  <div class="mt-3 rounded-2xl border border-portal-line bg-white p-4">
+    <div class="flex items-center">
+      <span
+        class="size-[7px] rounded-full"
+        [class]="timedIn() ? 'bg-portal-green' : 'bg-portal-muted'"
+      ></span>
+      <span
+        class="ml-[7px] flex-1 text-[13px] font-semibold"
+        [class]="timedIn() ? 'text-portal-green' : 'text-portal-muted'"
+      >
+        {{ todayLabel() }}
+      </span>
+      <span class="text-portal-green"><app-portal-icon name="check" [size]="12" /></span>
+    </div>
+    <div class="mt-4 flex items-center">
+      <div class="flex-1">
+        <p class="text-[22px] leading-tight font-bold text-portal-ink">
+          {{ formatTime(workspace.dashboard()?.today?.timeIn) }}
+        </p>
+        <p class="text-[11px] text-portal-muted">Time in</p>
+      </div>
+      <a
+        routerLink="/user/clock"
+        class="inline-flex items-center gap-[7px] rounded-lg border border-[#bfdbfe] px-[17px] py-2.5 text-xs font-semibold text-portal-blue"
+      >
+        <app-portal-icon name="logout" [size]="15" />
+        {{ canTimeOut() ? 'Time out' : 'Time clock' }}
+      </a>
+    </div>
+  </div>
+
+  <!-- My requests -->
+  <h2 class="mt-[25px] text-[17px] font-bold text-portal-ink">My requests</h2>
+  @if (requests().length === 0) {
+    <p class="mt-3 text-[13px] text-portal-muted">No requests yet.</p>
+  } @else {
+    <div class="mt-3 divide-y divide-portal-line overflow-hidden rounded-2xl border border-portal-line bg-white">
+      @for (request of requests(); track request.label) {
+        <a [routerLink]="request.link" class="flex items-center px-4 py-3.5 text-[13px] text-portal-ink">
+          <span class="flex-1">{{ request.label }}</span>
+          <span class="text-portal-muted"><app-portal-icon name="chevron" [size]="16" /></span>
+        </a>
+      }
+    </div>
+  }
+</div>

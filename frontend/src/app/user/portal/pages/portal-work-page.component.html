@@ -1,0 +1,145 @@
+<div class="px-6 pt-[calc(0.75rem+env(safe-area-inset-top))] pb-6">
+  <h1 class="text-[28px] leading-tight font-bold tracking-[-0.9px] text-portal-ink">
+    {{ workspace.workLabel() }}
+  </h1>
+  @if (track() === 'quota') {
+    <p class="mt-1.5 text-sm text-portal-muted">Your sales quota for the month.</p>
+  } @else if (track() === 'tasks') {
+    <p class="mt-1.5 text-sm text-portal-muted">Completed and in-progress work.</p>
+  } @else {
+    <p class="mt-1.5 text-sm text-portal-muted">Monthly progress for your role.</p>
+  }
+
+  <div class="mt-[22px] flex items-center">
+    <span class="text-portal-muted"><app-portal-icon name="calendar" [size]="15" /></span>
+    <span class="ml-[7px] flex-1 text-xs font-medium text-portal-muted">{{ periodLabel() }}</span>
+    <span class="rounded-full bg-portal-halo px-2 py-1 text-[10px] font-semibold text-portal-blue">
+      CURRENT CUT-OFF
+    </span>
+  </div>
+
+  @if (track() === 'quota') {
+    <section class="mt-3.5 rounded-[20px] border border-portal-line bg-white p-4">
+      <div class="flex items-center">
+        <span class="flex size-[34px] items-center justify-center rounded-[10px] bg-portal-halo text-portal-blue">
+          <app-portal-icon name="check" [size]="18" />
+        </span>
+        <span class="ml-2.5 flex-1 text-sm font-semibold text-portal-ink">Quota for the month</span>
+      </div>
+
+      <div class="mt-[18px] flex items-end">
+        <span class="text-[34px] leading-none font-bold tracking-[-1px] text-portal-ink">
+          {{ money(earned()) }}
+        </span>
+        @if (quota().target > 0) {
+          <span class="mb-1 ml-1.5 text-[17px] text-portal-muted">/ {{ money(quota().target) }}</span>
+        }
+        @if (onTrack()) {
+          <span class="mb-1 ml-auto inline-flex items-center gap-1 rounded-full bg-portal-green-wash px-2 py-1 text-[11px] font-semibold text-portal-green">
+            <app-portal-icon name="check" [size]="12" />
+            On track
+          </span>
+        }
+      </div>
+
+      <div class="mt-[18px] flex h-[7px] overflow-hidden rounded-full bg-portal-track">
+        <div class="h-full bg-portal-blue" [style.width.%]="sliceWidth(quota().ownSales)"></div>
+        <div class="h-full bg-[#f97316]" [style.width.%]="sliceWidth(quota().sharedSales)"></div>
+        <div class="h-full bg-[#7c3aed]" [style.width.%]="sliceWidth(quota().incentives)"></div>
+      </div>
+
+      <div class="mt-[18px] flex text-xs">
+        <span class="flex-1 text-portal-muted">
+          @if (quota().target > 0) {
+            {{ money(remaining()) }} to your monthly quota
+          } @else {
+            No target is assigned for this month yet.
+          }
+        </span>
+        @if (quota().target > 0) {
+          <span class="font-semibold text-portal-blue">{{ percent() }}%</span>
+        }
+      </div>
+
+      <ul class="mt-4 space-y-3 border-t border-portal-line pt-4">
+        <li class="flex items-start gap-2.5">
+          <span class="mt-1 size-2.5 shrink-0 rounded-full bg-portal-blue"></span>
+          <span class="min-w-0 flex-1">
+            <span class="block text-[13px] font-semibold text-portal-ink">Sales from JO or SO</span>
+            <span class="block text-[11px] text-portal-muted">Your completed job orders and sales orders</span>
+          </span>
+          <span class="text-[13px] font-semibold text-portal-blue">{{ money(quota().ownSales) }}</span>
+        </li>
+        <li class="flex items-start gap-2.5">
+          <span class="mt-1 size-2.5 shrink-0 rounded-full bg-[#f97316]"></span>
+          <span class="min-w-0 flex-1">
+            <span class="block text-[13px] font-semibold text-portal-ink">Shared sales quota</span>
+            <span class="block text-[11px] text-portal-muted">Sales quota shared from others</span>
+          </span>
+          <span class="text-[13px] font-semibold text-[#c2410c]">{{ money(quota().sharedSales) }}</span>
+        </li>
+        <li class="flex items-start gap-2.5">
+          <span class="mt-1 size-2.5 shrink-0 rounded-full bg-[#7c3aed]"></span>
+          <span class="min-w-0 flex-1">
+            <span class="block text-[13px] font-semibold text-portal-ink">Administrative incentives</span>
+            <span class="block text-[11px] text-portal-muted">Given by Founder, COO, or CEO</span>
+          </span>
+          <span class="text-[13px] font-semibold text-[#7c3aed]">{{ money(quota().incentives) }}</span>
+        </li>
+      </ul>
+    </section>
+
+    <div class="mt-[22px] flex items-center">
+      <h2 class="flex-1 text-[17px] font-bold text-portal-ink">History</h2>
+      @if (entries().length > 4) {
+        <button type="button" class="text-[13px] font-semibold text-portal-blue" (click)="showAll.set(!showAll())">
+          {{ showAll() ? 'Show less' : 'View all' }}
+        </button>
+      }
+    </div>
+
+    @if (entries().length === 0) {
+      <p class="mt-3 text-[13px] text-portal-muted">Nothing has counted toward this month's quota yet.</p>
+    } @else {
+      <div class="mt-3 overflow-hidden rounded-[20px] border border-portal-line bg-white py-1">
+        @for (entry of visibleEntries(); track entry.id; let first = $first) {
+          @if (!first) {
+            <div class="mx-3 h-px bg-portal-line"></div>
+          }
+          <div class="flex items-center px-3 py-3">
+            <span class="min-w-0 flex-1">
+              <span class="block truncate text-sm font-semibold text-portal-ink">{{ dayLabel(entry.date) }}</span>
+              <span class="block truncate text-xs text-portal-muted">{{ entry.detail }}</span>
+            </span>
+            <span class="ml-3 text-right">
+              @switch (entry.source) {
+                @case ('own') {
+                  <span class="rounded-full bg-portal-halo px-2 py-1 text-[11px] font-semibold text-portal-blue">JO / SO</span>
+                }
+                @case ('shared') {
+                  <span class="rounded-full bg-[#fff7ed] px-2 py-1 text-[11px] font-semibold text-[#c2410c]">Shared</span>
+                }
+                @case ('incentive') {
+                  <span class="rounded-full bg-[#f5f3ff] px-2 py-1 text-[11px] font-semibold text-[#7c3aed]">Incentive</span>
+                }
+              }
+              <span class="mt-0.5 block text-[13px] font-semibold text-portal-ink">{{ money(entry.amount) }}</span>
+            </span>
+          </div>
+        }
+      </div>
+    }
+  } @else if (track() === 'tasks') {
+    <section class="mt-3.5 rounded-[20px] border border-portal-line bg-white p-4">
+      <h2 class="text-base font-bold text-portal-ink">Task progress</h2>
+      <p class="mt-2 text-[13px] text-portal-muted">No tasks are linked to this account yet.</p>
+    </section>
+  } @else {
+    <section class="mt-3.5 rounded-[20px] border border-portal-line bg-white p-4">
+      <h2 class="text-base font-bold text-portal-ink">Progress</h2>
+      <p class="mt-2 text-[13px] leading-snug text-portal-muted">
+        This tab follows the role. Sales sees a quota, developers see tasks, and training roles see progress.
+      </p>
+    </section>
+  }
+</div>

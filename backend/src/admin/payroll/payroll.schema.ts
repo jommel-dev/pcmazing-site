@@ -136,6 +136,11 @@ ALTER TABLE pcmazing_attendance
   ADD COLUMN IF NOT EXISTS location_mismatch BOOLEAN NOT NULL DEFAULT FALSE;
 
 ALTER TABLE pcmazing_attendance
+  ADD COLUMN IF NOT EXISTS time_out_lat NUMERIC(10, 7),
+  ADD COLUMN IF NOT EXISTS time_out_lng NUMERIC(10, 7),
+  ADD COLUMN IF NOT EXISTS time_out_location_label VARCHAR(200);
+
+ALTER TABLE pcmazing_attendance
   ADD COLUMN IF NOT EXISTS lunch_out TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS lunch_in TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS lunch_out_selfie_url VARCHAR(500),

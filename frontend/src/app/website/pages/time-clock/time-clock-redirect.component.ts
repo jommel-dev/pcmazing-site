@@ -11,7 +11,7 @@ export class TimeClockRedirectComponent implements OnInit {
 
   ngOnInit(): void {
     void this.router.navigate(['/user/login'], {
-      queryParams: { returnUrl: '/admin/time-clock' },
+      queryParams: { returnUrl: '/user/clock' },
     });
   }
 }

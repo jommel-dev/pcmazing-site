@@ -13,6 +13,21 @@ layer(base);
   --color-pcmazing-500: #0047ff;
   --color-pcmazing-600: #0033cc;
   --color-pcmazing-700: #002299;
+
+  /* Employee portal (mirrors the MyPeoplePortal app palette) */
+  --color-portal-page: #f8fafc;
+  --color-portal-ink: #0f172a;
+  --color-portal-muted: #64748b;
+  --color-portal-blue: #2563eb;
+  --color-portal-halo: #eff6ff;
+  --color-portal-line: #e2e8f0;
+  --color-portal-field: #f8fafc;
+  --color-portal-danger: #be123c;
+  --color-portal-green: #047857;
+  --color-portal-green-wash: #ecfdf5;
+  --color-portal-track: #e0f2fe;
+  --color-portal-amber: #b45309;
+  --color-portal-amber-wash: #fffbeb;
 }
 
 @layer base {
@@ -38,6 +53,39 @@ layer(base);
 }
 
 @layer components {
+  /* Employee portal bottom tab bar (pill indicator like the app) */
+  .portal-pill {
+    display: flex;
+    height: 29px;
+    width: 54px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9999px;
+    background: #fff;
+    transition: background-color 120ms ease;
+  }
+
+  .portal-tab-label {
+    font-size: 10px;
+    font-weight: 500;
+  }
+
+  .portal-tab {
+    color: var(--color-portal-muted);
+  }
+
+  .portal-tab.is-active {
+    color: var(--color-portal-blue);
+  }
+
+  .portal-tab.is-active .portal-pill {
+    background: var(--color-portal-halo);
+  }
+
+  .portal-tab.is-active .portal-tab-label {
+    font-weight: 600;
+  }
+
   /* Mobile-friendly horizontal scroll for wide data tables/lists */
   .table-scroll {
     max-width: 100%;

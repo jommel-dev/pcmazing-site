@@ -86,6 +86,10 @@
             },
             "development": {
               "buildTarget": "pcmazing-site:build:development"
+            },
+            "live": {
+              "buildTarget": "pcmazing-site:build:development",
+              "proxyConfig": "proxy.conf.json"
             }
           },
           "defaultConfiguration": "development"

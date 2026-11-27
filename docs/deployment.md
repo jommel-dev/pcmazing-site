@@ -44,7 +44,7 @@ git pull
 
 cd portal-app
 chmod +x ./gradlew
-./gradlew :androidApp:assembleRelease
+./gradlew clean :androidApp:assembleRelease
 
 cd ..
 docker compose --env-file .env.docker build pcmazing_frontend_app
@@ -52,7 +52,7 @@ docker compose --env-file .env.docker build pcmazing_backend_api
 docker compose --env-file .env.docker up -d --no-build
 ```
 
-`gradlew.bat` is the Windows wrapper and will not run on the server. The release reads `API_URL` from this checkout's `.env.docker` and writes `backend/downloads/portal.apk`. The backend image copies that file in, so a new APK is served only after `pcmazing_backend_api` is rebuilt.
+`gradlew.bat` is the Windows wrapper and will not run on the server. The release reads `API_URL` from this checkout's `.env.docker` and writes `backend/downloads/portal.apk`. The backend image copies that file in, so a new APK is served only after `pcmazing_backend_api` is rebuilt. `clean` is required for this recovery: the failed startup-profile step left a `classes2.dex` whose checksum Android rejects, and a plain rebuild reuses that file. Android then closes MyPeoplePortal before the first screen.
 
 Build first, then start. `up -d --no-build` only recreates containers when the new images exist. If a build fails, the containers that are already running stay up.
 

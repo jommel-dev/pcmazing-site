@@ -5,6 +5,7 @@
     "ng": "ng",
     "env": "node scripts/generate-env.mjs",
     "start": "node scripts/generate-env.mjs && ng serve",
+    "start:live": "node scripts/generate-env.mjs --live && ng serve --configuration=live",
     "build": "node scripts/generate-env.mjs && node --max-old-space-size=4096 ./node_modules/@angular/cli/bin/ng.js build",
     "build:prod": "node scripts/generate-env.mjs && node --max-old-space-size=4096 ./node_modules/@angular/cli/bin/ng.js build --configuration=production",
     "watch": "node scripts/generate-env.mjs && ng build --watch --configuration development",

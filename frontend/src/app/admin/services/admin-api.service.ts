@@ -1022,6 +1022,7 @@ export interface EmployeePayslipDetail {
 export interface EmployeeWorkspaceDashboard {
   workDate: string;
   month: string;
+  workWeek?: 'mon_fri' | 'mon_sat' | 'day_off_basis';
   undertimeGraceMinutes?: number;
   today: {
     timeIn: string | null;
@@ -1034,6 +1035,17 @@ export interface EmployeeWorkspaceDashboard {
     attendanceId?: number | null;
     canRequestTimeOutAdjustment?: boolean;
     adjustmentStatus?: PayrollOvertimeStatus;
+    locationLat?: number | null;
+    locationLng?: number | null;
+    locationLabel?: string | null;
+    timeOutLocationLat?: number | null;
+    timeOutLocationLng?: number | null;
+    timeOutLocationLabel?: string | null;
+    hasTimeInSelfie?: boolean;
+    hasTimeOutSelfie?: boolean;
+    timeInSelfieUrl?: string | null;
+    timeOutSelfieUrl?: string | null;
+    late?: boolean;
   };
   monthSummary: {
     totalHours: number;
@@ -1065,6 +1077,17 @@ export interface EmployeeWorkspaceDashboard {
     adjustmentStatus?: PayrollOvertimeStatus;
     adjustmentNote?: string | null;
     canRequestTimeOutAdjustment?: boolean;
+    locationLat?: number | null;
+    locationLng?: number | null;
+    locationLabel?: string | null;
+    timeOutLocationLat?: number | null;
+    timeOutLocationLng?: number | null;
+    timeOutLocationLabel?: string | null;
+    hasTimeInSelfie?: boolean;
+    hasTimeOutSelfie?: boolean;
+    timeInSelfieUrl?: string | null;
+    timeOutSelfieUrl?: string | null;
+    late?: boolean;
   }>;
   dayOffs: EmployeeDayOffItem[];
   todos: EmployeeTodoItem[];
@@ -1348,6 +1371,35 @@ export interface EmployeeMemoDetail extends EmployeeMemoListItem {
   companyPhone: string;
   companyLogoUrl: string;
   employeePosition: string | null;
+}
+
+export type EmployeeTimesheetStatus = 'submitted' | 'reverted' | 'approved' | 'finalized';
+
+export interface EmployeeTimesheetRecord {
+  id: number;
+  fullName: string | null;
+  username: string | null;
+  periodFrom: string;
+  periodTo: string;
+  status: EmployeeTimesheetStatus;
+  totalHours: number;
+  daysPresent: number;
+  daysCompleted: number;
+  employeeNote: string | null;
+  reviewNote: string | null;
+  reviewedByName: string | null;
+  finalizedByName: string | null;
+  postedOn: string | null;
+}
+
+export interface EmployeeTimesheetMine {
+  month: string;
+  periodFrom: string;
+  periodTo: string;
+  attendance: { daysPresent: number; daysCompleted: number; totalHours: number };
+  timesheet: EmployeeTimesheetRecord | null;
+  canReview: boolean;
+  canFinalize: boolean;
 }
 
 export interface CreateEmployeeMemoPayload {
@@ -3895,12 +3947,17 @@ export class AdminApiService {
     );
   }
 
-  portalTimeOut(selfie: Blob, intent?: 'lunch' | 'end_of_day' | null) {
+  portalTimeOut(
+    selfie: Blob,
+    intent?: 'lunch' | 'end_of_day' | null,
+    location?: TimeClockLocationPayload | null,
+  ) {
     const formData = new FormData();
     formData.append('selfie', selfie, 'time-out-selfie.jpg');
     if (intent === 'lunch' || intent === 'end_of_day') {
       formData.append('intent', intent);
     }
+    this.appendPortalTimeClockLocation(formData, location);
 
     return this.http.post<{ success: boolean; message: string; data: TimeClockStatus }>(
       `${APP_CONFIG.apiUrl}/admin/employee-workspace/time-clock/time-out`,
@@ -3927,13 +3984,15 @@ export class AdminApiService {
 
   requestEmployeeTimeOutAdjustment(
     attendanceId: number,
-    selfie: File,
+    selfie: File | null,
     requestedTimeOut: string,
     note = '',
     undertimeCategory: 'emergency' | 'appointment' | 'event' | 'other' = 'other',
   ) {
     const formData = new FormData();
-    formData.append('selfie', selfie);
+    if (selfie) {
+      formData.append('selfie', selfie);
+    }
     formData.append('requestedTimeOut', requestedTimeOut);
     formData.append('note', note.trim());
     formData.append('undertimeCategory', undertimeCategory);
@@ -3969,6 +4028,41 @@ export class AdminApiService {
       params,
       responseType: 'blob',
     });
+  }
+
+  getEmployeeEmployment() {
+    return this.http.get<
+      ItemResponse<{
+        employeeCode: string | null;
+        department: string | null;
+        positionTitle: string | null;
+        salaryType: 'weekly' | 'semi_monthly' | 'monthly' | 'cutoff';
+        payoutMethod: 'cash' | 'online';
+        bankHint: string | null;
+        payrollEnabled: boolean;
+        joinedAt: string | null;
+      }>
+    >(`${APP_CONFIG.apiUrl}/admin/employee-workspace/employment`, { headers: this.headers() });
+  }
+
+  getEmployeePayEstimate() {
+    return this.http.get<
+      ItemResponse<{
+        dateFrom: string;
+        dateTo: string;
+        released: boolean;
+        basePay: number;
+        overtimePay: number;
+        grossPay: number;
+        totalDeductions: number;
+        netPay: number;
+        lines: Array<{
+          lineType: 'commission' | 'late_deduction' | 'loan_deduction' | 'manual_deduction';
+          label: string;
+          amount: number;
+        }>;
+      }>
+    >(`${APP_CONFIG.apiUrl}/admin/employee-workspace/pay-estimate`, { headers: this.headers() });
   }
 
   getEmployeePayslipDetail(payslipId: string | number) {
@@ -4023,6 +4117,59 @@ export class AdminApiService {
     return this.http.post<MessageResponse<EmployeeActivityItem>>(
       `${APP_CONFIG.apiUrl}/admin/employee-workspace/activities`,
       payload,
+      { headers: this.headers() },
+    );
+  }
+
+  getEmployeeTimesheet(month: string) {
+    return this.http.get<ItemResponse<EmployeeTimesheetMine>>(
+      `${APP_CONFIG.apiUrl}/admin/employee-workspace/timesheet`,
+      { headers: this.headers(), params: new HttpParams().set('month', month) },
+    );
+  }
+
+  submitEmployeeTimesheet(payload: { month: string; note?: string }) {
+    return this.http.post<MessageResponse<EmployeeTimesheetRecord>>(
+      `${APP_CONFIG.apiUrl}/admin/employee-workspace/timesheet/submit`,
+      payload,
+      { headers: this.headers() },
+    );
+  }
+
+  listTimesheetsForReview() {
+    return this.http.get<ItemResponse<EmployeeTimesheetRecord[]>>(
+      `${APP_CONFIG.apiUrl}/admin/employee-workspace/timesheets/review`,
+      { headers: this.headers() },
+    );
+  }
+
+  approveEmployeeTimesheet(id: number, note?: string) {
+    return this.http.post<MessageResponse<EmployeeTimesheetRecord>>(
+      `${APP_CONFIG.apiUrl}/admin/employee-workspace/timesheets/${id}/approve`,
+      { note },
+      { headers: this.headers() },
+    );
+  }
+
+  revertEmployeeTimesheet(id: number, note?: string) {
+    return this.http.post<MessageResponse<EmployeeTimesheetRecord>>(
+      `${APP_CONFIG.apiUrl}/admin/employee-workspace/timesheets/${id}/revert`,
+      { note },
+      { headers: this.headers() },
+    );
+  }
+
+  listTimesheetsForFinalize() {
+    return this.http.get<ItemResponse<EmployeeTimesheetRecord[]>>(
+      `${APP_CONFIG.apiUrl}/admin/employee-workspace/timesheets/finalize`,
+      { headers: this.headers() },
+    );
+  }
+
+  finalizeEmployeeTimesheet(id: number, postedOn: string) {
+    return this.http.post<MessageResponse<EmployeeTimesheetRecord>>(
+      `${APP_CONFIG.apiUrl}/admin/employee-workspace/timesheets/${id}/finalize`,
+      { postedOn },
       { headers: this.headers() },
     );
   }

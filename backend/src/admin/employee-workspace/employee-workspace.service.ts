@@ -108,9 +108,20 @@ export class EmployeeWorkspaceService {
     source: UserSource,
     selfie: Express.Multer.File,
     intent?: 'lunch' | 'end_of_day' | null,
+    location?: {
+      locationLat?: string;
+      locationLng?: string;
+      locationLabel?: string;
+    } | null,
   ) {
     await this.ensureReady();
-    return this.payrollService.timeOutForUser(userId, source, selfie, intent);
+    return this.payrollService.timeOutForUser(
+      userId,
+      source,
+      selfie,
+      intent,
+      this.parseLocation(location?.locationLat, location?.locationLng, location?.locationLabel),
+    );
   }
 
   private parseLocation(
@@ -154,11 +165,26 @@ export class EmployeeWorkspaceService {
       requested_time_out: string | null;
       adjustment_status: string | null;
       adjustment_note: string | null;
+      location_lat: string | number | null;
+      location_lng: string | number | null;
+      location_label: string | null;
+      time_out_lat: string | number | null;
+      time_out_lng: string | number | null;
+      time_out_location_label: string | null;
+      time_in_selfie_url: string | null;
+      time_out_selfie_url: string | null;
+      has_time_in_selfie: boolean | null;
+      has_time_out_selfie: boolean | null;
     }>(
       `SELECT id, work_date::text AS work_date, time_in::text, time_out::text,
               overtime_hours, overtime_status,
               requested_time_out::text AS requested_time_out,
-              adjustment_status, adjustment_note
+              adjustment_status, adjustment_note,
+              location_lat, location_lng, location_label,
+              time_out_lat, time_out_lng, time_out_location_label,
+              time_in_selfie_url, time_out_selfie_url,
+              (time_in_selfie_url IS NOT NULL) AS has_time_in_selfie,
+              (time_out_selfie_url IS NOT NULL) AS has_time_out_selfie
        FROM pcmazing_attendance
        WHERE user_id = $1
          AND user_source = $2
@@ -167,6 +193,7 @@ export class EmployeeWorkspaceService {
       [userId, source, dateFrom, dateTo],
     );
 
+    const lateAfter = shiftStartMinutes(settings.shiftStartTime) + settings.lateGraceMinutes;
     const attendanceDays = attendanceResult.rows.map((row) => {
       const hoursWorked = this.computeHours(row.time_in, row.time_out);
       const overtimeHours = Number(row.overtime_hours ?? 0) || 0;
@@ -178,6 +205,7 @@ export class EmployeeWorkspaceService {
         Boolean(row.time_in) &&
         !row.time_out &&
         (adjustmentStatus === 'none' || adjustmentStatus === 'rejected');
+      const arrived = manilaClockMinutes(row.time_in);
 
       return {
         id: row.id,
@@ -193,6 +221,17 @@ export class EmployeeWorkspaceService {
         adjustmentStatus,
         adjustmentNote: row.adjustment_note,
         canRequestTimeOutAdjustment,
+        locationLat: nullableNumber(row.location_lat),
+        locationLng: nullableNumber(row.location_lng),
+        locationLabel: row.location_label?.trim() || null,
+        timeOutLocationLat: nullableNumber(row.time_out_lat),
+        timeOutLocationLng: nullableNumber(row.time_out_lng),
+        timeOutLocationLabel: row.time_out_location_label?.trim() || null,
+        hasTimeInSelfie: Boolean(row.has_time_in_selfie),
+        hasTimeOutSelfie: Boolean(row.has_time_out_selfie),
+        timeInSelfieUrl: row.time_in_selfie_url?.trim() || null,
+        timeOutSelfieUrl: row.time_out_selfie_url?.trim() || null,
+        late: arrived != null && arrived > lateAfter,
       };
     });
 
@@ -226,6 +265,7 @@ export class EmployeeWorkspaceService {
     return {
       workDate,
       month,
+      workWeek: settings.workWeek,
       undertimeGraceMinutes: settings.undertimeGraceMinutes,
       today: {
         timeIn: todayRow?.timeIn ?? null,
@@ -238,6 +278,17 @@ export class EmployeeWorkspaceService {
         attendanceId: todayRow?.id ?? null,
         canRequestTimeOutAdjustment: todayRow?.canRequestTimeOutAdjustment ?? false,
         adjustmentStatus: todayRow?.adjustmentStatus ?? 'none',
+        locationLat: todayRow?.locationLat ?? null,
+        locationLng: todayRow?.locationLng ?? null,
+        locationLabel: todayRow?.locationLabel ?? null,
+        timeOutLocationLat: todayRow?.timeOutLocationLat ?? null,
+        timeOutLocationLng: todayRow?.timeOutLocationLng ?? null,
+        timeOutLocationLabel: todayRow?.timeOutLocationLabel ?? null,
+        hasTimeInSelfie: todayRow?.hasTimeInSelfie ?? false,
+        hasTimeOutSelfie: todayRow?.hasTimeOutSelfie ?? false,
+        timeInSelfieUrl: todayRow?.timeInSelfieUrl ?? null,
+        timeOutSelfieUrl: todayRow?.timeOutSelfieUrl ?? null,
+        late: todayRow?.late ?? false,
       },
       monthSummary: {
         totalHours,
@@ -327,6 +378,54 @@ export class EmployeeWorkspaceService {
       userId,
       source,
       includeRemarks,
+    );
+  }
+
+  async getEmploymentCard(userId: number, source: UserSource) {
+    await this.ensureReady();
+    const profile = await this.payrollService.getProfile(userId, source);
+    let joinedAt: string | null = null;
+    try {
+      const table = source === 'tblusers' ? 'tblusers' : 'pcmazing_admin_users';
+      const result = await this.databaseService.query<{ created_at: string | null }>(
+        `SELECT created_at::text AS created_at FROM ${table} WHERE id = $1 LIMIT 1`,
+        [userId],
+      );
+      joinedAt = result.rows[0]?.created_at ?? null;
+    } catch {
+      joinedAt = null;
+    }
+    const digits = (profile.bankDetails ?? '').replace(/\s+/g, '');
+    const bankHint =
+      profile.payoutMethod === 'online' && digits.length >= 4
+        ? `Account ending in ${digits.slice(-4)}`
+        : null;
+
+    return {
+      employeeCode: profile.employeeCode,
+      department: profile.department,
+      positionTitle: profile.positionTitle,
+      salaryType: profile.salaryType,
+      payoutMethod: profile.payoutMethod,
+      bankHint,
+      payrollEnabled: profile.payrollEnabled,
+      joinedAt,
+    };
+  }
+
+  async getPayEstimate(userId: number, source: UserSource) {
+    await this.ensureReady();
+    const workDate = manilaWorkDate();
+    const [year, month, day] = workDate.split('-').map(Number);
+    const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    const start = day <= 15 ? 1 : 16;
+    const end = day <= 15 ? 15 : last;
+    const pad = (value: number) => String(value).padStart(2, '0');
+    return this.payrollService.estimateEmployeePeriod(
+      userId,
+      source,
+      `${year}-${pad(month)}-${pad(start)}`,
+      `${year}-${pad(month)}-${pad(end)}`,
     );
   }
 
@@ -744,4 +843,40 @@ export class EmployeeWorkspaceService {
         return 'none';
     }
   }
+}
+
+function nullableNumber(value: string | number | null | undefined): number | null {
+  if (value == null || value === '') {
+    return null;
+  }
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+/** Minutes from midnight in Asia/Manila, or null when the punch is missing. */
+function manilaClockMinutes(value: string | null): number | null {
+  if (!value) {
+    return null;
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Manila',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? '0') % 24;
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value ?? '0');
+  return hour * 60 + minute;
+}
+
+function shiftStartMinutes(shiftStart: string): number {
+  const match = shiftStart.match(/(\d{1,2}):(\d{2})/);
+  if (!match) {
+    return 9 * 60;
+  }
+  return Number(match[1]) * 60 + Number(match[2]);
 }

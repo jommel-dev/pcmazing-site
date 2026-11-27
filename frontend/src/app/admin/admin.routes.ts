@@ -3,6 +3,7 @@ import {
   adminAuthGuard,
   adminGuestGuard,
   adminRoleGuard,
+  portalTimeClockRedirectGuard,
   staffGateGuard,
 } from './guards/admin-auth.guards';
 import { AdminLayoutComponent } from './layout/admin-layout.component';
@@ -118,7 +119,7 @@ export const adminRoutes: Routes = [
         path: 'time-clock',
         component: PortalTimeClockPageComponent,
         title: 'Time Clock | PCMazing Admin',
-        canActivate: [adminRoleGuard],
+        canActivate: [portalTimeClockRedirectGuard, adminRoleGuard],
         data: { module: 'time_clock' },
       },
       {

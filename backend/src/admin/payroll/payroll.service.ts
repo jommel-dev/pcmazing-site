@@ -452,6 +452,11 @@ export interface TimeClockStatus {
   locationLat: number | null;
   locationLng: number | null;
   locationMismatch: boolean;
+  timeOutLocationLabel: string | null;
+  timeOutLocationLat: number | null;
+  timeOutLocationLng: number | null;
+  timeInSelfieUrl: string | null;
+  timeOutSelfieUrl: string | null;
 }
 
 export type TimeClockLocationInput = {
@@ -4045,6 +4050,93 @@ export class PayrollService {
     }));
   }
 
+  /** Live pay for one employee over a cutoff. Does not write a payslip or lock loans. */
+  async estimateEmployeePeriod(
+    userId: number,
+    userSource: AdminUserRecord['source'],
+    dateFrom: string,
+    dateTo: string,
+  ) {
+    await this.ensureReady();
+    const profile = await this.getProfile(userId, userSource);
+    const settings = await this.getSettings();
+    const periodDays = this.countInclusiveDays(dateFrom, dateTo);
+    const attendance = await this.databaseService.query<{
+      work_date: string;
+      time_in: string | null;
+      time_out: string | null;
+      overtime_hours: string | number | null;
+      overtime_status: string | null;
+      work_location_type: string | null;
+    }>(
+      `SELECT work_date::text AS work_date,
+              time_in::text AS time_in, time_out::text AS time_out,
+              overtime_hours, overtime_status, work_location_type
+       FROM pcmazing_attendance
+       WHERE user_id = $1
+         AND user_source = $2
+         AND work_date BETWEEN $3::date AND $4::date
+         AND time_in IS NOT NULL
+       ORDER BY work_date ASC`,
+      [userId, userSource, dateFrom, dateTo],
+    );
+    const dayOffDates = await this.loadDayOffDates(userId, userSource, dateFrom, dateTo);
+    const { totals } = this.buildPayslipDaysAndTotals({
+      salaryType: profile.salaryType,
+      salaryAmount: profile.monthlySalary,
+      wfhSalary: profile.wfhSalary ?? null,
+      fixedMonthlySalary: profile.fixedMonthlySalary ?? null,
+      periodDays,
+      punches: attendance.rows,
+      dateFrom,
+      dateTo,
+      dayOffDates,
+      workWeek: settings.workWeek,
+      undertimeGraceMinutes: settings.undertimeGraceMinutes,
+    });
+    const assembled = await this.assembleLedgerForPeriod(
+      this.databaseService.query.bind(this.databaseService) as DatabaseService['query'],
+      {
+        userId,
+        userSource,
+        basePay: totals.basePay,
+        overtimePay: totals.overtimePay,
+      },
+      dateFrom,
+      dateTo,
+      settings,
+      false,
+      dayOffDates,
+    );
+    const released = await this.databaseService.query<{ id: number }>(
+      `SELECT p.id
+       FROM pcmazing_generated_payslips p
+       INNER JOIN pcmazing_payroll_runs r ON r.id = p.run_id
+       WHERE p.user_id = $1
+         AND p.user_source = $2
+         AND r.date_from = $3::date
+         AND r.date_to = $4::date
+       LIMIT 1`,
+      [userId, userSource, dateFrom, dateTo],
+    );
+
+    return {
+      dateFrom,
+      dateTo,
+      released: released.rows.length > 0,
+      basePay: totals.basePay,
+      overtimePay: totals.overtimePay,
+      grossPay: assembled.net.grossPay,
+      totalDeductions: assembled.net.totalDeductions,
+      netPay: assembled.net.netPay,
+      lines: assembled.lines.map((line) => ({
+        lineType: line.lineType,
+        label: line.label,
+        amount: line.amount,
+      })),
+    };
+  }
+
   async updatePayslipRemarks(
     payslipId: number,
     remarksRaw: string | null,
@@ -4814,6 +4906,11 @@ export class PayrollService {
       locationLat: null as number | null,
       locationLng: null as number | null,
       locationMismatch: false,
+      timeOutLocationLabel: null as string | null,
+      timeOutLocationLat: null as number | null,
+      timeOutLocationLng: null as number | null,
+      timeInSelfieUrl: null as string | null,
+      timeOutSelfieUrl: null as string | null,
     };
 
     if (!profile.payrollEnabled) {
@@ -4847,6 +4944,11 @@ export class PayrollService {
       locationLat: this.toNullableNumber(attendance?.location_lat),
       locationLng: this.toNullableNumber(attendance?.location_lng),
       locationMismatch: false,
+      timeOutLocationLabel: attendance?.time_out_location_label?.trim() || null,
+      timeOutLocationLat: this.toNullableNumber(attendance?.time_out_lat),
+      timeOutLocationLng: this.toNullableNumber(attendance?.time_out_lng),
+      timeInSelfieUrl: attendance?.time_in_selfie_url?.trim() || null,
+      timeOutSelfieUrl: attendance?.time_out_selfie_url?.trim() || null,
     };
 
     const lunchFields = this.emptyLunchClockFields(clock.serverNow, attendance);
@@ -5019,6 +5121,7 @@ export class PayrollService {
     usernameRaw: string,
     selfie: Express.Multer.File,
     intent?: PunchOutIntent | null,
+    location?: TimeClockLocationInput | null,
   ): Promise<TimeClockStatus> {
     const status = await this.getTimeClockStatus(usernameRaw);
     if (status.status === 'not_found') {
@@ -5065,6 +5168,9 @@ export class PayrollService {
       return this.getTimeClockStatus(user.username);
     }
 
+    const timeOutLat = this.toNullableNumber(location?.locationLat ?? null);
+    const timeOutLng = this.toNullableNumber(location?.locationLng ?? null);
+    const timeOutLabel = location?.locationLabel?.trim().slice(0, 200) || null;
     const result = await this.databaseService.query<{
       id: number;
       time_in: string | null;
@@ -5073,6 +5179,9 @@ export class PayrollService {
       `UPDATE pcmazing_attendance
        SET time_out = NOW(),
            time_out_selfie_url = $4,
+           time_out_lat = $5,
+           time_out_lng = $6,
+           time_out_location_label = $7,
            updated_at = NOW()
        WHERE user_id = $1
          AND user_source = $2
@@ -5081,7 +5190,7 @@ export class PayrollService {
          AND time_out IS NULL
          AND (lunch_out IS NULL OR lunch_in IS NOT NULL)
        RETURNING id, time_in::text AS time_in, time_out::text AS time_out`,
-      [user.id, user.source, workDate, selfieUrl],
+      [user.id, user.source, workDate, selfieUrl, timeOutLat, timeOutLng, timeOutLabel],
     );
 
     const punched = result.rows[0];
@@ -5146,12 +5255,13 @@ export class PayrollService {
     source: 'tblusers' | 'pcmazing_admin_users',
     selfie: Express.Multer.File,
     intent?: PunchOutIntent | null,
+    location?: TimeClockLocationInput | null,
   ): Promise<TimeClockStatus> {
     const identity = await this.resolveUserIdentity(userId, source);
     if (!identity) {
       throw new NotFoundException('Account not found.');
     }
-    return this.timeOut(identity.username, selfie, intent);
+    return this.timeOut(identity.username, selfie, intent, location);
   }
 
   async requestOvertime(
@@ -5243,7 +5353,7 @@ export class PayrollService {
     userId: number,
     userSource: AdminUserRecord['source'],
     attendanceId: number,
-    selfie: Express.Multer.File,
+    selfie: Express.Multer.File | undefined,
     requestedTimeOutRaw: string,
     note?: string,
     undertimeCategoryRaw?: string,
@@ -5253,12 +5363,6 @@ export class PayrollService {
     if (!Number.isFinite(attendanceId) || attendanceId <= 0) {
       throw new BadRequestException('Invalid attendance id.');
     }
-    if (!selfie) {
-      throw new BadRequestException(
-        'Upload a time-out photo before submitting.',
-      );
-    }
-
     const existing = await this.databaseService.query<{
       id: number;
       username: string;
@@ -5335,11 +5439,9 @@ export class PayrollService {
       );
     }
 
-    const selfieUrl = await saveAttendanceSelfieFile(
-      'out',
-      row.username,
-      selfie,
-    );
+    const selfieUrl = selfie
+      ? await saveAttendanceSelfieFile('out', row.username, selfie)
+      : null;
     const result = await this.databaseService.query<{
       id: number;
       work_date: string;
@@ -5652,10 +5754,17 @@ export class PayrollService {
       location_lng: string | number | null;
       location_label: string | null;
       location_mismatch: boolean | null;
+      time_out_lat: string | number | null;
+      time_out_lng: string | number | null;
+      time_out_location_label: string | null;
+      time_in_selfie_url: string | null;
+      time_out_selfie_url: string | null;
     }>(
       `SELECT time_in::text AS time_in, time_out::text AS time_out,
               lunch_out::text AS lunch_out, lunch_in::text AS lunch_in,
-              work_location_type, location_lat, location_lng, location_label, location_mismatch
+              work_location_type, location_lat, location_lng, location_label, location_mismatch,
+              time_out_lat, time_out_lng, time_out_location_label,
+              time_in_selfie_url, time_out_selfie_url
        FROM pcmazing_attendance
        WHERE user_id = $1 AND user_source = $2 AND work_date = $3::date
        LIMIT 1`,
@@ -5815,6 +5924,11 @@ export class PayrollService {
     | 'locationLat'
     | 'locationLng'
     | 'locationMismatch'
+    | 'timeOutLocationLabel'
+    | 'timeOutLocationLat'
+    | 'timeOutLocationLng'
+    | 'timeInSelfieUrl'
+    | 'timeOutSelfieUrl'
   > {
     const expectedLocation = resolveExpectedLocation(null, workWeek, workDate);
     return {
@@ -5823,6 +5937,11 @@ export class PayrollService {
       locationLat: null,
       locationLng: null,
       locationMismatch: false,
+      timeOutLocationLabel: null,
+      timeOutLocationLat: null,
+      timeOutLocationLng: null,
+      timeInSelfieUrl: null,
+      timeOutSelfieUrl: null,
     };
   }
 
@@ -5950,13 +6069,12 @@ export class PayrollService {
     const label = location?.locationLabel?.trim() || null;
     const lat = this.toNullableNumber(location?.locationLat ?? null);
     const lng = this.toNullableNumber(location?.locationLng ?? null);
-    const storeCoords = picked === 'wfh';
 
     return {
       workLocationType: picked,
-      locationLat: storeCoords ? lat : null,
-      locationLng: storeCoords ? lng : null,
-      locationLabel: storeCoords ? (label ? label.slice(0, 200) : null) : null,
+      locationLat: lat,
+      locationLng: lng,
+      locationLabel: label ? label.slice(0, 200) : null,
       locationMismatch: false,
     };
   }

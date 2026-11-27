@@ -1,0 +1,110 @@
+<div class="px-6 pt-[calc(0.75rem+env(safe-area-inset-top))] pb-6">
+  <div class="flex items-center">
+    <div
+      class="flex size-[42px] shrink-0 items-center justify-center overflow-hidden rounded-full bg-portal-halo text-base font-bold text-portal-blue"
+    >
+      @if (workspace.avatarUrl(); as photo) {
+        <img [src]="photo" alt="" class="size-full object-cover" />
+      } @else {
+        {{ initial() }}
+      }
+    </div>
+    <div class="ml-3 min-w-0 flex-1">
+      <p class="text-[13px] text-portal-muted">{{ greeting() }}, {{ workspace.firstName() }} 👋</p>
+      <p class="mt-[5px] truncate text-base font-semibold text-portal-ink">{{ workspace.displayName() }}</p>
+    </div>
+    <a
+      routerLink="/user/notifications"
+      aria-label="Notifications"
+      class="relative flex size-10 items-center justify-center text-portal-muted"
+    >
+      <app-portal-icon name="bell" [size]="22" />
+      @if (workspace.hasUnread()) {
+        <span class="absolute top-2 right-2 size-2 rounded-full bg-[#ef4444]"></span>
+      }
+    </a>
+    <a
+      routerLink="/user/profile"
+      aria-label="Profile and settings"
+      class="flex size-10 items-center justify-center text-portal-ink"
+    >
+      <app-portal-icon name="settings" [size]="22" />
+    </a>
+  </div>
+
+  <button type="button" class="mt-[22px] flex items-center gap-1 text-portal-ink" (click)="back()">
+    <span class="rotate-180"><app-portal-icon name="chevron" [size]="18" /></span>
+    <h1 class="text-[26px] leading-tight font-bold tracking-[-0.7px]">Attendance correction</h1>
+  </button>
+  <p class="mt-1.5 text-sm text-portal-muted">Fix a missing or incorrect punch.</p>
+
+  @if (error()) {
+    <app-portal-prompt class="mt-4" tone="error" title="Correction not sent" [message]="error()" />
+  }
+
+  <div class="mt-5 rounded-[20px] border border-portal-line bg-white px-4 py-4">
+    <p class="text-[11px] font-semibold tracking-[0.8px] text-portal-blue uppercase">Open issue</p>
+    <p class="mt-2 text-[15px] font-semibold text-portal-ink">{{ issueTitle() }}</p>
+    <p class="mt-1 text-[13px] leading-5 text-portal-muted">{{ issueDetail() }}</p>
+  </div>
+
+  <h2 class="mt-5 text-[17px] font-bold text-portal-ink">Corrected punch</h2>
+  <div class="mt-3 rounded-[20px] border border-portal-line bg-white p-4">
+    <label class="block text-[13px] font-semibold text-portal-ink" for="correction-date">Date</label>
+    <div
+      id="correction-date"
+      class="mt-1.5 flex h-12 items-center rounded-xl border border-portal-line bg-portal-field px-3.5 text-sm text-portal-ink"
+    >
+      {{ dateLabel() }}
+    </div>
+
+    <div class="mt-3 grid grid-cols-2 gap-3">
+      <label class="block" for="correct-time-in">
+        <span class="mb-1.5 block text-[13px] font-semibold text-portal-ink">Time in</span>
+        <input
+          id="correct-time-in"
+          type="time"
+          class="portal-time relative h-12 w-full rounded-xl border border-portal-line bg-portal-field px-3 text-sm text-portal-ink focus:border-portal-blue focus:ring-2 focus:ring-portal-halo focus:outline-none"
+          [ngModel]="timeIn()"
+          (ngModelChange)="timeIn.set($event)"
+        />
+      </label>
+      <label class="block" for="correct-time-out">
+        <span class="mb-1.5 block text-[13px] font-semibold text-portal-ink">Time out</span>
+        <input
+          id="correct-time-out"
+          type="time"
+          class="portal-time relative h-12 w-full rounded-xl border border-portal-line bg-portal-field px-3 text-sm text-portal-ink focus:border-portal-blue focus:ring-2 focus:ring-portal-halo focus:outline-none"
+          [ngModel]="timeOut()"
+          (ngModelChange)="timeOut.set($event)"
+        />
+      </label>
+    </div>
+
+    <label class="mt-3 block" for="correction-reason">
+      <span class="mb-1.5 block text-[13px] font-semibold text-portal-ink">Reason</span>
+      <textarea
+        id="correction-reason"
+        rows="3"
+        maxlength="240"
+        class="w-full resize-none rounded-xl border border-portal-line bg-portal-field px-3.5 py-3 text-sm text-portal-ink placeholder:text-portal-muted focus:border-portal-blue focus:ring-2 focus:ring-portal-halo focus:outline-none"
+        placeholder="Explain what needs to be corrected."
+        [ngModel]="reason()"
+        (ngModelChange)="reason.set($event)"
+      ></textarea>
+    </label>
+
+    <button
+      type="button"
+      class="mt-4 flex h-12 w-full items-center justify-center rounded-xl bg-portal-blue text-sm font-semibold text-white disabled:opacity-60"
+      [disabled]="workspace.busy()"
+      (click)="submit()"
+    >
+      {{ workspace.busy() ? 'Sending…' : 'Submit correction' }}
+    </button>
+  </div>
+
+  <p class="mt-3 text-center text-xs leading-5 text-portal-muted">
+    HR reviews the change before it updates your timesheet.
+  </p>
+</div>
